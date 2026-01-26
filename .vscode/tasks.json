@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Android",
+			"type": "shell",
+			"command": "npx expo build:android",
+			"args": [],
+			"isBackground": false
+		},
+		{
+			"label": "Build Android with EAS",
+			"type": "shell",
+			"command": "eas build -p android",
+			"args": [],
+			"isBackground": false
+		}
+	]
+}

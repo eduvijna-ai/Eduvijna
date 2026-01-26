@@ -1,0 +1,79 @@
+{
+  "expo": {
+    "name": "EduVijna",
+    "slug": "eduvijna",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/eduvijna.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eduvijna.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/eduvijna.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.eduvijna.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "scheme": "eduvijna",
+    "intentFilters": [
+      {
+        "action": "VIEW",
+        "autoVerify": true,
+        "data": [
+          {
+            "scheme": "https",
+            "host": "ui.eduvijna.com",
+            "pathPrefix": "/openquiz"
+          },
+          {
+            "scheme": "eduvijna"
+          }
+        ],
+        "category": [
+          "BROWSABLE",
+          "DEFAULT"
+        ]
+      }
+    ],
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": "1.0.0",
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/notification.wav"]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "cli": {
+      "appVersionSource": "remote"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "60acc689-aea1-4ce1-9770-4200c1c17c00"
+      }
+    },
+    "owner": "samathakotikanyadanam"
+  }
+}

@@ -1,0 +1,957 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  Modal,
+  Image,
+  ActivityIndicator,
+  useWindowDimensions,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@context/ThemeContext';
+import { apiClient } from '../core/api/config';
+import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
+import QuizFormFields from '../components/QuizFormFields';
+import DocumentListPanel from '../components/DocumentListPanel';
+import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
+
+interface QuizQuestion {
+  id?: string;
+  question: string;
+  options: string[];
+  answer?: string;
+  correctAnswer?: string;
+  explanation?: string | null;
+}
+
+interface DocumentAnalysisResponse {
+  summary: string;
+  subject?: string;
+  topic?: string;
+  title?: string;
+  keywords?: string[];
+  keyConcepts?: string[];
+  detectedElements?: string[];
+  elements?: Array<{ label: string; description: string }>;
+  tags?: { [key: string]: any };
+}
+
+interface QuizData {
+  quiz?: QuizQuestion[];
+  questions?: QuizQuestion[];
+  quiz_id?: string;
+  thread_id?: string;
+  thread_slug?: string;
+}
+
+interface Props {
+  navigation?: any;
+  onBack?: () => void;
+}
+
+export default function CreateDocumentQuizScreen({ navigation, onBack }: Props) {
+  const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isWeb = width > 768;
+
+  const [selectedDocuments, setSelectedDocuments] = useState<any[]>([]);
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    displayName: string;
+    uri: string;
+    type: string;
+    metadata?: {
+      gradeLevel: string;
+      subject: string;
+      lesson: string;
+      board: string;
+      medium: string;
+      chapter: string;
+      unit: string;
+    };
+  }>>([]);
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [inputType, setInputType] = useState<'file' | 'url' | 'camera'>('file');
+  const [capturedImages, setCapturedImages] = useState<string[]>([]);
+  const [isConvertingToPdf, setIsConvertingToPdf] = useState(false);
+  
+  // Quiz form states
+  const [classValue, setClassValue] = useState('');
+  const [subject, setSubject] = useState('');
+  const [lesson, setLesson] = useState('');
+  const [level, setLevel] = useState('beginner');
+  const [questionCount, setQuestionCount] = useState(5);
+  const [additionalInstructions, setAdditionalInstructions] = useState('');
+  
+  // Loading states
+  const [generating, setGenerating] = useState(false);
+  
+  // Form validation states
+  const [formError, setFormError] = useState('');
+  
+  // Document Metadata states
+  const [showUploadMetadataModal, setShowUploadMetadataModal] = useState(false);
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<any[]>([]);
+  const [pendingUploadUrl, setPendingUploadUrl] = useState('');
+  const [selectedBoardType, setSelectedBoardType] = useState<string>('');
+  const [documentMetadata, setDocumentMetadata] = useState({
+    board: '',
+    medium: '',
+    chapter: '',
+    unit: '',
+  });
+  
+  // Quiz Configuration Modal state
+  const [showQuizConfigModal, setShowQuizConfigModal] = useState(false);
+
+  // Dropdown data from API
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+  const [classError, setClassError] = useState('');
+  const [subjectError, setSubjectError] = useState('');
+
+  // Web layout states for shared panels
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<any>(null);
+
+  const levels = ['beginner', 'intermediate', 'advance'];
+
+  // File type constants
+  const MAX_DOCUMENT_COUNT = 5;
+  const MAX_IMAGE_COUNT = 1;
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  const allowedDocumentTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'application/rtf'
+  ];
+
+  const allowedImageTypes = [
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp'
+  ];
+
+  const isInitialMount = useRef(true);
+
+  // Load classes and subjects on component mount
+  useEffect(() => {
+    loadClasses();
+    loadSubjects();
+  }, []);
+
+  // Load uploaded files from AsyncStorage on mount
+  useEffect(() => {
+    loadUploadedFiles();
+  }, []);
+
+  useEffect(() => {
+    // Skip saving on initial mount to avoid infinite loop
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    saveUploadedFiles();
+  }, [uploadedFiles, uploadedUrls]);
+
+  const handleDocumentSelect = (document: any) => {
+    setSelectedDocumentId(document.id);
+    setSelectedDocument(document);
+  };
+
+  const loadClasses = async () => {
+    setIsLoadingClasses(true);
+    setClassError('');
+    try {
+      const response = await getClasses();
+      setClasses(response.items);
+    } catch (error) {
+      console.error('Failed to load classes:', error);
+      setClassError('Failed to load classes.');
+    } finally {
+      setIsLoadingClasses(false);
+    }
+  };
+
+  const loadSubjects = async () => {
+    setIsLoadingSubjects(true);
+    setSubjectError('');
+    try {
+      const response = await getSubjects();
+      setSubjects(response.items);
+    } catch (error) {
+      console.error('Failed to load subjects:', error);
+      setSubjectError('Failed to load subjects.');
+    } finally {
+      setIsLoadingSubjects(false);
+    }
+  };
+
+  const loadUploadedFiles = async () => {
+    try {
+      const filesJson = await AsyncStorage.getItem('uploadedFiles');
+      const urlsJson = await AsyncStorage.getItem('uploadedUrls');
+      
+      if (filesJson) {
+        setUploadedFiles(JSON.parse(filesJson));
+      }
+      if (urlsJson) {
+        setUploadedUrls(JSON.parse(urlsJson));
+      }
+    } catch (error) {
+      console.error('Error loading uploaded files:', error);
+    }
+  };
+
+  const saveUploadedFiles = async () => {
+    try {
+      await AsyncStorage.setItem('uploadedFiles', JSON.stringify(uploadedFiles));
+      await AsyncStorage.setItem('uploadedUrls', JSON.stringify(uploadedUrls));
+    } catch (error) {
+      console.error('Error saving uploaded files:', error);
+    }
+  };
+
+  const removeUploadedFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeUploadedUrl = (index: number) => {
+    setUploadedUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const executeUpload = async (includeMetadata: boolean) => {
+    if (includeMetadata) {
+      const errors: string[] = [];
+      if (!selectedBoardType) errors.push('Board Type');
+      if (!classValue.trim()) errors.push('Class');
+      if (!subject.trim()) errors.push('Subject');
+      if (!lesson.trim()) errors.push('Lesson');
+      
+      if (errors.length > 0) {
+        Alert.alert(
+          'Required Fields Missing',
+          `Please fill in: ${errors.join(', ')}`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
+
+    setShowUploadMetadataModal(false);
+    const isFileUpload = pendingUploadFiles.length > 0;
+
+    let gradeLevel = '';
+    if (includeMetadata && classValue.trim()) {
+      if (selectedBoardType && selectedBoardType !== 'NONE') {
+        gradeLevel = `${selectedBoardType} Board & ${classValue}`;
+      } else {
+        gradeLevel = classValue;
+      }
+    }
+
+    if (isFileUpload) {
+      const uploadedFileEntries = pendingUploadFiles.map(file => ({
+        displayName: file.name,
+        uri: file.uri,
+        type: file.type || 'unknown',
+        metadata: includeMetadata ? {
+          gradeLevel,
+          subject: subject.trim(),
+          lesson: lesson.trim(),
+          board: documentMetadata.board,
+          medium: documentMetadata.medium,
+          chapter: documentMetadata.chapter,
+          unit: documentMetadata.unit,
+        } : undefined
+      }));
+      setUploadedFiles(prev => [...prev, ...uploadedFileEntries]);
+      setSelectedDocuments(pendingUploadFiles);
+      setPendingUploadFiles([]);
+
+      if (inputType === 'camera') {
+        setCapturedImages([]);
+      }
+
+      Alert.alert('Success', `${pendingUploadFiles.length} file(s) uploaded!`);
+    } else if (pendingUploadUrl) {
+      setUploadedUrls(prev => [...prev, pendingUploadUrl]);
+      setDocumentUrl('');
+      setPendingUploadUrl('');
+      Alert.alert('Success', 'URL added successfully!');
+    }
+
+    if (!includeMetadata) {
+      setSelectedBoardType('');
+      setDocumentMetadata({ board: '', medium: '', chapter: '', unit: '' });
+    }
+  };
+
+  const handleUrlSubmit = () => {
+    const trimmedUrl = documentUrl.trim();
+    if (!trimmedUrl) {
+      Alert.alert('Missing URL', 'Please enter a URL.', [{ text: 'OK' }]);
+      return;
+    }
+
+    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      Alert.alert('Invalid URL', 'URL must start with http:// or https://');
+      return;
+    }
+
+    if (uploadedUrls.includes(trimmedUrl)) {
+      Alert.alert('Duplicate URL', 'This URL has already been added.');
+      return;
+    }
+
+    try {
+      new URL(trimmedUrl);
+      setPendingUploadUrl(trimmedUrl);
+      setShowUploadMetadataModal(true);
+    } catch (e) {
+      Alert.alert('Invalid URL', 'The URL you entered is not valid.');
+    }
+  };
+
+  const pickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: allowedDocumentTypes.concat(allowedImageTypes),
+        copyToCacheDirectory: true,
+        multiple: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const newFiles = result.assets.map(asset => ({
+          uri: asset.uri,
+          name: asset.name || 'document',
+          size: asset.size || 0,
+          type: asset.mimeType || 'application/pdf',
+        }));
+
+        const documents = newFiles.filter(file => 
+          allowedDocumentTypes.some(type => file.type?.includes(type))
+        );
+        const images = newFiles.filter(file => 
+          allowedImageTypes.some(type => file.type?.includes(type))
+        );
+
+        if (documents.length > 0 && images.length > 0) {
+          Alert.alert('Mixed File Types', 'Please select either documents or images, not both.');
+          return;
+        }
+
+        if (documents.length > MAX_DOCUMENT_COUNT) {
+          Alert.alert('Too Many Documents', `Maximum ${MAX_DOCUMENT_COUNT} documents allowed.`);
+          return;
+        }
+
+        if (images.length > MAX_IMAGE_COUNT) {
+          Alert.alert('Too Many Images', `Maximum ${MAX_IMAGE_COUNT} image allowed.`);
+          return;
+        }
+
+        const existingNames = uploadedFiles.map(f => f.displayName);
+        const duplicates = newFiles.filter(file => existingNames.includes(file.name));
+        if (duplicates.length > 0) {
+          Alert.alert('Duplicate Files', `Already uploaded: ${duplicates.map(f => f.name).join(', ')}`);
+          return;
+        }
+
+        const oversized = newFiles.filter(f => f.size && f.size > MAX_FILE_SIZE);
+        if (oversized.length > 0) {
+          Alert.alert('File Too Large', `Files exceed 10MB: ${oversized.map(f => f.name).join(', ')}`);
+          return;
+        }
+
+        const invalid = newFiles.filter(file => 
+          !allowedDocumentTypes.some(type => file.type?.includes(type)) &&
+          !allowedImageTypes.some(type => file.type?.includes(type))
+        );
+
+        if (invalid.length > 0) {
+          Alert.alert('Invalid File Type', 'Please upload PDF, DOC, DOCX, TXT, RTF, or image files only.');
+          return;
+        }
+
+        setPendingUploadFiles(newFiles);
+        setShowUploadMetadataModal(true);
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  const requestCameraPermission = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera permission is required.');
+      return false;
+    }
+    return true;
+  };
+
+  const captureImage = async () => {
+    if (capturedImages.length >= 5) {
+      Alert.alert('Maximum Limit Reached', 'You can only have up to 5 images.');
+      return;
+    }
+
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const imageUri = result.assets[0].uri;
+        setCapturedImages(prev => [...prev, imageUri]);
+        Alert.alert('Success', `Image captured! (${capturedImages.length + 1}/5)`);
+      }
+    } catch (error) {
+      console.error('Error capturing image:', error);
+      Alert.alert('Error', 'Failed to capture image');
+    }
+  };
+
+  const pickImagesFromGallery = async () => {
+    if (capturedImages.length >= 5) {
+      Alert.alert('Maximum Limit Reached', 'You can only have up to 5 images.');
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 5 - capturedImages.length,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const remainingSlots = 5 - capturedImages.length;
+        const imagesToAdd = result.assets.slice(0, remainingSlots);
+        const imageUris = imagesToAdd.map(asset => asset.uri);
+        
+        setCapturedImages(prev => [...prev, ...imageUris]);
+        Alert.alert('Success', `${imagesToAdd.length} image(s) added! (${capturedImages.length + imagesToAdd.length}/5)`);
+      }
+    } catch (error) {
+      console.error('Error picking images:', error);
+      Alert.alert('Error', 'Failed to pick images from gallery');
+    }
+  };
+
+  const removeCapturedImage = (index: number) => {
+    setCapturedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const convertImagesToPdf = async (): Promise<string | null> => {
+    if (capturedImages.length === 0) {
+      Alert.alert('No Images', 'Please capture at least one image.');
+      return null;
+    }
+
+    try {
+      const imagePromises = capturedImages.map(async (uri) => {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return `data:image/jpeg;base64,${base64}`;
+      });
+      
+      const base64Images = await Promise.all(imagePromises);
+      
+      const htmlContent = `
+        <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+            <style>
+              body { margin: 0; padding: 20px; }
+              img { width: 100%; height: auto; page-break-after: always; margin-bottom: 20px; }
+            </style>
+          </head>
+          <body>
+            ${base64Images.map(img => `<img src="${img}" />`).join('')}
+          </body>
+        </html>
+      `;
+      
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      return uri;
+    } catch (error) {
+      console.error('Error converting images to PDF:', error);
+      Alert.alert('Error', 'Failed to convert images to PDF');
+      return null;
+    }
+  };
+
+  const handleUploadImages = async () => {
+    if (capturedImages.length === 0) {
+      Alert.alert('No Images', 'Please capture at least one image.');
+      return;
+    }
+
+    setIsConvertingToPdf(true);
+    const pdfUri = await convertImagesToPdf();
+    setIsConvertingToPdf(false);
+
+    if (!pdfUri) return;
+
+    const pdfFile = {
+      uri: pdfUri,
+      name: `captured_images_${Date.now()}.pdf`,
+      size: 0,
+      type: 'application/pdf',
+    };
+
+    setPendingUploadFiles([pdfFile]);
+    setShowUploadMetadataModal(true);
+  };
+
+  const generateQuizFromDocument = async (
+    documentReference: string,
+    classLabel: string,
+    subjectLabel: string,
+    level: string,
+    additionalInstructions: string,
+    metadata?: any
+  ): Promise<DocumentAnalysisResponse> => {
+    // This is a simplified version - analyze document and return summary
+    return {
+      summary: additionalInstructions || `Document-based quiz for ${subjectLabel}`,
+      subject: subjectLabel,
+      topic: lesson,
+    };
+  };
+
+  const generateQuiz = async () => {
+    const hasFiles = uploadedFiles.length > 0;
+    const hasUrls = uploadedUrls.length > 0;
+    
+    if (!hasFiles && !hasUrls && !additionalInstructions.trim()) {
+      Alert.alert('Missing Input', 'Please select a document/URL or provide instructions.');
+      return;
+    }
+
+    setFormError('');
+    const errors: string[] = [];
+    
+    if (!subject || !subject.trim()) errors.push('Subject is required');
+    if (!level || !level.trim()) errors.push('Difficulty level is required');
+    if (!lesson || !lesson.trim()) errors.push('Lesson/Topic is required');
+    if (!additionalInstructions.trim()) errors.push('Additional instructions are required');
+    
+    if (errors.length > 0) {
+      const errorMessage = errors.join('\n');
+      setFormError(errorMessage);
+      Alert.alert('Missing Required Fields', errorMessage);
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const selectedClassObj = classes.find(c => c.id === classValue);
+      const classLabel = selectedClassObj?.name || classValue;
+      
+      const selectedSubjectObj = subjects.find(s => s.id === subject);
+      const subjectLabel = selectedSubjectObj?.name || subject;
+      
+      const documentReference = uploadedUrls.length > 0 
+        ? uploadedUrls[0]
+        : uploadedFiles.length > 0 
+          ? uploadedFiles[0].uri
+          : undefined;
+      
+      if (!documentReference) {
+        Alert.alert('No Document', 'Please upload a document or provide a URL.');
+        setGenerating(false);
+        return;
+      }
+      
+      const metadata = uploadedFiles.length > 0 ? uploadedFiles[0].metadata : undefined;
+      
+      const analysisResult = await generateQuizFromDocument(
+        documentReference,
+        classLabel,
+        subjectLabel,
+        level,
+        additionalInstructions.trim(),
+        metadata
+      );
+      
+      const requestBody: any = {
+        subject: subjectLabel,
+        level: level,
+        lesson: lesson.trim(),
+        count: questionCount,
+        itext: analysisResult.summary || additionalInstructions.trim(),
+        type: 'document'
+      };
+      
+      if (classLabel) {
+        requestBody.class = classLabel;
+      }
+      
+      const response = await apiClient.post('/api/v1/quiz/generate', requestBody);
+      const result = response.data;
+      
+      const questions = result.quiz || result.questions || [];
+      
+      if (!questions || questions.length === 0) {
+        Alert.alert('No Questions Generated', 'Please try again with different parameters.');
+        setGenerating(false);
+        return;
+      }
+      
+      setShowQuizConfigModal(false);
+      
+      if (navigation?.replace) {
+        navigation.replace('QuizTaking', {
+          quizData: {
+            id: result.quiz_id,
+            title: `${lesson.trim()} Quiz`,
+            questions: questions,
+            class: classLabel,
+            subject: subjectLabel,
+            difficulty: level,
+            lesson: lesson.trim(),
+            additional_instructions: additionalInstructions.trim(),
+            summary: analysisResult.summary,
+            thread_id: result.thread_id,
+            thread_slug: result.thread_slug,
+            reused_thread: result.reused_thread,
+            regenerationParams: {
+              type: 'document',
+              classId: classValue,
+              subjectId: subject,
+              count: questionCount,
+              itext: additionalInstructions.trim(),
+              fileUri: documentReference,
+              grade: classLabel,
+              subject: subjectLabel,
+              metadata: uploadedFiles.length > 0 ? uploadedFiles[0].metadata : undefined,
+            },
+          },
+          showShareButton: true,
+          showActionButtons: true,
+        });
+      } else if (navigation?.navigate) {
+        navigation.navigate('QuizTakingScreen', {
+          quizData: {
+            id: result.quiz_id,
+            title: `${lesson.trim()} Quiz`,
+            questions: questions,
+            difficulty: level,
+          },
+        });
+      }
+    } catch (error: any) {
+      console.error('Failed to generate quiz:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate quiz';
+      setFormError(errorMessage);
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {isWeb ? (
+        // Web 3-Panel Layout
+        <View style={styles.threePanelLayout}>
+          {/* Left Panel - Document List (Shared Component) */}
+          <DocumentListPanel
+            selectedDocumentId={selectedDocumentId}
+            onDocumentSelect={handleDocumentSelect}
+          />
+
+          {/* Center Panel - Form */}
+          <View style={styles.centerPanel}>
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              <View style={styles.form}>
+          {/* File Upload */}
+          <View style={styles.formGroup}>
+            <Text style={[styles.label, { color: theme.colors.text }]}>
+              Upload Document <Text style={styles.required}>*</Text>
+            </Text>
+            <TouchableOpacity
+              style={[styles.uploadArea, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+              onPress={handleFileSelect}
+            >
+              {selectedFile ? (
+                <View style={styles.filePreview}>
+                  <Ionicons name="document" size={48} color="#EF4444" />
+                  <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>
+                    {selectedFile.name}
+                  </Text>
+                  <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => setSelectedFile(null)}
+                  >
+                    <Ionicons name="close-circle" size={24} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={48} color={theme.colors.textSecondary} />
+                  <Text style={[styles.uploadText, { color: theme.colors.text }]}>
+                    Click to upload document
+                  </Text>
+                  <Text style={[styles.uploadHint, { color: theme.colors.textSecondary }]}>
+                    PDF, DOC, DOCX, TXT (Max 10MB)
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <QuizFormFields
+            showClass={true}
+            classValue={formData.class}
+            onClassChange={(value) => setFormData({ ...formData, class: value })}
+            
+            showSubject={true}
+            subjectValue={formData.subject}
+            onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
+            
+            showDifficultyLevel={true}
+            difficultyValue={formData.level}
+            onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
+            difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
+            
+            showQuestionCount={true}
+            questionCountValue={formData.count}
+            onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
+            
+            showAdditionalInstructions={true}
+            additionalInstructionsValue={formData.itext}
+            onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
+          />
+
+          <TouchableOpacity
+            style={[styles.generateButton, loading && styles.buttonDisabled]}
+            onPress={handleGenerate}
+            disabled={loading || !selectedFile}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="document-text" size={20} color="#fff" />
+                <Text style={styles.generateButtonText}>Generate Quiz</Text>
+              </>
+            )}
+          </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Right Panel - Document Details (Shared Component) */}
+          <DocumentDetailsPanel selectedDocument={selectedDocument} />
+        </View>
+      ) : (
+        // Mobile Single Column
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.form}>
+            {/* File Upload */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, { color: theme.colors.text }]}>
+                Upload Document <Text style={styles.required}>*</Text>
+              </Text>
+              <TouchableOpacity
+                style={[styles.uploadArea, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                onPress={handleFileSelect}
+              >
+                {selectedFile ? (
+                  <View style={styles.filePreview}>
+                    <Ionicons name="document" size={48} color="#EF4444" />
+                    <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>
+                      {selectedFile.name}
+                    </Text>
+                    <Text style={[styles.fileSize, { color: theme.colors.textSecondary }]}>
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => setSelectedFile(null)}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={48} color={theme.colors.textSecondary} />
+                    <Text style={[styles.uploadText, { color: theme.colors.text }]}>
+                      Click to upload document
+                    </Text>
+                    <Text style={[styles.uploadHint, { color: theme.colors.textSecondary }]}>
+                      PDF, DOC, DOCX, TXT (Max 10MB)
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <QuizFormFields
+              showClass={true}
+              classValue={formData.class}
+              onClassChange={(value) => setFormData({ ...formData, class: value })}
+              
+              showSubject={true}
+              subjectValue={formData.subject}
+              onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
+              
+              showDifficultyLevel={true}
+              difficultyValue={formData.level}
+              onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
+              difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
+              
+              showQuestionCount={true}
+              questionCountValue={formData.count}
+              onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
+              
+              showAdditionalInstructions={true}
+              additionalInstructionsValue={formData.itext}
+              onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
+            />
+
+            <TouchableOpacity
+              style={[styles.generateButton, loading && styles.buttonDisabled]}
+              onPress={handleGenerate}
+              disabled={loading || !selectedFile}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="document-text" size={20} color="#fff" />
+                  <Text style={styles.generateButtonText}>Generate Quiz</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  threePanelLayout: {
+    flexDirection: 'row',
+    flex: 1,
+    gap: 16,
+    padding: 16,
+  },
+  centerPanel: {
+    flex: 3,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  form: {
+    gap: 16,
+  },
+  formGroup: {
+    gap: 8,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  required: {
+    color: '#EF4444',
+  },
+  uploadArea: {
+    borderWidth: 2,
+    borderRadius: 8,
+    borderStyle: 'dashed',
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 160,
+  },
+  filePreview: {
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+    width: '100%',
+  },
+  fileName: {
+    fontSize: 16,
+    fontWeight: '500',
+    maxWidth: '80%',
+    textAlign: 'center',
+  },
+  fileSize: {
+    fontSize: 14,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+  },
+  uploadText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 8,
+  },
+  uploadHint: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  generateButton: {
+    backgroundColor: '#0891B2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 8,
+    marginTop: 24,
+    gap: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  generateButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

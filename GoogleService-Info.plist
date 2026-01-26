@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- THIS IS A PLACEHOLDER FILE - Replace with your actual GoogleService-Info.plist from Firebase Console -->
+	
+	<!-- INSTRUCTIONS:
+	1. Go to Firebase Console: https://console.firebase.google.com/
+	2. Select your project or create a new one
+	3. Go to Project Settings (gear icon) > General
+	4. Scroll down to 'Your apps' section
+	5. Click on iOS icon or 'Add app' if not exists
+	6. Register app with bundle ID: com.eduvijna.app
+	7. Download GoogleService-Info.plist file
+	8. Replace THIS file with the downloaded GoogleService-Info.plist
+	9. Make sure the file is named exactly: GoogleService-Info.plist
+	10. Run: npx eas build --profile development --platform ios
+	
+	WARNING: DO NOT commit the actual GoogleService-Info.plist to version control! Add it to .gitignore
+	-->
+	
+	<key>CLIENT_ID</key>
+	<string>REPLACE_WITH_YOUR_CLIENT_ID</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>REPLACE_WITH_YOUR_REVERSED_CLIENT_ID</string>
+	<key>API_KEY</key>
+	<string>REPLACE_WITH_YOUR_API_KEY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>REPLACE_WITH_YOUR_GCM_SENDER_ID</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.eduvijna.app</string>
+	<key>PROJECT_ID</key>
+	<string>REPLACE_WITH_YOUR_PROJECT_ID</string>
+	<key>STORAGE_BUCKET</key>
+	<string>REPLACE_WITH_YOUR_STORAGE_BUCKET</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>REPLACE_WITH_YOUR_GOOGLE_APP_ID</string>
+</dict>
+</plist>

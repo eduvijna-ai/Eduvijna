@@ -1,0 +1,579 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@context/ThemeContext';
+import { fetchTeacherDashboardSummary } from '@core/services/dashboardApi';
+
+interface Props {
+  route: any;
+}
+
+interface QuizAttempt {
+  quiz_id: number;
+  quiz_name: string;
+  topic: string;
+  quiz_status: string;
+  student_status: string;
+  score: number | null;
+  attempts: number;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+interface TopicPerformance {
+  topic: string;
+  averageScore: number;
+  quizCount: number;
+  completedCount: number;
+}
+
+interface StudentSummary {
+  totalQuizzes: number;
+  attemptedCount: number;
+  completedCount: number;
+  missedCount: number;
+  averageScore: number;
+  highestScore: number;
+  lowestScore: number;
+}
+
+export default function StudentAnalyticsScreen({ route }: Props) {
+  const { studentId, studentName } = route.params || {};
+  const { theme } = useTheme();
+  const colors = theme.colors;
+  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Analytics Data
+  const [totalQuizzes, setTotalQuizzes] = useState(0);
+  const [attendedQuizzes, setAttendedQuizzes] = useState(0);
+  const [averageScore, setAverageScore] = useState(0);
+  const [classroomPerformance, setClassroomPerformance] = useState<ClassroomPerformance[]>([]);
+  
+  // Filter state
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('last_30_days');
+  const [dateRangeStart, setDateRangeStart] = useState<Date>(new Date());
+  const [dateRangeEnd, setDateRangeEnd] = useState<Date>(new Date());
+  const [selectedClassroom, setSelectedClassroom] = useState<string>('all');
+  const [classrooms, setClassrooms] = useState<Array<{ classroom_id: string; classroom_name: string }>>([]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [studentId, dateFilter, selectedClassroom]);
+
+  const loadAnalytics = async () => {
+    if (!studentId) return;
+    
+    try {
+      setLoading(true);
+      
+      // Fetch all quizzes with attempts using view_type='all'
+      const response = await fetchTeacherDashboardSummary({
+        view_type: 'all',
+        limit: 1000,
+        offset: 0,
+      });
+
+      console.log('📊 Student Analytics - Loaded quizzes:', response.data.length);
+
+      // Extract unique classrooms
+      const uniqueClassrooms = new Map<string, string>();
+      response.data.forEach((quiz: any) => {
+        if (quiz.classroom_id && quiz.classroom_name) {
+          uniqueClassrooms.set(quiz.classroom_id, quiz.classroom_name);
+        }
+      });
+
+      const classroomsList = Array.from(uniqueClassrooms.entries()).map(([id, name]) => ({
+        classroom_id: id,
+        classroom_name: name,
+      }));
+      setClassrooms(classroomsList);
+
+      // Filter quizzes by classroom
+      let filteredQuizzes = selectedClassroom === 'all' 
+        ? response.data 
+        : response.data.filter((quiz: any) => quiz.classroom_id === selectedClassroom);
+
+      // Filter by date range
+      if (dateFilter !== 'all') {
+        filteredQuizzes = filteredQuizzes.filter((quiz: any) => {
+          const quizDate = new Date(quiz.created_at || quiz.assigned_at || quiz.start_time);
+          return quizDate >= dateRangeStart && quizDate <= dateRangeEnd;
+        });
+      }
+
+      // Calculate student-specific metrics
+      const studentAttempts: any[] = [];
+      const classroomMap = new Map<string, {
+        name: string;
+        scores: Array<{ quiz_id: number; quiz_name: string; score: number; completed_at: string }>;
+        totalQuizzes: number;
+      }>();
+
+      filteredQuizzes.forEach((quiz: any) => {
+        const classroomId = quiz.classroom_id || 'unknown';
+        const classroomName = quiz.classroom_name || 'Unknown Classroom';
+
+        if (!classroomMap.has(classroomId)) {
+          classroomMap.set(classroomId, {
+            name: classroomName,
+            scores: [],
+            totalQuizzes: 0,
+          });
+        }
+
+        const classData = classroomMap.get(classroomId)!;
+        classData.totalQuizzes++;
+
+        if (quiz.attempts && Array.isArray(quiz.attempts)) {
+          quiz.attempts.forEach((attempt: any) => {
+            if (attempt.student_id === studentId && attempt.completed_at) {
+              studentAttempts.push({
+                ...attempt,
+                quiz_id: quiz.quiz_id,
+                quiz_name: quiz.quiz_name || quiz.topic,
+                classroom_id: classroomId,
+                classroom_name: classroomName,
+              });
+
+              if (typeof attempt.score === 'number') {
+                classData.scores.push({
+                  quiz_id: quiz.quiz_id,
+                  quiz_name: quiz.quiz_name || quiz.topic,
+                  score: attempt.score,
+                  completed_at: attempt.completed_at,
+                });
+              }
+            }
+          });
+        }
+      });
+
+      // Calculate overall metrics
+      const totalAvailableQuizzes = filteredQuizzes.length;
+      const attendedQuizzesCount = studentAttempts.length;
+      const allScores = studentAttempts.map(a => a.score).filter(s => typeof s === 'number');
+      const avgScore = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
+
+      setTotalQuizzes(totalAvailableQuizzes);
+      setAttendedQuizzes(attendedQuizzesCount);
+      setAverageScore(avgScore);
+
+      // Calculate classroom-wise performance with low score quizzes (< 60%)
+      const classroomPerf: ClassroomPerformance[] = Array.from(classroomMap.entries())
+        .filter(([_, data]) => data.scores.length > 0)
+        .map(([classroomId, data]) => {
+          const scores = data.scores.map(s => s.score);
+          const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+          const completionRate = (data.scores.length / data.totalQuizzes) * 100;
+          
+          // Get low score quizzes (< 60%)
+          const lowScoreQuizzes = data.scores
+            .filter(s => s.score < 60)
+            .sort((a, b) => a.score - b.score);
+
+          return {
+            classroomId,
+            classroomName: data.name,
+            averageScore: avgScore,
+            quizzesTaken: data.scores.length,
+            completionRate,
+            lowScoreQuizzes,
+          };
+        })
+        .sort((a, b) => a.averageScore - b.averageScore); // Sort by lowest average first
+
+      setClassroomPerformance(classroomPerf);
+
+      console.log('📊 Analytics Summary:', {
+        totalQuizzes: totalAvailableQuizzes,
+        attended: attendedQuizzesCount,
+        averageScore: avgScore.toFixed(1),
+        classrooms: classroomPerf.length,
+      });
+
+    } catch (error) {
+      console.error('Error loading student analytics:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadAnalytics();
+  };
+
+  const handleDateFilterChange = (filter: DateFilterType, startDate: Date, endDate: Date) => {
+    setDateFilter(filter);
+    setDateRangeStart(startDate);
+    setDateRangeEnd(endDate);
+  };
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Loading analytics...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
+        />
+      }
+    >
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: colors.card }]}>
+        <View style={styles.headerContent}>
+          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name="person" size={32} color={colors.primary} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={[styles.studentName, { color: colors.text }]}>
+              {studentName || 'Student'}
+            </Text>
+            <Text style={[styles.studentId, { color: colors.textSecondary }]}>
+              ID: {studentId}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Filters */}
+      <FilterSection>
+        <View style={styles.filtersRow}>
+          <ClassroomFilter
+            classrooms={classrooms}
+            selectedClassroom={selectedClassroom}
+            onSelect={setSelectedClassroom}
+            style={styles.filterHalf}
+          />
+          <DateRangeFilter
+            selectedDateFilter={dateFilter}
+            onDateFilterChange={handleDateFilterChange}
+            style={styles.filterHalf}
+          />
+        </View>
+      </FilterSection>
+
+      {/* Summary Cards */}
+      <View style={styles.summarySection}>
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
+            <Ionicons name="document-text" size={24} color={colors.primary} />
+          </View>
+          <Text style={[styles.summaryValue, { color: colors.text }]}>{totalQuizzes}</Text>
+          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Quizzes</Text>
+        </View>
+
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.iconCircle, { backgroundColor: '#10B981' + '15' }]}>
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+          </View>
+          <Text style={[styles.summaryValue, { color: colors.text }]}>{attendedQuizzes}</Text>
+          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Attended</Text>
+        </View>
+
+        <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+          <View style={[styles.iconCircle, { backgroundColor: '#F59E0B' + '15' }]}>
+            <Ionicons name="star" size={24} color="#F59E0B" />
+          </View>
+          <Text style={[styles.summaryValue, { color: colors.text }]}>{averageScore.toFixed(1)}%</Text>
+          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Average Score</Text>
+        </View>
+      </View>
+
+      {/* Classroom-wise Performance */}
+      <View style={[styles.section, { backgroundColor: colors.card }]}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="school" size={24} color={colors.primary} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Classroom Performance
+          </Text>
+        </View>
+
+        {classroomPerformance.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="information-circle" size={48} color={colors.textSecondary} />
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+              No classroom data available
+            </Text>
+          </View>
+        ) : (
+          classroomPerformance.map((classroom) => (
+            <View key={classroom.classroomId} style={[styles.classroomCard, { borderColor: colors.border }]}>
+              <View style={styles.classroomHeader}>
+                <Text style={[styles.classroomName, { color: colors.text }]}>
+                  {classroom.classroomName}
+                </Text>
+                <View style={[
+                  styles.scoreBadge,
+                  { backgroundColor: classroom.averageScore >= 60 ? '#10B981' + '15' : '#EF4444' + '15' }
+                ]}>
+                  <Text style={[
+                    styles.scoreBadgeText,
+                    { color: classroom.averageScore >= 60 ? '#10B981' : '#EF4444' }
+                  ]}>
+                    {classroom.averageScore.toFixed(1)}%
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.classroomStats}>
+                <View style={styles.stat}>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Quizzes Taken</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{classroom.quizzesTaken}</Text>
+                </View>
+                <View style={styles.stat}>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completion</Text>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{classroom.completionRate.toFixed(0)}%</Text>
+                </View>
+                <View style={styles.stat}>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Low Scores</Text>
+                  <Text style={[styles.statValue, { color: '#EF4444' }]}>{classroom.lowScoreQuizzes.length}</Text>
+                </View>
+              </View>
+
+              {/* Low Score Quizzes */}
+              {classroom.lowScoreQuizzes.length > 0 && (
+                <View style={[styles.lowScoreSection, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.lowScoreTitle, { color: colors.text }]}>
+                    Low Score Quizzes (&lt; 60%)
+                  </Text>
+                  {classroom.lowScoreQuizzes.slice(0, 5).map((quiz, index) => (
+                    <View key={index} style={styles.lowScoreQuiz}>
+                      <View style={styles.lowScoreQuizInfo}>
+                        <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                        <Text style={[styles.lowScoreQuizName, { color: colors.text }]} numberOfLines={1}>
+                          {quiz.quiz_name}
+                        </Text>
+                      </View>
+                      <Text style={[styles.lowScoreQuizScore, { color: '#EF4444' }]}>
+                        {quiz.score}%
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+  },
+  header: {
+    padding: 20,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  headerText: {
+    flex: 1,
+  },
+  studentName: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  studentId: {
+    fontSize: 14,
+  },
+  filtersRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  filterHalf: {
+    flex: 1,
+  },
+  summarySection: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    gap: 12,
+    marginBottom: 12,
+  },
+  summaryCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  section: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    marginTop: 12,
+  },
+  classroomCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+  },
+  classroomHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  classroomName: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  scoreBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  scoreBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  classroomStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+  },
+  stat: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  lowScoreSection: {
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
+  },
+  lowScoreTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  lowScoreQuiz: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  lowScoreQuizInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  lowScoreQuizName: {
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  lowScoreQuizScore: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});
