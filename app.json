@@ -56,12 +56,7 @@
     },
     "runtimeVersion": "1.0.0",
     "plugins": [
-      [
-        "expo-notifications",
-        {
-          "sounds": ["./assets/sounds/notification.wav"]
-        }
-      ]
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": false

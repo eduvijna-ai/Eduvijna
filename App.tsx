@@ -4,9 +4,10 @@
  * Deep linking support for cross-platform assessment access
  */
 
-import React, { useState, useEffect } from 'react';
-import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { Platform, View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
 import { useNotificationPolling } from './src/core/hooks/useNotificationPolling';
 import { ThemeProvider } from './src/context/ThemeContext';
@@ -52,6 +53,8 @@ function AppContent() {
   const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen'>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
   const [pendingDeepLink, setPendingDeepLink] = useState<DeepLinkData | null>(null);
+  const notificationListener = useRef<any>();
+  const responseListener = useRef<any>();
 
   // Platform detection
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
@@ -188,6 +191,58 @@ function AppContent() {
 
     detectAndRedirect();
   }, [isWeb]);
+
+  // Push notification listeners for mobile
+  useEffect(() => {
+    if (!isMobile) return;
+
+    // Configure how notifications are displayed when app is in foreground
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+
+    // Handle notification received while app is open
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📬 Notification received:', notification);
+      // You can show an alert or update UI here
+    });
+
+    // Handle notification tapped by user
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('👆 Notification tapped:', response);
+      
+      const data = response.notification.request.content.data;
+      
+      // Handle navigation based on notification data
+      if (data?.type === 'quiz' && data?.quizId) {
+        // Navigate to quiz
+        if (navigationRef.current) {
+          (navigationRef.current as any).navigate('QuizTakingScreen', {
+            quizId: data.quizId,
+            sessionId: data.sessionId,
+          });
+        }
+      } else if (data?.screen) {
+        // Navigate to specific screen
+        if (navigationRef.current) {
+          (navigationRef.current as any).navigate(data.screen, data.params || {});
+        }
+      }
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, [isMobile]);
 
   // Show loading screen while checking authentication
   if (isLoading) {

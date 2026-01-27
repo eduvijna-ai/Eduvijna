@@ -10,9 +10,12 @@
 const axios = require('axios');
 
 // CONFIGURATION - Update these values
-const API_URL = 'http://localhost:8000'; // Your API URL
-const AUTH_TOKEN = 'YOUR_JWT_TOKEN_HERE'; // Get from app after login
-const USER_ID = 1; // Your user ID
+const API_URL = 'https://api.eduvijna.com'; // Your API URL
+const USERNAME = 'sam';
+const PASSWORD = 'Welcome@123';
+
+let AUTH_TOKEN = null;
+let USER_ID = null;
 
 // Test notification data
 const testNotifications = [
@@ -38,6 +41,46 @@ const testNotifications = [
   },
 ];
 
+async function login() {
+  try {
+    console.log('🔐 Logging in...');
+    console.log(`   Username: ${USERNAME}`);
+    
+    const response = await axios.post(
+      `${API_URL}/api/v1/auth/login`,
+      {
+        username_or_email: USERNAME,
+        password: PASSWORD,
+        remember_me: false,
+        device_info: 'Test Script'
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (response.data && response.data.access_token) {
+      AUTH_TOKEN = response.data.access_token;
+      USER_ID = response.data.user?.id;
+      
+      console.log('✅ Login successful!');
+      console.log(`   User ID: ${USER_ID}`);
+      console.log(`   User Email: ${response.data.user?.email}`);
+      console.log(`   User Role: ${response.data.user?.role}`);
+      console.log(`   Token: ${AUTH_TOKEN.substring(0, 30)}...`);
+      return true;
+    } else {
+      console.error('❌ Login failed: No access token in response');
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ Login error:', error.response?.data || error.message);
+    return false;
+  }
+}
+
 async function sendTestNotification(notification) {
   try {
     console.log(`\n📤 Sending: "${notification.title}"`);
@@ -45,7 +88,7 @@ async function sendTestNotification(notification) {
     const response = await axios.post(
       `${API_URL}/api/notifications/send`,
       {
-        user_id: USER_ID,
+        user_ids: [13],  // API expects array of user IDs
         title: notification.title,
         body: notification.body,
         priority: notification.priority,
@@ -58,17 +101,32 @@ async function sendTestNotification(notification) {
       }
     );
 
-    console.log('✅ Success:', response.data);
+    console.log('✅ Success!');
+    console.log('   Status:', response.status);
+    console.log('   Response:', JSON.stringify(response.data, null, 2));
     return true;
   } catch (error) {
-    console.error('❌ Error:', error.response?.data || error.message);
+    console.error('❌ Error:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+    });
     return false;
   }
 }
 
 async function testAll() {
   console.log('🚀 Starting Push Notification Tests\n');
-  console.log('Configuration:');
+  
+  // Login first
+  const loginSuccess = await login();
+  if (!loginSuccess) {
+    console.log('\n❌ Login failed. Cannot continue.');
+    return;
+  }
+  
+  console.log('\nConfiguration:');
   console.log(`  API: ${API_URL}`);
   console.log(`  User ID: ${USER_ID}`);
   console.log(`  Token: ${AUTH_TOKEN.substring(0, 20)}...`);
@@ -97,6 +155,14 @@ async function testAll() {
 async function testSingle() {
   console.log('🚀 Sending Single Test Notification\n');
   
+  // Login first
+  const loginSuccess = await login();
+  if (!loginSuccess) {
+    console.log('\n❌ Login failed. Cannot continue.');
+    return;
+  }
+  
+  console.log('');
   await sendTestNotification({
     title: '🧪 Test Notification',
     body: 'If you see this, push notifications are working!',

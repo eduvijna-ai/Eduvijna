@@ -28,6 +28,8 @@ export function useNotificationPolling() {
    * Start polling when user logs in
    */
   useEffect(() => {
+    // Commented out to prevent rate limit errors
+    /*
     if (!isLoggedIn || !user) {
       console.log('⏭️ [useNotificationPolling] User not logged in, skipping polling');
       return;
@@ -67,6 +69,7 @@ export function useNotificationPolling() {
         lastPoll: null,
       });
     };
+    */
   }, [isLoggedIn, user?.id, fetchNotifications]);
 
   /**

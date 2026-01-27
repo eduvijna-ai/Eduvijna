@@ -26,7 +26,7 @@ export default function NotificationHandler() {
       console.log('🔔 [Foreground] Notification received:', notification);
       
       // Refresh notifications list from backend
-      fetchNotifications();
+      // fetchNotifications(); // Commented out to prevent rate limit errors
     });
 
     return () => subscription.remove();

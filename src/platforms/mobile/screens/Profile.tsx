@@ -17,10 +17,11 @@ import {
   Modal,
   Switch,
   ActivityIndicator,
-  Clipboard,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
 import type { UserProfile } from '@core/types';
@@ -156,6 +157,33 @@ export default function Profile({ navigation }: any) {
         const result = await PushNotificationService.enablePushNotifications();
         
         if (result.success) {
+          // Generate FCM/Native Device Token
+          try {
+            const fcmToken = (await Notifications.getDevicePushTokenAsync()).data;
+            console.log('🔥 FCM Token Generated:', fcmToken);
+            
+            // Store FCM token in AsyncStorage
+            await AsyncStorage.setItem('fcmDeviceToken', fcmToken);
+            
+            Alert.alert(
+              'Success', 
+              `${result.message}\n\n🔥 FCM Token Generated!`,
+              [
+                { text: 'OK' },
+                { 
+                  text: 'Copy FCM Token', 
+                  onPress: async () => {
+                    await Clipboard.setStringAsync(fcmToken);
+                    Alert.alert('Copied!', 'FCM token copied to clipboard');
+                  }
+                }
+              ]
+            );
+          } catch (fcmError) {
+            console.warn('Could not generate FCM token:', fcmError);
+            Alert.alert('Success', `${result.message}\n\n⚠️ FCM token unavailable on this device`);
+          }
+          
           setFormData(prev => ({
             ...prev,
             preferences: {
@@ -163,8 +191,6 @@ export default function Profile({ navigation }: any) {
               pushNotifications: true,
             },
           }));
-          
-          Alert.alert('Success', result.message);
         } else {
           Alert.alert('Error', result.message);
         }
@@ -193,26 +219,49 @@ export default function Profile({ navigation }: any) {
     }
   };
 
-  // Debug: Copy push token to clipboard
+  // Debug: Copy push tokens to clipboard
   const handleCopyPushToken = async () => {
     try {
-      const token = await AsyncStorage.getItem('expoPushToken');
+      const expoToken = await AsyncStorage.getItem('expoPushToken');
+      const fcmToken = await AsyncStorage.getItem('fcmDeviceToken');
       
-      if (!token) {
-        Alert.alert('No Token', 'Push token not found. Please enable push notifications first.');
+      if (!expoToken && !fcmToken) {
+        Alert.alert('No Token', 'Push tokens not found. Please enable push notifications first.');
         return;
       }
 
-      Clipboard.setString(token);
-      console.log('📱 Push Token:', token);
+      const tokenInfo = [
+        expoToken ? `📱 Expo Token:\n${expoToken}` : '',
+        fcmToken ? `🔥 FCM Token:\n${fcmToken}` : '',
+      ].filter(Boolean).join('\n\n');
+
+      console.log('📱 Expo Push Token:', expoToken);
+      console.log('🔥 FCM Device Token:', fcmToken);
       
       Alert.alert(
-        '✅ Token Copied!',
-        `Token copied to clipboard:\n\n${token.substring(0, 50)}...`,
+        '✅ Select Token to Copy',
+        'Choose which token to copy:',
         [
-          { text: 'OK' },
-          { text: 'View Full', onPress: () => Alert.alert('Push Token', token) }
-        ]
+          expoToken ? {
+            text: '📱 Expo Token',
+            onPress: async () => {
+              await Clipboard.setStringAsync(expoToken);
+              Alert.alert('Copied!', `Expo token copied:\n\n${expoToken.substring(0, 50)}...`);
+            }
+          } : null,
+          fcmToken ? {
+            text: '🔥 FCM Token',
+            onPress: async () => {
+              await Clipboard.setStringAsync(fcmToken);
+              Alert.alert('Copied!', `FCM token copied:\n\n${fcmToken.substring(0, 50)}...`);
+            }
+          } : null,
+          {
+            text: 'View Both',
+            onPress: () => Alert.alert('Push Tokens', tokenInfo)
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ].filter(Boolean)
       );
     } catch (error) {
       console.error('Error copying token:', error);
@@ -575,14 +624,14 @@ export default function Profile({ navigation }: any) {
               )}
             </View>
 
-            {/* Debug: Copy Push Token */}
+            {/* Debug: Copy Push Tokens */}
             {formData.preferences?.pushNotifications && (
               <TouchableOpacity 
                 style={styles.debugButton}
                 onPress={handleCopyPushToken}
               >
                 <Ionicons name="copy-outline" size={16} color="#059669" />
-                <Text style={styles.debugButtonText}>📋 Copy Push Token (Debug)</Text>
+                <Text style={styles.debugButtonText}>📋 Copy Push Tokens (Expo + FCM)</Text>
               </TouchableOpacity>
             )}
 

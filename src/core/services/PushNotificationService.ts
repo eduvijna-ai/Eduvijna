@@ -1,7 +1,7 @@
 /**
- * Push Notification Service
- * Comprehensive service for managing push notifications following API reference
- * Handles permissions, tokens, registration, and device management
+ * Push Notification Service - Firebase FCM Only
+ * Production-ready service using direct Firebase Cloud Messaging
+ * NO Expo Push Service - Only Firebase Provider
  */
 
 import * as Notifications from 'expo-notifications';
@@ -9,17 +9,18 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@core/api/config';
+import { getFCMToken, deleteFCMToken } from './FirebasePushNative';
 
 // Storage keys
 const STORAGE_KEYS = {
-  PUSH_TOKEN: 'expoPushToken',
+  FCM_TOKEN: 'fcmDeviceToken',
   PUSH_ENABLED: 'pushNotificationsEnabled',
   PUSH_PROMPT_DISMISSED: 'pushPromptDismissedAt',
   LAST_TOKEN_REGISTERED: 'lastTokenRegistered',
   TOKEN_ID: 'deviceTokenId', // ID returned from backend after registration
 };
 
-// Configure notification handler
+// Configure notification handler (for local notifications display)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -28,40 +29,12 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Configure Android notification channels
-async function configureAndroidChannels() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF6B9D',
-      sound: 'default',
-    });
-
-    await Notifications.setNotificationChannelAsync('quiz-notifications', {
-      name: 'Quiz Notifications',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#4A90E2',
-      sound: 'default',
-      description: 'Notifications for new quizzes and assessments',
-    });
-  }
-}
-
 /**
  * Check if push notifications are supported on this platform
  */
 function isPushSupported(): boolean {
-  // Web push requires specific browser support
-  if (Platform.OS === 'web') {
-    return 'Notification' in window && 'serviceWorker' in navigator;
-  }
-  
-  // Mobile requires physical device
-  // NOTE: Set to true for simulator testing (tokens won't work for actual push)
-  return true; // Changed from: Device.isDevice
+  // Only Android is supported with Firebase FCM native module
+  return Platform.OS === 'android';
 }
 
 /**
@@ -71,7 +44,7 @@ function isPushSupported(): boolean {
 async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined'> {
   try {
     if (!isPushSupported()) {
-      console.log('❌ Push notifications not supported on this device');
+      console.log('❌ Push notifications only supported on Android');
       return 'denied';
     }
 
@@ -93,32 +66,34 @@ async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined
 }
 
 /**
- * Get push token for current platform
- * Returns Expo push token for easy testing with Expo's notification tool
+ * Get Firebase FCM token directly from Firebase SDK
+ * This is the ONLY token used - no Expo tokens
  */
 async function getToken(): Promise<string | null> {
   try {
     if (!isPushSupported()) {
+      console.log('❌ Push notifications only supported on Android');
       return null;
     }
 
-    // Configure Android channels first
-    await configureAndroidChannels();
+    console.log('📱 Getting FCM token from Firebase...');
+    
+    // Get FCM token from native Firebase SDK
+    const token = await getFCMToken();
 
-    // Get Expo Push Token (works with expo.dev/notifications)
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'defde510-23b4-48d3-915b-8623f373039b',
-    });
+    if (!token) {
+      console.error('❌ Failed to get FCM token from Firebase');
+      return null;
+    }
 
-    const token = tokenData.data;
-    console.log('✅ Expo push token obtained:', token);
+    console.log('✅ FCM token obtained:', token);
 
     // Store token locally
-    await AsyncStorage.setItem(STORAGE_KEYS.PUSH_TOKEN, token);
+    await AsyncStorage.setItem(STORAGE_KEYS.FCM_TOKEN, token);
 
     return token;
   } catch (error) {
-    console.error('❌ Error getting push token:', error);
+    console.error('❌ Error getting FCM token:', error);
     return null;
   }
 }
@@ -128,7 +103,7 @@ async function getToken(): Promise<string | null> {
  */
 function getDeviceMetadata() {
   return {
-    platform: Platform.OS as 'android' | 'ios' | 'web',
+    platform: 'android' as const, // Only Android supported
     device_name: `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`,
     device_model: Device.modelName || undefined,
     os_version: Device.osVersion || undefined,
@@ -137,23 +112,23 @@ function getDeviceMetadata() {
 }
 
 /**
- * Register device for push notifications
- * Calls API: POST /api/notifications/devices/register
+ * Register device for push notifications with Firebase FCM token
+ * Calls API: POST /api/notifications/devices
  */
 async function registerDevice(token: string): Promise<boolean> {
   try {
     const metadata = getDeviceMetadata();
     
-    // Build the request body
+    // Build the request body - Firebase FCM token format
     const requestBody = {
-      token,
-      ...metadata, // Spreads: platform, device_name, device_model, os_version, app_version
+      token, // This is the FCM token from Firebase, not Expo token
+      ...metadata,
     };
     
-    console.log('📤 Registering device with backend...');
+    console.log('📤 Registering device with backend (Firebase FCM)...');
     console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
     
-    // API endpoint: POST /api/notifications/devices/register
+    // API endpoint: POST /api/notifications/devices
     const response = await apiClient.post('/api/notifications/devices', requestBody);
 
     console.log('📥 Registration response:', response.data);
@@ -166,34 +141,19 @@ async function registerDevice(token: string): Promise<boolean> {
     await AsyncStorage.setItem(STORAGE_KEYS.LAST_TOKEN_REGISTERED, token);
     await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'true');
 
-    console.log('✅ Device registered successfully:', response.data);
+    console.log('✅ Device registered successfully with Firebase FCM token');
     return true;
   } catch (error: any) {
-    // More robust error logging
     console.error('❌ Failed to register device:', {
       name: error?.name,
       message: error?.message,
-      code: error?.code,
       status: error?.response?.status,
-      statusText: error?.response?.statusText,
       data: error?.response?.data,
-      isAxiosError: error?.isAxiosError,
-      config: error?.config ? {
-        url: error.config.url,
-        method: error.config.method,
-        baseURL: error.config.baseURL,
-      } : undefined,
     });
     
-    // Network error (no response from server)
+    // Network error
     if (!error?.response) {
-      if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') {
-        throw new Error('Request timeout. Please check your internet connection.');
-      }
-      if (error?.message?.includes('Network Error') || error?.code === 'ERR_NETWORK') {
-        throw new Error('Network error. Please ensure the backend API is running and accessible.');
-      }
-      throw new Error(`Network error: ${error?.message || 'Unable to connect to server'}`);
+      throw new Error('Network error. Please ensure the backend API is accessible.');
     }
     
     // Authentication error
@@ -201,18 +161,12 @@ async function registerDevice(token: string): Promise<boolean> {
       throw new Error('Authentication required. Please log in again.');
     }
     
-    // Server responded with error
+    // Extract error message
     let errorMessage = 'Failed to register device for push notifications';
-    if (error?.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data;
-      } else if (error.response.data.detail) {
-        errorMessage = error.response.data.detail; // FastAPI format
-      } else if (error.response.data.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response.data.error) {
-        errorMessage = error.response.data.error;
-      }
+    if (error?.response?.data?.detail) {
+      errorMessage = error.response.data.detail;
+    } else if (error?.response?.data?.message) {
+      errorMessage = error.response.data.message;
     }
     
     throw new Error(errorMessage);
@@ -230,25 +184,32 @@ async function unregisterDevice(): Promise<boolean> {
     if (!tokenId) {
       console.log('⚠️ No token ID found, marking as disabled locally');
       await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'false');
+      // Delete FCM token from Firebase
+      await deleteFCMToken();
       return true;
     }
 
     await apiClient.delete(`/api/notifications/devices/${tokenId}`);
+    
+    // Delete FCM token from Firebase
+    await deleteFCMToken();
     
     // Clear local storage
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.TOKEN_ID,
       STORAGE_KEYS.LAST_TOKEN_REGISTERED,
       STORAGE_KEYS.PUSH_ENABLED,
+      STORAGE_KEYS.FCM_TOKEN,
     ]);
 
-    console.log('✅ Device unregistered successfully');
+    console.log('✅ Device unregistered and FCM token deleted');
     return true;
   } catch (error: any) {
-    console.error('❌ Failed to unregister device:', error?.response?.data || error?.message || error);
+    console.error('❌ Failed to unregister device:', error?.response?.data || error?.message);
     
     // Even if backend fails, disable locally
     await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'false');
+    await deleteFCMToken();
     
     throw new Error(error?.response?.data?.message || 'Failed to disable push notifications');
   }
@@ -276,7 +237,7 @@ async function getPushStatus(): Promise<{
     }
 
     const isEnabled = (await AsyncStorage.getItem(STORAGE_KEYS.PUSH_ENABLED)) === 'true';
-    const storedToken = await AsyncStorage.getItem(STORAGE_KEYS.PUSH_TOKEN);
+    const storedToken = await AsyncStorage.getItem(STORAGE_KEYS.FCM_TOKEN);
     const { status } = await Notifications.getPermissionsAsync();
 
     return {
@@ -297,24 +258,27 @@ async function getPushStatus(): Promise<{
 }
 
 /**
- * Enable push notifications (full flow)
+ * Enable push notifications (full flow) - FIREBASE FCM ONLY
  * 1. Check permission
  * 2. Request if needed
- * 3. Get token
- * 4. Register with backend
+ * 3. Get FCM token from Firebase
+ * 4. Register with backend using FCM token
  */
 async function enablePushNotifications(): Promise<{
   success: boolean;
   message: string;
+  token?: string;
 }> {
   try {
     // Check if supported
     if (!isPushSupported()) {
       return {
         success: false,
-        message: 'Push notifications are not supported on this device',
+        message: 'Push notifications only supported on Android',
       };
     }
+
+    console.log('🔔 Starting push notification enablement...');
 
     // Request permission
     const permissionStatus = await requestPermission();
@@ -326,22 +290,29 @@ async function enablePushNotifications(): Promise<{
       };
     }
 
-    // Get token
+    console.log('✅ Permission granted');
+
+    // Get FCM token from Firebase (not Expo)
     const token = await getToken();
     
     if (!token) {
       return {
         success: false,
-        message: 'Failed to get push notification token',
+        message: 'Failed to get Firebase FCM token. Did you rebuild the Android app?',
       };
     }
 
-    // Register with backend
+    console.log('✅ FCM token received:', token.substring(0, 20) + '...');
+
+    // Register with backend using FCM token
     await registerDevice(token);
+
+    console.log('✅ Push notifications enabled successfully');
 
     return {
       success: true,
       message: 'Push notifications enabled successfully',
+      token,
     };
   } catch (error: any) {
     console.error('❌ Error enabling push notifications:', error);
@@ -391,14 +362,6 @@ async function syncStatusAfterLogin(): Promise<void> {
         console.log('⚠️ Failed to re-register:', result.message);
       }
     }
-    
-    // If has permission and token but not registered, register
-    if (status.hasPermission && status.hasToken && !status.isEnabled) {
-      const token = await AsyncStorage.getItem(STORAGE_KEYS.PUSH_TOKEN);
-      if (token) {
-        await registerDevice(token);
-      }
-    }
   } catch (error) {
     console.error('❌ Error syncing push status:', error);
   }
@@ -406,7 +369,6 @@ async function syncStatusAfterLogin(): Promise<void> {
 
 /**
  * Check if push prompt was recently dismissed
- * Returns true if dismissed within last 24 hours
  */
 async function wasPromptRecentlyDismissed(): Promise<boolean> {
   try {
@@ -420,7 +382,6 @@ async function wasPromptRecentlyDismissed(): Promise<boolean> {
     const now = new Date().getTime();
     const hoursSinceDismissed = (now - dismissedTime) / (1000 * 60 * 60);
 
-    // Show again after 24 hours
     return hoursSinceDismissed < 24;
   } catch (error) {
     return false;
@@ -443,7 +404,7 @@ async function clearAllNotifications(): Promise<void> {
 }
 
 /**
- * Setup notification listeners
+ * Setup notification listeners (for when app is open)
  */
 export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,
@@ -463,7 +424,7 @@ export const PushNotificationService = {
   // Core functionality
   isPushSupported,
   requestPermission,
-  getToken,
+  getToken, // Returns FCM token only
   registerDevice,
   unregisterDevice,
   

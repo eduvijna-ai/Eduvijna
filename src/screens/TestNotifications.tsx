@@ -1,15 +1,22 @@
 /**
  * Test Notifications Screen
- * Use this to get your device token and test push notifications
+ * Use this to get your Firebase FCM token and test push notifications
+ * PRODUCTION: Uses only Firebase FCM, no Expo tokens
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '@core/hooks/useAuth';
+import { getAccessToken, getUserData } from '@core/services/tokenStorage';
+import { PushNotificationService } from '@core/services/PushNotificationService';
+import { getFCMToken } from '@core/services/FirebasePushNative';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -22,8 +29,10 @@ Notifications.setNotificationHandler({
 
 export default function TestNotifications({ navigation }: any) {
   const { theme } = useTheme();
-  const [deviceToken, setDeviceToken] = useState<string>('');
+  const { user } = useAuth();
+  const [fcmToken, setFcmToken] = useState<string>('');
   const [permissionStatus, setPermissionStatus] = useState<string>('unknown');
+  const [backendTestLoading, setBackendTestLoading] = useState(false);
 
   useEffect(() => {
     registerForPushNotifications();
@@ -100,16 +109,12 @@ export default function TestNotifications({ navigation }: any) {
 
   const registerForPushNotifications = async () => {
     try {
-      if (!Device.isDevice) {
-        setPermissionStatus('❌ Must use physical device for push notifications');
-        return;
-      }
+      console.log('🔔 Starting FCM token registration...');
 
-      // Check existing permissions
+      // Request permission
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
-      // Request permission if not granted
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
@@ -117,44 +122,51 @@ export default function TestNotifications({ navigation }: any) {
 
       if (finalStatus !== 'granted') {
         setPermissionStatus('❌ Permission denied');
+        Alert.alert('Permission Denied', 'Please enable notifications in device settings');
         return;
       }
 
       setPermissionStatus('✅ Permission granted');
+      console.log('✅ Permission granted');
 
-      // Get Expo Push Token (works without native rebuild)
-      const token = (await Notifications.getExpoPushTokenAsync({
-        projectId: '60acc689-aea1-4ce1-9770-4200c1c17c00'
-      })).data;
-
-      console.log('📱 Push Token:', token);
-      setDeviceToken(token);
-
-      // Configure Android channel
-      if (Device.osName === 'Android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
+      // Get Firebase FCM Token directly
+      const token = await getFCMToken();
+      
+      if (!token) {
+        Alert.alert(
+          'FCM Token Failed',
+          'Could not get Firebase FCM token. Did you rebuild the Android app?'
+        );
+        setFcmToken('❌ FCM token unavailable - rebuild required');
+        return;
       }
+
+      console.log('✅ FCM Token obtained:', token);
+      setFcmToken(token);
+
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('fcmDeviceToken', token);
+
+      Alert.alert(
+        'Success!',
+        'Firebase FCM token generated!\n\nToken copied to state. Use "Copy Token" button to copy.',
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('Failed to register for push notifications:', error);
       setPermissionStatus('❌ Error: ' + (error as Error)?.message);
+      Alert.alert('Error', (error as Error)?.message || 'Failed to get FCM token');
     }
   };
 
   const copyTokenToClipboard = async () => {
-    if (!deviceToken) {
-      Alert.alert('No Token', 'Device token not available yet');
+    if (!fcmToken || fcmToken.startsWith('❌')) {
+      Alert.alert('No Token', 'FCM token not available yet. Click "Get FCM Token" first.');
       return;
     }
 
-    // For expo, we can use Clipboard
-    const Clipboard = require('@react-native-clipboard/clipboard').default;
-    Clipboard.setString(deviceToken);
-    Alert.alert('Copied!', 'Token copied to clipboard');
+    await Clipboard.setStringAsync(fcmToken);
+    Alert.alert('Copied!', 'FCM Token copied to clipboard');
   };
 
   const sendTestNotification = async () => {
@@ -162,14 +174,12 @@ export default function TestNotifications({ navigation }: any) {
       // Schedule a local notification immediately with quiz data
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "🎉 New Quiz Available",
-          body: 'Tap to view your Mathematics Quiz - Chapter 5!',
+          title: "Eduvijna Test Notification ✅",
+          body: 'Your quiz is ready. Tap to start!',
           data: { 
-            type: 'quiz_assigned',
-            quiz_id: 'test-quiz-123',
-            quiz_title: 'Mathematics Quiz - Chapter 5',
-            classroom_id: 'class-101',
-            classroom_name: 'Grade 10 Math',
+            type: 'QUIZ_READY',
+            quiz_id: '12345',
+            screen: 'QuizReadyStart',
           },
         },
         trigger: null, // Immediate
@@ -183,23 +193,96 @@ export default function TestNotifications({ navigation }: any) {
   };
 
   const sendBackendTestNotification = async () => {
-    Alert.alert(
-      'Backend Test',
-      'To test backend notifications:\n\n' +
-      '1. Copy your token above\n' +
-      '2. Send via Expo Push API:\n\n' +
-      'POST https://exp.host/--/api/v2/push/send\n' +
-      '{\n' +
-      '  "to": "<EXPO_TOKEN>",\n' +
-      '  "title": "New Quiz",\n' +
-      '  "body": "Tap to view",\n' +
-      '  "data": {\n' +
-      '    "type": "quiz_assigned",\n' +
-      '    "quiz_id": "123"\n' +
-      '  }\n' +
-      '}',
-      [{ text: 'OK' }]
-    );
+    setBackendTestLoading(true);
+    try {
+      // Get auth token using the correct method
+      const token = await getAccessToken();
+      
+      if (!token) {
+        Alert.alert(
+          'Authentication Required', 
+          'Please login first to test backend notifications.\n\nToken not found in storage.'
+        );
+        setBackendTestLoading(false);
+        return;
+      }
+
+      // Get user from hook
+      if (!user || !user.id) {
+        Alert.alert('Error', 'User information not found. Please login again.');
+        setBackendTestLoading(false);
+        return;
+      }
+
+      const userId = user.id;
+
+      console.log('📤 Sending backend test notification...');
+      console.log('User ID:', userId);
+      console.log('User:', user.username || user.email);
+      console.log('Token:', token.substring(0, 20) + '...');
+
+      // Send test notification via backend API
+      const response = await fetch('https://api.eduvijna.com/api/notifications/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_ids: [userId],  // API expects array of user IDs
+          title: '\ud83e\uddea Test Notification from Backend',
+          body: 'If you see this, backend push notifications are working! \ud83c\udf89',
+          priority: 'high',
+          data: {
+            type: 'QUIZ_READY',
+            quiz_id: 'test-123',
+            screen: 'QuizReadyStart',
+          },
+        }),
+      });
+
+      const responseText = await response.text();
+      console.log('\ud83d\udcca Response status:', response.status);
+      console.log('\ud83d\udcca Response body:', responseText);
+
+      if (response.ok) {
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (e) {
+          result = { message: responseText };
+        }
+
+        Alert.alert(
+          '\u2705 Success!',
+          `Backend notification sent successfully!\n\nStatus: ${response.status}\nMessage: ${result.message || 'Notification sent'}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        let errorMsg;
+        try {
+          const error = JSON.parse(responseText);
+          errorMsg = error.detail || error.message || responseText;
+        } catch (e) {
+          errorMsg = responseText;
+        }
+
+        Alert.alert(
+          '\u274c Error',
+          `Failed to send notification\n\nStatus: ${response.status}\nError: ${errorMsg}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('\u274c Backend test error:', error);
+      Alert.alert(
+        'Error',
+        `Failed to send backend notification:\n\n${error.message}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setBackendTestLoading(false);
+    }
   };
 
   return (
@@ -221,27 +304,36 @@ export default function TestNotifications({ navigation }: any) {
         </Text>
       </View>
 
-      {/* Device Token */}
+      {/* Device Tokens */}
       <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
         <Text style={[styles.cardTitle, { color: theme.colors.text }]}>
-          Device Token
+          Firebase FCM Token (Production)
         </Text>
+        
+        {/* FCM Token */}
         <Text style={[styles.tokenLabel, { color: theme.colors.textSecondary }]}>
-          Expo Push Token
+          🔥 Firebase Cloud Messaging Token
         </Text>
         <ScrollView horizontal style={styles.tokenScroll}>
           <Text style={[styles.tokenText, { color: theme.colors.textSecondary }]}>
-            {deviceToken || 'Getting token...'}
+            {fcmToken || 'Click "Get FCM Token" to generate'}
           </Text>
         </ScrollView>
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: theme.colors.primary }]}
+          style={[styles.button, { backgroundColor: '#FF9500' }]}
           onPress={copyTokenToClipboard}
-          disabled={!deviceToken}
+          disabled={!fcmToken || fcmToken.startsWith('❌')}
         >
           <Ionicons name="copy" size={20} color="#FFF" />
-          <Text style={styles.buttonText}>Copy Token</Text>
+          <Text style={styles.buttonText}>Copy FCM Token</Text>
         </TouchableOpacity>
+        
+        <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF3CD', borderRadius: 8 }}>
+          <Text style={{ color: '#856404', fontSize: 12 }}>
+            ⚠️ This is a Firebase FCM token, NOT an Expo token.{'\n'}
+            Backend must use Firebase provider to send notifications.
+          </Text>
+        </View>
       </View>
 
       {/* Test Actions */}
@@ -268,14 +360,19 @@ export default function TestNotifications({ navigation }: any) {
         <TouchableOpacity
           style={[styles.testButton, { borderColor: theme.colors.border }]}
           onPress={sendBackendTestNotification}
+          disabled={backendTestLoading}
         >
-          <Ionicons name="cloud" size={24} color="#3B82F6" />
+          {backendTestLoading ? (
+            <ActivityIndicator size={24} color="#3B82F6" />
+          ) : (
+            <Ionicons name="cloud" size={24} color="#3B82F6" />
+          )}
           <View style={styles.testButtonText}>
             <Text style={[styles.testButtonTitle, { color: theme.colors.text }]}>
-              Test Backend Notification
+              {backendTestLoading ? 'Sending...' : 'Test Backend Notification'}
             </Text>
             <Text style={[styles.testButtonDesc, { color: theme.colors.textSecondary }]}>
-              Instructions for backend team
+              {backendTestLoading ? 'Please wait...' : 'Send via API endpoint'}
             </Text>
           </View>
         </TouchableOpacity>
@@ -287,10 +384,15 @@ export default function TestNotifications({ navigation }: any) {
           How to Test
         </Text>
         <Text style={[styles.instructionText, { color: theme.colors.textSecondary }]}>
+          <Text style={{ fontWeight: 'bold' }}>Option 1: Expo Push (Easy){'\n'}</Text>
           1. Copy your Expo token above{'\n'}
-          2. Give it to backend team{'\n'}
+          2. Send via: https://exp.host/--/api/v2/push/send{'\n'}
+          {'\n'}
+          <Text style={{ fontWeight: 'bold' }}>Option 2: Firebase FCM (Recommended){'\n'}</Text>
+          1. Copy your FCM token above{'\n'}
+          2. Backend uses firebase-admin SDK{'\n'}
           3. Backend saves token: POST /api/v1/notifications/device/register{'\n'}
-          4. Backend sends via Expo Push API{'\n'}
+          4. Backend sends via admin.messaging().send(){'\n'}
           5. Create a quiz to trigger notification{'\n'}
           6. You should receive notification on this device
         </Text>
@@ -306,7 +408,8 @@ export default function TestNotifications({ navigation }: any) {
           OS: {Device.osName} {Device.osVersion}{'\n'}
           Brand: {Device.brand}{'\n'}
           Model: {Device.modelName}{'\n'}
-          Token Type: Expo Push Token
+          Expo Token: {deviceToken ? '✅' : '⏳'}{'\n'}
+          FCM Token: {fcmToken && !fcmToken.includes('❌') ? '✅' : fcmToken.includes('❌') ? '❌' : '⏳'}
         </Text>
       </View>
     </ScrollView>
