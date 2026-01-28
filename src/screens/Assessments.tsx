@@ -123,9 +123,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const studentQuizzes = isStudent ? storedQuizzes : [];
   const studentLoading = false;
   const studentError = null;
-  const studentRefresh = () => {
-    console.log('Student data refreshed from dashboard store');
-  };
+  const studentRefresh = () => {};
 
   const loading = isTeacher ? teacherLoading : studentLoading;
   const error = isTeacher ? teacherError : studentError;
@@ -169,32 +167,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     return Array.from(classroomMap.entries()).map(([classroom_id, classroom_name]) => ({ classroom_id, classroom_name }));
   }, [allQuizzes]);
   
-  // Debug: Log quiz data to find missing fields
-  console.log('📊 Assessments Screen - Raw Data:', {
-    totalQuizzes: allQuizzes.length,
-    isTeacher,
-    firstQuizAllFields: allQuizzes[0],
-    fieldNames: allQuizzes[0] ? Object.keys(allQuizzes[0]) : [],
-    quizNames: allQuizzes.slice(0, 5).map((q: any) => ({
-      id: q.quiz_id || q.id,
-      name: q.quiz_name || q.name || q.title || q.quiz_title || 'NO NAME FIELD',
-      allKeys: Object.keys(q),
-    })),
-  });
-
-  // Debug: Log filter state
-  console.log('🎯 Filter State:', {
-    selectedTab,
-    classroomId,
-    selectedClassroom,
-    selectedDateFilter,
-    searchQuery,
-    dateRangeStart: dateRangeStart.toISOString(),
-    dateRangeEnd: dateRangeEnd.toISOString(),
-  });
-  
   const filteredQuizzes = React.useMemo(() => {
-    console.log('🔄 Recalculating filtered quizzes...');
     return allQuizzes.filter((quiz: any) => {
       // Classroom filter - use selectedClassroom from state (which may have been initialized from route params)
       if (selectedClassroom && selectedClassroom !== 'all') {
@@ -202,13 +175,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         // Convert to strings for comparison to handle type mismatches
         const quizClassroomId = String(quiz.classroom_id || quiz.class_id || '');
         const filterClassroomId = String(selectedClassroom);
-        
-        console.log('🏫 Classroom comparison:', {
-          quizId: quiz.quiz_id,
-          quizClassroomId,
-          filterClassroomId,
-          match: quizClassroomId === filterClassroomId,
-        });
         
         if (quizClassroomId !== filterClassroomId) {
           return false;
@@ -235,14 +201,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         const isInRange = quizDate >= start && quizDate <= end;
         
         if (!isInRange) {
-          console.log('📅 Date filter:', {
-            quizId: quiz.quiz_id,
-            quizDate: quizDate.toISOString(),
-            start: start.toISOString(),
-            end: end.toISOString(),
-            filterType: selectedDateFilter,
-            isInRange,
-          });
           return false;
         }
       }
@@ -293,24 +251,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     return true;
     });
   }, [allQuizzes, classroomId, selectedClassroom, selectedDateFilter, dateRangeStart, dateRangeEnd, searchQuery, selectedTab, isTeacher]);
-
-  // Debug: Log filtered results
-  console.log('🔍 Filtered Results:', {
-    selectedTab,
-    activeClassroomFilter: classroomId || (selectedClassroom !== 'all' ? selectedClassroom : 'none'),
-    activeDateFilter: selectedDateFilter,
-    searchQuery: searchQuery || 'none',
-    totalQuizzes: allQuizzes.length,
-    filteredCount: filteredQuizzes.length,
-    filtered: filteredQuizzes.map((q: any) => ({
-      id: q.quiz_id,
-      name: q.quiz_name,
-      status: q.status,
-      availability: q.availability_status,
-      classroom_id: q.classroom_id || q.class_id,
-      classroom_name: q.classroom_name || q.class_name,
-    })),
-  });
 
   // Calculate tab counts (with classroom and search filters applied)
   const getTabCount = (tab: FilterTab): number => {
@@ -397,8 +337,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // };
 
   const handleAssessmentPress = (quizId: number) => {
-    console.log('📋 Opening quiz preview for quiz:', quizId);
-    
     // Find the quiz data
     const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
     
@@ -410,14 +348,10 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       });
     } else if (onNavigate) {
       onNavigate('QuizPreviewScreen', { quizId, quizData: quiz });
-    } else {
-      console.log('Navigate to quiz view');
     }
   };
 
   const handleAction = (action: string, quizId: number, attemptData?: any) => {
-    console.log(`Action ${action} on assessment ${quizId}`, attemptData);
-    
     // View quiz students (Teacher)
     if (isTeacher && action === 'view') {
       const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
@@ -434,13 +368,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: View assessment results
     if (!isTeacher && action === 'viewResults' && attemptData) {
-      console.log('📊 Opening assessment results for student:', {
-        quizId,
-        attemptId: attemptData.attempt_id,
-        score: attemptData.score,
-        status: attemptData.status,
-      });
-      
       // Navigate to Quiz Result screen - same pattern as StudentDashboard
       // Use isTeacherView: true to fetch full quiz data in QuizResultsScreen
       if (onNavigate) {
@@ -461,13 +388,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: Start or Resume quiz
     if (!isTeacher && (action === 'start' || action === 'resume')) {
-      console.log('🎯 Starting/Resuming quiz:', {
-        quizId,
-        action,
-        quizName: attemptData?.quiz_name,
-        classId: attemptData?.class_id,
-      });
-      
       if (navigation) {
         navigation.navigate('QuizTakingScreen', {
           quizId,

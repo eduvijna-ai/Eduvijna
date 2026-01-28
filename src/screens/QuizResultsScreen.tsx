@@ -55,11 +55,9 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     if (quizId && (!quizData || !userAnswers)) {
       // If we have direct attempt data passed, use it
       if (passedAttemptData || passedSubmission || passedQuestions) {
-        console.log('📦 Using passed attempt data directly');
         handlePassedAttemptData();
       } else {
         // Fetch quiz data and find the student's attempt
-        console.log('🔍 Fetching quiz data to find student attempt for quiz:', quizId);
         fetchAttemptData();
       }
     }
@@ -68,17 +66,9 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const handlePassedAttemptData = () => {
     try {
       setLoading(true);
-      console.log('📦 Processing passed attempt data:', {
-        hasQuestions: !!passedQuestions,
-        hasSubmission: !!passedSubmission,
-        hasAttemptData: !!passedAttemptData,
-        quizId: quizId,
-        attemptId: attemptId,
-      });
 
       // If we don't have questions or submission, we need to fetch from API
       if (!passedQuestions || !passedSubmission) {
-        console.log('⚠️ Missing questions or submission data, fetching from API instead');
         fetchAttemptData();
         return;
       }
@@ -89,7 +79,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           ? JSON.parse(passedSubmission)
           : passedSubmission;
         
-        console.log('📝 Parsed log data:', logData);
         setAttemptData(logData);
         
         // If we have questions, set them up
@@ -101,7 +90,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           // Handle different question formats
           if (questions.quizzes && Array.isArray(questions.quizzes)) {
             // Format from subject field: {quizzes: [{quiz: {...}, answer: "A"}]}
-            questions = questions.quizzes.map((q: any, index: number) => ({
+            questions = questions.quizzes.map((q: any) => ({
               question: q.quiz?.question || q.question || '',
               options: q.quiz?.options || q.options || [],
               answer: q.quiz?.answer || q.answer || '',
@@ -113,7 +102,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             questions = [];
           }
           
-          console.log('📚 Parsed questions:', questions);
           setQuizData({ questions });
           
           // Extract user answers from log_data
@@ -130,7 +118,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             } else {
               answers = [];
             }
-            console.log('✅ Extracted user answers:', answers);
             setUserAnswers(answers);
           }
         }
@@ -146,15 +133,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const fetchAttemptData = async () => {
     try {
       setLoading(true);
-      console.log('📚 Fetching attempt data for:', { quizId, attemptId, studentId, effectiveStudentId });
       
       // Fetch quiz with attempts
       const response = await fetchTeacherQuizzes({
         view_type: 'all',
         quiz_id: quizId,
       });
-      
-      console.log('✅ Quiz response:', response);
       
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
         const quiz = response.data[0];
@@ -164,32 +148,24 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           ? JSON.parse(quiz.attempts)
           : quiz.attempts;
         
-        console.log('👥 All attempts:', attempts);
-        
         // Find the specific attempt
         let attempt;
         
         // Priority 1: Find by attemptId if provided
         if (attemptId) {
           attempt = attempts.find((a: any) => a.attempt_id === attemptId);
-          console.log('🔍 Found by attemptId:', attempt?.attempt_id);
         }
         
         // Priority 2: Find by studentId (for teacher viewing student's result)
         if (!attempt && effectiveStudentId) {
-          console.log('🔍 Searching by studentId:', effectiveStudentId);
           // Find the most recent completed attempt by this student
           const studentAttempts = attempts.filter(
             (a: any) => String(a.student_id) === String(effectiveStudentId)
           );
-          console.log('📝 Student attempts found:', studentAttempts.length);
           
           // Prefer completed attempts, fallback to any attempt
           attempt = studentAttempts.find((a: any) => a.status === 'completed') || studentAttempts[0];
-          console.log('🎯 Selected attempt:', attempt?.attempt_id, 'status:', attempt?.status);
         }
-        
-        console.log('🎯 Final attempt:', attempt);
         
         if (attempt) {
           // Check if we have submission data
@@ -204,7 +180,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                 ? JSON.parse(attempt.log_data)
                 : attempt.log_data);
             
-            console.log('📝 Log data:', logData);
             setAttemptData(logData);
             
             // Parse quiz questions from subject field
@@ -223,7 +198,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                   explanation: q.explanation || null,
                 }));
                 
-                console.log('📚 Extracted questions:', questions.length);
                 setQuizData({ questions });
                 
                 // Extract user answers from log_data
@@ -240,7 +214,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                   } else {
                     answers = [];
                   }
-                  console.log('✅ Extracted user answers:', answers.length);
                   setUserAnswers(answers);
                 }
               }

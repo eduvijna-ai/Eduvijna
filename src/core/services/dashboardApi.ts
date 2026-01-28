@@ -140,12 +140,6 @@ export async function fetchTeacherDashboardSummary(
         const queryString = buildQueryString(defaultFilters);
         const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
-        console.log('📊 Fetching teacher dashboard summary (API CALL):', {
-          view_type: defaultFilters.view_type,
-          limit: defaultFilters.limit,
-          offset: defaultFilters.offset,
-        });
-
         const response = await fetch(url, {
           method: 'GET',
           headers: {
@@ -164,11 +158,6 @@ export async function fetchTeacherDashboardSummary(
         }
 
         const data = await response.json();
-        
-        console.log('✅ Teacher dashboard summary fetched:', {
-          count: data.data?.length || 0,
-          total: data.meta?.total_count || 0,
-        });
         
         // Convert QuizDetails[] to TeacherQuiz[]
         return {
@@ -233,14 +222,6 @@ export async function fetchTeacherQuizzes(
         const queryString = buildQueryString(defaultFilters);
         const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
-        console.log('📚 Fetching teacher quizzes (API CALL):', {
-          view_type: defaultFilters.view_type,
-          classroom_id: defaultFilters.classroom_id,
-          quiz_id: defaultFilters.quiz_id,
-          limit: defaultFilters.limit,
-          offset: defaultFilters.offset,
-        });
-
         const response = await fetch(url, {
           method: 'GET',
           headers: {
@@ -259,11 +240,6 @@ export async function fetchTeacherQuizzes(
         }
 
         const data = await response.json();
-        
-        console.log('✅ Teacher quizzes fetched:', {
-          count: data.data?.length || 0,
-          total: data.meta?.total_count || 0,
-        });
         
         // Convert QuizDetails[] to TeacherQuiz[]
         return {
@@ -327,12 +303,6 @@ export async function fetchStudentQuizzes(
         const queryString = buildQueryString(defaultFilters);
         const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
-        console.log('👨‍🎓 Fetching student quizzes (API CALL):', {
-          view_type: defaultFilters.view_type,
-          limit: defaultFilters.limit,
-          offset: defaultFilters.offset,
-        });
-
         const response = await fetch(url, {
           method: 'GET',
           headers: {
@@ -360,22 +330,10 @@ export async function fetchStudentQuizzes(
           try {
             // Parse the attempts JSON string to get actual quiz data
             attemptsData = JSON.parse(data.data[0].attempts);
-            console.log('✅ Student quizzes fetched from attempts:', {
-              count: attemptsData.length,
-              total: data.meta?.total_count || 0,
-            });
-            
-            // Log raw attempt data before transformation
-            if (attemptsData.length > 0) {
-              console.log('🔍 Raw attempt data sample:', attemptsData[0]);
-              console.log('🔍 Raw attempt keys:', Object.keys(attemptsData[0]));
-            }
           } catch (parseError) {
             console.error('Failed to parse attempts JSON:', parseError);
             attemptsData = [];
           }
-        } else {
-          console.log('⚠️ No attempts data found in response');
         }
         
         // Convert attempts array to StudentQuiz[]
@@ -430,8 +388,6 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
         // Use class_wise_students to get classroom list with student counts
         const url = `${API_BASE_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
 
-        console.log('📚 Fetching teacher classrooms (API CALL)');
-
         const response = await fetch(url, {
           method: 'GET',
           headers: {
@@ -451,7 +407,6 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
 
         const data = await response.json();
         
-        console.log('✅ Teacher classrooms fetched:', data.data?.length || 0);
         return data;
       } catch (error) {
         console.error('Error fetching teacher classrooms:', error);
@@ -471,10 +426,6 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
 export async function fetchQuizzesWithAllStatuses(
   filters: TeacherQuizFilters = {}
 ): Promise<DashboardApiResponse<TeacherQuiz>> {
-  console.log('📊 Fetching quizzes with all statuses:', {
-    classroom_id: filters.classroom_id,
-    quiz_id: filters.quiz_id,
-  });
   return fetchTeacherQuizzes({
     ...filters,
     view_type: 'all',
@@ -490,7 +441,6 @@ export async function fetchQuizDetails(
   quizId: number,
   filters: TeacherQuizFilters = {}
 ): Promise<DashboardApiResponse<TeacherQuiz>> {
-  console.log('📝 Fetching quiz details:', { classroomId, quizId });
   return fetchTeacherQuizzes({
     ...filters,
     view_type: 'summary',
@@ -507,7 +457,6 @@ export async function fetchClassroomQuizzes(
   classroomId: string,
   filters: TeacherQuizFilters = {}
 ): Promise<DashboardApiResponse<TeacherQuiz>> {
-  console.log('📋 Fetching classroom quizzes:', { classroomId });
   return fetchTeacherQuizzes({
     ...filters,
     view_type: 'summary',
@@ -523,7 +472,6 @@ export async function fetchClassroomQuizzesWithAllStatuses(
   classroomId: string,
   filters: TeacherQuizFilters = {}
 ): Promise<DashboardApiResponse<TeacherQuiz>> {
-  console.log('📊 Fetching classroom quizzes with all statuses:', { classroomId });
   return fetchTeacherQuizzes({
     ...filters,
     view_type: 'all',
@@ -536,16 +484,12 @@ export async function fetchClassroomQuizzesWithAllStatuses(
  * Call this on logout, or when quiz data changes (create, update, delete)
  */
 export async function clearDashboardCache(): Promise<void> {
-  console.log('🧹 Clearing dashboard API cache...');
-  
   // Clear teacher caches
   await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
   await clearCacheEntry('teacher_classrooms_class_wise_students');
   
   // Note: Individual quiz caches will be cleared by clearAllCache()
   // or by cache expiry (TTL)
-  
-  console.log('✅ Dashboard cache cleared');
 }
 
 /**

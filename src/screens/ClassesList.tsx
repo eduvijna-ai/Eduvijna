@@ -62,7 +62,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
       
       if (isStudent) {
         // For students: Reuse dashboard data from store (already loaded by StudentDashboard)
-        console.log('📚 Reusing dashboard data from store:', storedQuizzes.length, 'quizzes');
         
         if (storedQuizzes.length === 0) {
           console.warn('⚠️ No data in store. StudentDashboard should load data first.');
@@ -97,8 +96,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         
         fetchedClasses = Array.from(classMap.values());
         allQuizzes = storedQuizzes;
-        
-        console.log('📚 Aggregated classes from store:', fetchedClasses.length, fetchedClasses.map(c => c.classroom_name));
       } else {
         // For teachers: Get instructor's classes
         const classesResponse = await fetchTeacherClassrooms();
@@ -181,13 +178,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
             }, 0);
             avgScore = parseFloat((totalScore / completedClassQuizzes.length).toFixed(1));
           }
-          
-          console.log('📊 Student Performance:', classItem.classroom_name, {
-            quizCount,
-            completedCount: completedClassQuizzes.length,
-            avgScore,
-            completionPercentage,
-          });
         } else {
           // For teachers: calculate class-wide performance metrics
           // Parse attempts from each quiz to get individual student scores
@@ -195,12 +185,7 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           let completedAttempts = 0; // Count of completed attempts
           let totalPossibleAttempts = 0; // Total quizzes * total students
           
-          console.log('🔍 Calculating metrics for class:', classItem.classroom_name);
-          console.log('📚 Total quizzes in class:', classQuizzes.length);
-          console.log('👥 Student count:', studentCount);
-          console.log('📊 Using view_type="all" for complete attempt data');
-          
-          classQuizzes.forEach((quiz, idx) => {
+          classQuizzes.forEach((quiz) => {
             // Parse attempts array from JSON string
             let attempts = [];
             if (quiz.attempts) {
@@ -214,19 +199,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
             }
             
             const studentCountForQuiz = quiz.total_students || studentCount || 0;
-            
-            if (idx === 0) {
-              console.log('📋 Sample Quiz (view_type=all):', {
-                quiz_id: quiz.quiz_id,
-                quiz_name: quiz.quiz_name,
-                total_students: quiz.total_students,
-                completed_count: quiz.completed_count,
-                pending_count: quiz.pending_count,
-                in_progress_count: quiz.in_progress_count,
-                attempts_count: Array.isArray(attempts) ? attempts.length : 0,
-                sample_attempt: Array.isArray(attempts) && attempts.length > 0 ? attempts[0] : null,
-              });
-            }
             
             // Calculate total possible attempts (quizzes * students)
             totalPossibleAttempts += studentCountForQuiz;
@@ -262,23 +234,8 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           completionPercentage = totalPossibleAttempts > 0 
             ? (completedAttempts / totalPossibleAttempts) * 100
             : null;
-          
-          console.log('📊 Teacher Class Performance:', classItem.classroom_name, {
-            quizCount,
-            studentCount,
-            totalPossibleAttempts,
-            completedAttempts,
-            totalScoreSum,
-            maxScoreForCompleted: completedAttempts * 100,
-            avgScore: avgScore,
-            completionPercentage: completionPercentage,
-            calculation: {
-              avgScore: completedAttempts > 0 ? `(${totalScoreSum} / ${completedAttempts}) = ${avgScore?.toFixed(2)}%` : 'N/A',
-              completion: `(${completedAttempts} / ${totalPossibleAttempts}) * 100 = ${completionPercentage?.toFixed(2)}%`,
-            },
-          });
         }
-        
+
         return {
           ...classItem,
           studentCount,
@@ -308,11 +265,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
 
   const handleClassPress = (classItem: ClassData) => {
     // Navigate to Assessments page with class details
-    console.log('📚 Navigating to Assessments with classroom:', {
-      classroom_id: classItem.classroom_id,
-      classroom_name: classItem.classroom_name,
-    });
-    
     if (navigation) {
       navigation.navigate('Assessments', { 
         classroomId: classItem.classroom_id,
@@ -328,12 +280,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
 
   const handleStatusPress = (classItem: ClassData, status: string) => {
     // Navigate to Assessments page with filtered status
-    console.log('📊 Navigating to Assessments with filter:', {
-      classroom_id: classItem.classroom_id,
-      classroom_name: classItem.classroom_name,
-      status: status,
-    });
-    
     if (navigation) {
       navigation.navigate('Assessments', { 
         classroomId: classItem.classroom_id,
