@@ -1,50 +1,16 @@
-# =========================
-# OS
-# =========================
+# OSX
+#
 .DS_Store
-Thumbs.db
 
-# =========================
-# Node / npm
-# =========================
-node_modules/
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# =========================
-# Expo
-# =========================
-.expo/
-.expo-shared/
-
-# =========================
-# Android / Gradle
-# =========================
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
+# Android/IntelliJ
+#
 build/
+.idea
 .gradle
-.cxx/
-
-# =========================
-# IntelliJ / Android Studio
-# =========================
-.idea/
+local.properties
 *.iml
 *.hprof
+.cxx/
 
-# =========================
-# iOS (future-proof)
-# =========================
-ios/build/
-ios/Pods/
-ios/DerivedData/
-
-# =========================
-# Environment files
-# =========================
-.env
-.env.*
+# Bundle artifacts
+*.jsbundle

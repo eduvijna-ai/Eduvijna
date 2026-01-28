@@ -12,11 +12,10 @@ import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@core/hooks/useAuth';
-import { getAccessToken, getUserData } from '@core/services/tokenStorage';
+import { getAccessToken } from '@core/services/tokenStorage';
 import { PushNotificationService } from '@core/services/PushNotificationService';
-import { getFCMToken } from '@core/services/FirebasePushNative';
+import Constants from 'expo-constants';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -33,7 +32,21 @@ export default function TestNotifications({ navigation }: any) {
   const [fcmToken, setFcmToken] = useState<string>('');
   const [permissionStatus, setPermissionStatus] = useState<string>('unknown');
   const [backendTestLoading, setBackendTestLoading] = useState(false);
+  const [registrationStatus, setRegistrationStatus] = useState<string>('Not registered');
+  const [isRegistered, setIsRegistered] = useState(false);
 
+
+if (Constants.appOwnership === 'expo') {
+  // Expo Go
+  console.warn('FCM tokens are not supported in Expo Go');
+  return null;
+} else if (Constants.executionEnvironment === 'bare') {
+  // Bare workflow
+  console.log('Running in Bare workflow - FCM tokens supported');
+} else {
+  // Managed workflow
+  console.log('Running in Managed workflow - FCM tokens supported via Expo');
+}
   useEffect(() => {
     registerForPushNotifications();
     
@@ -129,27 +142,38 @@ export default function TestNotifications({ navigation }: any) {
       setPermissionStatus('✅ Permission granted');
       console.log('✅ Permission granted');
 
-      // Get Firebase FCM Token directly
-      const token = await getFCMToken();
+      // Get push token using PushNotificationService
+      const token = await PushNotificationService.getToken();
       
       if (!token) {
         Alert.alert(
-          'FCM Token Failed',
-          'Could not get Firebase FCM token. Did you rebuild the Android app?'
+          'Token Failed',
+          'Could not get push token. Please check permissions.'
         );
-        setFcmToken('❌ FCM token unavailable - rebuild required');
+        setFcmToken('❌ Push token unavailable');
         return;
       }
 
-      console.log('✅ FCM Token obtained:', token);
+      const tokenType = fcmToken && fcmToken.startsWith('ExponentPushToken') ? 'Expo Push Token' : 'Native FCM Token';
+      console.log(`✅ ${tokenType} obtained:`, token);
       setFcmToken(token);
 
       // Save to AsyncStorage
       await AsyncStorage.setItem('fcmDeviceToken', token);
 
+      // Check if push is enabled and registered
+      const pushStatus = await PushNotificationService.getPushStatus();
+      if (pushStatus.isEnabled && pushStatus.hasToken) {
+        setRegistrationStatus('✅ Registered with backend');
+        setIsRegistered(true);
+      } else {
+        setRegistrationStatus('⚠️ Token obtained but not registered');
+        setIsRegistered(false);
+      }
+
       Alert.alert(
-        'Success!',
-        'Firebase FCM token generated!\n\nToken copied to state. Use "Copy Token" button to copy.',
+        'Token Generated!',
+        `${tokenType} generated successfully!\n\nNext step: Click "Register with Backend" to enable push notifications.`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -161,12 +185,78 @@ export default function TestNotifications({ navigation }: any) {
 
   const copyTokenToClipboard = async () => {
     if (!fcmToken || fcmToken.startsWith('❌')) {
-      Alert.alert('No Token', 'FCM token not available yet. Click "Get FCM Token" first.');
+      Alert.alert('No Token', 'Push token not available yet. Click "Get FCM Token" first.');
       return;
     }
 
+    const tokenType = fcmToken.startsWith('ExponentPushToken') ? 'Expo Push Token' : 'FCM Token';
     await Clipboard.setStringAsync(fcmToken);
-    Alert.alert('Copied!', 'FCM Token copied to clipboard');
+    Alert.alert('Copied!', `${tokenType} copied to clipboard`);
+  };
+
+  const registerWithBackend = async () => {
+    try {
+      if (!fcmToken || fcmToken.startsWith('❌')) {
+        Alert.alert('No Token', 'Please generate a token first by clicking "Get FCM Token"');
+        return;
+      }
+
+      setRegistrationStatus('🔄 Registering...');
+      console.log('📤 Registering token with backend...');
+
+      // Enable push notifications (this registers the token)
+      const result = await PushNotificationService.enablePushNotifications();
+
+      if (result.success) {
+        setRegistrationStatus('✅ Registered with backend');
+        setIsRegistered(true);
+        Alert.alert(
+          '✅ Success!',
+          'Push notifications enabled and token registered with backend!\n\nYou can now receive push notifications.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        setRegistrationStatus('❌ Registration failed');
+        setIsRegistered(false);
+        Alert.alert(
+          '❌ Registration Failed',
+          result.message || 'Failed to register token with backend',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error: any) {
+      console.error('❌ Registration error:', error);
+      setRegistrationStatus('❌ Registration error');
+      setIsRegistered(false);
+      Alert.alert('Error', error.message || 'Failed to register with backend');
+    }
+  };
+
+  const checkRegistrationStatus = async () => {
+    try {
+      const status = await PushNotificationService.getPushStatus();
+      console.log('📊 Push status:', status);
+
+      if (status.isEnabled && status.hasToken) {
+        setRegistrationStatus('✅ Registered with backend');
+        setIsRegistered(true);
+      } else if (status.hasToken) {
+        setRegistrationStatus('⚠️ Token exists but not registered');
+        setIsRegistered(false);
+      } else {
+        setRegistrationStatus('❌ Not registered');
+        setIsRegistered(false);
+      }
+
+      Alert.alert(
+        'Registration Status',
+        `Enabled: ${status.isEnabled ? 'Yes' : 'No'}\nHas Token: ${status.hasToken ? 'Yes' : 'No'}\nPermission: ${status.hasPermission ? 'Granted' : 'Denied'}\nSupported: ${status.isSupported ? 'Yes' : 'No'}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('❌ Error checking status:', error);
+      Alert.alert('Error', 'Failed to check registration status');
+    }
   };
 
   const sendTestNotification = async () => {
@@ -304,15 +394,40 @@ export default function TestNotifications({ navigation }: any) {
         </Text>
       </View>
 
+      {/* Registration Status */}
+      <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
+        <Text style={[styles.cardTitle, { color: theme.colors.text }]}>
+          Backend Registration Status
+        </Text>
+        <Text style={[styles.statusText, { color: theme.colors.text, marginBottom: 12 }]}>
+          {registrationStatus}
+        </Text>
+        {!isRegistered && fcmToken && !fcmToken.startsWith('❌') && (
+          <View style={{ padding: 12, backgroundColor: '#FEF3C7', borderRadius: 8, marginBottom: 12 }}>
+            <Text style={{ color: '#92400E', fontSize: 13 }}>
+              ⚠️ Token generated but not registered with backend.{' \n'}
+              Click "Register with Backend" below to enable push notifications.
+            </Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: isRegistered ? '#10B981' : '#3B82F6' }]}
+          onPress={checkRegistrationStatus}
+        >
+          <Ionicons name="information-circle" size={20} color="#FFF" />
+          <Text style={styles.buttonText}>Check Status</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Device Tokens */}
       <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
         <Text style={[styles.cardTitle, { color: theme.colors.text }]}>
-          Firebase FCM Token (Production)
+          Push Notification Token
         </Text>
         
-        {/* FCM Token */}
+        {/* Push Token */}
         <Text style={[styles.tokenLabel, { color: theme.colors.textSecondary }]}>
-          🔥 Firebase Cloud Messaging Token
+          {fcmToken && fcmToken.startsWith('ExponentPushToken') ? '📱 Expo Push Token (Fallback)' : '🔥 Native FCM Token'}
         </Text>
         <ScrollView horizontal style={styles.tokenScroll}>
           <Text style={[styles.tokenText, { color: theme.colors.textSecondary }]}>
@@ -325,13 +440,25 @@ export default function TestNotifications({ navigation }: any) {
           disabled={!fcmToken || fcmToken.startsWith('❌')}
         >
           <Ionicons name="copy" size={20} color="#FFF" />
-          <Text style={styles.buttonText}>Copy FCM Token</Text>
+          <Text style={styles.buttonText}>Copy Token</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: isRegistered ? '#10B981' : '#3B82F6', marginTop: 8 }]}
+          onPress={registerWithBackend}
+          disabled={!fcmToken || fcmToken.startsWith('❌') || isRegistered}
+        >
+          <Ionicons name={isRegistered ? "checkmark-circle" : "cloud-upload"} size={20} color="#FFF" />
+          <Text style={styles.buttonText}>
+            {isRegistered ? 'Already Registered' : 'Register with Backend'}
+          </Text>
         </TouchableOpacity>
         
-        <View style={{ marginTop: 12, padding: 12, backgroundColor: '#FFF3CD', borderRadius: 8 }}>
-          <Text style={{ color: '#856404', fontSize: 12 }}>
-            ⚠️ This is a Firebase FCM token, NOT an Expo token.{'\n'}
-            Backend must use Firebase provider to send notifications.
+        <View style={{ marginTop: 12, padding: 12, backgroundColor: fcmToken && fcmToken.startsWith('ExponentPushToken') ? '#FFF3CD' : '#D1FAE5', borderRadius: 8 }}>
+          <Text style={{ color: fcmToken && fcmToken.startsWith('ExponentPushToken') ? '#856404' : '#065F46', fontSize: 12 }}>
+            {fcmToken && fcmToken.startsWith('ExponentPushToken') 
+              ? '⚠️ Using Expo Push Token as fallback.\nBackend can use Expo push service or convert to FCM.'
+              : '✅ Native FCM token.\nBackend can use this directly with Firebase.'}
           </Text>
         </View>
       </View>
@@ -358,21 +485,21 @@ export default function TestNotifications({ navigation }: any) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.testButton, { borderColor: theme.colors.border }]}
+          style={[styles.testButton, { borderColor: theme.colors.border, opacity: isRegistered ? 1 : 0.5 }]}
           onPress={sendBackendTestNotification}
-          disabled={backendTestLoading}
+          disabled={backendTestLoading || !isRegistered}
         >
           {backendTestLoading ? (
             <ActivityIndicator size={24} color="#3B82F6" />
           ) : (
-            <Ionicons name="cloud" size={24} color="#3B82F6" />
+            <Ionicons name="cloud" size={24} color={isRegistered ? "#3B82F6" : "#9CA3AF"} />
           )}
           <View style={styles.testButtonText}>
             <Text style={[styles.testButtonTitle, { color: theme.colors.text }]}>
               {backendTestLoading ? 'Sending...' : 'Test Backend Notification'}
             </Text>
             <Text style={[styles.testButtonDesc, { color: theme.colors.textSecondary }]}>
-              {backendTestLoading ? 'Please wait...' : 'Send via API endpoint'}
+              {backendTestLoading ? 'Please wait...' : isRegistered ? 'Send via API endpoint' : 'Register token first'}
             </Text>
           </View>
         </TouchableOpacity>
@@ -384,17 +511,18 @@ export default function TestNotifications({ navigation }: any) {
           How to Test
         </Text>
         <Text style={[styles.instructionText, { color: theme.colors.textSecondary }]}>
-          <Text style={{ fontWeight: 'bold' }}>Option 1: Expo Push (Easy){'\n'}</Text>
-          1. Copy your Expo token above{'\n'}
-          2. Send via: https://exp.host/--/api/v2/push/send{'\n'}
-          {'\n'}
-          <Text style={{ fontWeight: 'bold' }}>Option 2: Firebase FCM (Recommended){'\n'}</Text>
-          1. Copy your FCM token above{'\n'}
-          2. Backend uses firebase-admin SDK{'\n'}
-          3. Backend saves token: POST /api/v1/notifications/device/register{'\n'}
-          4. Backend sends via admin.messaging().send(){'\n'}
-          5. Create a quiz to trigger notification{'\n'}
-          6. You should receive notification on this device
+          <Text style={{ fontWeight: 'bold' }}>Step-by-Step:{' \n'}</Text>
+          1. Click "Get FCM Token" to generate token{' \n'}
+          2. Click "Register with Backend" to enable push{' \n'}
+          3. Wait for confirmation{' \n'}
+          4. Click "Test Backend Notification"{' \n'}
+          5. Check your device for notification{' \n'}
+          {' \n'}
+          <Text style={{ fontWeight: 'bold' }}>Troubleshooting:{' \n'}</Text>
+          • Check "Backend Registration Status" is ✅{' \n'}
+          • Verify permission is granted{' \n'}
+          • Check backend logs for errors{' \n'}
+          • Try "Test Local Notification" first{' \n'}
         </Text>
       </View>
 
@@ -408,8 +536,7 @@ export default function TestNotifications({ navigation }: any) {
           OS: {Device.osName} {Device.osVersion}{'\n'}
           Brand: {Device.brand}{'\n'}
           Model: {Device.modelName}{'\n'}
-          Expo Token: {deviceToken ? '✅' : '⏳'}{'\n'}
-          FCM Token: {fcmToken && !fcmToken.includes('❌') ? '✅' : fcmToken.includes('❌') ? '❌' : '⏳'}
+          Push Token: {fcmToken && !fcmToken.includes('❌') ? '✅' : fcmToken.includes('❌') ? '❌' : '⏳'}{' ('}{fcmToken && fcmToken.startsWith('ExponentPushToken') ? 'Expo' : 'FCM'}{')'}
         </Text>
       </View>
     </ScrollView>

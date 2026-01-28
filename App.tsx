@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Platform, View, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
@@ -23,6 +23,7 @@ import {
   DeepLinkData,
 } from './src/core/services/deepLinkService';
 import { handleAssessmentNavigation } from './src/core/services/deepLinkNavigationHandler';
+import { PushNotificationService } from './src/core/services/PushNotificationService';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -71,11 +72,93 @@ function AppContent() {
 
   // Initialize cache on app startup
   useEffect(() => {
-    console.log('🚀 Initializing cache service...');
     initializeCache().then(() => {
-      console.log('✅ Cache service initialized successfully');
+      // Cache initialized
     });
   }, []);
+
+  // Initialize push notifications on app launch (only if enabled)
+  useEffect(() => {
+    if (!isMobile) return;
+    
+    // Initialize push on app launch - only generates token if push is enabled
+    PushNotificationService.initializeOnAppLaunch().catch((error) => {
+      console.error('❌ Failed to initialize push on app launch:', error);
+    });
+  }, [isMobile]);
+
+  // Sync push status after successful login
+  useEffect(() => {
+    if (!isMobile || !isAuthenticated) return;
+    
+    // Sync push status after login - re-registers if needed and push is enabled
+    PushNotificationService.syncStatusAfterLogin().catch((error) => {
+      console.error('❌ Failed to sync push status after login:', error);
+    });
+  }, [isMobile, isAuthenticated]);
+
+  // Set up notification listeners to receive notifications
+  useEffect(() => {
+    if (!isMobile) return;
+
+    console.log('🔔 Setting up notification listeners...');
+
+    // Listen for notifications received while app is in foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📬 Notification received in foreground:', notification);
+      // Notification will auto-display due to setNotificationHandler in PushNotificationService
+    });
+
+    // Listen for user tapping on notifications
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('👆 User tapped notification:', response);
+      
+      // Handle notification tap - navigate to relevant screen
+      const data = response.notification.request.content.data;
+      
+      if (data?.assessmentId && navigationRef.current) {
+        console.log('🔗 Navigating to assessment:', data.assessmentId);
+        const userRole = (user?.role === 'instructor' || user?.role === 'admin') ? 'instructor' : 'student';
+        
+        const deepLinkData: DeepLinkData = {
+          type: 'assessment',
+          assessmentId: data.assessmentId,
+          sessionId: data.sessionId,
+        };
+        
+        // Create navigation handler wrapper
+        const navHandler = {
+          navigate: (screen: string, params?: any) => {
+            if (navigationRef.current) {
+              (navigationRef.current as any).navigate(screen, params);
+            }
+          },
+          goBack: () => {
+            if (navigationRef.current) {
+              navigationRef.current.goBack();
+            }
+          }
+        };
+        
+        handleAssessmentNavigation(
+          deepLinkData,
+          userRole,
+          navHandler
+        );
+      } else {
+        console.log('📋 Notification data:', data);
+      }
+    });
+
+    return () => {
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(notificationListener.current);
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
+    };
+  }, [isMobile, user]);
 
   // Set up auth error navigation callback
   useEffect(() => {
