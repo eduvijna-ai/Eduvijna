@@ -18,9 +18,7 @@ import {
   updateQuizAttempt, 
   createQuizSubmission, 
   getQuizBySessionId,
-  generateAIQuiz,
-  generateYouTubeQuiz,
-  generateWebsiteQuiz
+  generateAIQuiz
 } from '../core/services/sharedApi';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
@@ -67,6 +65,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     onNewQuiz
   } = route.params || {};
   
+  // Initial debug log - see what route params were passed
+  console.log('🔍 QuizTakingScreen ROUTE PARAMS:', {
+    hasQuizData: !!quizData,
+    quizId,
+    sessionId,
+    classroomId,
+    showShareButton,
+    showActionButtons,
+    hasOnNewQuiz: !!onNewQuiz,
+    allParams: route.params
+  });
+  
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
@@ -74,7 +84,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [questionResults, setQuestionResults] = useState<{ [key: number]: boolean }>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
-  const quizStartTime = new Date().toISOString();
+  const [quizStartTime] = useState(new Date().toISOString()); // Track when quiz started
   const [isLoading, setIsLoading] = useState(!quizData);
   const [submitting, setSubmitting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -87,7 +97,39 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const setCurrentQuizData = setQuiz;
 
   // Determine if this is a teacher-assigned quiz
-  const isAssignedQuiz = Boolean(sessionId && classroomId);
+  // Check both route params AND quiz data for session_id/classroom_id
+  // Teacher-assigned quizzes will have these fields, self-assessments won't
+  const isAssignedQuiz = Boolean(
+    (sessionId && classroomId) || 
+    (quiz?.session_id && quiz?.classroom_id)
+  ) && !showActionButtons;
+
+  // Log params when quiz data changes
+  useEffect(() => {
+    console.log('📝 QuizTakingScreen state update:', {
+      // Route params
+      routeParams: {
+        sessionId,
+        classroomId,
+        quizId,
+        showActionButtons,
+        showShareButton
+      },
+      // Quiz state data
+      quizState: {
+        hasQuiz: !!quiz,
+        quiz_id: quiz?.quiz_id,
+        session_id: quiz?.session_id,
+        classroom_id: quiz?.classroom_id,
+        questionCount: quiz?.questions?.length
+      },
+      // Computed values
+      computed: {
+        isAssignedQuiz,
+        willSubmitToBackend: Boolean(isAssignedQuiz && quiz?.quiz_id && user?.id)
+      }
+    });
+  }, [quiz, sessionId, classroomId, quizId, showActionButtons, isAssignedQuiz, user?.id]); // Re-log when any relevant value changes
 
   // Get performance message based on score
   const getPerformanceMessage = (percentage: number) => {
@@ -164,6 +206,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         
         const validatedQuizData = {
           ...quizData,
+          // Preserve or extract session_id and classroom_id
+          session_id: quizData.session_id || quizData.sessionId || sessionId,
+          classroom_id: quizData.classroom_id || quizData.classroomId || classroomId,
+          quiz_id: quizData.quiz_id || quizData.quizId || quizData.id || quizId,
           questions: validatedQuestions.map((q: any, index: number) => ({
             ...q,
             id: q.id || `${index}-${q.question?.substring(0, 10) || 'q'}`,
@@ -173,15 +219,33 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         };
         
         console.log('✅ Quiz loaded with', validatedQuestions.length, 'questions');
+        console.log('📋 Quiz IDs:', {
+          quiz_id: validatedQuizData.quiz_id,
+          session_id: validatedQuizData.session_id,
+          classroom_id: validatedQuizData.classroom_id
+        });
         setQuiz(validatedQuizData);
         setTimeRemaining(quizData.duration || 1800);
         setIsLoading(false);
-      } else if (quizId && sessionId && classroomId) {
-        // Fetch from API using session ID
+      } else if (quizId || (sessionId && classroomId)) {
+        // Fetch from API using quiz ID or session ID
         console.log('📥 Fetching assessment data:', { quizId, sessionId, classroomId });
         setIsLoading(true);
         try {
-          const response = await getQuizBySessionId(sessionId);
+          // Use sessionId if available, otherwise use quizId
+          const fetchId = sessionId || quizId?.toString();
+          if (!fetchId) {
+            throw new Error('No valid ID to fetch quiz data');
+          }
+          
+          console.log('📡 Fetching quiz with ID:', fetchId);
+          const response = await getQuizBySessionId(fetchId);
+          
+          console.log('📨 API Response:', { 
+            success: response.success, 
+            hasQuizData: !!response.quiz_data,
+            quizId: response.quiz_data?.quiz_id 
+          });
           
           if (response.success && response.quiz_data) {
             // Transform questions from API format
@@ -196,7 +260,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             console.log('✅ Loaded', transformedQuestions.length, 'questions');
             
             const quizDataFromAPI: QuizData = {
-              quiz_id: response.quiz_data.quiz_id,
+              quiz_id: response.quiz_data.quiz_id || quizId,
               session_id: sessionId,
               classroom_id: classroomId,
               title: response.quiz_data.topic || 'Assessment',
@@ -204,6 +268,13 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               duration: response.quiz_data.duration,
               has_time_limit: response.quiz_data.has_time_limit,
             };
+            
+            console.log('✅ Quiz data prepared:', {
+              quiz_id: quizDataFromAPI.quiz_id,
+              session_id: quizDataFromAPI.session_id,
+              classroom_id: quizDataFromAPI.classroom_id,
+              questionCount: quizDataFromAPI.questions.length
+            });
             
             setCurrentQuizData(quizDataFromAPI);
             setTimeRemaining(response.quiz_data.duration || 1800);
@@ -326,26 +397,38 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           };
 
         case 'youtube':
-          newQuizData = await generateYouTubeQuiz({
-            url: regenerationParams.url,
-            student_level: regenerationParams.student_level || 'middle_school'
+          // YouTube quizzes use AI generation with video summary as instructions
+          newQuizData = await generateAIQuiz({
+            class: regenerationParams.classId,
+            subject: regenerationParams.subjectId,
+            lesson: currentQuizData.lesson || '',
+            level: currentQuizData.difficulty || 'basic',
+            count: regenerationParams.count || 10,
+            itext: regenerationParams.itext || ''
           });
           return {
             id: newQuizData.quiz_id,
-            title: currentQuizData?.title || newQuizData.title,
+            title: currentQuizData?.title || `${currentQuizData.lesson} Quiz`,
             questions: newQuizData.quiz || [],
             class: currentQuizData?.class,
             subject: currentQuizData?.subject,
             difficulty: currentQuizData?.difficulty,
             lesson: currentQuizData?.lesson,
+            thread_id: newQuizData.thread_id,
+            thread_slug: newQuizData.thread_slug,
+            reused_thread: newQuizData.reused_thread,
             regenerationParams: regenerationParams,
           };
 
         case 'website':
-          newQuizData = await generateWebsiteQuiz({
-            weblink: regenerationParams.weblink,
-            student_level: regenerationParams.student_level || 'middle_school',
-            additional_instructions: regenerationParams.additional_instructions || ''
+          // Website quizzes use AI generation with website content as instructions
+          newQuizData = await generateAIQuiz({
+            class: regenerationParams.classId,
+            subject: regenerationParams.subjectId,
+            lesson: currentQuizData.lesson || '',
+            level: currentQuizData.difficulty || 'basic',
+            count: regenerationParams.count || 10,
+            itext: regenerationParams.itext || ''
           });
           return {
             id: newQuizData.quiz_id,
@@ -476,12 +559,23 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       // Store elapsed time for display
       setElapsedTime(timeSpent);
 
+      // Debug: Log all conditions for backend submission
+      console.log('🔍 Submission conditions check:', {
+        isAssignedQuiz,
+        hasQuizId: !!quiz.quiz_id,
+        hasUserId: !!user?.id,
+        sessionId: quiz.session_id || sessionId,
+        classroomId: quiz.classroom_id || classroomId,
+        showActionButtons,
+        willSubmitToBackend: isAssignedQuiz && quiz.quiz_id && user?.id
+      });
+
       // ONLY submit to backend if this is a teacher-assigned assessment
       if (isAssignedQuiz && quiz.quiz_id && user?.id) {
         console.log('📤 Submitting assigned assessment:', {
           quiz_id: quiz.quiz_id,
-          session_id: quiz.session_id,
-          classroom_id: quiz.classroom_id,
+          session_id: quiz.session_id || sessionId,
+          classroom_id: quiz.classroom_id || classroomId,
           score
         });
 
@@ -502,7 +596,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           const attemptResponse = await createQuizAttempt({
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            class_id: quiz.session_id!, // Using session_id as class_id
+            class_id: quiz.session_id || sessionId || '', // Using session_id as class_id
             attempt_number: 1,
             status: 'started',
             started_at: quizStartTime,
@@ -510,21 +604,13 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
           console.log('✅ Quiz attempt created:', attemptResponse.id);
 
-          // Step 2: Update attempt as completed
-          await updateQuizAttempt(attemptResponse.id, {
-            score: score,
-            status: 'completed',
-            completed_at: completedAt,
-            time_spent_seconds: timeSpent,
-          });
+          
 
-          console.log('✅ Assessment attempt updated');
-
-          // Step 3: Create submission
+          // Step 2: Create submission
           await createQuizSubmission({
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            classroom_id: quiz.session_id!, // Using session_id as classroom_id
+            classroom_id: quiz.session_id || sessionId || '', // Using session_id as classroom_id
             score: score,
             summary: 'Auto-scored client-side',
             log_data: {
@@ -537,6 +623,16 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           });
 
           console.log('✅ Quiz submission successful');
+
+          // Step 3: Update attempt as completed
+          await updateQuizAttempt(attemptResponse.id, {
+            score: score,
+            status: 'completed',
+            completed_at: completedAt,
+            time_spent_seconds: timeSpent,
+          });
+
+          console.log('✅ Assessment attempt updated');
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);
           console.error('Error details:', {

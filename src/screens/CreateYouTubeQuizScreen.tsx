@@ -6,20 +6,17 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  FlatList,
   Alert,
   ActivityIndicator,
-  useWindowDimensions,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
-import { generateQuizFromYouTube } from '../core/services/quizzes';
+import { generateAIQuiz } from '../core/services/sharedApi';
+import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
+import QuizFormFields from '../components/QuizFormFields';
 import { apiClient } from '../core/api/config';
 import MathRenderer from '../components/MathRenderer';
-import QuizFormFields from '../components/QuizFormFields';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
-import DocumentListPanel from '../components/DocumentListPanel';
-import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
 import useNotifications from '@core/hooks/useNotifications';
 
 interface YouTubeSummary {
@@ -35,19 +32,12 @@ interface YouTubeSummary {
 
 export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWeb = width > 768;
-  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const { refreshAfterQuizGenerated } = useNotifications();
+  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [isValidating, setIsValidating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingVideo, setIsLoadingVideo] = useState(false);
-  const [validationStatus, setValidationStatus] = useState<'none' | 'valid' | 'invalid'>('none');
-  const [validationMessage, setValidationMessage] = useState('');
   const [recentSummaries, setRecentSummaries] = useState<YouTubeSummary[]>([]);
   const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
   
@@ -55,7 +45,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const [currentStep, setCurrentStep] = useState<'input' | 'analysis'>('input');
   const [videoTitle, setVideoTitle] = useState('');
   const [videoSummary, setVideoSummary] = useState<string | null>(null);
-  const [videoTranscript, setVideoTranscript] = useState<string | null>(null);
   
   // Quiz form state
   const [quizQuestionCount, setQuizQuestionCount] = useState(5);
@@ -79,20 +68,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
     loadClasses();
     loadSubjects();
   }, []);
-
-  const handleDocumentSelect = (document: any) => {
-    setSelectedDocumentId(document.id);
-    setSelectedDocument(document);
-  };
-
-  const handleValidateAndAnalyze = async () => {
-    if (!youtubeUrl.trim()) {
-      Alert.alert('Error', 'Please enter a YouTube URL');
-      return;
-    }
-    // Validate and analyze YouTube video
-    setCurrentStep('analysis');
-  };
 
   const loadClasses = async () => {
     setIsLoadingClasses(true);
@@ -198,7 +173,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         return;
       }
 
-      setVideoTranscript(transcriptResponse.data.transcript);
       setVideoTitle(transcriptResponse.data.title || 'YouTube Video');
 
       // Step 2: Get video summary
@@ -251,34 +225,71 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
       }
 
       if (!finalPrompt) {
-        finalPrompt = 'Generate assessment questions based on the video content.';
+        finalPrompt = 'Generate quiz questions based on the video content.';
       }
 
-      Alert.alert('Feature Coming Soon', 'assessment generation from YouTube videos will be available soon. For now, you can view the video summary.');
+      const result = await generateAIQuiz({
+        class: classValue,
+        subject: subject,
+        lesson: lesson,
+        level: level,
+        count: quizQuestionCount,
+        itext: finalPrompt,
+      });
+
+      console.log('Quiz generated:', result);
+
+      await refreshAfterQuizGenerated();
       
+      navigation.navigate('QuizTakingScreen', {
+        quizData: {
+          id: result.quiz_id,
+          title: `${lesson} Quiz`,
+          questions: result.quiz || [],
+          class: classes.find((c) => c.id === classValue)?.name,
+          subject: subjects.find((s) => s.id === subject)?.name,
+          difficulty: level,
+          lesson: lesson,
+          additional_instructions: finalPrompt || '',
+          thread_id: result.thread_id,
+          thread_slug: result.thread_slug,
+          reused_thread: result.reused_thread,
+          regenerationParams: {
+            type: 'youtube',
+            url: youtubeUrl,
+            studentLevel: level === 'basic' ? 'elementary' : level === 'intermediate' ? 'middle_school' : 'pre_medical',
+            classId: classValue,
+            subjectId: subject,
+            count: quizQuestionCount,
+            itext: finalPrompt,
+          },
+        },
+        showShareButton: true,
+        showActionButtons: true,
+        onNewQuiz: () => {
+          navigation.goBack();
+        },
+      });
     } catch (error: unknown) {
-      console.error('assessment generation error:', error);
-      const errorMsg = (error as any)?.response?.data?.detail || (error as any)?.message || 'Failed to Generate assessment from video';
+      console.error('Quiz generation error:', error);
+      const errorMsg = (error as any)?.response?.data?.detail || (error as any)?.message || 'Failed to generate quiz from video';
       Alert.alert('Error', errorMsg);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleSelectRecentSummary = async (summary: YouTubeSummary) => {
+  const handleSelectRecentSummary = (summary: YouTubeSummary) => {
     Alert.alert(
       'Use Recent Video',
-      `Generate assessment from "${summary.title}"?`,
+      `Generate quiz from "${summary.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Generate assessment',
-          onPress: async () => {
-            // Refresh notifications
-            await refreshAfterQuizGenerated();
-            
-            // Mock generating assessment from existing summary
-            navigation.navigate('QuizTaking', {
+          text: 'Generate Quiz',
+          onPress: () => {
+            // Mock generating quiz from existing summary
+            navigation.navigate('QuizTakingScreen', {
               quizData: {
                 title: summary.title,
                 questions: [] // Would be populated from the summary
@@ -306,27 +317,28 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {isWeb && currentStep === 'input' ? (
-        // Web 3-Panel Layout
-        <View style={styles.threePanelLayout}>
-          <DocumentListPanel
-            selectedDocumentId={selectedDocumentId}
-            onDocumentSelect={handleDocumentSelect}
-          />
-          
-          <View style={styles.centerPanel}>
-            
+      {/* Header with Close Button */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="close" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Create YouTube Quiz</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>📺 YouTube Assessment</Text>
+          <Text style={styles.title}>📺 YouTube Quiz</Text>
           <Text style={styles.subtitle}>
             {currentStep === 'input' 
-              ? 'Generate assessment from YouTube video' 
-              : 'Configure your assessment'}
+              ? 'Generate quiz from YouTube video' 
+              : 'Configure your quiz'}
           </Text>
         </View>
 
@@ -353,7 +365,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             disabled={isLoadingVideo}
           >
             {isLoadingVideo ? (
-              <ActivityIndicator size={20} color={theme.colors.primary} />
+              <ActivityIndicator size={20} />
             ) : (
               <Text style={styles.generateButtonText}>🔍 Analyze Video</Text>
             )}
@@ -363,18 +375,18 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
           {recentSummaries.length > 0 && (
             <View style={styles.recentSection}>
               <Text style={styles.sectionTitle}>📋 Recent YouTube Summaries</Text>
-              <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent video</Text>
+              <Text style={styles.sectionSubtitle}>Or generate quiz from a recent video</Text>
               
               {isLoadingSummaries ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size={30} color={theme.colors.primary} />
+                  <ActivityIndicator size={30} />
                   <Text style={styles.loadingText}>Loading recent summaries...</Text>
                 </View>
               ) : (
                 <FlatList
                   data={recentSummaries}
                   renderItem={renderRecentSummary}
-                  keyExtractor={(item: any) => item.id.toString()}
+                  keyExtractor={(item) => item.id.toString()}
                   style={styles.summariesList}
                   showsVerticalScrollIndicator={false}
                 />
@@ -391,135 +403,19 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
           </View>
         </View>
       )}
-          </ScrollView>
-          </View>
-          
-          <DocumentDetailsPanel selectedDocument={selectedDocument} />
-        </View>
-      ) : (
-        // Mobile or Analysis View - Original Layout
-        <>
-          {/* Header with Close Button */}
-          <View style={styles.headerBar}>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="close" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create YouTube Assessment</Text>
-        <View style={styles.headerPlaceholder} />
-      </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.header}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="logo-youtube" size={48} color="#DC2626" />
-          </View>
-          <Text style={styles.title}>YouTube Assessment Generator</Text>
-          <Text style={styles.subtitle}>
-            {currentStep === 'input' 
-              ? 'Generate assessment from YouTube video' 
-              : 'Configure your assessment'}
-          </Text>
-        </View>
-
-      {/* Step 1: Input YouTube URL */}
-      {currentStep === 'input' && (
-        <View style={styles.form}>
-          <View style={styles.field}>
-            <Text style={styles.label}>YouTube URL *</Text>
-            <TextInput
-              style={styles.input}
-              value={youtubeUrl}
-              onChangeText={setYoutubeUrl}
-              placeholder="https://www.youtube.com/watch?v=..."
-              placeholderTextColor={theme.colors.placeholder}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-          </View>
-
-          {/* Validation Status */}
-          {validationMessage && (
-            <View style={styles.validationContainer}>
-              <Text style={[
-                styles.validationText, 
-                { color: validationStatus === 'valid' ? theme.colors.success : theme.colors.error }
-              ]}>
-                {validationMessage}
-              </Text>
-            </View>
-          )}
-
-          {/* Validate Button */}
-          <TouchableOpacity
-            style={[styles.validateButton, (isValidating) && styles.buttonDisabled]}
-            onPress={handleValidateAndAnalyze}
-            disabled={isValidating}
-          >
-            {isValidating ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-            ) : (
-              <Text style={styles.validateButtonText}>
-                {isValidating ? 'Validating...' : '✨ Analyze Video'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Recent Summaries Section */}
-          {recentSummaries.length > 0 && (
-            <View style={styles.recentSection}>
-              <Text style={styles.sectionTitle}>📋 Recent YouTube Summaries</Text>
-              <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent video</Text>
-              
-              {isLoadingSummaries ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
-                  <Text style={styles.loadingText}>Loading recent summaries...</Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={recentSummaries}
-                  renderItem={renderRecentSummary}
-                  keyExtractor={(item: any) => item.id.toString()}
-                  style={styles.summariesList}
-                  showsVerticalScrollIndicator={false}
-                />
-              )}
-            </View>
-          )}
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>💡 How it works:</Text>
-            <Text style={styles.infoText}>• Paste a YouTube video URL</Text>
-            <Text style={styles.infoText}>• Validates video has transcripts/subtitles</Text>
-            <Text style={styles.infoText}>• AI analyzes the video content</Text>
-            <Text style={styles.infoText}>• Extracts key concepts and topics</Text>
-            <Text style={styles.infoText}>• Creates targeted questions based on the content</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Step 2: Analysis & Assessment Configuration */}
-      {currentStep === 'analysis' && videoSummary && (
+      {/* Step 2: Analysis & Quiz Configuration */}
+      {currentStep === 'analysis' && (
         <View style={styles.form}>
           {/* Video Info */}
           <View style={styles.videoInfoContainer}>
-            <Text style={styles.videoTitle}>{videoTitle}</Text>
-            <View style={styles.summaryPreview}>
-              <Text style={styles.summaryLabel}>Video Summary:</Text>
-              <MathRenderer text={videoSummary} colors={theme.colors} />
-            </View>
-            {/* <TouchableOpacity
-              style={styles.viewFullButton}
-              onPress={() => setShowAnalysisModal(true)}
-            >
-              <Text style={styles.viewFullButtonText}>📊 View Topic Summary</Text>
-            </TouchableOpacity> */}
+            {videoTitle && <Text style={styles.videoTitle}>{videoTitle}</Text>}
+            {videoSummary && (
+              <View style={styles.summaryPreview}>
+                <Text style={styles.summaryLabel}>Video Summary:</Text>
+                <MathRenderer text={videoSummary} colors={theme.colors} />
+              </View>
+            )}
           </View>
 
           {/* Quiz Form Fields */}
@@ -557,16 +453,16 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             onAdditionalInstructionsChange={setAdditionalInstructions}
           />
 
-          {/* Generate assessment Button */}
+          {/* Generate Quiz Button */}
           <TouchableOpacity
             style={[styles.generateButton, isGenerating && styles.buttonDisabled]}
             onPress={generateQuiz}
             disabled={isGenerating}
           >
             {isGenerating ? (
-              <ActivityIndicator size={20} color={theme.colors.primary} />
+              <ActivityIndicator size={20} />
             ) : (
-              <Text style={styles.generateButtonText}>🚀 Generate assessment</Text>
+              <Text style={styles.generateButtonText}>🚀 Generate Quiz</Text>
             )}
           </TouchableOpacity>
 
@@ -594,8 +490,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         />
       )} */}
       </ScrollView>
-        </>
-      )}
     </View>
   );
 }
@@ -604,15 +498,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  threePanelLayout: {
-    flexDirection: 'row',
-    flex: 1,
-    gap: 16,
-    padding: 16,
-  },
-  centerPanel: {
-    flex: 3,
   },
   headerBar: {
     flexDirection: 'row',
@@ -645,30 +530,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    padding: 20,
+    paddingTop: 30,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 0,
-    textAlign: 'center',
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
   },
   form: {
     padding: 20,
@@ -860,28 +733,5 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  validateButton: {
-    backgroundColor: colors.primary,
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  validateButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  validationContainer: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  validationText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
 });
+

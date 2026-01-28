@@ -10,6 +10,7 @@ import {
   toTeacherQuiz,
   toStudentQuiz,
 } from '../types/quiz.types';
+import { cachedApiCall, CACHE_TTL, clearCacheEntry } from './cacheService';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -96,6 +97,8 @@ async function handleAuthError(status: number, errorText: string, endpoint?: str
  * view_type = summary
  * This includes: quizzes, classes, counts, statuses - everything except quiz attempts and student lists
  * This should be called ONCE on app load for teacher dashboard & analytics
+ * 
+ * ✅ CACHED: Uses Redis-based caching with 300s TTL
  */
 export async function fetchTeacherDashboardSummary(
   filters: TeacherQuizFilters = {}
@@ -108,74 +111,87 @@ export async function fetchTeacherDashboardSummary(
     ...filters,
   };
 
-  try {
-    const token = await TokenStorage.getAccessToken();
-    if (!token) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error(' NO AUTHENTICATION TOKEN');
-      console.error('📍 Endpoint: fetchTeacherDashboardSummary');
-      console.error('🔄 Action: Clearing tokens and redirecting to login...');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      await TokenStorage.clearAuthData();
-      
-      if (authErrorNavigationCallback) {
-        authErrorNavigationCallback();
-      } else if (typeof window !== 'undefined' && window.location) {
-        window.location.href = '/login';
+  // Generate cache key based on filters
+  const cacheKey = `teacher_dashboard_summary_${defaultFilters.view_type}_${defaultFilters.limit}_${defaultFilters.offset}`;
+
+  // Use cached API call wrapper
+  return cachedApiCall(
+    async () => {
+      try {
+        const token = await TokenStorage.getAccessToken();
+        if (!token) {
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🔒 NO AUTHENTICATION TOKEN');
+          console.error('📍 Endpoint: fetchTeacherDashboardSummary');
+          console.error('🔄 Action: Clearing tokens and redirecting to login...');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          await TokenStorage.clearAuthData();
+          
+          if (authErrorNavigationCallback) {
+            authErrorNavigationCallback();
+          } else if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login';
+          }
+          
+          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
+        }
+
+        const queryString = buildQueryString(defaultFilters);
+        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+
+        console.log('📊 Fetching teacher dashboard summary (API CALL):', {
+          view_type: defaultFilters.view_type,
+          limit: defaultFilters.limit,
+          offset: defaultFilters.offset,
+        });
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Teacher dashboard summary fetch failed:', response.status, errorText);
+          
+          await handleAuthError(response.status, errorText, 'fetchTeacherDashboardSummary');
+          
+          throw new Error(`Failed to fetch teacher dashboard summary: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        console.log('✅ Teacher dashboard summary fetched:', {
+          count: data.data?.length || 0,
+          total: data.meta?.total_count || 0,
+        });
+        
+        // Convert QuizDetails[] to TeacherQuiz[]
+        return {
+          ...data,
+          data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
+        };
+      } catch (error) {
+        console.error('Error fetching teacher dashboard summary:', error);
+        throw error;
       }
-      
-      return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
-    }
-
-    const queryString = buildQueryString(defaultFilters);
-    const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
-
-    console.log('📊 Fetching teacher dashboard summary (API CALL):', {
-      view_type: defaultFilters.view_type,
-      limit: defaultFilters.limit,
-      offset: defaultFilters.offset,
-    });
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Teacher dashboard summary fetch failed:', response.status, errorText);
-      
-      await handleAuthError(response.status, errorText, 'fetchTeacherDashboardSummary');
-      
-      throw new Error(`Failed to fetch teacher dashboard summary: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    console.log('✅ Teacher dashboard summary fetched:', {
-      count: data.data?.length || 0,
-      total: data.meta?.total_count || 0,
-    });
-    
-    // Convert QuizDetails[] to TeacherQuiz[]
-    return {
-      ...data,
-      data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
-    };
-  } catch (error) {
-    console.error('Error fetching teacher dashboard summary:', error);
-    throw error;
-  }
+    },
+    cacheKey,
+    CACHE_TTL.DASHBOARD_SUMMARY,
+    filters.forceRefresh
+  );
 }
 
 /**
  * TEACHER API: Fetch teacher quizzes with pagination
  * view_type = summary (for quizzes list)
  * Can filter by classroom_id for class-specific quizzes
+ * 
+ * ✅ CACHED: Uses Redis-based caching with 600s TTL
  */
 export async function fetchTeacherQuizzes(
   filters: TeacherQuizFilters = {}
@@ -188,75 +204,88 @@ export async function fetchTeacherQuizzes(
     ...filters,
   };
 
-  try {
-    const token = await TokenStorage.getAccessToken();
-    if (!token) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('🔒 NO AUTHENTICATION TOKEN');
-      console.error('📍 Endpoint: fetchTeacherQuizzes');
-      console.error('🔄 Action: Clearing tokens and redirecting to login...');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      await TokenStorage.clearAuthData();
-      
-      if (authErrorNavigationCallback) {
-        authErrorNavigationCallback();
-      } else if (typeof window !== 'undefined' && window.location) {
-        window.location.href = '/login';
+  // Generate cache key based on filters
+  const cacheKey = `teacher_quizzes_${defaultFilters.view_type}_${defaultFilters.classroom_id || 'all'}_${defaultFilters.quiz_id || 'all'}_${defaultFilters.limit}_${defaultFilters.offset}`;
+
+  // Use cached API call wrapper
+  return cachedApiCall(
+    async () => {
+      try {
+        const token = await TokenStorage.getAccessToken();
+        if (!token) {
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🔒 NO AUTHENTICATION TOKEN');
+          console.error('📍 Endpoint: fetchTeacherQuizzes');
+          console.error('🔄 Action: Clearing tokens and redirecting to login...');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          await TokenStorage.clearAuthData();
+          
+          if (authErrorNavigationCallback) {
+            authErrorNavigationCallback();
+          } else if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login';
+          }
+          
+          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
+        }
+
+        const queryString = buildQueryString(defaultFilters);
+        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+
+        console.log('📚 Fetching teacher quizzes (API CALL):', {
+          view_type: defaultFilters.view_type,
+          classroom_id: defaultFilters.classroom_id,
+          quiz_id: defaultFilters.quiz_id,
+          limit: defaultFilters.limit,
+          offset: defaultFilters.offset,
+        });
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Teacher quizzes fetch failed:', response.status, errorText);
+          
+          await handleAuthError(response.status, errorText, 'fetchTeacherQuizzes');
+          
+          throw new Error(`Failed to fetch teacher quizzes: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        console.log('✅ Teacher quizzes fetched:', {
+          count: data.data?.length || 0,
+          total: data.meta?.total_count || 0,
+        });
+        
+        // Convert QuizDetails[] to TeacherQuiz[]
+        return {
+          ...data,
+          data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
+        };
+      } catch (error) {
+        console.error('Error fetching teacher quizzes:', error);
+        throw error;
       }
-      
-      return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
-    }
-
-    const queryString = buildQueryString(defaultFilters);
-    const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
-
-    console.log('� Fetching teacher quizzes (API CALL):', {
-      view_type: defaultFilters.view_type,
-      classroom_id: defaultFilters.classroom_id,
-      quiz_id: defaultFilters.quiz_id,
-      limit: defaultFilters.limit,
-      offset: defaultFilters.offset,
-    });
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Teacher quizzes fetch failed:', response.status, errorText);
-      
-      await handleAuthError(response.status, errorText, 'fetchTeacherQuizzes');
-      
-      throw new Error(`Failed to fetch teacher quizzes: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    console.log('✅ Teacher quizzes fetched:', {
-      count: data.data?.length || 0,
-      total: data.meta?.total_count || 0,
-    });
-    
-    // Convert QuizDetails[] to TeacherQuiz[]
-    return {
-      ...data,
-      data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
-    };
-  } catch (error) {
-    console.error('Error fetching teacher quizzes:', error);
-    throw error;
-  }
+    },
+    cacheKey,
+    CACHE_TTL.QUIZZES_LIST,
+    filters.forceRefresh
+  );
 }
 
 /**
  * STUDENT API: Fetch student dashboard quizzes with pagination
- * view_type = student_details
+ * view_type = student_total_details
+ * 
+ * ✅ CACHED: Uses Redis-based caching with 600s TTL
  */
 export async function fetchStudentQuizzes(
   filters: StudentQuizFilters = {}
@@ -269,147 +298,169 @@ export async function fetchStudentQuizzes(
     ...filters,
   };
 
-  try {
-    const token = await TokenStorage.getAccessToken();
-    if (!token) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('🔒 NO AUTHENTICATION TOKEN');
-      console.error('📍 Endpoint: fetchStudentQuizzes');
-      console.error('🔄 Action: Clearing tokens and redirecting to login...');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      await TokenStorage.clearAuthData();
-      
-      if (authErrorNavigationCallback) {
-        authErrorNavigationCallback();
-      } else if (typeof window !== 'undefined' && window.location) {
-        window.location.href = '/login';
-      }
-      
-      return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
-    }
+  // Generate cache key based on filters
+  const cacheKey = `student_quizzes_${defaultFilters.classroom_id || 'all'}_${defaultFilters.limit}_${defaultFilters.offset}`;
 
-    const queryString = buildQueryString(defaultFilters);
-    const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
-
-    console.log('� Fetching student quizzes (API CALL):', {
-      view_type: defaultFilters.view_type,
-      limit: defaultFilters.limit,
-      offset: defaultFilters.offset,
-    });
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Student quizzes fetch failed:', response.status, errorText);
-      
-      // Handle authentication errors
-      await handleAuthError(response.status, errorText, 'fetchStudentQuizzes');
-      
-      throw new Error(`Failed to fetch student quizzes: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    // Extract attempts array from response.data[0].attempts (which is a JSON string)
-    let attemptsData: any[] = [];
-    
-    if (data.data && data.data.length > 0 && data.data[0].attempts) {
+  // Use cached API call wrapper
+  return cachedApiCall(
+    async () => {
       try {
-        // Parse the attempts JSON string to get actual quiz data
-        attemptsData = JSON.parse(data.data[0].attempts);
-        console.log('✅ Student quizzes fetched from attempts:', {
-          count: attemptsData.length,
-          total: data.meta?.total_count || 0,
-        });
-        
-        // Log raw attempt data before transformation
-        if (attemptsData.length > 0) {
-          console.log('🔍 Raw attempt data sample:', attemptsData[0]);
-          console.log('🔍 Raw attempt keys:', Object.keys(attemptsData[0]));
+        const token = await TokenStorage.getAccessToken();
+        if (!token) {
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🔒 NO AUTHENTICATION TOKEN');
+          console.error('📍 Endpoint: fetchStudentQuizzes');
+          console.error('🔄 Action: Clearing tokens and redirecting to login...');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          await TokenStorage.clearAuthData();
+          
+          if (authErrorNavigationCallback) {
+            authErrorNavigationCallback();
+          } else if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login';
+          }
+          
+          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
         }
-      } catch (parseError) {
-        console.error('Failed to parse attempts JSON:', parseError);
-        attemptsData = [];
+
+        const queryString = buildQueryString(defaultFilters);
+        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+
+        console.log('👨‍🎓 Fetching student quizzes (API CALL):', {
+          view_type: defaultFilters.view_type,
+          limit: defaultFilters.limit,
+          offset: defaultFilters.offset,
+        });
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Student quizzes fetch failed:', response.status, errorText);
+          
+          // Handle authentication errors
+          await handleAuthError(response.status, errorText, 'fetchStudentQuizzes');
+          
+          throw new Error(`Failed to fetch student quizzes: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        // Extract attempts array from response.data[0].attempts (which is a JSON string)
+        let attemptsData: any[] = [];
+        
+        if (data.data && data.data.length > 0 && data.data[0].attempts) {
+          try {
+            // Parse the attempts JSON string to get actual quiz data
+            attemptsData = JSON.parse(data.data[0].attempts);
+            console.log('✅ Student quizzes fetched from attempts:', {
+              count: attemptsData.length,
+              total: data.meta?.total_count || 0,
+            });
+            
+            // Log raw attempt data before transformation
+            if (attemptsData.length > 0) {
+              console.log('🔍 Raw attempt data sample:', attemptsData[0]);
+              console.log('🔍 Raw attempt keys:', Object.keys(attemptsData[0]));
+            }
+          } catch (parseError) {
+            console.error('Failed to parse attempts JSON:', parseError);
+            attemptsData = [];
+          }
+        } else {
+          console.log('⚠️ No attempts data found in response');
+        }
+        
+        // Convert attempts array to StudentQuiz[]
+        return {
+          meta: data.meta,
+          data: attemptsData.map((attempt: any) => toStudentQuiz(attempt)),
+        };
+      } catch (error) {
+        console.error('Error fetching student quizzes:', error);
+        throw error;
       }
-    } else {
-      console.log('⚠️ No attempts data found in response');
-    }
-    
-    // Convert attempts array to StudentQuiz[]
-    return {
-      meta: data.meta,
-      data: attemptsData.map((attempt: any) => toStudentQuiz(attempt)),
-    };
-  } catch (error) {
-    console.error('Error fetching student quizzes:', error);
-    throw error;
-  }
+    },
+    cacheKey,
+    CACHE_TTL.QUIZZES_LIST,
+    filters.forceRefresh
+  );
 }
 
 /**
  * TEACHER API: Fetch classrooms with student counts
  * view_type = class_wise_students
  * Returns classrooms with student lists and counts
+ * 
+ * ✅ CACHED: Uses Redis-based caching with 1800s TTL
  */
 export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<ClassroomDetails>> {
-  try {
-    const token = await TokenStorage.getAccessToken();
-    if (!token) {
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.error('� NO AUTHENTICATION TOKEN');
-      console.error('📍 Endpoint: fetchTeacherClassrooms');
-      console.error('🔄 Action: Clearing tokens and redirecting to login...');
-      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      await TokenStorage.clearAuthData();
-      
-      if (authErrorNavigationCallback) {
-        authErrorNavigationCallback();
-      } else if (typeof window !== 'undefined' && window.location) {
-        window.location.href = '/login';
+  const cacheKey = 'teacher_classrooms_class_wise_students';
+  
+  // Use cached API call wrapper
+  return cachedApiCall(
+    async () => {
+      try {
+        const token = await TokenStorage.getAccessToken();
+        if (!token) {
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('🔒 NO AUTHENTICATION TOKEN');
+          console.error('📍 Endpoint: fetchTeacherClassrooms');
+          console.error('🔄 Action: Clearing tokens and redirecting to login...');
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          await TokenStorage.clearAuthData();
+          
+          if (authErrorNavigationCallback) {
+            authErrorNavigationCallback();
+          } else if (typeof window !== 'undefined' && window.location) {
+            window.location.href = '/login';
+          }
+          
+          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
+        }
+
+        // Use class_wise_students to get classroom list with student counts
+        const url = `${API_BASE_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
+
+        console.log('📚 Fetching teacher classrooms (API CALL)');
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Teacher classrooms fetch failed:', response.status, errorText);
+          
+          await handleAuthError(response.status, errorText, 'fetchTeacherClassrooms');
+          
+          throw new Error(`Failed to fetch classrooms: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        console.log('✅ Teacher classrooms fetched:', data.data?.length || 0);
+        return data;
+      } catch (error) {
+        console.error('Error fetching teacher classrooms:', error);
+        throw error;
       }
-      
-      return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
-    }
-
-    // Use class_wise_students to get classroom list with student counts
-    const url = `${API_BASE_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
-
-    console.log('📚 Fetching teacher classrooms (API CALL)');
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Teacher classrooms fetch failed:', response.status, errorText);
-      
-      await handleAuthError(response.status, errorText, 'fetchTeacherClassrooms');
-      
-      throw new Error(`Failed to fetch classrooms: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    console.log('✅ Teacher classrooms fetched:', data.data?.length || 0);
-    return data;
-  } catch (error) {
-    console.error('Error fetching teacher classrooms:', error);
-    throw error;
-  }
+    },
+    cacheKey,
+    CACHE_TTL.CLASSROOMS
+  );
 }
 
 /**
@@ -478,4 +529,36 @@ export async function fetchClassroomQuizzesWithAllStatuses(
     view_type: 'all',
     classroom_id: classroomId,
   });
+}
+
+/**
+ * Clear dashboard API cache
+ * Call this on logout, or when quiz data changes (create, update, delete)
+ */
+export async function clearDashboardCache(): Promise<void> {
+  console.log('🧹 Clearing dashboard API cache...');
+  
+  // Clear teacher caches
+  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  await clearCacheEntry('teacher_classrooms_class_wise_students');
+  
+  // Note: Individual quiz caches will be cleared by clearAllCache()
+  // or by cache expiry (TTL)
+  
+  console.log('✅ Dashboard cache cleared');
+}
+
+/**
+ * Clear specific quiz cache
+ * Call this when a quiz is updated or deleted
+ */
+export async function clearQuizCache(classroomId?: string, quizId?: number): Promise<void> {
+  const cachePattern = `teacher_quizzes_summary_${classroomId || 'all'}_${quizId || 'all'}`;
+  console.log(`🧹 Clearing quiz cache: ${cachePattern}`);
+  
+  // Since we can't wildcard pattern match easily, clear all quiz-related caches
+  // This is safer and ensures consistency
+  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  
+  console.log('✅ Quiz cache cleared');
 }

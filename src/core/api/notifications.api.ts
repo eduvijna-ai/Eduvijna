@@ -46,12 +46,17 @@ export interface Notification {
 /**
  * Get notification history for current user
  * GET /api/notifications/history
+ * DISABLED: To prevent rate limit errors
  */
 export async function getNotifications(params?: {
   status?: NotificationStatus;
   limit?: number;
   offset?: number;
 }): Promise<Notification[]> {
+  console.log('⚠️ Notification API disabled to prevent rate limiting');
+  return [];
+  
+  /* DISABLED CODE:
   try {
     const queryParams = new URLSearchParams();
     if (params?.status) queryParams.append('status', params.status);
@@ -67,13 +72,19 @@ export async function getNotifications(params?: {
     console.error('Failed to fetch notifications:', error);
     return [];
   }
+  */
 }
 
 /**
  * Get unread notifications count (calculated from history)
  * Note: Backend doesn't have a dedicated unread-count endpoint
+ * DISABLED: To prevent rate limit errors
  */
 export async function getUnreadCount(): Promise<number> {
+  console.log('⚠️ Notification API disabled to prevent rate limiting');
+  return 0;
+  
+  /* DISABLED CODE:
   try {
     // Get all notifications and filter unclicked/undelivered
     const notifications = await getNotifications({ limit: 100 });
@@ -83,6 +94,7 @@ export async function getUnreadCount(): Promise<number> {
     console.error('Failed to calculate unread count:', error);
     return 0;
   }
+  */
 }
 
 /**

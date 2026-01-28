@@ -133,7 +133,7 @@ export default function StudentDashboard({ navigation }: Props) {
             parsedAttempt.class_id = quiz.classroom_id;
             // Add all missing quiz fields
             (parsedAttempt as any).attempt_id = attempt.attempt_id;
-            (parsedAttempt as any).log_data = attempt.log_data || attempt.submission?.log_data;
+            (parsedAttempt as any).log_data = (attempt as any).log_data || (attempt as any).submission?.log_data;
             (parsedAttempt as any).questions = attempt.questions;
             (parsedAttempt as any).availability_status = quiz.availability_status;
             (parsedAttempt as any).duration = quiz.duration;

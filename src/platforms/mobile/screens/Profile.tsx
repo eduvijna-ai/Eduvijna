@@ -24,7 +24,6 @@ import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
-import type { UserProfile } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 export default function Profile({ navigation }: any) {
@@ -70,10 +69,22 @@ export default function Profile({ navigation }: any) {
       const pushStatus = await PushNotificationService.getPushStatus();
       
       const updatedProfileData = {
-        ...profileData,
+        id: profileData.id,
+        full_name: profileData.full_name || '',
+        username: profileData.username,
+        email: profileData.email,
+        role: profileData.role,
+        bio: profileData.bio || '',
+        phone: profileData.phone || '',
+        address: profileData.address || '',
+        school: profileData.school || '',
+        avatar_url: profileData.avatar_url || '',
+        isActive: true,
+        isVerified: false,
         preferences: {
-          ...profileData.preferences,
+          emailNotifications: true,
           pushNotifications: pushStatus.isEnabled,
+          theme: 'light',
         },
       };
       
@@ -127,8 +138,18 @@ export default function Profile({ navigation }: any) {
       };
       
       const updatedProfile = await updateUserProfile(updatePayload);
-      setFormData({ ...formData, ...updatedProfile });
-      setOriginalData({ ...formData, ...updatedProfile });
+      const mergedData = {
+        ...formData,
+        full_name: updatedProfile.full_name || formData.full_name,
+        username: updatedProfile.username || formData.username,
+        email: updatedProfile.email || formData.email,
+        bio: updatedProfile.bio || formData.bio,
+        phone: updatedProfile.phone || formData.phone,
+        address: updatedProfile.address || formData.address,
+        school: updatedProfile.school || formData.school,
+      };
+      setFormData(mergedData);
+      setOriginalData(mergedData);
       
       Alert.alert('Success', 'Profile updated successfully!');
       setIsEditing(false);
@@ -238,30 +259,40 @@ export default function Profile({ navigation }: any) {
       console.log('📱 Expo Push Token:', expoToken);
       console.log('🔥 FCM Device Token:', fcmToken);
       
+      const alertButtons = [];
+      
+      if (expoToken) {
+        alertButtons.push({
+          text: '📱 Expo Token',
+          onPress: async () => {
+            await Clipboard.setStringAsync(expoToken);
+            Alert.alert('Copied!', `Expo token copied:\n\n${expoToken.substring(0, 50)}...`);
+          }
+        });
+      }
+      
+      if (fcmToken) {
+        alertButtons.push({
+          text: '🔥 FCM Token',
+          onPress: async () => {
+            await Clipboard.setStringAsync(fcmToken);
+            Alert.alert('Copied!', `FCM token copied:\n\n${fcmToken.substring(0, 50)}...`);
+          }
+        });
+      }
+      
+      alertButtons.push(
+        {
+          text: 'View Both',
+          onPress: () => Alert.alert('Push Tokens', tokenInfo)
+        },
+        { text: 'Cancel', style: 'cancel' as const }
+      );
+      
       Alert.alert(
         '✅ Select Token to Copy',
         'Choose which token to copy:',
-        [
-          expoToken ? {
-            text: '📱 Expo Token',
-            onPress: async () => {
-              await Clipboard.setStringAsync(expoToken);
-              Alert.alert('Copied!', `Expo token copied:\n\n${expoToken.substring(0, 50)}...`);
-            }
-          } : null,
-          fcmToken ? {
-            text: '🔥 FCM Token',
-            onPress: async () => {
-              await Clipboard.setStringAsync(fcmToken);
-              Alert.alert('Copied!', `FCM token copied:\n\n${fcmToken.substring(0, 50)}...`);
-            }
-          } : null,
-          {
-            text: 'View Both',
-            onPress: () => Alert.alert('Push Tokens', tokenInfo)
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ].filter(Boolean)
+        alertButtons
       );
     } catch (error) {
       console.error('Error copying token:', error);
@@ -288,18 +319,6 @@ export default function Profile({ navigation }: any) {
         },
       ]
     );
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'teacher':
-      case 'instructor':
-        return '#2196F3';
-      case 'student':
-        return '#4CAF50';
-      default:
-        return '#9E9E9E';
-    }
   };
 
   const getRoleIcon = (role: string) => {

@@ -61,7 +61,7 @@ export async function generateQuizFromImage(
     formData.append('additional_instructions', additionalInstructions);
   }
 
-  const res = await apiClient.post('/api/v1/upload-educational-image', formData, {
+  const res = await apiClient.post('/api/v1/analyze-image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return res.data;
@@ -118,11 +118,13 @@ export async function generateQuizFromWebsite(
   studentLevel: string = 'advance',
   additionalInstructions?: string
 ) {
+  console.log('Generating quiz from website URL:', url);
   const res = await apiClient.post('/api/v1/websitesummary', {
-    url,
+    weblink: url,  // Backend expects 'weblink' not 'url'
     student_level: studentLevel,
     additional_instructions: additionalInstructions,
   });
+  console.log('Website quiz generation response:', res.data);
   return res.data;
 }
 

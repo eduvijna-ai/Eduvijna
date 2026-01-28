@@ -448,7 +448,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                 >
                   <Picker.Item label={user?.role === 'student' ? 'Not available for students' : (isPublic ? 'Select a classroom (Required)' : 'Select a classroom (Optional)')} value="" />
                   {classrooms.map((classroom) => (
-                    <Picker.Item key={classroom.classroom_id} label={`${classroom.classroom_name} (${classroom.student_count} students)`} value={classroom.classroom_id} />
+                    <Picker.Item key={classroom.classroom_id} label={classroom.classroom_name} value={classroom.classroom_id} />
                   ))}
                 </Picker>
               </View>
@@ -621,7 +621,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
               <Text style={[styles.cancelButtonText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.shareButton, { backgroundColor: colors.primary }]} onPress={handleShare} disabled={isSubmitting}>
-              <Text style={styles.shareButtonText}>{isSubmitting ? 'Sharing...' : 'Share Assessment'}</Text>
+              <Text style={styles.shareButtonText}>{isSubmitting ? 'Sharing...' : 'Share'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -758,7 +758,7 @@ const styles = StyleSheet.create({
   dateTimeLabel: {fontSize: 14, fontWeight: '600', width: 70},
   dateTimeButton: {flex: 1, borderWidth: 1, borderRadius: 8, padding: 10, alignItems: 'center'},
   dateTimeText: {fontSize: 14, fontWeight: '500'},
-  modalFooter: {flexDirection: 'row', padding: 16, gap: 12, borderTopWidth: 1},
+  modalFooter: {flexDirection: 'row', padding: 16, gap: 6, borderTopWidth: 1},
   cancelButton: {flex: 1, paddingVertical: 14, borderRadius: 8, borderWidth: 2, alignItems: 'center'},
   cancelButtonText: {fontSize: 16, fontWeight: '600'},
   shareButton: {flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center'},

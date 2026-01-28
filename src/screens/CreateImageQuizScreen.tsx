@@ -2,35 +2,28 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Alert,
   Image,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@context/ThemeContext';
 import { generateQuizFromImage } from '../core/services/quizzes';
+import { generateAIQuiz } from '../core/services/sharedApi';
 import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
 import MathRenderer from '../components/MathRenderer';
-import DocumentListPanel from '../components/DocumentListPanel';
-import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
 import useNotifications from '@core/hooks/useNotifications';
 
 export default function CreateImageQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWeb = width > 768;
-  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const { refreshAfterQuizGenerated } = useNotifications();
+  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -103,11 +96,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
     }
   };
 
-  const handleDocumentSelect = (document: any) => {
-    setSelectedDocumentId(document.id);
-    setSelectedDocument(document);
-  };
-
   const requestPermissions = async () => {
     const media = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (media.status !== 'granted') {
@@ -121,35 +109,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       console.warn('Camera permission not granted');
     }
   };
-
-  // Commented out - not currently used
-  /*
-  const loadRecentSummaries = async () => {
-    setIsLoadingSummaries(true);
-    try {
-      // Mock data for now - replace with actual API call
-      const mockData: ImageSummary[] = [
-        {
-          id: 1,
-          title: "Math Problem Set A",
-          created_at: new Date().toISOString(),
-          image_url: undefined
-        },
-        {
-          id: 2,
-          title: "Science Diagram Analysis",
-          created_at: new Date().toISOString(),
-          image_url: undefined
-        }
-      ];
-      setRecentSummaries(mockData);
-    } catch (error) {
-      console.error('Failed to load recent summaries:', error);
-    } finally {
-      setIsLoadingSummaries(false);
-    }
-  };
-  */
 
   const pickImage = async () => {
     const permissionResult = await ImagePicker.getMediaLibraryPermissionsAsync();
@@ -226,14 +185,14 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       
       console.log('Image analysis response:', response);
 
-      // The API returns a full response with assessment, summary, etc.
+      // The API returns a full response with quiz, summary, etc.
       // Extract the analysis information
       const analysisData = {
-        summary: response?.summary || response?.message || 'Image analyzed successfully.',
-        subject: response?.subject || subject,
-        topic: response?.topic || lesson,
-        keywords: response?.tags || response?.keywords || [],
-        elements: response?.elements || [],
+        summary: response.summary || response.message || 'Image analyzed successfully.',
+        subject: response.subject || subject,
+        topic: response.topic || lesson,
+        keywords: response.tags || response.keywords || [],
+        elements: response.elements || [],
         raw_response: response, // Store full response for debugging
       };
 
@@ -255,15 +214,22 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         status: error.response?.status,
       });
       
-      const errorMessage = error.response?.data?.detail || 
-                          error.message || 
-                          'Unable to process this image. Please try a different image.';
+      let errorMessage = 'Unable to process this image. Please try a different image.';
+      
+      // Handle different error types
+      if (error.message === 'Not Found' || error.response?.status === 404) {
+        errorMessage = 'Image upload endpoint not available. Please check that the backend API is running and the endpoint /api/v1/upload-educational-image is configured correctly.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       
       setValidationStatus('invalid');
       setValidationMessage(`❌ ${errorMessage}`);
       setIsValidating(false);
       
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Image Upload Error', errorMessage);
     }
   };
 
@@ -295,26 +261,69 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       
       // If no content, use a default message
       if (!finalPrompt) {
-        finalPrompt = 'Generate assessment questions based on the uploaded image content.';
+        finalPrompt = 'Generate quiz questions based on the uploaded image content.';
       }
 
-      // Call the assessment generation API
-      // For now, we'll just use the image analysis result
-      // In a full implementation, you would call generateQuizFromImage here
-      console.log('assessment generation requested with:', {
+      // Call the quiz generation API (same as AI Quiz)
+      // Use the FULL prompt for quiz generation to get quality questions
+      const result = await generateAIQuiz({
         class: classValue,
         subject: subject,
         lesson: lesson,
         level: level,
         count: quizQuestionCount,
-        prompt: finalPrompt,
+        itext: finalPrompt, // Pass the full combined prompt for quiz generation
       });
+
+      console.log('Quiz generated:', result);
       
-      Alert.alert('Feature Coming Soon', 'assessment generation from images will be available soon. For now, you can view the image analysis.');
+      // Create a short summary for display/storage (max 500 chars)
+      // This is only for metadata, NOT for quiz generation
+      const displaySummary = finalPrompt.length > 500 
+        ? finalPrompt.substring(0, 497) + '...' 
+        : finalPrompt;
       
+      // Refresh notifications after quiz creation
+      await refreshAfterQuizGenerated();
+      
+      // Navigate to quiz taking screen with the generated quiz
+      navigation.navigate('QuizTakingScreen', {
+        quizData: {
+          id: result.quiz_id,
+          title: `${lesson} Quiz`,
+          questions: result.quiz || [],
+          class: classes.find((c: any) => c.id === classValue)?.name,
+          subject: subjects.find((s: any) => s.id === subject)?.name,
+          difficulty: level,
+          lesson: lesson,
+          additional_instructions: displaySummary, // Use truncated version for metadata
+          // Thread data from the actual quiz generation
+          thread_id: result.thread_id,
+          thread_slug: result.thread_slug,
+          reused_thread: result.reused_thread,
+          regenerationParams: {
+            type: 'image',
+            fileUri: selectedImage.uri,
+            studentLevel: level === 'basic' ? 'elementary' : 
+                         level === 'intermediate' ? 'middle_school' : 
+                         'pre_medical',
+            classroomId: undefined,
+            topic: lesson,
+            classId: classValue,
+            subjectId: subject,
+            count: quizQuestionCount,
+            itext: finalPrompt,
+          },
+        },
+        showShareButton: true,
+        showActionButtons: true,
+        onNewQuiz: () => {
+          navigation.goBack();
+        }
+      });
     } catch (error: any) {
-      console.error('assessment generation error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to Generate assessment from image';
+      console.error('Quiz generation error:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate quiz from image';
       Alert.alert('Error', errorMsg);
     } finally {
       setIsGenerating(false);
@@ -326,69 +335,26 @@ export default function CreateImageQuizScreen({ navigation }: any) {
     // keep selectedImage so user can re-edit instructions
   };
 
-  // Commented out - not currently used
-  /*
-  const handleSelectRecentSummary = (summary: ImageSummary) => {
-    Alert.alert(
-      'Use Recent Image',
-      `Generate assessment from "${summary.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Generate assessment',
-          onPress: () => {
-            // Mock generating assessment from existing summary
-            navigation.navigate('QuizTaking', {
-              quizData: {
-                title: summary.title,
-                questions: [] // Would be populated from the summary
-              },
-              showShareButton: true,
-              showActionButtons: true,
-            });
-          }
-        }
-      ]
-    );
-  };
-
-  const renderRecentSummary = ({ item }: { item: ImageSummary }) => (
-    <TouchableOpacity
-      style={styles.summaryItem}
-      onPress={() => handleSelectRecentSummary(item)}
-    >
-      <Text style={styles.summaryTitle}>{item.title}</Text>
-      <Text style={styles.summaryDate}>
-        {new Date(item.created_at).toLocaleDateString()}
-      </Text>
-    </TouchableOpacity>
-  );
-  */
-
   return (
     <View style={styles.container}>
-      {isWeb && currentStep === 'upload' ? (
-        // Web 3-Panel Layout
-        <View style={styles.threePanelLayout}>
-          <DocumentListPanel
-            selectedDocumentId={selectedDocumentId}
-            onDocumentSelect={handleDocumentSelect}
-          />
-          
-          <View style={styles.centerPanel}>
-        
+      {/* Header with Close Button */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="close" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Create Image Quiz</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
+
       <ScrollView showsVerticalScrollIndicator={false}>
         {currentStep === 'upload' && (
           <>
             <View style={styles.header}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="image" size={48} color="#7C3AED" />
-              </View>
-              <View style={styles.iconConer}>ent Geraor
-                <Ionicons name="image" size={48} color="#7C3AED" />
-              </View>
-              <Text style={styles.title}>Image Assessment Generator</Text>
-              <Text style={styles.subtitle}>Generate assessment from an image</Text>
+              <Text style={styles.title}>🖼️ Image Quiz</Text>
+              <Text style={styles.subtitle}>Generate quiz from an image</Text>
             </View>
 
           <View style={styles.form}>
@@ -434,7 +400,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               <View style={styles.statusContainer}>
                 {isValidating && (
                   <View style={styles.statusRow}>
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                    <ActivityIndicator size="large" color={theme.colors.primary} />
                     <Text style={styles.statusText}>Validating image...</Text>
                   </View>
                 )}
@@ -454,7 +420,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               <View style={styles.statusContainer}>
                 <View style={styles.statusRow}>
                   <ActivityIndicator size="small" color={theme.colors.primary} />
-                  <Text style={styles.statusText}>Generating assessment...</Text>
+                  <Text style={styles.statusText}>Generating quiz...</Text>
                 </View>
               </View>
             )}
@@ -476,11 +442,11 @@ export default function CreateImageQuizScreen({ navigation }: any) {
             {recentSummaries.length > 0 && (
               <View style={styles.recentSection}>
                 <Text style={styles.sectionTitle}>📋 Recent Image Summaries</Text>
-                <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent image</Text>
+                <Text style={styles.sectionSubtitle}>Or generate quiz from a recent image</Text>
                 
                 {isLoadingSummaries ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                    <LoadingSpinner size={20} />
                     <Text style={styles.loadingText}>Loading recent summaries...</Text>
                   </View>
                 ) : (
@@ -505,162 +471,13 @@ export default function CreateImageQuizScreen({ navigation }: any) {
           </View>
         </>
       )}
-          </ScrollView>
-          </View>
-          
-          <DocumentDetailsPanel selectedDocument={selectedDocument} />
-        </View>
-      ) : (
-        // Mobile or Analysis View - Original Layout
-        <>
-          {/* Header with Close Button */}
-          <View style={styles.headerBar}>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="close" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Image Assessment</Text>
-        <View style={styles.headerPlaceholder} />
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {currentStep === 'upload' && (
-          <>
-            <View style={styles.header}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="image" size={48} color="#7C3AED" />
-              </View>
-              <Text style={styles.title}>Image Assessment Generator</Text>
-              <Text style={styles.subtitle}>Generate assessment from an image</Text>
-            </View>
-
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Upload Image *</Text>
-              
-              {selectedImage ? (
-                <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-                  <Image source={{ uri: imagePreviewUri || selectedImage.uri }} style={styles.selectedImage} />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.imagePickerPlaceholder}>
-                  <Text style={styles.imagePickerIcon}>📷</Text>
-                  <Text style={styles.imagePickerText}>No image selected</Text>
-                  <Text style={styles.imagePickerSubtext}>Choose an option below</Text>
-                </View>
-              )}
-
-              {/* Image picker buttons */}
-              <View style={styles.imageButtonsRow}>
-                <TouchableOpacity 
-                  style={[styles.imageButton, styles.galleryButton]} 
-                  onPress={pickImage}
-                >
-                  <Text style={styles.imageButtonIcon}>🖼️</Text>
-                  <Text style={[styles.imageButtonText, { color: '#7C3AED' }]}>Choose from Gallery</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.imageButton, styles.cameraButton]} 
-                  onPress={pickFromCamera}
-                >
-                  <Text style={styles.imageButtonIcon}>📸</Text>
-                  <Text style={[styles.imageButtonText, { color: '#fff' }]}>Take Photo</Text>
-                </TouchableOpacity>
-              </View>
-
-              {selectedImage && (
-                <TouchableOpacity 
-                  style={styles.changeImageButton} 
-                  onPress={() => setSelectedImage(null)}
-                >
-                  <Text style={styles.changeImageButtonText}>🗑️ Remove Image</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Additional Instructions Field */}
-            <View style={styles.field}>
-              <Text style={styles.label}>Additional Instructions (Optional)</Text>
-              <TextInput
-                style={styles.textArea}
-                multiline
-                numberOfLines={3}
-                value={additionalInstructions}
-                onChangeText={setAdditionalInstructions}
-                placeholder="e.g., Focus on the mathematical concepts shown, or describe specific questions you want"
-                placeholderTextColor={theme.colors.placeholder}
-              />
-            </View>
-
-            {/* Validation Status */}
-            {validationMessage && (
-              <View style={styles.validationContainer}>
-                <Text style={[
-                  styles.validationText, 
-                  { color: validationStatus === 'valid' ? theme.colors.success : theme.colors.error }
-                ]}>
-                  {validationMessage}
-                </Text>
-              </View>
-            )}
-
-            {/* Generate Button */}
-            <TouchableOpacity
-              style={[styles.generateButton, (isValidating || isGenerating) && styles.buttonDisabled]}
-              onPress={handleValidateAndGenerate}
-              disabled={isValidating || isGenerating}
-            >
-              <Text style={styles.generateButtonText}>
-                {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '✨ Analyze Image'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Recent Summaries Section
-            {recentSummaries.length > 0 && (
-              <View style={styles.recentSection}>
-                <Text style={styles.sectionTitle}>📋 Recent Image Summaries</Text>
-                <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent image</Text>
-                
-                {isLoadingSummaries ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
-                    <Text style={styles.loadingText}>Loading recent summaries...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={recentSummaries}
-                    renderItem={renderRecentSummary}
-                    keyExtractor={(item) => item.id.toString()}
-                    style={styles.summariesList}
-                    showsVerticalScrollIndicator={false}
-                  />
-                )}
-              </View>
-            )} */}
-
-            {/* Info Section */}
-            {/* <View style={styles.infoSection}>
-              <Text style={styles.infoTitle}>💡 How it works:</Text>
-              <Text style={styles.infoText}>• Upload any educational image (diagrams, charts, text)</Text>
-              <Text style={styles.infoText}>• AI analyzes and extracts key information</Text>
-              <Text style={styles.infoText}>• Generates assessment questions based on content</Text>
-              <Text style={styles.infoText}>• Extracts key concepts and information</Text>
-              <Text style={styles.infoText}>• Creates targeted questions based on the content</Text>
-              <Text style={styles.infoText}>• Works with diagrams, charts, text, and educational materials</Text>
-            </View> */}
-          </View>
-        </>
-      )}
 
       {currentStep === 'analysis' && imageAnalysis && (
         <View style={styles.form}>
           <View style={styles.analysisHeader}>
             <View>
               <Text style={styles.analysisTitle}>🖼️ Image Analysis</Text>
-              <Text style={styles.subtitle}>Review the detected content and set assessment parameters</Text>
+              <Text style={styles.subtitle}>Review the detected content and set quiz parameters</Text>
             </View>
             <TouchableOpacity onPress={handleBackToUpload} style={styles.backButton}>
               <Text style={styles.backButtonText}>← Back</Text>
@@ -669,7 +486,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
           {imagePreviewUri && (
             <View style={styles.imagePreviewContainer}>
-              <Image source={{ uri: imagePreviewUri as string }} style={styles.imagePreview} />
+              <Image source={{ uri: imagePreviewUri }} style={styles.imagePreview} />
             </View>
           )}
 
@@ -699,7 +516,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
           {/* Quiz Form Fields using QuizFormFields component */}
           <View style={styles.quizConfigSection}>
-            <Text style={styles.configLabel}>📝 Assessment Configuration</Text>
+            <Text style={styles.configLabel}>📝 Quiz Configuration</Text>
             
             <QuizFormFields
               showClass={true}
@@ -746,14 +563,14 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               <Text style={styles.analyzeButtonText}>📊 Topic Summary</Text>
             </TouchableOpacity> */}
 
-            {/* Generate assessment Button */}
+            {/* Generate Quiz Button */}
             <TouchableOpacity 
               onPress={generateQuiz} 
               style={[styles.generateButton, isGenerating && styles.buttonDisabled]}
               disabled={isGenerating}
             >
               {isGenerating ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.generateButtonText}>🧠 Generate {quizQuestionCount} Questions</Text>
               )}
@@ -764,8 +581,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
 
       </ScrollView>
-        </>
-      )}
     </View>
   );
 }
@@ -774,15 +589,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  threePanelLayout: {
-    flexDirection: 'row',
-    flex: 1,
-    gap: 16,
-    padding: 16,
-  },
-  centerPanel: {
-    flex: 3,
   },
   headerBar: {
     flexDirection: 'row',
@@ -815,30 +621,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#EDE9FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    padding: 20,
+    paddingTop: 30,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 0,
-    textAlign: 'center',
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
   },
   form: {
     padding: 20,
@@ -1123,29 +917,5 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: 12,
     fontWeight: '600',
     color: colors.text,
-  },
-  changeImageButton: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.error + '15',
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  changeImageButtonText: {
-    color: colors.error,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  validationContainer: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  validationText: {
-    fontSize: 14,
-    lineHeight: 20,
   },
 });

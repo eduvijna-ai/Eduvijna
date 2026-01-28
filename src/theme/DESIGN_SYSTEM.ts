@@ -140,7 +140,7 @@ export const QUIZ_OPTION_ICON_COLORS = {
  *   <View style={[styles.quizOptionIcon, { backgroundColor: QUIZ_OPTION_ICON_COLORS.AI_PROMPT }]}>
  *     <Ionicons name="bulb" size={28} color="#FFF" />
  *   </View>
- *   <Text style={styles.quizOptionTitle}>AI Prompt</Text>
+ *   <Text style={styles.quizOptionTitle}>AI Assessment</Text>
  *   <Text style={styles.quizOptionSubtitle}>Topic-based</Text>
  * </TouchableOpacity>
  */

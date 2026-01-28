@@ -10,7 +10,6 @@ import {
   Modal,
   Image,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -18,14 +17,13 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@context/ThemeContext';
 import { apiClient } from '../core/api/config';
 import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
-import { generateQuizFromDocument } from '../core/services/quizzes';
+import ShareQuizModal from '../components/ShareQuizModal';
+import ShareOptionsModal from '../components/ShareOptionsModal';
+import { useTheme } from '@context/ThemeContext';
 import MathRenderer from '../components/MathRenderer';
-import DocumentListPanel from '../components/DocumentListPanel';
-import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
 import useNotifications from '@core/hooks/useNotifications';
 
 interface QuizQuestion {
@@ -47,17 +45,14 @@ interface QuizData {
 
 export default function CreateDocumentQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWeb = width > 768;
-  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const { refreshAfterQuizGenerated } = useNotifications();
+  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [documentUrl, setDocumentUrl] = useState('');
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
     displayName: string;
     uri: string;
     type: string;
+    uploadedFileName?: string; // Backend uploaded filename for quiz generation
     metadata?: {
       gradeLevel: string;
       subject: string;
@@ -70,7 +65,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   }>>([]);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
   const [inputType, setInputType] = useState<'file' | 'url' | 'camera'>('file');
-  const [currentStep, setCurrentStep] = useState<'upload' | ' Assessment '>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'quiz'>('upload');
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
   const [isConvertingToPdf, setIsConvertingToPdf] = useState(false);
   
@@ -91,6 +86,11 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   // Loading states
   const [generating, setGenerating] = useState(false);
   
+  // Share modal states
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  
   // Form validation states
   const [formError, setFormError] = useState('');
   
@@ -107,7 +107,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     unit: '',
   });
   
-  // Assessment Configuration Modal state
+  // Quiz Configuration Modal state
   const [showQuizConfigModal, setShowQuizConfigModal] = useState(false);
 
   // Dropdown data from API
@@ -258,22 +258,81 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     }
 
     if (isFileUpload) {
-      // Add files to uploaded list with metadata
-      const uploadedFileEntries = pendingUploadFiles.map(file => ({
-        displayName: file.name,
-        uri: file.uri,
-        type: file.type || 'unknown',
-        metadata: includeMetadata ? {
-          gradeLevel,
-          subject: subject.trim(),
-          lesson: lesson.trim(),
-          board: documentMetadata.board,
-          medium: documentMetadata.medium,
-          chapter: documentMetadata.chapter,
-          unit: documentMetadata.unit,
-        } : undefined
-      }));
-      setUploadedFiles(prev => [...prev, ...uploadedFileEntries]);
+      // Upload files to backend API
+      const uploadedFileEntries: Array<{
+        displayName: string;
+        uri: string;
+        type: string;
+        uploadedFileName?: string;
+        metadata?: any;
+      }> = [];
+      const failedFiles: string[] = [];
+
+      for (const file of pendingUploadFiles) {
+        try {
+          const formData = new FormData();
+          formData.append('file', {
+            uri: file.uri,
+            type: file.type || 'application/pdf',
+            name: file.name,
+          } as any);
+          formData.append('auto_embed', 'true');
+
+          // Add metadata if requested
+          if (includeMetadata) {
+            if (gradeLevel) {
+              formData.append('grade_level', gradeLevel);
+            }
+            if (subject.trim()) {
+              // Get subject label from subjects array
+              const selectedSubjectObj = subjects.find(s => s.id === subject);
+              const subjectLabel = selectedSubjectObj?.name || subject;
+              formData.append('subject', subjectLabel);
+            }
+            if (lesson.trim()) {
+              formData.append('lesson_title', lesson.trim());
+            }
+          }
+
+          const response = await apiClient.post('/api/v1/rag/ingest-pdf', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 60000, // 60 second timeout
+          });
+
+          // Check for error in response
+          if (response.data.error || response.data.success === false) {
+            throw new Error(response.data.error || 'Upload failed');
+          }
+
+          // Extract uploaded filename from response
+          const uploadedTitle = response.data.documents?.[0]?.title || file.name;
+          
+          uploadedFileEntries.push({
+            displayName: file.name,
+            uri: file.uri,
+            type: file.type || 'unknown',
+            uploadedFileName: uploadedTitle,
+            metadata: includeMetadata ? {
+              gradeLevel,
+              subject: subject.trim(),
+              lesson: lesson.trim(),
+              board: documentMetadata.board,
+              medium: documentMetadata.medium,
+              chapter: documentMetadata.chapter,
+              unit: documentMetadata.unit,
+            } : undefined
+          });
+        } catch (error: any) {
+          console.error(`Error uploading ${file.name}:`, error);
+          failedFiles.push(file.name);
+        }
+      }
+
+      // Add successfully uploaded files to the list
+      if (uploadedFileEntries.length > 0) {
+        setUploadedFiles(prev => [...prev, ...uploadedFileEntries]);
+      }
+      
       setPendingUploadFiles([]);
 
       // Clear captured images if this was from camera
@@ -281,22 +340,79 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         setCapturedImages([]);
       }
 
-      Alert.alert(
-        'Success',
-        `${pendingUploadFiles.length} file(s) uploaded successfully!${includeMetadata ? ' (with metadata)' : ''}`,
-        [{ text: 'OK' }]
-      );
+      // Show results
+      if (failedFiles.length === 0) {
+        Alert.alert(
+          'Success',
+          `Successfully uploaded ${uploadedFileEntries.length} file(s) to server${includeMetadata ? ' (with metadata)' : ''}`,
+          [{ text: 'OK' }]
+        );
+      } else if (uploadedFileEntries.length > 0) {
+        Alert.alert(
+          'Partial Success',
+          `Uploaded ${uploadedFileEntries.length} file(s), but ${failedFiles.length} failed: ${failedFiles.join(', ')}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Upload Failed',
+          `Failed to upload all files: ${failedFiles.join(', ')}`,
+          [{ text: 'OK' }]
+        );
+      }
     } else if (pendingUploadUrl) {
-      // Add URL to uploaded list with metadata
-      setUploadedUrls(prev => [...prev, pendingUploadUrl]);
-      setDocumentUrl(''); // Clear input
-      setPendingUploadUrl('');
+      // Upload URL to backend API
+      try {
+        const formData = new FormData();
+        formData.append('file_url', pendingUploadUrl);
+        formData.append('auto_embed', 'true');
 
-      Alert.alert(
-        'Success',
-        `URL added successfully!${includeMetadata ? ' (with metadata)' : ''}`,
-        [{ text: 'OK' }]
-      );
+        // Add metadata if requested
+        if (includeMetadata) {
+          if (gradeLevel) {
+            formData.append('grade_level', gradeLevel);
+          }
+          if (subject.trim()) {
+            // Get subject label from subjects array
+            const selectedSubjectObj = subjects.find(s => s.id === subject);
+            const subjectLabel = selectedSubjectObj?.name || subject;
+            formData.append('subject', subjectLabel);
+          }
+          if (lesson.trim()) {
+            formData.append('lesson_title', lesson.trim());
+          }
+        }
+
+        const response = await apiClient.post('/api/v1/rag/ingest-pdf', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 60000, // 60 second timeout
+        });
+
+        // Check for error in response
+        if (response.data.error || response.data.success === false) {
+          throw new Error(response.data.error || 'Upload failed');
+        }
+
+        // Add URL to uploaded list
+        setUploadedUrls(prev => [...prev, pendingUploadUrl]);
+        setDocumentUrl(''); // Clear input
+        setPendingUploadUrl('');
+
+        Alert.alert(
+          'Success',
+          response.data.message || `URL uploaded successfully to server${includeMetadata ? ' (with metadata)' : ''}`,
+          [{ text: 'OK' }]
+        );
+      } catch (error: any) {
+        console.error('Error uploading URL:', error);
+        const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload URL';
+        Alert.alert(
+          'Upload Failed',
+          `URL upload failed: ${errorMessage}`,
+          [{ text: 'OK' }]
+        );
+        setPendingUploadUrl('');
+      }
     }
 
     // Clear metadata if not including it
@@ -618,7 +734,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     if (!hasFiles && !hasUrls && !additionalInstructions.trim()) {
       Alert.alert(
         'Missing Input',
-        'Please select a document/URL or provide additional instructions to generate an assessment.',
+        'Please upload a document/URL or provide additional instructions to generate a quiz.',
         [{ text: 'OK' }]
       );
       return;
@@ -662,47 +778,49 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       const selectedSubjectObj = subjects.find(s => s.id === subject);
       const subjectLabel = selectedSubjectObj?.name || subject;
       
-      // Get document reference (URL or file URI)
-      const documentReference = uploadedUrls.length > 0 
-        ? uploadedUrls[0] // Use first URL if available
-        : uploadedFiles.length > 0 
-          ? uploadedFiles[0].uri // Use first file URI if available
-          : undefined;
+      // Get uploaded filename from backend response (for file uploads)
+      const uploadedFileName = uploadedFiles.length > 0 && uploadedFiles[0].uploadedFileName
+        ? uploadedFiles[0].uploadedFileName
+        : undefined;
       
-      if (!documentReference) {
+      // Step 1: Analyze the document using /api/v1/docsummary
+      console.log('Analyzing document...');
+      const formData = new FormData();
+      
+      // Use uploaded filename from backend if available
+      if (uploadedFileName) {
+        formData.append('file_name', uploadedFileName);
+      }
+      
+      formData.append('student_level', level);
+      formData.append('additional_instructions', additionalInstructions.trim());
+
+      const analysisResponse = await apiClient.post('/api/v1/docsummary', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60000,
+      });
+      
+      const analysisResult = analysisResponse.data;
+      console.log('Document analysis result:', JSON.stringify(analysisResult, null, 2));
+      
+      if (!analysisResult || !analysisResult.summary) {
         Alert.alert(
-          'No Document',
-          'Please upload a document or provide a URL to generate an assessment.',
+          'Analysis Failed',
+          'Unable to analyze the document. Please try with different instructions or a different document.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
         return;
       }
       
-      // Get metadata from uploaded file if available
-      const metadata = uploadedFiles.length > 0 ? uploadedFiles[0].metadata : undefined;
-      
-      // Step 1: Analyze the document to get summary
-      console.log('Analyzing document...');
-      const analysisResult = await generateQuizFromDocument(
-        documentReference,
-        classLabel,
-        subjectLabel,
-        level,
-        additionalInstructions.trim(),
-        metadata
-      );
-      
-      console.log('Document analysis result:', JSON.stringify(analysisResult, null, 2));
-      
-      // Step 2: Use the document summary to Generate assessment questions
-      console.log('Generating assessment from document summary...');
+      // Step 2: Use the document summary to generate quiz questions
+      console.log('Generating quiz from document summary...');
       const requestBody: any = {
         subject: subjectLabel,
         level: level,
         lesson: lesson.trim(),
         count: questionCount,
-        itext: analysisResult.summary || additionalInstructions.trim(),
+        itext: additionalInstructions.trim(),
         type: 'document'
       };
       
@@ -711,12 +829,12 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         requestBody.class = classLabel;
       }
       
-      // Call the assessment generation API with the document summary
+      // Call the quiz generation API with the document summary
       const response = await apiClient.post('/api/v1/quiz/generate', requestBody);
       const result = response.data;
       
       // Debug log the response
-      console.log('assessment generation response:', JSON.stringify(result, null, 2));
+      console.log('Quiz generation response:', JSON.stringify(result, null, 2));
       
       // Extract questions - try different possible response structures
       const questions = result.quiz || result.questions || [];
@@ -725,7 +843,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         console.warn('No questions in response. Full response:', result);
         Alert.alert(
           'No Questions Generated',
-          'The assessment generation completed but returned no questions. Please try again with different parameters or contact support.',
+          'The quiz generation completed but returned no questions. Please try again with different parameters or contact support.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
@@ -735,14 +853,14 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       // Close the modal before navigation
       setShowQuizConfigModal(false);
       
-      // Refresh notifications after quiz creation
+      // Refresh notifications
       await refreshAfterQuizGenerated();
       
       // Use replace to prevent going back to creation screen and avoid refresh
-      navigation.replace('QuizTaking', {
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${lesson.trim()} Assessment`,
+          title: `${lesson.trim()} Quiz`,
           questions: questions,
           class: classLabel,
           subject: subjectLabel,
@@ -753,18 +871,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           summary: analysisResult.summary,
           tags: analysisResult.tags,
           elements: analysisResult.elements,
-          // Thread data from the actual assessment generation
+          // Thread data from the actual quiz generation
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           reused_thread: result.reused_thread,
-          // Regeneration parameters - store document reference and metadata
+          // Regeneration parameters - store uploaded filename for regeneration
           regenerationParams: {
             type: 'document',
             classId: classValue, // Store the ID for API calls
             subjectId: subject, // Store the ID for API calls
             count: questionCount,
             itext: additionalInstructions.trim(),
-            fileUri: documentReference, // Store document URI/URL for regeneration
+            uploadedFileName: uploadedFileName, // Store uploaded filename for regeneration
             grade: classLabel,
             subject: subjectLabel,
             metadata: uploadedFiles.length > 0 ? uploadedFiles[0].metadata : undefined,
@@ -774,8 +892,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         showActionButtons: true, // Show Regenerate, Retake, New Quiz buttons
       });
     } catch (error: any) {
-      console.error('Failed to Generate assessment:', error);
-      const errorMessage = error.response?.data?.detail || error.message || 'Failed to Generate assessment';
+      console.error('Failed to generate quiz:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate quiz';
       setFormError(errorMessage);
       Alert.alert('Error', errorMessage);
     } finally {
@@ -804,11 +922,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
     setQuestionResults(results);
     setAllQuestionsVerified(true);
-  };
-
-  const handleDocumentSelect = (document: any) => {
-    setSelectedDocumentId(document.id);
-    setSelectedDocument(document);
   };
 
   const handleStartNew = () => {
@@ -855,34 +968,28 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {isWeb && currentStep === 'upload' ? (
-        // Web 3-Panel Layout
-        <View style={styles.threePanelLayout}>
-          <DocumentListPanel
-            selectedDocumentId={selectedDocumentId}
-            onDocumentSelect={handleDocumentSelect}
-          />
-          
-          <View style={styles.centerPanel}>
-            {/* Header with Close Button */}
-            
+      {/* Header with Close Button */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="close" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Create Document Quiz</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>🖼️ Create Document Assessment</Text>
-          <Text style={styles.subtitle}>Generate assessment from Documents</Text>
-        </View>
         {currentStep === 'upload' && (
         <View style={styles.uploadContainer}>
           <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="document-text" size={48} color="#10B981" />
-            </View>
-            <Text style={styles.title}>Document Assessment Generator</Text>
-            <Text style={styles.subtitle}>Generate assessment questions from any document or URL</Text>
+            <Ionicons name="document-text" size={64} color={theme.colors.success} />
+            <Text style={styles.title}>Document Quiz Generator</Text>
+            <Text style={styles.subtitle}>Generate quiz questions from any document or URL</Text>
           </View>
 
           {/* Input Type Selector */}
@@ -893,14 +1000,14 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             >
               <Ionicons 
                 name="document" 
-                size={18} 
-                color={inputType === 'file' ? '#FFFFFF' : theme.colors.text} 
+                size={20} 
+                color={inputType === 'file' ? theme.colors.buttonText : theme.colors.text} 
               />
               <Text style={[
                 styles.inputTypeText,
                 inputType === 'file' && styles.inputTypeTextActive
               ]}>
-                Upload File
+                Upload
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -909,8 +1016,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             >
               <Ionicons 
                 name="camera" 
-                size={18} 
-                color={inputType === 'camera' ? '#FFFFFF' : theme.colors.text} 
+                size={20} 
+                color={inputType === 'camera' ? theme.colors.buttonText : theme.colors.text} 
               />
               <Text style={[
                 styles.inputTypeText,
@@ -925,8 +1032,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             >
               <Ionicons 
                 name="link" 
-                size={18} 
-                color={inputType === 'url' ? '#FFFFFF' : theme.colors.text} 
+                size={20} 
+                color={inputType === 'url' ? theme.colors.buttonText : theme.colors.text} 
               />
               <Text style={[
                 styles.inputTypeText,
@@ -1036,7 +1143,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                     style={[styles.button, styles.convertButton]}
                     onPress={handleUploadImages}
                   >
-                    <Ionicons name="flash" size={20} color='#FFFFFF' style={{ marginRight: 8 }} />
+                    <Ionicons name="flash" size={20} color={theme.colors.buttonText} style={{ marginRight: 8 }} />
                     <Text style={styles.buttonText}>Upload Images</Text>
                   </TouchableOpacity>
                 </View>
@@ -1098,7 +1205,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                   style={styles.addUrlButton}
                   onPress={handleUrlSubmit}
                 >
-                  <Ionicons name="add-circle" size={20} color='#FFFFFF' />
+                  <Ionicons name="add-circle" size={20} color={theme.colors.buttonText} />
                   <Text style={styles.addUrlButtonText}>Add URL</Text>
                 </TouchableOpacity>
               )}
@@ -1134,7 +1241,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               style={styles.inputMultiline}
               value={additionalInstructions}
               onChangeText={setAdditionalInstructions}
-              placeholder="Enter specific instructions for assessment generation (optional)"
+              placeholder="Enter specific instructions for quiz generation (optional)"
               placeholderTextColor={theme.colors.placeholder}
               multiline
               numberOfLines={4}
@@ -1142,57 +1249,16 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, styles.generateAssessmentButton]}
+            style={[styles.button]}
             onPress={() => setShowQuizConfigModal(true)}
           >
-            <Ionicons name="flash" size={20} color='#FFFFFF' />
-            <Text style={styles.buttonText}>Generate Assessment</Text>
+            <Ionicons name="flash" size={20} color={theme.colors.buttonText} style={{ marginRight: 8 }} />
+            <Text style={styles.buttonText}>Generate Quiz</Text>
           </TouchableOpacity>
         </View>
-        )}
-      </ScrollView>
-          </View>
-          
-          <DocumentDetailsPanel selectedDocument={selectedDocument} />
-        </View>
-      ) : (
-        // Mobile Single Column - Upload View
-        <>
-          {/* Header with Close Button */}
-          <View style={styles.headerBar}>
-            <TouchableOpacity 
-              style={styles.closeButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="close" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Create Document Assessment</Text>
-            <View style={styles.headerPlaceholder} />
-          </View>
-
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {currentStep === 'upload' && (
-              <View style={styles.uploadContainer}>
-                {/* Duplicate of upload content from centerPanel above */}
-                <View style={styles.header}>
-                  <Ionicons name="document-text" size={64} color={theme.colors.success} />
-                  <Text style={styles.title}>Document Assessment Generator</Text>
-                  <Text style={styles.subtitle}>Generate assessment questions from any document or URL</Text>
-                </View>
-
-                {/* Rest of upload content will go here - keeping structure simple for now */}
-                <Text style={styles.subtitle}>Mobile upload view</Text>
-              </View>
-            )}
-          </ScrollView>
-        </>
       )}
 
-      {/* Quiz View - Separate from upload, shown when currentStep === ' Assessment ' */}
-      {currentStep === ' Assessment ' && quizData && quizData.questions && quizData.questions.length > 0 && (
+      {currentStep === 'quiz' && quizData && quizData.questions && quizData.questions.length > 0 && (
         <View style={styles.quizContainer}>
           {/* Quiz Stats */}
           {allQuestionsVerified && (
@@ -1218,33 +1284,33 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               style={[styles.actionButton, styles.regenerateButton]}
               onPress={handleStartNew}
             >
-              <Ionicons name="refresh" size={18} color='#FFFFFF' />
+              <Ionicons name="refresh" size={18} color={theme.colors.buttonText} />
               <Text style={styles.actionButtonText}>New</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.retakeButton]}
               onPress={handleRetakeQuiz}
             >
-              <Ionicons name="reload" size={18} color='#FFFFFF' />
+              <Ionicons name="reload" size={18} color={theme.colors.buttonText} />
               <Text style={styles.actionButtonText}>Retake</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, styles.reregenerateButton]}
+              style={[styles.actionButton, styles.generateButton]}
               onPress={handleGenerateAnotherQuiz}
             >
-              <Ionicons name="sparkles" size={18} color='#FFFFFF' />
+              <Ionicons name="sparkles" size={18} color={theme.colors.buttonText} />
               <Text style={styles.actionButtonText}>Generate</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, styles.shareButton]}
-              onPress={() => Alert.alert('Feature Coming Soon', 'Assessment sharing will be available soon.')}
+              onPress={() => setShowShareModal(true)}
             >
-              <Ionicons name="share-social" size={18} color='#FFFFFF' />
+              <Ionicons name="share-social" size={18} color={theme.colors.buttonText} />
               <Text style={styles.actionButtonText}>Share</Text>
             </TouchableOpacity>
           </View>
 
-          {/* assessment questions */}
+          {/* Quiz Questions */}
           <View style={styles.questionsContainer}>
             {quizData.questions.map((question, index) => {
               const isCorrect = questionResults[index] === true;
@@ -1333,6 +1399,27 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         </View>
       )}
 
+      <ShareQuizModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        quizData={{
+          id: quizData?.quiz_id || 'doc-quiz',
+          title: lesson,
+          questionsCount: quizData?.questions?.length || 0,
+          class: classValue,
+          subject: subject,
+          difficulty: level,
+          thread_id: Number(quizData?.thread_id),
+          thread_slug: quizData?.thread_slug,
+        }}
+      />
+
+      <ShareOptionsModal
+        visible={showShareOptionsModal}
+        onClose={() => setShowShareOptionsModal(false)}
+        shareUrl={shareUrl || ''}
+      />
+
       {/* Document Metadata Modal */}
       <Modal
         visible={showMetadataModal}
@@ -1354,7 +1441,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
             <ScrollView style={styles.metadataModalContent}>
               <Text style={styles.metadataDescription}>
-                Add additional context about the document to improve assessment quality.
+                Add additional context about the document to improve quiz quality.
               </Text>
 
               <View style={styles.metadataFormField}>
@@ -1550,7 +1637,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         </View>
       </Modal>
       
-      {/* Assessment Configuration Modal */}
+      {/* Quiz Configuration Modal */}
       <Modal
         visible={showQuizConfigModal}
         animationType="slide"
@@ -1560,7 +1647,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         <View style={styles.modalOverlay}>
           <View style={styles.quizConfigModalContainer}>
             <View style={styles.summaryModalHeader}>
-              <Text style={styles.modalTitle}>Assessment Configuration</Text>
+              <Text style={styles.modalTitle}>Quiz Configuration</Text>
               <TouchableOpacity
                 onPress={() => setShowQuizConfigModal(false)}
                 style={styles.modalCloseButton}
@@ -1571,7 +1658,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
             <ScrollView style={styles.quizConfigContent}>
               <Text style={styles.quizConfigDescription}>
-                Configure your assessment settings below. All fields are required to generate a quality assessment.
+                Configure your quiz settings below. All fields are required to generate a quality quiz.
               </Text>
 
               {formError ? (
@@ -1633,10 +1720,10 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 disabled={!subject || !level || !lesson.trim() || !additionalInstructions.trim() || generating}
               >
                 {generating ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size={20} />
                 ) : (
                   <>
-                    <Ionicons name="sparkles" size={20} color='#FFFFFF' style={{ marginRight: 8 }} />
+                    <Ionicons name="sparkles" size={20} color={theme.colors.buttonText} style={{ marginRight: 8 }} />
                     <Text style={styles.buttonText}>Generate {questionCount} Questions</Text>
                   </>
                 )}
@@ -1650,12 +1737,13 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       {isConvertingToPdf && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingContent}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <ActivityIndicator size={48} />
             <Text style={styles.loadingText}>Converting images to PDF...</Text>
             <Text style={styles.loadingSubtext}>This may take a few moments</Text>
           </View>
         </View>
       )}
+      </ScrollView>
     </View>
   );
 }
@@ -1664,15 +1752,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  threePanelLayout: {
-    flexDirection: 'row',
-    flex: 1,
-    gap: 16,
-    padding: 16,
-  },
-  centerPanel: {
-    flex: 3,
   },
   headerBar: {
     flexDirection: 'row',
@@ -1712,36 +1791,25 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#D1FAE5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 0,
-    textAlign: 'center',
+    marginTop: 16,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
     marginTop: 8,
-    textAlign: 'center',
   },
   uploadBox: {
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
     borderStyle: 'dashed',
     borderRadius: 12,
     padding: 40,
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.inputBackground,
     marginBottom: 24,
   },
   uploadBoxSelected: {
@@ -1752,18 +1820,15 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   uploadText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: colors.text,
-    marginTop: 16,
-    textAlign: 'center',
+    marginTop: 12,
   },
   uploadSubtext: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
     marginTop: 8,
-    textAlign: 'center',
-    lineHeight: 20,
   },
   fileInfo: {
     alignItems: 'center',
@@ -1780,10 +1845,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginTop: 8,
   },
   formField: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   label: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
@@ -1805,11 +1870,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 16,
-  },
-  generateAssessmentButton: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
   },
   buttonDisabled: {
     backgroundColor: colors.placeholder,
@@ -1949,33 +2009,32 @@ const createStyles = (colors: any) => StyleSheet.create({
   // Input Type Selector
   inputTypeSelector: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
     marginBottom: 24,
-    backgroundColor: colors.inputBackground,
-    padding: 4,
-    borderRadius: 10,
   },
   inputTypeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    gap: 8,
+    padding: 12,
     borderRadius: 8,
-    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBackground,
   },
   inputTypeButtonActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   inputTypeText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },
   inputTypeTextActive: {
-    color: colors.white,
+    color: colors.buttonText,
   },
   // URL Input
   urlInputContainer: {
@@ -2041,6 +2100,9 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   retakeButton: {
     backgroundColor: colors.info,
+  },
+  generateButton: {
+    backgroundColor: colors.warning,
   },
   shareButton: {
     backgroundColor: colors.primary,

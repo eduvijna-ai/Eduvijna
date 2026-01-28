@@ -5,14 +5,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  getNotifications,
-  getUnreadCount,
+  // getNotifications, // DISABLED: Preventing rate limit errors
+  // getUnreadCount, // DISABLED: Preventing rate limit errors
   markAsRead,
   markAllAsRead,
   Notification,
 } from '../api/notifications.api';
+import { useAuth } from '../context/AuthContext';
 
 export default function useNotifications() {
+  const { user, token } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -22,6 +24,16 @@ export default function useNotifications() {
    * Fetch all notifications
    */
   const fetchNotifications = useCallback(async () => {
+    // DISABLED: Notification API calls to prevent rate limit errors
+    console.log('⚠️ Notification API calls disabled to prevent rate limiting');
+    return;
+    
+    /* DISABLED CODE:
+    // Only fetch if user is authenticated
+    if (!user || !token) {
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -38,12 +50,23 @@ export default function useNotifications() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    */
+  }, [user, token]);
 
   /**
    * Fetch only unread count (lighter API call)
    */
   const fetchUnreadCount = useCallback(async () => {
+    // DISABLED: Notification API calls to prevent rate limit errors
+    console.log('⚠️ Notification API calls disabled to prevent rate limiting');
+    return;
+    
+    /* DISABLED CODE:
+    // Only fetch if user is authenticated
+    if (!user || !token) {
+      return;
+    }
+
     try {
       const count = await getUnreadCount();
       setUnreadCount(count);
@@ -51,7 +74,8 @@ export default function useNotifications() {
       const errorMsg = err instanceof Error ? err.message : 'Failed to load unread count';
       console.error('Failed to fetch unread count:', errorMsg);
     }
-  }, []);
+    */
+  }, [user, token]);
 
   /**
    * Mark a notification as read
@@ -107,6 +131,19 @@ export default function useNotifications() {
    * Initial load and polling setup
    */
   useEffect(() => {
+    // DISABLED: Notification API calls to prevent rate limit errors
+    console.log('⚠️ Notification polling disabled to prevent rate limiting');
+    return;
+    
+    /* DISABLED CODE:
+    // Only setup notifications if user is authenticated
+    if (!user || !token) {
+      // Clear notifications when logged out
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
     fetchNotifications();
 
     // Poll for unread count every 30 seconds
@@ -115,7 +152,8 @@ export default function useNotifications() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [fetchNotifications, fetchUnreadCount]);
+    */
+  }, [fetchNotifications, fetchUnreadCount, user, token]);
 
   return {
     notifications,

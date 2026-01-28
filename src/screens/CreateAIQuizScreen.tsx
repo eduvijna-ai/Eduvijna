@@ -1,51 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
   Alert,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
-import QuizFormFields from '../components/QuizFormFields';
-import DocumentListPanel from '../components/DocumentListPanel';
-import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
-import { generateAIQuiz } from '../core/services/sharedApi';
-import { colors } from '@core/theme/theme';
 import useNotifications from '@core/hooks/useNotifications';
+import { generateAIQuiz } from '../core/services/sharedApi';
+import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
+import QuizFormFields from '../components/QuizFormFields';
 
-interface Props {
-  navigation?: any;
-  route?: any;
-  onBack?: () => void;
-}
-
-export default function CreateAIQuizScreen({ navigation, onBack }: Props) {
+export default function CreateAIQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWeb = width > 768;
   const { refreshAfterQuizGenerated } = useNotifications();
-
+  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [formData, setFormData] = useState({
     class: '',
     subject: '',
     lesson: '',
-    level: '',
-    count: '10',
+    level: 'basic',
+    count: '5',
     itext: '',
   });
   const [loading, setLoading] = useState(false);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any>(null);
+  
+  // Dropdown data from API
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+  const [classError, setClassError] = useState('');
+  const [subjectError, setSubjectError] = useState('');
 
-  const handleDocumentSelect = (document: any) => {
-    setSelectedDocumentId(document.id);
-    setSelectedDocument(document);
+  const levels = ['basic', 'intermediate', 'advanced'];
+
+  // Load classes on component mount
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  // Load subjects when component mounts
+  useEffect(() => {
+    loadSubjects();
+  }, []);
+
+  const loadClasses = async () => {
+    setIsLoadingClasses(true);
+    setClassError('');
+    try {
+      const response = await getClasses();
+      //console.log('Classes loaded:', response.items.length, 'items');
+      setClasses(response.items);
+    } catch (error) {
+      console.error('Failed to load classes:', error);
+      setClassError('Failed to load classes. Using default values.');
+    } finally {
+      setIsLoadingClasses(false);
+    }
   };
+
+  const loadSubjects = async () => {
+    setIsLoadingSubjects(true);
+    setSubjectError('');
+    try {
+      const response = await getSubjects();
+      console.log('Subjects loaded:', response.items.length, 'items');
+      setSubjects(response.items);
+    } catch (error) {
+      console.error('Failed to load subjects:', error);
+      setSubjectError('Failed to load subjects. Using default values.');
+    } finally {
+      setIsLoadingSubjects(false);
+    }
+  };
+
+
 
   const handleGenerate = async () => {
     if (!formData.class || !formData.subject || !formData.lesson) {
@@ -59,24 +93,21 @@ export default function CreateAIQuizScreen({ navigation, onBack }: Props) {
         class: formData.class,
         subject: formData.subject,
         lesson: formData.lesson,
-        level: formData.level || 'basic',
+        level: formData.level,
         count: parseInt(formData.count) || 5,
         itext: formData.itext,
       });
       
-      console.log('✅ AI Assessment generated:', result);
-      
-      // Refresh notifications after quiz creation
       await refreshAfterQuizGenerated();
       
-      // Navigate to QuizTakingScreen with generated quiz data
-      navigation.navigate('QuizTakingScreen', {
+      // Use replace to prevent going back to creation screen and avoid refresh
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${formData.lesson} Assessment`,
+          title: `${formData.lesson} Quiz`,
           questions: result.quiz || [],
-          class: formData.class,
-          subject: formData.subject,
+          class: classes.find((c: any) => c.id === formData.class)?.name,
+          subject: subjects.find((s: any) => s.id === formData.subject)?.name,
           difficulty: formData.level,
           lesson: formData.lesson,
           additional_instructions: formData.itext || '',
@@ -97,219 +128,184 @@ export default function CreateAIQuizScreen({ navigation, onBack }: Props) {
         showActionButtons: true,
       });
     } catch (error: any) {
-      console.error('Assessment generation error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment';
+      console.error('Quiz generation error:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate quiz';
       Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {isWeb ? (
-        // Web 3-Panel Layout
-        <View style={styles.threePanelLayout}>
-          {/* Left Panel - Document List (Shared Component) */}
-          <DocumentListPanel
-            selectedDocumentId={selectedDocumentId}
-            onDocumentSelect={handleDocumentSelect}
-          />
-
-          {/* Center Panel - Form */}
-          <View style={styles.centerPanel}>
-            <ScrollView 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-            >
-              <View style={styles.header}>
-                <View style={styles.iconContainer}>
-                  <Ionicons name="sparkles" size={48} color="#8B5CF6" />
-                </View>
-                <Text style={styles.title}>AI Assessment Generator</Text>
-                <Text style={styles.subtitle}>Generate assessment using AI</Text>
-              </View>
-              <View style={styles.form}>
-          <QuizFormFields
-            showClass={true}
-            classValue={formData.class}
-            onClassChange={(value) => setFormData({ ...formData, class: value })}
-            
-            showSubject={true}
-            subjectValue={formData.subject}
-            onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
-            
-            showLesson={true}
-            lessonValue={formData.lesson}
-            onLessonChange={(text) => setFormData({ ...formData, lesson: text })}
-            lessonPlaceholder="e.g., Simple Present Tense"
-            lessonLabel="Lesson/Topic"
-            
-            showDifficultyLevel={true}
-            difficultyValue={formData.level}
-            onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
-            
-            showQuestionCount={true}
-            questionCountValue={formData.count}
-            onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
-            
-            showAdditionalInstructions={true}
-            additionalInstructionsValue={formData.itext}
-            onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
-          />
-
-          <TouchableOpacity
-            style={[styles.generateButton, loading && styles.buttonDisabled]}
-            onPress={handleGenerate}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="sparkles" size={20} color="#fff" />
-                <Text style={styles.generateButtonText}>Generate {formData.count} Questions</Text>
-              </>
-            )}
-          </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-
-          {/* Right Panel - Document Details (Shared Component) */}
-          <DocumentDetailsPanel selectedDocument={selectedDocument} />
-        </View>
-      ) : (
-        // Mobile Single Column
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+    <View style={styles.container}>
+      {/* Header with Close Button */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity 
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
         >
-          <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="sparkles" size={48} color="#8B5CF6" />
-            </View>
-            <Text style={styles.title}>AI Assessment Generator</Text>
-            <Text style={styles.subtitle}>Generate assessment using AI</Text>
-          </View>
-          <View style={styles.form}>
-            <QuizFormFields
-              showClass={true}
-              classValue={formData.class}
-              onClassChange={(value) => setFormData({ ...formData, class: value })}
-              
-              showSubject={true}
-              subjectValue={formData.subject}
-              onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
-              
-              showLesson={true}
-              lessonValue={formData.lesson}
-              onLessonChange={(text) => setFormData({ ...formData, lesson: text })}
-              lessonPlaceholder="e.g., Simple Present Tense"
-              lessonLabel="Lesson/Topic"
-              
-              showDifficultyLevel={true}
-              difficultyValue={formData.level}
-              onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
-              
-              showQuestionCount={true}
-              questionCountValue={formData.count}
-              onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
-              
-              showAdditionalInstructions={true}
-              additionalInstructionsValue={formData.itext}
-              onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
-            />
+          <Ionicons name="close" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Create AI Quiz</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
 
-            <TouchableOpacity
-              style={[styles.generateButton, loading && styles.buttonDisabled]}
-              onPress={handleGenerate}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="sparkles" size={20} color="#fff" />
-                  <Text style={styles.generateButtonText}>Generate {formData.count} Questions</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      )}
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.form}>
+        <QuizFormFields
+          showClass={true}
+          classValue={formData.class}
+          onClassChange={(value) => setFormData({ ...formData, class: value })}
+          classes={classes}
+          isLoadingClasses={isLoadingClasses}
+          classError={classError}
+          
+          showSubject={true}
+          subjectValue={formData.subject}
+          onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
+          subjects={subjects}
+          isLoadingSubjects={isLoadingSubjects}
+          subjectError={subjectError}
+          
+          showLesson={true}
+          lessonValue={formData.lesson}
+          onLessonChange={(text) => setFormData({ ...formData, lesson: text })}
+          lessonPlaceholder="e.g., Simple Present Tense"
+          lessonLabel="Lesson/Topic"
+          
+          showDifficultyLevel={true}
+          difficultyValue={formData.level}
+          onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
+          difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
+          
+          showQuestionCount={true}
+          questionCountValue={formData.count}
+          onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
+          
+          additionalInstructionsValue={formData.itext}
+          onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
+        />
+
+        <TouchableOpacity
+          style={[styles.generateButton, loading && styles.buttonDisabled]}
+          onPress={handleGenerate}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator size={20} />
+          ) : (
+            <Text style={styles.generateButtonText}>Generate Quiz</Text>
+          )}
+        </TouchableOpacity>
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  threePanelLayout: {
+  headerBar: {
     flexDirection: 'row',
-    flex: 1,
-    gap: 16,
-    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 16,
+    backgroundColor: colors.cardBackground,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  centerPanel: {
-    flex: 3,
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.inputBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  headerPlaceholder: {
+    width: 40,
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 40,
   },
   form: {
-    gap: 20,
+    padding: 16,
+    paddingTop: 12,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
+  field: {
+    marginBottom: 20,
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#EDE9FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 0,
-    textAlign: 'center',
-  },
-  subtitle: {
+  label: {
     fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: colors.cardBackground,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: 14,
+    color: colors.text,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  levelContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  levelButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBackground,
+    alignItems: 'center',
+  },
+  levelButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  levelButtonText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  levelButtonTextActive: {
+    color: colors.buttonText,
+    fontWeight: '600',
   },
   generateButton: {
-    backgroundColor: '#8B5CF6',
-    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 10,
-    marginTop: 32,
-    gap: 10,
-    elevation: 3,
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    marginTop: 10,
+    marginBottom: 20,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   generateButtonText: {
-    color: '#fff',
+    color: colors.buttonText,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

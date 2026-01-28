@@ -117,8 +117,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           setQuizData({ questions });
           
           // Extract user answers from log_data
-          if (logData?.answers && Array.isArray(logData.answers)) {
-            const answers = logData.answers.map((a: any) => a.userAnswer);
+          if (logData?.answers) {
+            let answers: string[];
+            if (Array.isArray(logData.answers)) {
+              // Format: [{questionNumber: 1, userAnswer: "A", isCorrect: true, ...}, ...]
+              answers = logData.answers.map((a: any) => a.userAnswer);
+            } else if (typeof logData.answers === 'object') {
+              // Format: {"0": "A", "1": "B", "2": "C", ...}
+              answers = Object.keys(logData.answers)
+                .sort((a, b) => parseInt(a) - parseInt(b))
+                .map(key => logData.answers[key]);
+            } else {
+              answers = [];
+            }
             console.log('✅ Extracted user answers:', answers);
             setUserAnswers(answers);
           }
@@ -216,8 +227,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                 setQuizData({ questions });
                 
                 // Extract user answers from log_data
-                if (logData.answers && Array.isArray(logData.answers)) {
-                  const answers = logData.answers.map((a: any) => a.userAnswer);
+                if (logData.answers) {
+                  let answers: string[];
+                  if (Array.isArray(logData.answers)) {
+                    // Format: [{questionNumber: 1, userAnswer: "A", isCorrect: true, ...}, ...]
+                    answers = logData.answers.map((a: any) => a.userAnswer);
+                  } else if (typeof logData.answers === 'object') {
+                    // Format: {"0": "A", "1": "B", "2": "C", ...}
+                    answers = Object.keys(logData.answers)
+                      .sort((a, b) => parseInt(a) - parseInt(b))
+                      .map(key => logData.answers[key]);
+                  } else {
+                    answers = [];
+                  }
                   console.log('✅ Extracted user answers:', answers.length);
                   setUserAnswers(answers);
                 }

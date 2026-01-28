@@ -49,8 +49,13 @@ export interface SendNotificationResponse {
 class NotificationsAPI {
   /**
    * Fetch new notifications from backend
+   * DISABLED: To prevent rate limit errors
    */
   async fetchNotifications(userId: number, since?: string): Promise<FetchNotificationsResponse> {
+    console.log('⚠️ [Notifications API] Disabled to prevent rate limiting');
+    return { notifications: [], unread_count: 0 };
+    
+    /* DISABLED CODE:
     try {
       console.log('📬 [Notifications API] Fetching notifications...');
 
@@ -73,6 +78,7 @@ class NotificationsAPI {
       console.error('❌ [Notifications API] Fetch failed:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch notifications');
     }
+    */
   }
 
   /**

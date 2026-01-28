@@ -17,7 +17,7 @@ interface CreateAssessmentModalProps {
 }
 
 const QUIZ_OPTIONS = [
-  { type: 'CreateAIQuizScreen', title: 'AI Prompt', icon: 'bulb', iconBg: '#0891B2', bg: '#E3F2FD' },
+  { type: 'CreateAIQuizScreen', title: 'AI Assessment', icon: 'bulb', iconBg: '#0891B2', bg: '#E3F2FD' },
   { type: 'CreateDocumentQuizScreen', title: 'Document', icon: 'document', iconBg: '#DC2626', bg: '#FFE5F1' },
   { type: 'CreateImageQuizScreen', title: 'Image', icon: 'image', iconBg: '#D97706', bg: '#FFF3E0' },
   { type: 'CreateYouTubeQuizScreen', title: 'YouTube', icon: 'logo-youtube', iconBg: '#059669', bg: '#E8F5E9' },

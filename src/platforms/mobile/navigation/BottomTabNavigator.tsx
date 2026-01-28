@@ -19,7 +19,6 @@ import AssessmentsScreen from '@screens/Assessments';
 import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
-import ThemeSettingsScreen from '../screens/ThemeSettings';
 import TeacherDashboard from '@screens/TeacherDashboard';
 import StudentDashboard from '@screens/StudentDashboard';
 import StudentList from '@screens/StudentList';

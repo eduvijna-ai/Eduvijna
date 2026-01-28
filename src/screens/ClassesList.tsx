@@ -24,8 +24,8 @@ interface ClassData extends Classroom {
   expiredQuizzes?: number;
   upcomingQuizzes?: number;
   completedQuizzes?: number;
-  avgScore?: number;
-  completionPercentage?: number;
+  avgScore?: number | null; // Allow null for "N/A" when no attempts exist
+  completionPercentage?: number | null; // Allow null for "N/A" when no attempts exist
 }
 
 interface Props {
@@ -104,9 +104,10 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         const classesResponse = await fetchTeacherClassrooms();
         fetchedClasses = classesResponse.data || [];
         
-        // Get all quizzes for the instructor
+        // Get all quizzes for the instructor with complete attempt data
+        // Use view_type='all' to get detailed student statuses (completed, pending, missed)
         const quizzesResult = await fetchTeacherQuizzes({
-          view_type: 'summary',
+          view_type: 'all',
           limit: 1000,
         });
         
@@ -160,8 +161,8 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         }
         
         // Calculate performance metrics
-        let avgScore = 0;
-        let completionPercentage = 0;
+        let avgScore: number | null = 0;
+        let completionPercentage: number | null = 0;
         
         if (isStudent) {
           // For students: calculate personal performance in this class
@@ -189,48 +190,92 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           });
         } else {
           // For teachers: calculate class-wide performance metrics
-          let totalAttempts = 0;
-          let completedAttempts = 0;
-          let totalScoreSum = 0;
-          let scoredAttempts = 0;
+          // Parse attempts from each quiz to get individual student scores
+          let totalScoreSum = 0; // Sum of all student quiz scores from completed attempts
+          let completedAttempts = 0; // Count of completed attempts
+          let totalPossibleAttempts = 0; // Total quizzes * total students
           
-          classQuizzes.forEach(quiz => {
-            // Count total possible attempts (total students)
+          console.log('🔍 Calculating metrics for class:', classItem.classroom_name);
+          console.log('📚 Total quizzes in class:', classQuizzes.length);
+          console.log('👥 Student count:', studentCount);
+          console.log('📊 Using view_type="all" for complete attempt data');
+          
+          classQuizzes.forEach((quiz, idx) => {
+            // Parse attempts array from JSON string
+            let attempts = [];
+            if (quiz.attempts) {
+              try {
+                attempts = typeof quiz.attempts === 'string' 
+                  ? JSON.parse(quiz.attempts) 
+                  : quiz.attempts;
+              } catch (e) {
+                console.error('Error parsing attempts for quiz:', quiz.quiz_id, e);
+              }
+            }
+            
             const studentCountForQuiz = quiz.total_students || studentCount || 0;
-            totalAttempts += studentCountForQuiz;
             
-            // Count completed attempts
-            const completed = quiz.completed_count || quiz.attempted_students || 0;
-            completedAttempts += completed;
+            if (idx === 0) {
+              console.log('📋 Sample Quiz (view_type=all):', {
+                quiz_id: quiz.quiz_id,
+                quiz_name: quiz.quiz_name,
+                total_students: quiz.total_students,
+                completed_count: quiz.completed_count,
+                pending_count: quiz.pending_count,
+                in_progress_count: quiz.in_progress_count,
+                attempts_count: Array.isArray(attempts) ? attempts.length : 0,
+                sample_attempt: Array.isArray(attempts) && attempts.length > 0 ? attempts[0] : null,
+              });
+            }
             
-            // Calculate average score for this quiz's attempts
-            // Try multiple possible fields for score data
-            const quizAvgScore = quiz.average_score || quiz.avg_score || 0;
+            // Calculate total possible attempts (quizzes * students)
+            totalPossibleAttempts += studentCountForQuiz;
             
-            if (completed > 0 && quizAvgScore > 0) {
-              totalScoreSum += quizAvgScore * completed;
-              scoredAttempts += completed;
+            // Process each student attempt
+            if (Array.isArray(attempts)) {
+              attempts.forEach((attempt: any) => {
+                // Only count completed attempts with status 'completed'
+                if (attempt.status === 'completed' || attempt.completed_at) {
+                  completedAttempts++;
+                  
+                  // Add score to sum (raw score value, no rounding)
+                  const score = typeof attempt.score === 'number' ? attempt.score : 0;
+                  totalScoreSum += score;
+                }
+              });
             }
           });
           
-          // Completion percentage = completed attempts / total possible attempts * 100
-          completionPercentage = totalAttempts > 0 
-            ? parseFloat(((completedAttempts / totalAttempts) * 100).toFixed(1))
-            : 0;
+          // ✅ Calculate Classroom Average Score (CORRECTED FORMULA)
+          // Formula: ∑(all students' quiz scores) / ∑(maximum scores of attempted quizzes) × 100
+          // = (Sum of scores from completed attempts) / (Completed attempts × 100) × 100
+          // Simplified: Average score per completed attempt
+          // Only includes completed attempts - does NOT include unattempted quizzes as zero
+          avgScore = completedAttempts > 0 
+            ? (totalScoreSum / completedAttempts)
+            : null;
           
-          // Average score across all student attempts
-          avgScore = scoredAttempts > 0 
-            ? parseFloat((totalScoreSum / scoredAttempts).toFixed(1))
-            : 0;
+          // ✅ Calculate Classroom Completion Rate (Already Correct)
+          // Formula: (Total completed quiz attempts) / (Total assigned quiz attempts) × 100
+          // Total assigned attempts = (Number of quizzes) × (Number of students)
+          // Completed attempts = Count of attempts with status = 'completed'
+          completionPercentage = totalPossibleAttempts > 0 
+            ? (completedAttempts / totalPossibleAttempts) * 100
+            : null;
           
           console.log('📊 Teacher Class Performance:', classItem.classroom_name, {
             quizCount,
             studentCount,
-            totalAttempts,
+            totalPossibleAttempts,
             completedAttempts,
-            avgScore,
-            completionPercentage,
-            sampleQuiz: classQuizzes[0],
+            totalScoreSum,
+            maxScoreForCompleted: completedAttempts * 100,
+            avgScore: avgScore,
+            completionPercentage: completionPercentage,
+            calculation: {
+              avgScore: completedAttempts > 0 ? `(${totalScoreSum} / ${completedAttempts}) = ${avgScore?.toFixed(2)}%` : 'N/A',
+              completion: `(${completedAttempts} / ${totalPossibleAttempts}) * 100 = ${completionPercentage?.toFixed(2)}%`,
+            },
           });
         }
         
@@ -352,14 +397,14 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           <View style={styles.metricItem}>
             <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>Avg Score</Text>
             <Text style={[styles.metricValue, { color: (item.avgScore ?? 0) >= 75 ? '#10B981' : (item.avgScore ?? 0) >= 50 ? '#F59E0B' : '#EF4444' }]}> 
-              {(item.avgScore ?? 0)}%
+              {(item.avgScore === null || item.avgScore === undefined) ? 'N/A' : `${item.avgScore.toFixed(2)}%`}
             </Text>
           </View>
           <View style={styles.metricDivider} />
           <View style={styles.metricItem}>
             <Text style={[styles.metricLabel, { color: theme.colors.textSecondary }]}>Completion</Text>
             <Text style={[styles.metricValue, { color: (item.completionPercentage ?? 0) >= 75 ? '#10B981' : (item.completionPercentage ?? 0) >= 50 ? '#F59E0B' : '#EF4444' }]}> 
-              {(item.completionPercentage ?? 0)}%
+              {(item.completionPercentage === null || item.completionPercentage === undefined) ? 'N/A' : `${item.completionPercentage.toFixed(2)}%`}
             </Text>
           </View>
         </View>

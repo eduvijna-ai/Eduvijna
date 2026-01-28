@@ -728,6 +728,7 @@ export interface BaseQuizFilters {
   limit?: number;
   offset?: number;
   view_type?: DashboardViewType;
+  forceRefresh?: boolean;
 }
 
 /**

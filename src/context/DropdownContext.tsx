@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getClasses, getSubjects, getDifficultyLevels, type DropdownResponse } from '../core/services/dropdown';
+import { useAuth } from '../core/context/AuthContext';
 
 export interface ClassItem {
   id: string;
@@ -59,6 +60,8 @@ interface DropdownProviderProps {
 }
 
 export function DropdownProvider({ children }: DropdownProviderProps) {
+  const { user, token } = useAuth();
+  
   // Classes state
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [isLoadingClasses, setIsLoadingClasses] = useState(false);
@@ -76,6 +79,11 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
 
   // Load classes
   const loadClasses = async () => {
+    // Only load if user is authenticated
+    if (!user || !token) {
+      return;
+    }
+
     console.log('🔄 [DropdownContext] Loading classes...');
     setIsLoadingClasses(true);
     setClassesError(null);
@@ -95,6 +103,11 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
 
   // Load subjects
   const loadSubjects = async () => {
+    // Only load if user is authenticated
+    if (!user || !token) {
+      return;
+    }
+
     console.log('🔄 [DropdownContext] Loading subjects...');
     setIsLoadingSubjects(true);
     setSubjectsError(null);
@@ -114,6 +127,11 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
 
   // Load difficulty levels
   const loadDifficulty = async () => {
+    // Only load if user is authenticated
+    if (!user || !token) {
+      return;
+    }
+
     console.log('🔄 [DropdownContext] Loading difficulty levels...');
     setIsLoadingDifficulty(true);
     setDifficultyError(null);
@@ -131,13 +149,26 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     }
   };
 
-  // Auto-load dropdown data on mount
+  // Auto-load dropdown data on mount and when auth status changes
   useEffect(() => {
-    console.log('🚀 [DropdownContext] Provider mounted - loading all dropdown data');
+    // Only load if user is authenticated
+    if (!user || !token) {
+      // Clear data when logged out
+      console.log('🔒 [DropdownContext] User not authenticated - clearing dropdown data');
+      setClasses([]);
+      setSubjects([]);
+      setDifficultyLevels([]);
+      setClassesError(null);
+      setSubjectsError(null);
+      setDifficultyError(null);
+      return;
+    }
+
+    console.log('🚀 [DropdownContext] User authenticated - loading all dropdown data');
     loadClasses();
     loadSubjects();
     loadDifficulty();
-  }, []);
+  }, [user, token]);
 
   // Refresh functions
   const refreshClasses = async () => {

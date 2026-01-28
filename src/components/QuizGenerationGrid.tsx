@@ -55,7 +55,7 @@ export default function QuizGenerationGrid({
           <View style={[styles.quizOptionIcon, { backgroundColor: '#0891B2' }]}>
             <Ionicons name="bulb" size={28} color="#FFF" />
           </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>AI Prompt</Text>
+          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>AI Assessment</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Topic-based</Text>
         </TouchableOpacity>
 

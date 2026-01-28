@@ -99,7 +99,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const [selectedTab, setSelectedTab] = useState<FilterTab>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [displayCount, setDisplayCount] = useState(10);
-  const [selectedClassroom, setSelectedClassroom] = useState<string>('all');
+  const [selectedClassroom, setSelectedClassroom] = useState<string>(classroomId || 'all');
   const [selectedDateFilter, setSelectedDateFilter] = useState<DateFilterType>('all');
   const [dateRangeStart, setDateRangeStart] = useState<Date>(new Date());
   const [dateRangeEnd, setDateRangeEnd] = useState<Date>(new Date());
@@ -147,13 +147,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       setSelectedTab(mappedFilter);
     }
   }, [route?.params?.filterStatus, route?.params?.filter]);
-
-  // Sync selectedClassroom with route classroomId when navigating from other pages
-  React.useEffect(() => {
-    if (classroomId && classroomId !== selectedClassroom) {
-      setSelectedClassroom(classroomId);
-    }
-  }, [classroomId]);
 
   // Reset display count when filters change
   React.useEffect(() => {
@@ -203,13 +196,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const filteredQuizzes = React.useMemo(() => {
     console.log('🔄 Recalculating filtered quizzes...');
     return allQuizzes.filter((quiz: any) => {
-      // Classroom filter - from route params or dropdown
-      const activeClassroomId = classroomId || (selectedClassroom !== 'all' ? selectedClassroom : null);
-      if (activeClassroomId) {
+      // Classroom filter - use selectedClassroom from state (which may have been initialized from route params)
+      if (selectedClassroom && selectedClassroom !== 'all') {
         // Check both classroom_id and class_id for compatibility
         // Convert to strings for comparison to handle type mismatches
         const quizClassroomId = String(quiz.classroom_id || quiz.class_id || '');
-        const filterClassroomId = String(activeClassroomId);
+        const filterClassroomId = String(selectedClassroom);
         
         console.log('🏫 Classroom comparison:', {
           quizId: quiz.quiz_id,
@@ -323,11 +315,13 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // Calculate tab counts (with classroom and search filters applied)
   const getTabCount = (tab: FilterTab): number => {
     return allQuizzes.filter((quiz: any) => {
-      // Apply classroom filter - from route params or dropdown
-      const activeClassroomId = classroomId || (selectedClassroom !== 'all' ? selectedClassroom : null);
-      if (activeClassroomId) {
-        const quizClassroomId = quiz.classroom_id || quiz.class_id;
-        if (quizClassroomId !== activeClassroomId) {
+      // Apply classroom filter - use selectedClassroom from state (which may have been initialized from route params)
+      if (selectedClassroom && selectedClassroom !== 'all') {
+        // Convert to strings for comparison to handle type mismatches
+        const quizClassroomId = String(quiz.classroom_id || quiz.class_id || '');
+        const filterClassroomId = String(selectedClassroom);
+        
+        if (quizClassroomId !== filterClassroomId) {
           return false;
         }
       }
@@ -471,16 +465,21 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         quizId,
         action,
         quizName: attemptData?.quiz_name,
+        classId: attemptData?.class_id,
       });
       
       if (navigation) {
         navigation.navigate('QuizTakingScreen', {
           quizId,
+          sessionId: attemptData?.class_id, // Use class_id as sessionId for assigned quizzes
+          classroomId: attemptData?.class_id, // Use class_id as classroomId
           quizData: attemptData,
         });
       } else if (onNavigate) {
         onNavigate('QuizTakingScreen', {
           quizId,
+          sessionId: attemptData?.class_id, // Use class_id as sessionId for assigned quizzes
+          classroomId: attemptData?.class_id, // Use class_id as classroomId
           quizData: attemptData,
         });
       }
@@ -488,49 +487,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     }
   };
 
-  // Handle card click based on quiz status (for students)
-  const handleQuizCardClick = (quiz: any) => {
-    if (isTeacher) {
-      // For teachers, open quiz preview/details
-      handleAssessmentPress(quiz.quiz_id);
-      return;
-    }
-
-    // For students, navigate based on status
-    switch (quiz.status) {
-      case 'completed':
-        // Show quiz results
-        handleAction('viewResults', quiz.quiz_id, quiz);
-        break;
-      
-      case 'missed':
-        // Show quiz preview (read-only)
-        handleAssessmentPress(quiz.quiz_id);
-        break;
-      
-      case 'pending':
-      case 'in_progress':
-        // Start or resume quiz - navigate to quiz taking screen
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: quiz.quiz_id,
-            quizData: quiz,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: quiz.quiz_id,
-            quizData: quiz,
-          });
-        }
-        break;
-      
-      default:
-        // Default to preview
-        handleAssessmentPress(quiz.quiz_id);
-    }
-  };
-
-  if (loading && filteredQuizzes.length === 0) {
+  if (teacherLoading && filteredQuizzes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>

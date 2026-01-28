@@ -6,17 +6,16 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  FlatList,
   Alert,
+  FlatList,
   ActivityIndicator,
-  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
-import { generateQuizFromWebsite } from '../core/services/quizzes';
-import DocumentListPanel from '../components/DocumentListPanel';
-import DocumentDetailsPanel from '../components/DocumentDetailsPanel';
 import useNotifications from '@core/hooks/useNotifications';
+import { generateQuizFromWebsite } from '../core/services/quizzes';
+import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
+import QuizFormFields from '../components/QuizFormFields';
 
 interface WebsiteSummary {
   id: number;
@@ -27,13 +26,9 @@ interface WebsiteSummary {
 
 export default function CreateWebsiteQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWeb = width > 768;
-  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const { refreshAfterQuizGenerated } = useNotifications();
+  const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [websiteUrl, setWebsiteUrl] = useState('');
-  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -41,14 +36,58 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
   const [validationMessage, setValidationMessage] = useState('');
   const [recentSummaries, setRecentSummaries] = useState<WebsiteSummary[]>([]);
   const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
+  
+  // Two-step flow state
+  const [currentStep, setCurrentStep] = useState<'input' | 'configuration'>('input');
+  
+  // Form data for Class/Subject/Level (inline, not modal)
+  const [quizQuestionCount, setQuizQuestionCount] = useState(5);
+  const [lesson, setLesson] = useState('');
+  const [level, setLevel] = useState('intermediate');
+  const [subject, setSubject] = useState('');
+  const [classValue, setClassValue] = useState('');
+  
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
   useEffect(() => {
     loadRecentSummaries();
+    loadClasses();
+    loadSubjects();
   }, []);
 
-  const handleDocumentSelect = (document: any) => {
-    setSelectedDocumentId(document.id);
-    setSelectedDocument(document);
+  const loadClasses = async () => {
+    setIsLoadingClasses(true);
+    try {
+      const response = await getClasses();
+      setClasses(response.items);
+      // Set first class as default if available
+      if (response.items.length > 0 && !classValue) {
+        setClassValue(response.items[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load classes:', error);
+    } finally {
+      setIsLoadingClasses(false);
+    }
+  };
+
+  const loadSubjects = async () => {
+    setIsLoadingSubjects(true);
+    try {
+      const response = await getSubjects();
+      setSubjects(response.items);
+      // Set first subject as default if available
+      if (response.items.length > 0 && !subject) {
+        setSubject(response.items[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load subjects:', error);
+    } finally {
+      setIsLoadingSubjects(false);
+    }
   };
 
   const loadRecentSummaries = async () => {
@@ -93,11 +132,6 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
       return;
     }
 
-    if (!additionalInstructions.trim()) {
-      Alert.alert('Error', 'Please enter additional instructions');
-      return;
-    }
-
     // Step 1: Validate website
     setIsValidating(true);
     setValidationStatus('none');
@@ -109,13 +143,22 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       setValidationStatus('valid');
-      setValidationMessage('✅ Website validated! Proceeding to Generate assessment...');
+      setValidationMessage('✅ Website validated! Please configure your quiz below.');
       setIsValidating(false);
 
-      // Step 2: Generate assessment
+      // Move to configuration step
       setTimeout(() => {
-        generateQuiz();
-      }, 1000);
+        setCurrentStep('configuration');
+        // Auto-populate lesson from URL domain if empty
+        if (!lesson) {
+          try {
+            const domain = new URL(websiteUrl).hostname.replace('www.', '');
+            setLesson(domain.split('.')[0]);
+          } catch (e) {
+            // Invalid URL, ignore
+          }
+        }
+      }, 500);
 
     } catch (error) {
       setValidationStatus('invalid');
@@ -125,59 +168,121 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
   };
 
   const generateQuiz = async () => {
+    // Validate form data
+    if (!classValue || !subject || !lesson) {
+      Alert.alert('Error', 'Please fill in Class, Subject, and Lesson fields');
+      return;
+    }
+
     setIsGenerating(true);
     
     try {
-      const result = await generateQuizFromWebsite(websiteUrl, 'middle_school');
+      // Always pass instructions - use a default if empty
+      const instructions = additionalInstructions.trim() || 'Generate quiz questions from the website content';
       
-      // Refresh notifications after quiz creation
+      console.log('Generating quiz with:', { url: websiteUrl, instructions });
+      
+      const result = await generateQuizFromWebsite(websiteUrl, level, instructions);
+      
+      console.log('Website quiz result:', result);
+      
+      // Check if we got valid quiz data
+      if (!result || (!result.quiz && !result.questions)) {
+        throw new Error('No quiz questions were generated from the website');
+      }
+      
       await refreshAfterQuizGenerated();
       
-      // Navigate to quiz taking screen with the Generated Assessment
-      navigation.navigate('QuizTaking', {
+      // Navigate to quiz taking screen with the generated quiz
+      navigation.navigate('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id || 'website-quiz',
-          title: result.title || 'Website Assessment',
+          title: lesson || result.title || 'Website Quiz',
           questions: result.quiz || [],
-          difficulty: 'intermediate',
-          lesson: result.title || 'Website Topic',
-          additional_instructions: '',
+          class: classes.find((c: any) => c.id === classValue)?.name,
+          subject: subjects.find((s: any) => s.id === subject)?.name,
+          difficulty: level,
+          lesson: lesson || result.title || 'Website Topic',
+          additional_instructions: instructions,
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           regenerationParams: {
             type: 'website',
             weblink: websiteUrl,
-            student_level: 'middle_school',
+            studentLevel: level,
+            classId: classValue,
+            subjectId: subject,
+            count: quizQuestionCount,
+            itext: result.summary || instructions,
           },
         },
         showShareButton: true,
         showActionButtons: true,
       });
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to Generate assessment from website');
+      Alert.alert('Error', error.message || 'Failed to generate quiz from website');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleSelectRecentSummary = (summary: WebsiteSummary) => {
+  const handleSelectRecentSummary = async (summary: WebsiteSummary) => {
     Alert.alert(
       'Use Recent Website',
-      `Generate assessment from "${summary.title}"?`,
+      `Generate quiz from "${summary.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Generate assessment',
-          onPress: () => {
-            // Mock generating assessment from existing summary
-            navigation.navigate('QuizTaking', {
-              quizData: {
-                title: summary.title,
-                questions: [] // Would be populated from the summary
-              },
-              showShareButton: true,
-              showActionButtons: true,
-            });
+          text: 'Generate Quiz',
+          onPress: async () => {
+            setIsGenerating(true);
+            try {
+              // Use the URL from the recent summary to regenerate quiz
+              const url = summary.url;
+              
+              if (!url || !url.trim()) {
+                throw new Error('Website URL not found in summary. Please enter the URL manually.');
+              }
+              
+              const instructions = additionalInstructions.trim() || 'Generate quiz questions from the website content';
+              
+              const result = await generateQuizFromWebsite(url, 'intermediate', instructions);
+              
+              if (!result || (!result.quiz && !result.questions)) {
+                throw new Error('No quiz questions were generated');
+              }
+              
+              await refreshAfterQuizGenerated();
+              
+              navigation.navigate('QuizTakingScreen', {
+                quizData: {
+                  id: result.quiz_id || 'website-quiz',
+                  title: summary.title || result.title || 'Website Quiz',
+                  questions: result.quiz || result.questions || [],
+                  difficulty: 'intermediate',
+                  lesson: summary.title || 'Website Topic',
+                  additional_instructions: instructions,
+                  thread_id: result.thread_id,
+                  thread_slug: result.thread_slug,
+                  regenerationParams: {
+                    type: 'website',
+                    weblink: url,
+                    studentLevel: 'middle_school',
+                    classId: '',
+                    subjectId: '',
+                    count: result.quiz?.length || result.questions?.length || 5,
+                    itext: result.summary || instructions,
+                  },
+                },
+                showShareButton: true,
+                showActionButtons: true,
+              });
+            } catch (error: any) {
+              console.error('Error generating quiz from recent summary:', error);
+              Alert.alert('Error', error.message || 'Failed to generate quiz from website');
+            } finally {
+              setIsGenerating(false);
+            }
           }
         }
       ]
@@ -198,148 +303,15 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {isWeb ? (
-        // Web 3-Panel Layout
-        <View style={styles.threePanelLayout}>
-          <DocumentListPanel
-            selectedDocumentId={selectedDocumentId}
-            onDocumentSelect={handleDocumentSelect}
-          />
-          
-          <View style={styles.centerPanel}>
-            
-
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.header}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="globe-outline" size={48} color="#0284C7" />
-          </View>
-          <Text style={styles.title}>Website Assessment Generator</Text>
-          <Text style={styles.subtitle}>Generate assessment from website content</Text>
-        </View>
-
-      <View style={styles.form}>
-        <View style={styles.field}>
-          <Text style={styles.label}>Website URL *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="https://example.com/article"
-            value={websiteUrl}
-            onChangeText={setWebsiteUrl}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-          />
-          <Text style={styles.hint}>Enter the URL of a website with educational content</Text>
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Additional Instructions *</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="e.g., Focus on key concepts from the video, create questions about..."
-            placeholderTextColor="#999999"
-            multiline
-            numberOfLines={4}
-            value={additionalInstructions}
-            onChangeText={setAdditionalInstructions}
-          />
-          <Text style={styles.hint}>Provide specific instructions for the assessment generation</Text>
-        </View>
-
-        {/* Validation Status */}
-        {(isValidating || validationStatus !== 'none') && (
-          <View style={styles.statusContainer}>
-            {isValidating && (
-              <View style={styles.statusRow}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-                <Text style={styles.statusText}>Validating video...</Text>
-              </View>
-            )}
-            {validationMessage !== '' && (
-              <Text style={[
-                styles.validationMessage,
-                validationStatus === 'valid' ? styles.validMessage : styles.invalidMessage
-              ]}>
-                {validationMessage}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* Generation Status */}
-        {isGenerating && (
-          <View style={styles.statusContainer}>
-            <View style={styles.statusRow}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text style={styles.statusText}>Generating Assessment...</Text>
-            </View>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={[
-            styles.generateButton,
-            (isValidating || isGenerating) && styles.buttonDisabled
-          ]}
-          onPress={handleValidateAndGenerate}
-          disabled={isValidating || isGenerating}
-        >
-          <Text style={styles.generateButtonText}>
-            {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '🚀 Validate & Generate assessment'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Recent Summaries Section */}
-        {recentSummaries.length > 0 && (
-          <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>📋 Recent Website Summaries</Text>
-            <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent website</Text>
-            
-            {isLoadingSummaries ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-                <Text style={styles.loadingText}>Loading recent summaries...</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={recentSummaries}
-                renderItem={renderRecentSummary}
-                keyExtractor={(item: any) => item.id.toString()}
-                style={styles.summariesList}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
-          </View>
-        )}
-
-        <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>💡 How it works:</Text>
-          <Text style={styles.infoText}>• Extracts text content from web pages</Text>
-          <Text style={styles.infoText}>• Analyzes articles, documentation, and educational content</Text>
-          <Text style={styles.infoText}>• Creates comprehensive questions based on the content</Text>
-          <Text style={styles.infoText}>• Works with blogs, articles, tutorials, and reference materials</Text>
-        </View>
-      </View>
-      </ScrollView>
-          </View>
-          
-          <DocumentDetailsPanel selectedDocument={selectedDocument} />
-        </View>
-      ) : (
-        // Mobile Layout
-        <>
-          {/* Header with Close Button */}
-          <View style={styles.headerBar}>
+      {/* Header with Close Button */}
+      <View style={styles.headerBar}>
         <TouchableOpacity 
           style={styles.closeButton}
           onPress={() => navigation.goBack()}
         >
           <Ionicons name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Website Assessment</Text>
+        <Text style={styles.headerTitle}>Create Website Quiz</Text>
         <View style={styles.headerPlaceholder} />
       </View>
 
@@ -348,95 +320,174 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>🌐 Website Assessment</Text>
-          <Text style={styles.subtitle}>Generate assessment from website content</Text>
+          <Text style={styles.title}>🌐 Website Quiz</Text>
+          <Text style={styles.subtitle}>Generate quiz from website content</Text>
         </View>
 
-      <View style={styles.form}>
-        <View style={styles.field}>
-          <Text style={styles.label}>Website URL *</Text>
-          <TextInput
-            style={styles.input}
-            value={websiteUrl}
-            onChangeText={setWebsiteUrl}
-            placeholder="https://example.com/article"
-            placeholderTextColor={theme.colors.placeholder}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-        </View>
-
-        {/* Additional Instructions Field */}
-        <View style={styles.field}>
-          <Text style={styles.label}>Additional Instructions (Optional)</Text>
-          <TextInput
-            style={styles.textArea}
-            multiline
-            numberOfLines={3}
-            value={additionalInstructions}
-            onChangeText={setAdditionalInstructions}
-            placeholder="e.g., Focus on the main concepts, or describe specific questions you want"
-            placeholderTextColor={theme.colors.placeholder}
-          />
-        </View>
-
-        {/* Validation Status */}
-        {validationMessage && (
-          <View style={styles.validationContainer}>
-            <Text style={[
-              styles.validationText, 
-              { color: validationStatus === 'valid' ? theme.colors.success : theme.colors.error }
-            ]}>
-              {validationMessage}
-            </Text>
+      {/* Step 1: URL Input & Validation */}
+      {currentStep === 'input' && (
+        <View style={styles.form}>
+          <View style={styles.field}>
+            <Text style={styles.label}>Website URL *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://example.com/article"
+              value={websiteUrl}
+              onChangeText={setWebsiteUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <Text style={styles.hint}>Enter the URL of a website with educational content</Text>
           </View>
-        )}
+          <View style={styles.field}>
+            <Text style={styles.label}>Additional Instructions (Optional)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="e.g., Focus on key concepts, create questions about..."
+              placeholderTextColor="#999999"
+              multiline
+              numberOfLines={4}
+              value={additionalInstructions}
+              onChangeText={setAdditionalInstructions}
+            />
+            <Text style={styles.hint}>Provide specific instructions for the quiz generation</Text>
+          </View>
 
-        {/* Generate Button */}
-        <TouchableOpacity
-          style={[styles.generateButton, (isValidating || isGenerating) && styles.buttonDisabled]}
-          onPress={handleValidateAndGenerate}
-          disabled={isValidating || isGenerating}
-        >
-          <Text style={styles.generateButtonText}>
-            {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '✨ Analyze Website'}
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.generateButton,
+              (isValidating || isGenerating) && styles.buttonDisabled
+            ]}
+            onPress={handleValidateAndGenerate}
+            disabled={isValidating || isGenerating}
+          >
+            <Text style={styles.generateButtonText}>
+              {isValidating ? 'Validating...' : '✓ Validate Website'}
+            </Text>
+          </TouchableOpacity>
 
-        {/* Recent Summaries Section */}
-        {recentSummaries.length > 0 && (
-          <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>📋 Recent Website Summaries</Text>
-            <Text style={styles.sectionSubtitle}>Or Generate assessment from a recent website</Text>
+          {/* Validation Status */}
+          {(isValidating || validationStatus !== 'none') && (
+            <View style={styles.statusContainer}>
+              {isValidating && (
+                <View style={styles.statusRow}>
+                  <ActivityIndicator size={30} />
+                  <Text style={styles.statusText}>Validating website...</Text>
+                </View>
+              )}
+              {validationMessage !== '' && (
+                <Text style={[
+                  styles.validationMessage,
+                  validationStatus === 'valid' ? styles.validMessage : styles.invalidMessage
+                ]}>
+                  {validationMessage}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Recent Summaries Section */}
+          {recentSummaries.length > 0 && (
+            <View style={styles.recentSection}>
+              <Text style={styles.sectionTitle}>📋 Recent Website Summaries</Text>
+              <Text style={styles.sectionSubtitle}>Or generate quiz from a recent website</Text>
+              
+              {isLoadingSummaries ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size={30} />
+                  <Text style={styles.loadingText}>Loading recent summaries...</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={recentSummaries}
+                  renderItem={renderRecentSummary}
+                  keyExtractor={(item) => item.id.toString()}
+                  style={styles.summariesList}
+                  showsVerticalScrollIndicator={false}
+                />
+              )}
+            </View>
+          )}
+
+          <View style={styles.infoBox}>
+            <Text style={styles.infoTitle}>💡 How it works:</Text>
+            <Text style={styles.infoText}>• Extracts text content from web pages</Text>
+            <Text style={styles.infoText}>• Analyzes articles, documentation, and educational content</Text>
+            <Text style={styles.infoText}>• Creates comprehensive questions based on the content</Text>
+            <Text style={styles.infoText}>• Works with blogs, articles, tutorials, and reference materials</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Step 2: Configuration & Quiz Generation */}
+      {currentStep === 'configuration' && (
+        <View style={styles.form}>
+          {/* Website Info */}
+          <View style={styles.websiteInfoContainer}>
+            <Text style={styles.websiteUrlDisplay}>📄 {websiteUrl}</Text>
+          </View>
+
+          {/* Quiz Form Fields */}
+          <QuizFormFields
+            showClass={true}
+            classValue={classValue}
+            onClassChange={setClassValue}
+            classes={classes}
+            isLoadingClasses={isLoadingClasses}
             
-            {isLoadingSummaries ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-                <Text style={styles.loadingText}>Loading recent summaries...</Text>
+            showSubject={true}
+            subjectValue={subject}
+            onSubjectChange={setSubject}
+            subjects={subjects}
+            isLoadingSubjects={isLoadingSubjects}
+            
+            showLesson={true}
+            lessonValue={lesson}
+            onLessonChange={setLesson}
+            lessonPlaceholder="e.g., Website Topic, Article Summary"
+            lessonLabel="Lesson/Topic"
+            
+            showDifficultyLevel={true}
+            difficultyValue={level}
+            onDifficultyChange={setLevel}
+            difficultyLevels={['basic', 'intermediate', 'advanced'].map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
+            
+            showQuestionCount={true}
+            questionCountValue={String(quizQuestionCount)}
+            onQuestionCountChange={(text) => setQuizQuestionCount(parseInt(text) || 5)}
+            
+            additionalInstructionsValue={additionalInstructions}
+            onAdditionalInstructionsChange={setAdditionalInstructions}
+          />
+
+          {/* Generate Quiz Button */}
+          <TouchableOpacity
+            style={[styles.generateButton, isGenerating && styles.buttonDisabled]}
+            onPress={generateQuiz}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <View style={styles.statusRow}>
+                <ActivityIndicator size={20} color="#fff" />
+                <Text style={[styles.generateButtonText, { marginLeft: 10 }]}>Generating...</Text>
               </View>
             ) : (
-              <FlatList
-                data={recentSummaries}
-                renderItem={renderRecentSummary}
-                keyExtractor={(item: any) => item.id.toString()}
-                style={styles.summariesList}
-                showsVerticalScrollIndicator={false}
-              />
+              <Text style={styles.generateButtonText}>🚀 Generate Quiz</Text>
             )}
-          </View>
-        )}
+          </TouchableOpacity>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>💡 How it works:</Text>
-          <Text style={styles.infoText}>• Extracts text content from web pages</Text>
-          <Text style={styles.infoText}>• Analyzes articles, documentation, and educational content</Text>
-          <Text style={styles.infoText}>• Creates comprehensive questions based on the content</Text>
-          <Text style={styles.infoText}>• Works with blogs, articles, tutorials, and reference materials</Text>
+          {/* Back Button */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setCurrentStep('input')}
+            disabled={isGenerating}
+          >
+            <Text style={styles.backButtonText}>← Back to Website Input</Text>
+          </TouchableOpacity>
         </View>
-      </View>
-      </ScrollView>
-        </>
       )}
+      </ScrollView>
     </View>
   );
 }
@@ -445,15 +496,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  threePanelLayout: {
-    flexDirection: 'row',
-    flex: 1,
-    gap: 16,
-    padding: 16,
-  },
-  centerPanel: {
-    flex: 3,
   },
   headerBar: {
     flexDirection: 'row',
@@ -486,30 +528,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E0F2FE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+    padding: 20,
+    paddingTop: 30,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 0,
-    textAlign: 'center',
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
   },
   form: {
     padding: 20,
@@ -647,16 +677,28 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 4,
   },
-  validationContainer: {
-    marginTop: 12,
+  websiteInfoContainer: {
+    backgroundColor: colors.chipBackground,
     padding: 12,
-    backgroundColor: colors.card,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  websiteUrlDisplay: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  backButton: {
+    padding: 12,
+    alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
+    marginTop: 8,
   },
-  validationText: {
+  backButtonText: {
     fontSize: 14,
-    lineHeight: 20,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });

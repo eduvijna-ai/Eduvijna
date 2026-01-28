@@ -90,7 +90,7 @@ Subtitle: 10px, center-aligned
 
 | Option | Light Background | Icon Background | Icon | Usage |
 |--------|-----------------|-----------------|------|-------|
-| **AI Prompt** | `#E3F2FD` (Light Blue) | `#0891B2` (Teal) | `bulb` | Topic-based generation |
+| **AI Assessment** | `#E3F2FD` (Light Blue) | `#0891B2` (Teal) | `bulb` | Topic-based generation |
 | **Document** | `#FFE5F1` (Light Pink) | `#DC2626` (Red) | `document` | PDF/Text upload |
 | **Image** | `#FFF3E0` (Light Orange) | `#D97706` (Orange) | `image` | Photo/PDF upload |
 | **YouTube** | `#E8F5E9` (Light Green) | `#059669` (Green) | `logo-youtube` | Video-based |
@@ -204,7 +204,7 @@ When creating stat cards or quiz options:
   <View style={[styles.quizOptionIcon, { backgroundColor: '#0891B2' }]}>
     <Ionicons name="bulb" size={28} color="#FFF" />
   </View>
-  <Text style={styles.quizOptionTitle}>AI Prompt</Text>
+  <Text style={styles.quizOptionTitle}>AI Assessment</Text>
   <Text style={styles.quizOptionSubtitle}>Topic-based</Text>
 </TouchableOpacity>
 ```
