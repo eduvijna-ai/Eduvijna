@@ -12,7 +12,7 @@ interface LoadingSpinnerProps {
   fullScreen?: boolean;
 }
 
-export default function LoadingSpinner({ size = 60, fullScreen = false }: LoadingSpinnerProps) {
+export default function LoadingSpinner({ size = 40, fullScreen = false }: LoadingSpinnerProps) {
   const { theme } = useTheme();
   const spinValue = useRef(new Animated.Value(0)).current;
   const scaleValue = useRef(new Animated.Value(1)).current;
