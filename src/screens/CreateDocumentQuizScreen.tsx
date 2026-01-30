@@ -1508,7 +1508,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         onRequestClose={() => setShowMetadataModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.metadataModalContainer}>
+          <View style={styles.quizConfigModalContainer}>
             <View style={styles.summaryModalHeader}>
               <Text style={styles.modalTitle}>Document Metadata</Text>
               <TouchableOpacity
@@ -1519,8 +1519,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.metadataModalContent}>
-              <Text style={styles.metadataDescription}>
+            <ScrollView style={styles.quizConfigContent}>
+              <Text style={styles.quizConfigDescription}>
                 Add additional context about the document to improve quiz quality.
               </Text>
 
@@ -1624,7 +1624,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.metadataModalContainer}>
+          <View style={styles.quizConfigModalContainer}>
             <View style={styles.summaryModalHeader}>
               <Text style={styles.modalTitle}>Add Document Metadata</Text>
               <TouchableOpacity
@@ -1639,8 +1639,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.metadataModalContent}>
-              <Text style={styles.metadataDescription}>
+            <ScrollView style={styles.quizConfigContent}>
+              <Text style={styles.quizConfigDescription}>
                 You can optionally provide class, subject, and lesson information to help organize this document.
               </Text>
 
