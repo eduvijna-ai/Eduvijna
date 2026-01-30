@@ -28,6 +28,9 @@ export interface Notification {
   id: number;
   title: string;
   body: string;
+  message?: string; // Alias for body for compatibility
+  type?: NotificationType; // Notification type
+  is_read?: boolean; // Read status
   status: NotificationStatus;
   priority: 'high' | 'normal' | 'low';
   created_at: string;

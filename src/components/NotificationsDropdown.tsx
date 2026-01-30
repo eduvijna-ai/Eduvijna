@@ -121,8 +121,9 @@ export default function NotificationsDropdown({
           </View>
         ) : (
           notifications.map((notification) => {
-            const iconName = getNotificationIcon(notification.type);
-            const iconColor = getNotificationColor(notification.type);
+            const notificationType = notification.type || 'general';
+            const iconName = getNotificationIcon(notificationType);
+            const iconColor = getNotificationColor(notificationType);
 
             return (
               <TouchableOpacity
@@ -161,7 +162,7 @@ export default function NotificationsDropdown({
                     style={[styles.notificationMessage, { color: colors.textSecondary }]}
                     numberOfLines={2}
                   >
-                    {notification.message}
+                    {notification.message || notification.body}
                   </Text>
                   <Text style={[styles.timeText, { color: colors.textSecondary }]}>
                     {formatRelativeTime(notification.created_at)}
