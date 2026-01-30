@@ -10,9 +10,9 @@ import {
   Modal,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from './LoadingSpinner';
 
 interface PushNotificationPromptProps {
   visible: boolean;
@@ -73,7 +73,7 @@ export default function PushNotificationPrompt({
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <LoadingSpinner size={20} />
               ) : (
                 <>
                   <Ionicons name="notifications" size={20} color="#fff" />

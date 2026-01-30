@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
   Dimensions,
   Platform,
   Alert,
@@ -16,6 +15,7 @@ import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient } from '@core/api/config';
 import { useDashboardStore } from '@core/store/dashboard.store';
+import LoadingSpinner from '../components/LoadingSpinner';
 import {
   QuizAttempt,
   ParsedQuiz,
@@ -307,7 +307,7 @@ export default function StudentDashboard({ navigation }: Props) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <LoadingSpinner size={60} fullScreen />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading dashboard...</Text>
         </View>
       </View>
@@ -444,6 +444,50 @@ export default function StudentDashboard({ navigation }: Props) {
         styles.bottomSection,
         (isWeb || isTablet) && styles.bottomSectionRow,
       ]}>
+
+      {/* Upcoming Assessments */}
+        {upcomingQuizzes.length > 0 && (
+          <View style={[
+            styles.section,
+            (isWeb || isTablet) && styles.sectionHalf,
+          ]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Upcoming Assessments
+            </Text>
+            <View style={[styles.card, { backgroundColor: colors.card }]}>
+              {upcomingQuizzes.slice(0, 5).map((quiz, index) => {
+                return (
+                  <View
+                    key={`${quiz.quiz_id}-${index}`}
+                    style={[
+                      styles.topicItem,
+                      index < upcomingQuizzes.length - 1 && { 
+                        borderBottomWidth: 1, 
+                        borderBottomColor: colors.border 
+                      },
+                    ]}
+                  >
+                    <View style={styles.topicInfo}>
+                      <View style={styles.activityHeader}>
+                        <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
+                        <Text style={[styles.topicName, { color: colors.text }]}>
+                          {quiz.quiz_name || `Quiz #${quiz.quiz_id}`}
+                        </Text>
+                      </View>
+                      <Text style={[styles.topicScore, { color: colors.textSecondary }]}>
+                        {quiz.classroom_name} • {quiz.question_count} Questions
+                      </Text>
+                    </View>
+                    <View style={[styles.upcomingBadge, { backgroundColor: '#EDE9FE' }]}>
+                      <Text style={[styles.upcomingText, { color: theme.colors.primary }]}>Coming Soon</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Recent Completions */}
         <View style={[
           styles.section,
@@ -530,48 +574,7 @@ export default function StudentDashboard({ navigation }: Props) {
           </View>
         </View>
 
-        {/* Upcoming Assessments */}
-        {upcomingQuizzes.length > 0 && (
-          <View style={[
-            styles.section,
-            (isWeb || isTablet) && styles.sectionHalf,
-          ]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Upcoming Assessments
-            </Text>
-            <View style={[styles.card, { backgroundColor: colors.card }]}>
-              {upcomingQuizzes.slice(0, 5).map((quiz, index) => {
-                return (
-                  <View
-                    key={`${quiz.quiz_id}-${index}`}
-                    style={[
-                      styles.topicItem,
-                      index < upcomingQuizzes.length - 1 && { 
-                        borderBottomWidth: 1, 
-                        borderBottomColor: colors.border 
-                      },
-                    ]}
-                  >
-                    <View style={styles.topicInfo}>
-                      <View style={styles.activityHeader}>
-                        <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
-                        <Text style={[styles.topicName, { color: colors.text }]}>
-                          {quiz.quiz_name || `Quiz #${quiz.quiz_id}`}
-                        </Text>
-                      </View>
-                      <Text style={[styles.topicScore, { color: colors.textSecondary }]}>
-                        {quiz.classroom_name} • {quiz.question_count} Questions
-                      </Text>
-                    </View>
-                    <View style={[styles.upcomingBadge, { backgroundColor: '#EDE9FE' }]}>
-                      <Text style={[styles.upcomingText, { color: theme.colors.primary }]}>Coming Soon</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
+        
       </View>
     </ScrollView>
   );

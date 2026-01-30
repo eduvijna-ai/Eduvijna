@@ -10,10 +10,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from './LoadingSpinner';
 import { Notification } from '../core/api/notifications.api';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -110,7 +110,7 @@ export default function NotificationsDropdown({
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <LoadingSpinner size={60} />
           </View>
         ) : notifications.length === 0 ? (
           <View style={styles.emptyContainer}>

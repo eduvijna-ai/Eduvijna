@@ -6,12 +6,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
+import LoadingSpinner from '@components/LoadingSpinner';
 
 interface Props {
   navigation?: any;
@@ -53,7 +53,7 @@ export default function TeacherDashboard({ navigation, onNavigate }: Props) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <LoadingSpinner size={60} fullScreen />
         </View>
       </View>
     );

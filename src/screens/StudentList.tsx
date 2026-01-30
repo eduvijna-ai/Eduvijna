@@ -14,10 +14,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 
@@ -519,7 +519,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
       {/* Student List */}
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <LoadingSpinner size={60} />
         </View>
       ) : filteredStudents.length === 0 ? (
         <View style={styles.emptyContainer}>

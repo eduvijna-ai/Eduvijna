@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
@@ -236,7 +236,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <LoadingSpinner size={60} />
           <Text style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>Loading attempt data...</Text>
         </View>
       </View>

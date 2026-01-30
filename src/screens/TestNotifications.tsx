@@ -5,8 +5,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import LoadingSpinner from '../components/LoadingSpinner';
 import * as Device from 'expo-device';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -490,7 +491,7 @@ if (Constants.appOwnership === 'expo') {
           disabled={backendTestLoading || !isRegistered}
         >
           {backendTestLoading ? (
-            <ActivityIndicator size={24} color="#3B82F6" />
+            <LoadingSpinner size={24} />
           ) : (
             <Ionicons name="cloud" size={24} color={isRegistered ? "#3B82F6" : "#9CA3AF"} />
           )}

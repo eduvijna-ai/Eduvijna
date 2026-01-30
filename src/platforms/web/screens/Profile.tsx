@@ -16,9 +16,9 @@ import {
   Image,
   Modal,
   Switch,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useAuth } from '@core/hooks/useAuth';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
 import type { UserProfile } from '@core/types';
@@ -239,7 +239,7 @@ export default function Profile({ navigation }: any) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size={60} color="#5B21B6" />
+        <LoadingSpinner size={60} />
         <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
@@ -348,7 +348,7 @@ export default function Profile({ navigation }: any) {
             disabled={saving}
           >
             {saving ? (
-              <ActivityIndicator size={20} color="#FFFFFF" />
+              <LoadingSpinner size={20} />
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
@@ -534,7 +534,7 @@ export default function Profile({ navigation }: any) {
                 </View>
               </View>
               {pushToggleLoading ? (
-                <ActivityIndicator size="small" color="#5B21B6" />
+                <LoadingSpinner size={20} />
               ) : (
                 <Switch
                   value={formData.preferences?.pushNotifications ?? false}

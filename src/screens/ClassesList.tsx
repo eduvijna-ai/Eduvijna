@@ -7,12 +7,12 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { fetchTeacherQuizzes, fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { Classroom } from '@core/types/quiz.types';
@@ -452,7 +452,7 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <LoadingSpinner size={60} />
         </View>
       </View>
     );

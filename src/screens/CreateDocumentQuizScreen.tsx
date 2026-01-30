@@ -9,7 +9,6 @@ import {
   TextInput,
   Modal,
   Image,
-  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
@@ -18,13 +17,14 @@ import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../core/api/config';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
+import { useDropdowns } from '../context/DropdownContext';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import { useTheme } from '@context/ThemeContext';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface QuizQuestion {
   id?: string;
@@ -46,6 +46,7 @@ interface QuizData {
 export default function CreateDocumentQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [documentUrl, setDocumentUrl] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
@@ -85,11 +86,12 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   
   // Loading states
   const [generating, setGenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   
   // Share modal states
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string>('');
   
   // Form validation states
   const [formError, setFormError] = useState('');
@@ -109,16 +111,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   
   // Quiz Configuration Modal state
   const [showQuizConfigModal, setShowQuizConfigModal] = useState(false);
-
-  // Dropdown data from API
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
-  const [classError, setClassError] = useState('');
-  const [subjectError, setSubjectError] = useState('');
-
-  const levels = ['beginner', 'intermediate', 'advance'];
 
   // File type constants
   const MAX_DOCUMENT_COUNT = 5;
@@ -142,12 +134,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
   const isInitialMount = useRef(true);
 
-  // Load classes and subjects on component mount
-  useEffect(() => {
-    loadClasses();
-    loadSubjects();
-  }, []);
-
   // Load uploaded files from AsyncStorage on mount
   useEffect(() => {
     loadUploadedFiles();
@@ -161,34 +147,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     }
     saveUploadedFiles();
   }, [uploadedFiles, uploadedUrls]);
-
-  const loadClasses = async () => {
-    setIsLoadingClasses(true);
-    setClassError('');
-    try {
-      const response = await getClasses();
-      setClasses(response.items);
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-      setClassError('Failed to load classes. Using default values.');
-    } finally {
-      setIsLoadingClasses(false);
-    }
-  };
-
-  const loadSubjects = async () => {
-    setIsLoadingSubjects(true);
-    setSubjectError('');
-    try {
-      const response = await getSubjects();
-      setSubjects(response.items);
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
-      setSubjectError('Failed to load subjects. Using default values.');
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
 
   const loadUploadedFiles = async () => {
     try {
@@ -259,6 +217,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
     if (isFileUpload) {
       // Upload files to backend API
+      setUploading(true);
+      console.log(`📤 Starting file upload for ${pendingUploadFiles.length} file(s)...`);
       const uploadedFileEntries: Array<{
         displayName: string;
         uri: string;
@@ -270,6 +230,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
       for (const file of pendingUploadFiles) {
         try {
+          console.log(`📄 Uploading file: ${file.name} (${file.type})`);
           const formData = new FormData();
           formData.append('file', {
             uri: file.uri,
@@ -282,15 +243,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           if (includeMetadata) {
             if (gradeLevel) {
               formData.append('grade_level', gradeLevel);
+              console.log(`  └─ Grade Level: ${gradeLevel}`);
             }
             if (subject.trim()) {
               // Get subject label from subjects array
               const selectedSubjectObj = subjects.find(s => s.id === subject);
               const subjectLabel = selectedSubjectObj?.name || subject;
               formData.append('subject', subjectLabel);
+              console.log(`  └─ Subject: ${subjectLabel}`);
             }
             if (lesson.trim()) {
               formData.append('lesson_title', lesson.trim());
+              console.log(`  └─ Lesson: ${lesson.trim()}`);
             }
           }
 
@@ -299,6 +263,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             timeout: 60000, // 60 second timeout
           });
 
+          console.log(`✅ Upload response for ${file.name}:`, response.data);
+
           // Check for error in response
           if (response.data.error || response.data.success === false) {
             throw new Error(response.data.error || 'Upload failed');
@@ -306,6 +272,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
           // Extract uploaded filename from response
           const uploadedTitle = response.data.documents?.[0]?.title || file.name;
+          console.log(`✅ File uploaded successfully. Backend filename: ${uploadedTitle}`);
           
           uploadedFileEntries.push({
             displayName: file.name,
@@ -323,17 +290,20 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             } : undefined
           });
         } catch (error: any) {
-          console.error(`Error uploading ${file.name}:`, error);
+          console.error(`❌ Error uploading ${file.name}:`, error);
+          console.error(`❌ Error response:`, error.response?.data);
           failedFiles.push(file.name);
         }
       }
 
       // Add successfully uploaded files to the list
       if (uploadedFileEntries.length > 0) {
+        console.log(`✅ ${uploadedFileEntries.length} file(s) uploaded successfully`);
         setUploadedFiles(prev => [...prev, ...uploadedFileEntries]);
       }
       
       setPendingUploadFiles([]);
+      setUploading(false);
 
       // Clear captured images if this was from camera
       if (inputType === 'camera') {
@@ -362,6 +332,30 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       }
     } else if (pendingUploadUrl) {
       // Upload URL to backend API
+      console.log(`📤 Starting URL upload: ${pendingUploadUrl}`);
+      
+      // Validate URL format
+      try {
+        const urlObj = new URL(pendingUploadUrl);
+        if (!['http:', 'https:'].includes(urlObj.protocol)) {
+          Alert.alert(
+            'Invalid URL',
+            'Please enter a valid HTTP or HTTPS URL',
+            [{ text: 'OK' }]
+          );
+          setPendingUploadUrl('');
+          return;
+        }
+      } catch (urlError) {
+        Alert.alert(
+          'Invalid URL',
+          'Please enter a valid URL (e.g., https://example.com/document.pdf)',
+          [{ text: 'OK' }]
+        );
+        setPendingUploadUrl('');
+        return;
+      }
+      
       try {
         const formData = new FormData();
         formData.append('file_url', pendingUploadUrl);
@@ -371,15 +365,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         if (includeMetadata) {
           if (gradeLevel) {
             formData.append('grade_level', gradeLevel);
+            console.log(`  └─ Grade Level: ${gradeLevel}`);
           }
           if (subject.trim()) {
             // Get subject label from subjects array
             const selectedSubjectObj = subjects.find(s => s.id === subject);
             const subjectLabel = selectedSubjectObj?.name || subject;
             formData.append('subject', subjectLabel);
+            console.log(`  └─ Subject: ${subjectLabel}`);
           }
           if (lesson.trim()) {
             formData.append('lesson_title', lesson.trim());
+            console.log(`  └─ Lesson: ${lesson.trim()}`);
           }
         }
 
@@ -388,13 +385,34 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           timeout: 60000, // 60 second timeout
         });
 
+        console.log(`✅ URL upload response:`, response.data);
+
         // Check for error in response
         if (response.data.error || response.data.success === false) {
           throw new Error(response.data.error || 'Upload failed');
         }
 
-        // Add URL to uploaded list
-        setUploadedUrls(prev => [...prev, pendingUploadUrl]);
+        // Extract uploaded filename from response
+        const uploadedTitle = response.data.documents?.[0]?.title || pendingUploadUrl;
+        console.log(`✅ URL uploaded successfully. Backend filename: ${uploadedTitle}`);
+
+        // Add URL to uploaded list with backend filename
+        setUploadedFiles(prev => [...prev, {
+          displayName: pendingUploadUrl,
+          uri: pendingUploadUrl,
+          type: 'url',
+          uploadedFileName: uploadedTitle,
+          metadata: includeMetadata ? {
+            gradeLevel,
+            subject: subject.trim(),
+            lesson: lesson.trim(),
+            board: documentMetadata.board,
+            medium: documentMetadata.medium,
+            chapter: documentMetadata.chapter,
+            unit: documentMetadata.unit,
+          } : undefined
+        }]);
+        
         setDocumentUrl(''); // Clear input
         setPendingUploadUrl('');
 
@@ -404,11 +422,38 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           [{ text: 'OK' }]
         );
       } catch (error: any) {
-        console.error('Error uploading URL:', error);
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to upload URL';
+        console.error('❌ Error uploading URL:', error);
+        console.error('❌ Error name:', error?.name);
+        console.error('❌ Error message:', error?.message);
+        console.error('❌ Error response:', error?.response);
+        console.error('❌ Error response data:', error?.response?.data);
+        console.error('❌ Error stack:', error?.stack);
+        
+        // Extract detailed error message from various possible error structures
+        let errorMessage = 'Failed to upload URL';
+        let errorDetails = '';
+        
+        // Check different error structures
+        if (error.response?.data) {
+          const errorData = error.response.data;
+          errorMessage = errorData.detail || errorData.message || errorData.error || errorMessage;
+          
+          // Check for specific 403 error
+          if (errorMessage.includes('HTTP 403') || errorMessage.includes('Forbidden') || error.response?.status === 403) {
+            errorDetails = '\n\nThe URL is blocked (HTTP 403 Forbidden). This usually means:\n\n• The website blocks automated downloads\n• The file requires authentication\n• The URL doesn\'t allow hotlinking\n\nPlease try:\n✓ Upload the file directly instead\n✓ Use a different URL (e.g., from Google Drive, Dropbox)\n✓ Check if the URL is publicly accessible';
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+          
+          // Check if error message contains 403 or forbidden
+          if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden') || errorMessage.toLowerCase().includes('download failed')) {
+            errorDetails = '\n\nThe URL cannot be accessed (blocked or forbidden). This usually means:\n\n• The website blocks automated downloads\n• The file requires authentication\n• The URL doesn\'t allow direct access\n\nPlease try:\n✓ Upload the file directly instead\n✓ Use a publicly accessible URL\n✓ Use cloud storage (Google Drive/Dropbox) with public sharing enabled';
+          }
+        }
+        
         Alert.alert(
           'Upload Failed',
-          `URL upload failed: ${errorMessage}`,
+          `${errorMessage}${errorDetails}`,
           [{ text: 'OK' }]
         );
         setPendingUploadUrl('');
@@ -731,10 +776,10 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     const hasFiles = uploadedFiles.length > 0;
     const hasUrls = uploadedUrls.length > 0;
     
-    if (!hasFiles && !hasUrls && !additionalInstructions.trim()) {
+    if (!hasFiles && !hasUrls) {
       Alert.alert(
-        'Missing Input',
-        'Please upload a document/URL or provide additional instructions to generate a quiz.',
+        'Missing Document',
+        'Please upload a document or provide a URL before generating a quiz.',
         [{ text: 'OK' }]
       );
       return;
@@ -779,49 +824,39 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       const subjectLabel = selectedSubjectObj?.name || subject;
       
       // Get uploaded filename from backend response (for file uploads)
+      // This is the filename returned by the ingest-pdf API
       const uploadedFileName = uploadedFiles.length > 0 && uploadedFiles[0].uploadedFileName
         ? uploadedFiles[0].uploadedFileName
         : undefined;
       
-      // Step 1: Analyze the document using /api/v1/docsummary
-      console.log('Analyzing document...');
-      const formData = new FormData();
-      
-      // Use uploaded filename from backend if available
-      if (uploadedFileName) {
-        formData.append('file_name', uploadedFileName);
-      }
-      
-      formData.append('student_level', level);
-      formData.append('additional_instructions', additionalInstructions.trim());
+      console.log('📄 Starting quiz generation...');
+      console.log('📄 Uploaded filename:', uploadedFileName);
+      console.log('📄 Subject:', subjectLabel);
+      console.log('📄 Level:', level);
+      console.log('📄 Lesson:', lesson.trim());
+      console.log('📄 Question count:', questionCount);
+      console.log('📄 Additional instructions:', additionalInstructions.trim());
 
-      const analysisResponse = await apiClient.post('/api/v1/docsummary', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000,
-      });
-      
-      const analysisResult = analysisResponse.data;
-      console.log('Document analysis result:', JSON.stringify(analysisResult, null, 2));
-      
-      if (!analysisResult || !analysisResult.summary) {
+      // Verify we have an uploaded filename (required for document quiz)
+      if (!uploadedFileName) {
         Alert.alert(
-          'Analysis Failed',
-          'Unable to analyze the document. Please try with different instructions or a different document.',
+          'Upload Required',
+          'Please upload a document first. The document must be processed by the backend before generating a quiz.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
         return;
       }
       
-      // Step 2: Use the document summary to generate quiz questions
-      console.log('Generating quiz from document summary...');
+      // Build the quiz generation request body
       const requestBody: any = {
         subject: subjectLabel,
         level: level,
         lesson: lesson.trim(),
         count: questionCount,
         itext: additionalInstructions.trim(),
-        type: 'document'
+        type: 'document',
+        file_name: uploadedFileName, // Send the backend filename for document-based quiz
       };
       
       // Add class if provided
@@ -829,26 +864,56 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         requestBody.class = classLabel;
       }
       
-      // Call the quiz generation API with the document summary
-      const response = await apiClient.post('/api/v1/quiz/generate', requestBody);
+      console.log('📤 Sending quiz generation request:', JSON.stringify(requestBody, null, 2));
+      
+      // Call the quiz generation API with the document
+      const response = await apiClient.post('/api/v1/quiz/generate', requestBody, {
+        timeout: 90000, // 90 seconds for quiz generation
+      });
       const result = response.data;
       
       // Debug log the response
-      console.log('Quiz generation response:', JSON.stringify(result, null, 2));
+      console.log('📨 Quiz generation response:', JSON.stringify(result, null, 2));
       
       // Extract questions - try different possible response structures
-      const questions = result.quiz || result.questions || [];
+      let questions = result.quiz || result.questions || [];
+      
+      // If first API call returns empty quiz (thread creation), retry with the thread_id
+      if ((!questions || questions.length === 0) && result.thread_id && !result.reused_thread) {
+        console.log('⚠️ First request created thread but no questions. Retrying with thread_id...');
+        
+        try {
+          // Retry the API call - thread now exists
+          const retryResponse = await apiClient.post('/api/v1/quiz/generate', requestBody, {
+            timeout: 90000,
+          });
+          const retryResult = retryResponse.data;
+          console.log('📨 Retry response:', JSON.stringify(retryResult, null, 2));
+          
+          questions = retryResult.quiz || retryResult.questions || [];
+          
+          if (questions && questions.length > 0) {
+            // Update result with retry data
+            Object.assign(result, retryResult);
+            console.log(`✅ Retry successful: Generated ${questions.length} questions`);
+          }
+        } catch (retryError) {
+          console.error('❌ Retry failed:', retryError);
+        }
+      }
       
       if (!questions || questions.length === 0) {
-        console.warn('No questions in response. Full response:', result);
+        console.warn('⚠️ No questions in response after retry. Full response:', result);
         Alert.alert(
           'No Questions Generated',
-          'The quiz generation completed but returned no questions. Please try again with different parameters or contact support.',
+          'The quiz generation completed but returned no questions. Please try again with different parameters.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
         return;
       }
+      
+      console.log(`✅ Generated ${questions.length} questions successfully`);
       
       // Close the modal before navigation
       setShowQuizConfigModal(false);
@@ -856,7 +921,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       // Refresh notifications
       await refreshAfterQuizGenerated();
       
-      // Use replace to prevent going back to creation screen and avoid refresh
+      // Navigate to quiz screen with generated quiz data
       navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
@@ -867,11 +932,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           difficulty: level,
           lesson: lesson.trim(),
           additional_instructions: additionalInstructions.trim(),
-          // Include document analysis data
-          summary: analysisResult.summary,
-          tags: analysisResult.tags,
-          elements: analysisResult.elements,
-          // Thread data from the actual quiz generation
+          // Thread data from the quiz generation response
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           reused_thread: result.reused_thread,
@@ -885,6 +946,8 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             uploadedFileName: uploadedFileName, // Store uploaded filename for regeneration
             grade: classLabel,
             subject: subjectLabel,
+            level: level,
+            lesson: lesson.trim(),
             metadata: uploadedFiles.length > 0 ? uploadedFiles[0].metadata : undefined,
           },
         },
@@ -892,8 +955,25 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         showActionButtons: true, // Show Regenerate, Retake, New Quiz buttons
       });
     } catch (error: any) {
-      console.error('Failed to generate quiz:', error);
-      const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate quiz';
+      console.error('❌ Failed to generate quiz:', error);
+      console.error('❌ Error response:', error.response?.data);
+      
+      // Extract detailed error message
+      let errorMessage = 'Failed to generate quiz. Please try again.';
+      if (error.response?.data) {
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setFormError(errorMessage);
       Alert.alert('Error', errorMessage);
     } finally {
@@ -1591,16 +1671,10 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 showClass={true}
                 classValue={classValue}
                 onClassChange={setClassValue}
-                classes={classes}
-                isLoadingClasses={isLoadingClasses}
-                classError={classError}
                 
                 showSubject={true}
                 subjectValue={subject}
                 onSubjectChange={setSubject}
-                subjects={subjects}
-                isLoadingSubjects={isLoadingSubjects}
-                subjectError={subjectError}
                 
                 showLesson={true}
                 lessonValue={lesson}
@@ -1611,7 +1685,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 showDifficultyLevel={true}
                 difficultyValue={level}
                 onDifficultyChange={setLevel}
-                difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
                 
                 showQuestionCount={false}
               />
@@ -1672,16 +1745,10 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 showClass={true}
                 classValue={classValue}
                 onClassChange={setClassValue}
-                classes={classes}
-                isLoadingClasses={isLoadingClasses}
-                classError={classError}
                 
                 showSubject={true}
                 subjectValue={subject}
                 onSubjectChange={setSubject}
-                subjects={subjects}
-                isLoadingSubjects={isLoadingSubjects}
-                subjectError={subjectError}
                 
                 showLesson={true}
                 lessonValue={lesson}
@@ -1692,7 +1759,6 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 showDifficultyLevel={true}
                 difficultyValue={level}
                 onDifficultyChange={setLevel}
-                difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
                 
                 showQuestionCount={true}
                 questionCountValue={String(questionCount)}
@@ -1720,7 +1786,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 disabled={!subject || !level || !lesson.trim() || !additionalInstructions.trim() || generating}
               >
                 {generating ? (
-                  <ActivityIndicator size={20} />
+                  <LoadingSpinner size={20} />
                 ) : (
                   <>
                     <Ionicons name="sparkles" size={20} color={theme.colors.buttonText} style={{ marginRight: 8 }} />
@@ -1737,9 +1803,20 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       {isConvertingToPdf && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingContent}>
-            <ActivityIndicator size={48} />
+            <LoadingSpinner size={60} />
             <Text style={styles.loadingText}>Converting images to PDF...</Text>
             <Text style={styles.loadingSubtext}>This may take a few moments</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Document Upload Loading Overlay */}
+      {uploading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <LoadingSpinner size={60} />
+            <Text style={styles.loadingText}>Uploading document...</Text>
+            <Text style={styles.loadingSubtext}>Please wait</Text>
           </View>
         </View>
       )}
@@ -2315,11 +2392,17 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   // Metadata Modal styles
   metadataModalContainer: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 16,
-    width: '90%',
-    maxHeight: '80%',
-    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 0,
+    width: '95%',
+    maxWidth: 600,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
   },
   metadataModalContent: {
     padding: 20,

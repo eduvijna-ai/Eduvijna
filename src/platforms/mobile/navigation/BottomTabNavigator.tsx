@@ -58,7 +58,7 @@ function RoleAssessments({ navigation, route }: any) {
 
 // Custom Header Component
 function CustomHeader() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -67,11 +67,16 @@ function CustomHeader() {
     <>
       <View style={styles.header}>
         {/* Logo */}
-        <Image 
-          source={require('../../../../assets/eduvijna_logo_sidebar.png')} 
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <TouchableOpacity 
+            style={styles.logo}
+            onPress={() => navigation.navigate('Dashboard')}
+          >
+          <Image 
+            source={require('../../../../assets/eduvijna_logo_sidebar.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
 
         {/* Right Section: Create Assessment, Theme Toggle, Notifications & Profile */}
         <View style={styles.headerRight}>
@@ -86,7 +91,7 @@ function CustomHeader() {
           
           <TouchableOpacity 
             style={styles.iconButton}
-            onPress={() => (navigation as any).navigate('Notifications')}
+            onPress={() => navigation.navigate('Notifications')}
           >
             <Ionicons name="notifications-outline" size={24} color="#374151" />
           </TouchableOpacity>
@@ -105,7 +110,7 @@ function CustomHeader() {
 
           <TouchableOpacity 
             style={styles.profileButton}
-            onPress={() => (navigation as any).navigate('Profile')}
+            onPress={() => navigation.navigate('Profile')}
           >
             {user?.avatar_url ? (
               <Image 
@@ -413,7 +418,7 @@ function BottomTabNavigator() {
       />
       <Tab.Screen 
         name="Analytics" 
-        component={AnalyticsScreen}
+        component={ClassesList}
         options={{ title: 'Analytics' }}
       />
       {/* <Tab.Screen 

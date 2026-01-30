@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,18 +6,19 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import useNotifications from '@core/hooks/useNotifications';
 import { generateAIQuiz } from '../core/services/sharedApi';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
+import { useDropdowns } from '../context/DropdownContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function CreateAIQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const { classes, subjects, difficultyLevels } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [formData, setFormData] = useState({
     class: '',
@@ -28,56 +29,13 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     itext: '',
   });
   const [loading, setLoading] = useState(false);
-  
-  // Dropdown data from API
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
-  const [classError, setClassError] = useState('');
-  const [subjectError, setSubjectError] = useState('');
 
-  const levels = ['basic', 'intermediate', 'advanced'];
 
-  // Load classes on component mount
-  useEffect(() => {
-    loadClasses();
-  }, []);
 
-  // Load subjects when component mounts
-  useEffect(() => {
-    loadSubjects();
-  }, []);
 
-  const loadClasses = async () => {
-    setIsLoadingClasses(true);
-    setClassError('');
-    try {
-      const response = await getClasses();
-      //console.log('Classes loaded:', response.items.length, 'items');
-      setClasses(response.items);
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-      setClassError('Failed to load classes. Using default values.');
-    } finally {
-      setIsLoadingClasses(false);
-    }
-  };
 
-  const loadSubjects = async () => {
-    setIsLoadingSubjects(true);
-    setSubjectError('');
-    try {
-      const response = await getSubjects();
-      console.log('Subjects loaded:', response.items.length, 'items');
-      setSubjects(response.items);
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
-      setSubjectError('Failed to load subjects. Using default values.');
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
+
+
 
 
 
@@ -108,7 +66,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           questions: result.quiz || [],
           class: classes.find((c: any) => c.id === formData.class)?.name,
           subject: subjects.find((s: any) => s.id === formData.subject)?.name,
-          difficulty: formData.level,
+          difficulty: difficultyLevels.find((l: any) => l.id === formData.level)?.name,
           lesson: formData.lesson,
           additional_instructions: formData.itext || '',
           // Thread data from the actual quiz generation
@@ -159,16 +117,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           showClass={true}
           classValue={formData.class}
           onClassChange={(value) => setFormData({ ...formData, class: value })}
-          classes={classes}
-          isLoadingClasses={isLoadingClasses}
-          classError={classError}
           
           showSubject={true}
           subjectValue={formData.subject}
           onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
-          subjects={subjects}
-          isLoadingSubjects={isLoadingSubjects}
-          subjectError={subjectError}
           
           showLesson={true}
           lessonValue={formData.lesson}
@@ -179,8 +131,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           showDifficultyLevel={true}
           difficultyValue={formData.level}
           onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
-          difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
-          
+
           showQuestionCount={true}
           questionCountValue={formData.count}
           onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
@@ -195,7 +146,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator size={20} />
+            <LoadingSpinner size={20} />
           ) : (
             <Text style={styles.generateButtonText}>Generate Quiz</Text>
           )}

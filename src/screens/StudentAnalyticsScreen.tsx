@@ -5,10 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherDashboardSummary, fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { DateRangeFilter, FilterSection, ClassroomFilter } from '../components/FilterComponents';
@@ -136,18 +136,16 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       });
     }
 
-    // Apply sorting
-    filtered.sort((a, b) => {
-      if (sortBy === 'score') {
+    // Only re-sort if user explicitly selected score sorting
+    // Data is already sorted by date from API response
+    if (sortBy === 'score') {
+      filtered.sort((a, b) => {
         const scoreA = a.score ?? -1;
         const scoreB = b.score ?? -1;
-        return scoreB - scoreA; // DESC
-      } else {
-        const dateA = a.completed_at || a.started_at || a.end_time || '';
-        const dateB = b.completed_at || b.started_at || b.end_time || '';
-        return dateB.localeCompare(dateA); // DESC
-      }
-    });
+        return scoreB - scoreA; // DESC - highest first
+      });
+    }
+    // If sortBy is 'date', keep the existing order from API (already sorted by date)
 
     setFilteredAttempts(filtered);
   };
@@ -360,6 +358,13 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         }
       });
 
+      // Sort by created_at/end_time descending (newest first) by default
+      studentAttempts.sort((a, b) => {
+        const dateA = a.completed_at || a.started_at || a.end_time || '';
+        const dateB = b.completed_at || b.started_at || b.end_time || '';
+        return dateB.localeCompare(dateA); // DESC - newest first
+      });
+      
       setQuizAttempts(studentAttempts);
       
       console.log('✅ Total student attempts after mapping:', studentAttempts.length);
@@ -511,7 +516,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <LoadingSpinner size={60} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
             Loading analytics...
           </Text>

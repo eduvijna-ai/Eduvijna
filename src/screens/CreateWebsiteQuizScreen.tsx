@@ -8,14 +8,14 @@ import {
   ScrollView,
   Alert,
   FlatList,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 import useNotifications from '@core/hooks/useNotifications';
 import { generateQuizFromWebsite } from '../core/services/quizzes';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
+import { useDropdowns } from '../context/DropdownContext';
 
 interface WebsiteSummary {
   id: number;
@@ -27,6 +27,7 @@ interface WebsiteSummary {
 export default function CreateWebsiteQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
@@ -46,49 +47,10 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
   const [level, setLevel] = useState('intermediate');
   const [subject, setSubject] = useState('');
   const [classValue, setClassValue] = useState('');
-  
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
   useEffect(() => {
     loadRecentSummaries();
-    loadClasses();
-    loadSubjects();
   }, []);
-
-  const loadClasses = async () => {
-    setIsLoadingClasses(true);
-    try {
-      const response = await getClasses();
-      setClasses(response.items);
-      // Set first class as default if available
-      if (response.items.length > 0 && !classValue) {
-        setClassValue(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-    } finally {
-      setIsLoadingClasses(false);
-    }
-  };
-
-  const loadSubjects = async () => {
-    setIsLoadingSubjects(true);
-    try {
-      const response = await getSubjects();
-      setSubjects(response.items);
-      // Set first subject as default if available
-      if (response.items.length > 0 && !subject) {
-        setSubject(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
 
   const loadRecentSummaries = async () => {
     setIsLoadingSummaries(true);
@@ -372,7 +334,7 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
             <View style={styles.statusContainer}>
               {isValidating && (
                 <View style={styles.statusRow}>
-                  <ActivityIndicator size={30} />
+                  <LoadingSpinner size={30} />
                   <Text style={styles.statusText}>Validating website...</Text>
                 </View>
               )}
@@ -395,7 +357,7 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
               
               {isLoadingSummaries ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size={30} />
+                  <LoadingSpinner size={30} />
                   <Text style={styles.loadingText}>Loading recent summaries...</Text>
                 </View>
               ) : (
@@ -433,14 +395,10 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
             showClass={true}
             classValue={classValue}
             onClassChange={setClassValue}
-            classes={classes}
-            isLoadingClasses={isLoadingClasses}
             
             showSubject={true}
             subjectValue={subject}
             onSubjectChange={setSubject}
-            subjects={subjects}
-            isLoadingSubjects={isLoadingSubjects}
             
             showLesson={true}
             lessonValue={lesson}
@@ -451,7 +409,6 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
             showDifficultyLevel={true}
             difficultyValue={level}
             onDifficultyChange={setLevel}
-            difficultyLevels={['basic', 'intermediate', 'advanced'].map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
             
             showQuestionCount={true}
             questionCountValue={String(quizQuestionCount)}
@@ -469,7 +426,7 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
           >
             {isGenerating ? (
               <View style={styles.statusRow}>
-                <ActivityIndicator size={20} color="#fff" />
+                <LoadingSpinner size={20} color="#fff" />
                 <Text style={[styles.generateButtonText, { marginLeft: 10 }]}>Generating...</Text>
               </View>
             ) : (

@@ -6,13 +6,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
   useWindowDimensions,
   TextInput,
   SafeAreaView,
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useDashboardStore } from '@core/store/dashboard.store';
@@ -411,7 +411,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <LoadingSpinner size={60} />
         </View>
       </View>
     );

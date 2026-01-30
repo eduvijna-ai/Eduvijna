@@ -5,9 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@context/ThemeContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -42,7 +42,7 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
 
         if (response.data && response.data.length > 0) {
           const quiz = response.data[0];
-          console.log('✅ Quiz details loaded:', quiz);
+          //console.log('✅ Quiz details loaded:', quiz);
           setQuizDetails(quiz);
         } else {
           setError('Quiz not found');
@@ -67,7 +67,7 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <LoadingSpinner size={60} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
             Loading quiz details...
           </Text>
@@ -140,9 +140,9 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
     }
   }
 
-  console.log('QuizPreviewScreen - Questions count:', questions.length);
-  console.log('QuizPreviewScreen - First question:', questions[0]);
-  console.log('QuizPreviewScreen - All questions:', questions);
+  //console.log('QuizPreviewScreen - Questions count:', questions.length);
+  //console.log('QuizPreviewScreen - First question:', questions[0]);
+  //console.log('QuizPreviewScreen - All questions:', questions);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -271,14 +271,14 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
       </ScrollView>
 
       {/* Bottom Action Button */}
-      <View style={[styles.bottomActions, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+      {/* <View style={[styles.bottomActions, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TouchableOpacity
           style={[styles.actionButton, styles.scheduleButton]}
           onPress={handleScheduleQuiz}
         >
           <Text style={styles.actionButtonText}>Close</Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
     </View>
   );
 }

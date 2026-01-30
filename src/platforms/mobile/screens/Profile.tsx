@@ -16,9 +16,9 @@ import {
   Image,
   Modal,
   Switch,
-  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LoadingSpinner from '../../../components/LoadingSpinner';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
@@ -336,7 +336,7 @@ export default function Profile({ navigation }: any) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size={60} color="#1B4F5C" />
+        <LoadingSpinner size={60} />
         <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
@@ -445,7 +445,7 @@ export default function Profile({ navigation }: any) {
             disabled={saving}
           >
             {saving ? (
-              <ActivityIndicator size={20} color="#FFFFFF" />
+              <LoadingSpinner size={20} />
             ) : (
               <>
                 <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
@@ -631,7 +631,7 @@ export default function Profile({ navigation }: any) {
                 </View>
               </View>
               {pushToggleLoading ? (
-                <ActivityIndicator size="small" color="#1B4F5C" />
+                <LoadingSpinner size={20} />
               ) : (
                 <Switch
                   value={formData.preferences?.pushNotifications ?? false}
@@ -644,7 +644,7 @@ export default function Profile({ navigation }: any) {
             </View>
 
             {/* Debug: Copy Push Tokens */}
-            {formData.preferences?.pushNotifications && (
+            {/* {formData.preferences?.pushNotifications && (
               <TouchableOpacity 
                 style={styles.debugButton}
                 onPress={handleCopyPushToken}
@@ -652,19 +652,19 @@ export default function Profile({ navigation }: any) {
                 <Ionicons name="copy-outline" size={16} color="#059669" />
                 <Text style={styles.debugButtonText}>📋 Copy Push Tokens (Expo + FCM)</Text>
               </TouchableOpacity>
-            )}
+            )} */}
 
             {/* Test Notifications */}
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
               style={styles.testNotificationButton}
               onPress={() => navigation?.navigate?.('TestNotifications')}
             >
               <Ionicons name="flask" size={16} color="#3B82F6" />
               <Text style={styles.testNotificationText}>🔬 Test Push Notifications</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {/* Theme Setting */}
-            <TouchableOpacity 
+            {/* <TouchableOpacity 
               style={styles.preferenceItem}
               onPress={() => navigation?.navigate?.('ThemeSettings')}
             >
@@ -681,7 +681,7 @@ export default function Profile({ navigation }: any) {
                 <Text style={styles.themeValue}>Light</Text>
                 <Ionicons name="chevron-forward" size={20} color="#999" />
               </View>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </View>
       )}

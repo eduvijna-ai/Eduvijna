@@ -7,13 +7,20 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
-import type { Notification } from '@core/api/notifications.api';
+//import type { Notification } from '@core/api/notifications.api';
 import useNotifications from '@core/hooks/useNotifications';
+import { useAuth } from '@core/hooks/useAuth';
 
 export default function NotificationHandler() {
   const navigation = useNavigation();
   const navigationRef = useRef(navigation);
   const { fetchNotifications } = useNotifications();
+  const { user } = useAuth();
+
+  // Only set up handlers if user is logged in
+  useEffect(() => {
+    if (!user) return;
+  }, [user]);
 
   // Update ref when navigation changes
   useEffect(() => {
@@ -74,9 +81,11 @@ export default function NotificationHandler() {
     const quizId = data?.quiz_id || data?.quizId;
     const sessionId = data?.session_id || data?.sessionId;
     const quizTitle = data?.quiz_title || data?.quizTitle;
-    const classroomId = data?.classroom_id || data?.classroomId;
-    const assignmentId = data?.assignment_id || data?.assignmentId;
+    //const classroomId = data?.classroom_id || data?.classroomId;
+    //const assignmentId = data?.assignment_id || data?.assignmentId;
     const studentId = data?.student_id || data?.studentId;
+    //const navScreen = data?.screen || data?.navScreen;
+
 
     // Navigate based on notification type
     switch (type) {
@@ -121,8 +130,10 @@ export default function NotificationHandler() {
         // For general notifications or unknown types
         if (quizId) {
           // If there's a quiz ID, try to navigate to it
-          console.log('➡️ Navigating to QuizPreviewScreen (general):', quizId);
-          (navigationRef.current as any).navigate('QuizPreviewScreen', {
+          const navScreen = user?.role === 'student' ? 'QuizTakingScreen' : 'QuizPreviewScreen';
+          console.log(`➡️ Navigating to ${navScreen} (general):`, quizId);
+
+          (navigationRef.current as any).navigate(navScreen, {
             quizId,
             sessionId,
           });

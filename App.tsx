@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
@@ -16,6 +16,7 @@ import { AuthProvider } from './src/core/context/AuthContext';
 import { navigationRef } from './src/core/services/navigationService';
 import { setAuthErrorNavigationCallback } from './src/core/services/dashboardApi';
 import { initializeCache } from './src/core/services/cacheService';
+import LoadingSpinner from './src/components/LoadingSpinner';
 import {
   getInitialDeepLink,
   subscribeToDeepLinks,
@@ -56,6 +57,7 @@ function AppContent() {
   const [pendingDeepLink, setPendingDeepLink] = useState<DeepLinkData | null>(null);
   const notificationListener = useRef<any>();
   const responseListener = useRef<any>();
+  const processedNotifications = useRef<Set<string>>(new Set());
 
   // Platform detection
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
@@ -111,10 +113,26 @@ function AppContent() {
 
     // Listen for user tapping on notifications
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const notificationId = response.notification.request.identifier;
+      
+      // Prevent processing the same notification multiple times
+      if (processedNotifications.current.has(notificationId)) {
+        console.log('⏭️ Notification already processed, skipping:', notificationId);
+        return;
+      }
+      
       console.log('👆 User tapped notification:', response);
+      processedNotifications.current.add(notificationId);
+      
+      // Clear old processed notifications (keep only last 50)
+      if (processedNotifications.current.size > 50) {
+        const entries = Array.from(processedNotifications.current);
+        processedNotifications.current = new Set(entries.slice(-50));
+      }
       
       // Handle notification tap - navigate to relevant screen
       const data = response.notification.request.content.data;
+      const notificationBody = response.notification.request.content.body || '';
       
       if (data?.assessmentId && navigationRef.current) {
         console.log('🔗 Navigating to assessment:', data.assessmentId);
@@ -146,7 +164,51 @@ function AppContent() {
           navHandler
         );
       } else {
-        console.log('📋 Notification data:', data);
+        // Handle notifications without assessmentId or sessionId
+        console.log('📋 Notification data missing quiz info:', data);
+        
+        let message = 'This quiz is not available right now.';
+        let title = 'Quiz Unavailable';
+        
+        // Try to determine the reason based on notification content or data
+        if (notificationBody.toLowerCase().includes('not started') || 
+            notificationBody.toLowerCase().includes('scheduled') ||
+            data?.status === 'scheduled') {
+          message = 'The quiz time has not started yet. Please wait for the scheduled time.';
+          title = 'Quiz Not Started';
+        } else if (notificationBody.toLowerCase().includes('expired') || 
+                   notificationBody.toLowerCase().includes('ended') ||
+                   data?.status === 'expired') {
+          message = 'This quiz has already ended and is no longer available.';
+          title = 'Quiz Ended';
+        } else if (notificationBody.toLowerCase().includes('cancelled') ||
+                   data?.status === 'cancelled') {
+          message = 'This quiz has been cancelled.';
+          title = 'Quiz Cancelled';
+        } else if (!data?.assessmentId && !data?.sessionId) {
+          message = 'Unable to find quiz information. Please check your Notifications list.';
+          title = 'Quiz Information Missing';
+        }
+        
+        // Show alert to user
+        Alert.alert(
+          title,
+          message,
+          [
+            {
+              text: 'Go to Notifications',
+              onPress: () => {
+                if (navigationRef.current) {
+                  (navigationRef.current as any).navigate('Notifications');
+                }
+              }
+            },
+            {
+              text: 'OK',
+              style: 'cancel'
+            }
+          ]
+        );
       }
     });
 
@@ -158,7 +220,7 @@ function AppContent() {
         Notifications.removeNotificationSubscription(responseListener.current);
       }
     };
-  }, [isMobile, user]);
+  }, [isMobile]); // Removed user dependency to prevent listener recreation
 
   // Set up auth error navigation callback
   useEffect(() => {
@@ -275,63 +337,14 @@ function AppContent() {
     detectAndRedirect();
   }, [isWeb]);
 
-  // Push notification listeners for mobile
-  useEffect(() => {
-    if (!isMobile) return;
-
-    // Configure how notifications are displayed when app is in foreground
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
-
-    // Handle notification received while app is open
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📬 Notification received:', notification);
-      // You can show an alert or update UI here
-    });
-
-    // Handle notification tapped by user
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('👆 Notification tapped:', response);
-      
-      const data = response.notification.request.content.data;
-      
-      // Handle navigation based on notification data
-      if (data?.type === 'quiz' && data?.quizId) {
-        // Navigate to quiz
-        if (navigationRef.current) {
-          (navigationRef.current as any).navigate('QuizTakingScreen', {
-            quizId: data.quizId,
-            sessionId: data.sessionId,
-          });
-        }
-      } else if (data?.screen) {
-        // Navigate to specific screen
-        if (navigationRef.current) {
-          (navigationRef.current as any).navigate(data.screen, data.params || {});
-        }
-      }
-    });
-
-    return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
-      }
-    };
-  }, [isMobile]);
+  // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
+  // This prevents duplicate listener registration
 
   // Show loading screen while checking authentication
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#5B21B6" />
+        <LoadingSpinner size={80} fullScreen />
       </View>
     );
   }

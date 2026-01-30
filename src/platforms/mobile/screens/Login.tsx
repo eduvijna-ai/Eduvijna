@@ -11,9 +11,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '@core/hooks/useAuth';
+import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function Login() {
   const { login, isLoading, error, clearError } = useAuth();
@@ -62,7 +62,7 @@ export default function Login() {
         disabled={isLoading}
       >
         {isLoading ? (
-          <ActivityIndicator size={24} color="#FFFFFF" />
+          <LoadingSpinner size={24} />
         ) : (
           <Text style={styles.buttonText}>Sign in</Text>
         )}

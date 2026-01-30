@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Platform,
   useWindowDimensions,
 } from 'react-native';
@@ -23,6 +22,7 @@ import {
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 interface QuizQuestion {
   id: string;
@@ -65,18 +65,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     onNewQuiz
   } = route.params || {};
   
-  // Initial debug log - see what route params were passed
-  console.log('🔍 QuizTakingScreen ROUTE PARAMS:', {
-    hasQuizData: !!quizData,
-    quizId,
-    sessionId,
-    classroomId,
-    showShareButton,
-    showActionButtons,
-    hasOnNewQuiz: !!onNewQuiz,
-    allParams: route.params
-  });
-  
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
@@ -87,6 +75,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [quizStartTime] = useState(new Date().toISOString()); // Track when quiz started
   const [isLoading, setIsLoading] = useState(!quizData);
   const [submitting, setSubmitting] = useState(false);
+  const [quizNotAvailable, setQuizNotAvailable] = useState(false);
+  const [availabilityMessage, setAvailabilityMessage] = useState({ startTime: '', endTime: '' });
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -104,32 +94,51 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     (quiz?.session_id && quiz?.classroom_id)
   ) && !showActionButtons;
 
-  // Log params when quiz data changes
-  useEffect(() => {
-    console.log('📝 QuizTakingScreen state update:', {
-      // Route params
-      routeParams: {
-        sessionId,
-        classroomId,
-        quizId,
-        showActionButtons,
-        showShareButton
-      },
-      // Quiz state data
-      quizState: {
-        hasQuiz: !!quiz,
-        quiz_id: quiz?.quiz_id,
-        session_id: quiz?.session_id,
-        classroom_id: quiz?.classroom_id,
-        questionCount: quiz?.questions?.length
-      },
-      // Computed values
-      computed: {
-        isAssignedQuiz,
-        willSubmitToBackend: Boolean(isAssignedQuiz && quiz?.quiz_id && user?.id)
-      }
-    });
-  }, [quiz, sessionId, classroomId, quizId, showActionButtons, isAssignedQuiz, user?.id]); // Re-log when any relevant value changes
+  // Check if quiz is available based on start_time and end_time
+  const checkQuizAvailability = (quizData: any) => {
+    // Only check for assigned quizzes (those with start_time/end_time)
+    if (!quizData?.start_time || !quizData?.end_time) {
+      return { available: true, startTime: '', endTime: '' };
+    }
+
+    const now = new Date();
+    const startTime = new Date(quizData.start_time);
+    const endTime = new Date(quizData.end_time);
+
+    // Format dates for display
+    const formatDateTime = (date: Date) => {
+      return date.toLocaleString('en-US', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+    };
+
+    if (now < startTime) {
+      // Quiz hasn't started yet
+      return {
+        available: false,
+        startTime: formatDateTime(startTime),
+        endTime: formatDateTime(endTime)
+      };
+    }
+
+    if (now > endTime) {
+      // Quiz has ended
+      return {
+        available: false,
+        startTime: formatDateTime(startTime),
+        endTime: formatDateTime(endTime),
+        expired: true
+      };
+    }
+
+    // Quiz is currently available
+    return { available: true, startTime: '', endTime: '' };
+  };
 
   // Get performance message based on score
   const getPerformanceMessage = (percentage: number) => {
@@ -224,6 +233,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           session_id: validatedQuizData.session_id,
           classroom_id: validatedQuizData.classroom_id
         });
+        
+        // Check quiz availability
+        const availability = checkQuizAvailability(validatedQuizData);
+        if (!availability.available) {
+          setQuizNotAvailable(true);
+          setAvailabilityMessage({ startTime: availability.startTime, endTime: availability.endTime });
+        }
+        
         setQuiz(validatedQuizData);
         setTimeRemaining(quizData.duration || 1800);
         setIsLoading(false);
@@ -276,6 +293,13 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               questionCount: quizDataFromAPI.questions.length
             });
             
+            // Check quiz availability
+            const availability = checkQuizAvailability(response.quiz_data);
+            if (!availability.available) {
+              setQuizNotAvailable(true);
+              setAvailabilityMessage({ startTime: availability.startTime, endTime: availability.endTime });
+            }
+            
             setCurrentQuizData(quizDataFromAPI);
             setTimeRemaining(response.quiz_data.duration || 1800);
           } else {
@@ -295,7 +319,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     
     fetchQuiz();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quizData, quizId, sessionId, classroomId]);
+  }, []); // Run only once on mount - quizData from route.params doesn't change
 
   // Timer countdown
   useEffect(() => {
@@ -319,7 +343,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <LoadingSpinner size={60} fullScreen />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading assessment...</Text>
         </View>
       </View>
@@ -668,6 +692,35 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setSubmitting(false);
     }
   };
+
+  // Show "Quiz Not Yet Available" message if quiz hasn't started
+  if (quizNotAvailable) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.notAvailableContainer}>
+          <View style={styles.notAvailableCard}>
+            <View style={styles.clockIcon}>
+              <Ionicons name="time-outline" size={80} color={colors.primary} />
+            </View>
+            <Text style={[styles.notAvailableTitle, { color: colors.text }]}>Quiz Not Yet Available</Text>
+            <View style={styles.availabilityInfo}>
+              <Text style={[styles.availabilityLabel, { color: colors.textSecondary }]}>This quiz will be available in between:</Text>
+              <Text style={[styles.availabilityTime, { color: colors.primary }]}>{availabilityMessage.startTime}</Text>
+              <Text style={[styles.availabilityLabel, { color: colors.textSecondary }]}>and</Text>
+              <Text style={[styles.availabilityTime, { color: colors.primary }]}>{availabilityMessage.endTime}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: colors.primary }]}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={20} color="#fff" />
+              <Text style={styles.backButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1043,7 +1096,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                 onPress={handleSubmitQuiz}
                 disabled={submitting}
               >
-                {submitting ? <ActivityIndicator size="small" color="#fff" /> : (
+                {submitting ? <LoadingSpinner size={20} /> : (
                   <>
                     <Ionicons name="checkmark-done" size={20} color="#fff" />
                     <Text style={[styles.navButtonText, { color: '#fff' }]}>Verify Answers</Text>
@@ -1074,6 +1127,17 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           shareUrl={shareUrl}
         />
       )}
+
+      {/* Regeneration Loading Overlay */}
+      {isRegenerating && (
+        <View style={styles.regeneratingOverlay}>
+          <View style={styles.regeneratingContent}>
+            <LoadingSpinner size={60} />
+            <Text style={[styles.regeneratingText, { color: colors.text }]}>Regenerating Assessment...</Text>
+            <Text style={[styles.regeneratingSubtext, { color: colors.textSecondary }]}>Creating new questions</Text>
+          </View>
+        </View>
+      )}
     </View>
     </View>
   );
@@ -1081,6 +1145,61 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  notAvailableContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  notAvailableCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    maxWidth: 500,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  clockIcon: {
+    marginBottom: 24,
+  },
+  notAvailableTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  availabilityInfo: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  availabilityLabel: {
+    fontSize: 16,
+    marginVertical: 4,
+    textAlign: 'center',
+  },
+  availabilityTime: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginVertical: 4,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   contentWrapper: {
     flex: 1,
     width: '100%',
@@ -1244,7 +1363,6 @@ const styles = StyleSheet.create({
   },
   header: { padding: 8, borderBottomWidth: 1 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  backButton: { padding: 4, marginRight: 8 },
   headerTitle: { fontSize: 18, fontWeight: '600', flex: 1 },
   timerBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16, gap: 4 },
   timerText: { fontSize: 14, fontWeight: '600', color: '#fff' },
@@ -1344,5 +1462,29 @@ const styles = StyleSheet.create({
   },
   questionDotTextUnanswered: {
     color: '#FF9800',
+  },
+  regeneratingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  regeneratingContent: {
+    alignItems: 'center',
+    padding: 24,
+  },
+  regeneratingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  regeneratingSubtext: {
+    fontSize: 14,
+    marginTop: 8,
   },
 });

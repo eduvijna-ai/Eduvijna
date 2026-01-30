@@ -4,9 +4,9 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
 } from 'react-native';
 import MathRenderer from './MathRenderer';
+import LoadingSpinner from './LoadingSpinner';
 import { getQuizExplanation } from '../core/services/sharedApi';
 
 // Types for the API request and response
@@ -138,7 +138,7 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
       >
         {isLoading ? (
           <>
-            <ActivityIndicator size={20} color={colors.primary} />
+            <LoadingSpinner size={20} />
             <Text style={styles.buttonText}>Loading Explanation...</Text>
           </>
         ) : (

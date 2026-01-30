@@ -9,9 +9,9 @@ import {
   ScrollView,
   Dimensions,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient } from '@core/api/config';
@@ -231,7 +231,7 @@ export default function Notifications({ navigation, onNavigate }: Props) {
   if (loading && !refreshing) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <LoadingSpinner size={60} />
         <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading notifications...</Text>
       </View>
     );

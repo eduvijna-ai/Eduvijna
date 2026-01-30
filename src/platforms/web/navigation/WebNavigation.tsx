@@ -103,13 +103,16 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     <View style={styles.container}>
       {/* Sidebar */}
       <View style={styles.sidebar}>
-        <View style={styles.logo}>
+        <TouchableOpacity 
+          style={styles.logo}
+          onPress={() => onNavigate('dashboard')}
+        >
           <Image 
             source={require('../../../../assets/eduvijna_logo_sidebar_white.png')} 
             style={styles.logoImage}
             resizeMode="contain"
           />
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.nav}>
           <NavItem
@@ -125,7 +128,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
           <NavItem
             title="Analytics"
             active={activeScreen === 'analytics'}
-            onPress={() => onNavigate('analytics')}
+            onPress={() => onNavigate('ClassesList')}
           />
           {/* <NavItem
             title="Theme"

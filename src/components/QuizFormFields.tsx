@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from './LoadingSpinner';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '@context/ThemeContext';
 import { useDropdowns } from '../context/DropdownContext';
+import { searchDropdown } from '../core/services/dropdown';
 
 // Define interfaces for dropdown items
 export interface ClassItem {
@@ -151,6 +152,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showDifficultyModal, setShowDifficultyModal] = useState(false);
   const [showQuestionCountModal, setShowQuestionCountModal] = useState(false);
+  const [isSearchingClasses, setIsSearchingClasses] = useState(false);
+  const [isSearchingSubjects, setIsSearchingSubjects] = useState(false);
+
+  // Debounce timers
+  const classSearchTimer = useRef<NodeJS.Timeout | null>(null);
+  const subjectSearchTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize filtered lists when data changes
   useEffect(() => {
@@ -161,37 +168,143 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     setFilteredSubjects(subjects);
   }, [subjects]);
 
-  // Handle class search (local filtering)
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (classSearchTimer.current) clearTimeout(classSearchTimer.current);
+      if (subjectSearchTimer.current) clearTimeout(subjectSearchTimer.current);
+    };
+  }, []);
+
+  // Handle class search with debounce
   const handleClassSearch = useCallback((query: string) => {
     setClassSearchQuery(query);
     
-    if (query.length === 0) {
-      setFilteredClasses(classes);
+    // Clear existing timer
+    if (classSearchTimer.current) {
+      clearTimeout(classSearchTimer.current);
+    }
+    
+    // If less than 3 characters, show all classes (local filter)
+    if (query.length < 3) {
+      let filtered = classes.filter((c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        c.label?.toLowerCase().includes(query.toLowerCase()) ||
+        c.value?.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      // Always include the currently selected class, even if it doesn't match the search
+      if (classValue) {
+        const selectedClass = classes.find(c => c.id === classValue);
+        if (selectedClass && !filtered.find(c => c.id === classValue)) {
+          filtered = [selectedClass, ...filtered];
+        }
+      }
+      
+      setFilteredClasses(filtered);
+      setIsSearchingClasses(false);
       return;
     }
     
-    const filtered = classes.filter((c) =>
-      c.name.toLowerCase().includes(query.toLowerCase()) ||
-      c.label?.toLowerCase().includes(query.toLowerCase())
-    );
-    setFilteredClasses(filtered);
+    // Set searching state
+    setIsSearchingClasses(true);
+    
+    // Debounce API search - wait 300ms after user stops typing
+    classSearchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchDropdown('classes', query, 10);
+        
+        // Always include the currently selected class, even if it's not in search results
+        let finalResults = [...results];
+        if (classValue) {
+          const selectedClass = classes.find(c => c.id === classValue);
+          if (selectedClass && !finalResults.find(c => c.id === classValue)) {
+            finalResults = [selectedClass, ...finalResults];
+          }
+        }
+        
+        setFilteredClasses(finalResults);
+      } catch (error) {
+        console.error('Error searching classes:', error);
+        setFilteredClasses(classes); // Fallback to all classes
+      } finally {
+        setIsSearchingClasses(false);
+      }
+    }, 300);
   }, [classes]);
 
-  // Handle subject search (local filtering)
+  // Handle subject search with debounce
   const handleSubjectSearch = useCallback((query: string) => {
     setSubjectSearchQuery(query);
     
-    if (query.length === 0) {
-      setFilteredSubjects(subjects);
+    // Clear existing timer
+    if (subjectSearchTimer.current) {
+      clearTimeout(subjectSearchTimer.current);
+    }
+    
+    // If less than 3 characters, show all subjects (local filter)
+    if (query.length < 3) {
+      let filtered = subjects.filter((s) =>
+        s.name.toLowerCase().includes(query.toLowerCase()) ||
+        s.label?.toLowerCase().includes(query.toLowerCase()) ||
+        s.value?.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      // Always include the currently selected subject, even if it doesn't match the search
+      if (subjectValue) {
+        const selectedSubject = subjects.find(s => s.id === subjectValue);
+        if (selectedSubject && !filtered.find(s => s.id === subjectValue)) {
+          filtered = [selectedSubject, ...filtered];
+        }
+      }
+      
+      setFilteredSubjects(filtered);
+      setIsSearchingSubjects(false);
       return;
     }
     
-    const filtered = subjects.filter((s) =>
-      s.name.toLowerCase().includes(query.toLowerCase()) ||
-      s.label?.toLowerCase().includes(query.toLowerCase())
-    );
-    setFilteredSubjects(filtered);
+    // Set searching state
+    setIsSearchingSubjects(true);
+    
+    // Debounce API search - wait 300ms after user stops typing
+    subjectSearchTimer.current = setTimeout(async () => {
+      try {
+        const results = await searchDropdown('subjects', query, 10);
+        
+        // Always include the currently selected subject, even if it's not in search results
+        let finalResults = [...results];
+        if (subjectValue) {
+          const selectedSubject = subjects.find(s => s.id === subjectValue);
+          if (selectedSubject && !finalResults.find(s => s.id === subjectValue)) {
+            finalResults = [selectedSubject, ...finalResults];
+          }
+        }
+        
+        setFilteredSubjects(finalResults);
+      } catch (error) {
+        console.error('Error searching subjects:', error);
+        setFilteredSubjects(subjects); // Fallback to all subjects
+      } finally {
+        setIsSearchingSubjects(false);
+      }
+    }, 300);
   }, [subjects]);
+
+  // Search functionality for classes and subjects (API-based for longer queries)
+  const handleSearch = useCallback(async (type: 'classes' | 'subjects', query: string) => {
+    try {
+      if (query.length < 3) return;
+
+      const results = await searchDropdown(type, query, 10);
+      if (type === 'classes') {
+        setFilteredClasses(results);
+      } else if (type === 'subjects') {
+        setFilteredSubjects(results);
+      }
+    } catch (error) {
+      console.error(`Error searching ${type}:`, error);
+    }
+  }, []);
 
   // Handle class selection from modal
   const handleClassSelect = useCallback((item: ClassItem) => {
@@ -211,13 +324,23 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
   // Get selected class name
   const getSelectedClassName = () => {
-    const selected = classes.find(c => c.id === classValue);
+    // First check in filteredClasses (includes search results)
+    let selected = filteredClasses.find(c => c.id === classValue);
+    // Fallback to classes prop if not found
+    if (!selected) {
+      selected = classes.find(c => c.id === classValue);
+    }
     return selected?.name || 'Select a class...';
   };
 
   // Get selected subject name
   const getSelectedSubjectName = () => {
-    const selected = subjects.find(s => s.id === subjectValue);
+    // First check in filteredSubjects (includes search results)
+    let selected = filteredSubjects.find(s => s.id === subjectValue);
+    // Fallback to subjects prop if not found
+    if (!selected) {
+      selected = subjects.find(s => s.id === subjectValue);
+    }
     return selected?.name || 'Select a subject...';
   };
 
@@ -243,7 +366,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
           {classError ? <Text style={styles.errorText}>{classError}</Text> : null}
           {isLoadingClasses ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <LoadingSpinner size={20} />
               <Text style={styles.loadingText}>Loading classes...</Text>
             </View>
           ) : (
@@ -307,6 +430,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
                 placeholderTextColor={colors.placeholder}
               />
 
+              {isSearchingClasses && (
+                <View style={styles.searchLoader}>
+                  <LoadingSpinner size={20} />
+                </View>
+              )}
+
               <ScrollView style={styles.optionsList}>
                 {filteredClasses.map((cls) => (
                   <TouchableOpacity
@@ -346,7 +475,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
           {subjectError ? <Text style={styles.errorText}>{subjectError}</Text> : null}
           {isLoadingSubjects ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <LoadingSpinner size={20} />
               <Text style={styles.loadingText}>Loading subjects...</Text>
             </View>
           ) : (
@@ -410,6 +539,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
                 placeholderTextColor={colors.placeholder}
               />
 
+              {isSearchingSubjects && (
+                <View style={styles.searchLoader}>
+                  <LoadingSpinner size={20} />
+                </View>
+              )}
+
               <ScrollView style={styles.optionsList}>
                 {filteredSubjects.map((subj) => (
                   <TouchableOpacity
@@ -448,7 +583,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
           <Text style={styles.label}>Student Level *</Text>
           {isLoadingStudentLevels ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <LoadingSpinner size={20} />
               <Text style={styles.loadingText}>Loading levels...</Text>
             </View>
           ) : (
@@ -807,6 +942,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderColor: colors.border,
     fontSize: 14,
     color: colors.text,
+  },
+  searchLoader: {
+    marginHorizontal: 16,
+    marginBottom: 8,
   },
   optionsList: {
     maxHeight: 400,

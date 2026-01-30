@@ -407,6 +407,47 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
 
         const data = await response.json();
         
+        // Parse the attempts field which contains student data as JSON string
+        if (data.data && Array.isArray(data.data)) {
+          data.data = data.data.map((classroom: any) => {
+            let students: any[] = [];
+            
+            // Parse attempts JSON string to get student list
+            if (classroom.attempts) {
+              try {
+                const parsedAttempts = typeof classroom.attempts === 'string' 
+                  ? JSON.parse(classroom.attempts) 
+                  : classroom.attempts;
+                
+                // Map student data to consistent format
+                students = parsedAttempts.map((student: any) => ({
+                  id: student.student_id, // Use student_id as id
+                  user_id: student.student_id,
+                  student_id: student.student_id,
+                  fullname: student.student_fullname,
+                  username: student.student_username,
+                  email: student.email,
+                  phone: student.phone,
+                  status: student.status,
+                  role: student.role,
+                  avatar_url: student.avatar_url,
+                  last_login: student.last_login,
+                  dob: student.dob,
+                }));
+              } catch (parseError) {
+                console.error('Failed to parse classroom students:', parseError);
+                students = [];
+              }
+            }
+            
+            return {
+              ...classroom,
+              students: students,
+              student_count: classroom.total_count || students.length,
+            };
+          });
+        }
+        
         return data;
       } catch (error) {
         console.error('Error fetching teacher classrooms:', error);

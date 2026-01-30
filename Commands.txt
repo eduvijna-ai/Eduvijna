@@ -1,0 +1,231 @@
+📘 EXPO + ANDROID + FIREBASE FCM – COMPLETE SETUP & RECOVERY NOTE
+
+Project: Eduvijna
+Workflow: Expo (dev build / bare) + Android + Firebase Push
+
+🔹 1️⃣ SYSTEM REQUIREMENTS (MANDATORY)
+✅ Java (ONLY Java 17)
+java --version
+
+
+Must show:
+
+openjdk 17.x
+
+✅ Set Java for Gradle (CRITICAL)
+
+android/gradle.properties
+
+org.gradle.java.home=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot
+
+
+⚠️ This avoids Gradle silently using Java 11.
+
+🔹 2️⃣ ROOT ANDROID BUILD CONFIG
+📄 android/build.gradle
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 35
+        targetSdkVersion = 34
+        kotlinVersion = "1.9.25"
+
+        // REQUIRED for Expo autolinking
+        kspVersion = "2.0.21-1.0.28"
+
+        ndkVersion = "26.1.10909125"
+    }
+
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+
+        // 🔥 Firebase
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+apply plugin: "expo-root-project"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url "https://www.jitpack.io" }
+    }
+}
+
+🔹 3️⃣ APP MODULE CONFIG (ANDROID)
+📄 android/app/build.gradle
+🔹 Apply plugins (TOP or bottom – but ONCE)
+apply plugin: "com.android.application"
+apply plugin: "com.google.gms.google-services"
+
+🔹 Firebase dependencies
+dependencies {
+    implementation platform("com.google.firebase:firebase-bom:33.1.2")
+    implementation "com.google.firebase:firebase-messaging"
+}
+
+🔹 4️⃣ FIREBASE FILE (CRITICAL)
+✅ Correct location (NO alternatives)
+android/app/google-services.json
+
+
+Verify:
+
+dir android\app\google-services.json
+
+
+❌ Not in root
+❌ Not in android/
+❌ Not in backend
+
+🔹 5️⃣ EXPO PUSH (FCM TOKEN – FRONTEND)
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+
+export async function getFCMToken() {
+  if (!Device.isDevice) {
+    throw new Error("Must use physical device");
+  }
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== "granted") {
+    throw new Error("Permission denied");
+  }
+
+  const token = (await Notifications.getDevicePushTokenAsync()).data;
+  return token; // 🔥 FCM token
+}
+
+
+✔ Send this token to backend
+✔ Backend uses Firebase Admin SDK
+
+🔹 6️⃣ PATCH-PACKAGE (EXPO AUTOLINKING FIX)
+📄 package.json
+{
+  "scripts": {
+    "postinstall": "patch-package"
+  }
+}
+
+📁 Must exist
+patches/
+└─ expo-modules-autolinking+*.patch
+
+
+✔ Survives npm install
+✔ Survives expo prebuild --clean
+
+🔹 7️⃣ GIT IGNORE (SAFE & REQUIRED)
+📄 .gitignore
+# Android build outputs
+android/build/
+android/app/build/
+
+# Gradle
+.gradle/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.DS_Store
+
+
+❗ Ignoring build folders does NOT remove patches or code.
+
+🔹 8️⃣ FULL CLEAN & RECOVERY COMMANDS (COPY-PASTE)
+🧹 Clean everything
+adb kill-server
+adb start-server
+npx expo prebuild --clean
+cd android
+.\gradlew clean
+cd ..
+
+🔄 Reinstall dependencies (patch auto-applied)
+rd /s /q node_modules
+del package-lock.json
+npm install
+
+📱 Device reset (if install fails)
+adb uninstall com.eduvijna.app
+adb kill-server
+adb start-server
+adb devices
+
+🚀 Rebuild & install
+npx expo run:android
+
+🔹 9️⃣ FCM DEBUG COMMANDS
+adb logcat | findstr Firebase
+
+
+Expected:
+
+FirebaseApp initialization successful
+FirebaseMessaging: token=XXXX
+
+🔹 🔟 NUCLEAR FIX (GUARANTEED)
+adb emu kill
+
+
+Then:
+
+Restart emulator
+
+Run:
+
+npx expo run:android
+
+🟢 FINAL CHECKLIST (BEFORE COMMIT)
+
+✔ Java 17
+✔ org.gradle.java.home set
+✔ google-services.json in correct place
+✔ Firebase dependencies added
+✔ Patch files committed
+✔ Build folders ignored
+
+🧾 ONE-LINE QUICK FIX (MOST CASES)
+adb uninstall com.eduvijna.app && npx expo prebuild --clean && npx expo run:android
+
+🏁 DONE
+
+This note now covers 100% of the issues you faced:
+
+Expo autolinking bug
+
+Java 11 vs 17
+
+Gradle plugin conflicts
+
+Firebase initialization
+
+FCM token generation
+
+Emulator/device issues
+
+Patch persistence
+
+If you want, next I can:
+
+Review backend FCM payload
+
+Add topic-based notifications (classroom wise)
+
+Prepare Play Store AAB release
+
+Just say 👍

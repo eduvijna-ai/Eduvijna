@@ -17,6 +17,7 @@ import { useAuth } from '@core/hooks/useAuth';
 import { apiClient } from '@core/api/config';
 import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
+import { getAccessToken } from '@core/services/tokenStorage';
 
 interface QuizQuestion {
   question: string;
@@ -55,7 +56,8 @@ interface ShareQuizModalProps {
 interface Classroom {
   classroom_id: string;
   classroom_name: string;
-  student_count: number;
+  //student_count: number;
+  total_count?: number;
   students?: any[];
 }
 
@@ -178,11 +180,19 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         // Use dashboardApi service to fetch classrooms
         const response = await fetchTeacherClassrooms();
         const classroomList = response.data || [];
-        // Ensure each classroom has student_count property
+        console.log('📚 Fetched classrooms:', classroomList.map((c: any) => ({
+          id: c.classroom_id,
+          name: c.classroom_name,
+          total_count: c.total_count,
+          student_count: c.student_count,
+          students_length: c.students?.length || 0,
+        })));
+        
+        // Classrooms already have parsed students from fetchTeacherClassrooms
         const normalizedClassrooms: Classroom[] = classroomList.map((c: any) => ({
           classroom_id: c.classroom_id,
           classroom_name: c.classroom_name,
-          student_count: c.student_count || 0,
+          total_count: c.total_count || c.student_count || c.students?.length || 0,
           students: c.students || [],
         }));
         setClassrooms(normalizedClassrooms);
@@ -210,9 +220,9 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
       Alert.alert('Validation Error', 'Quiz topic is required');
       return;
     }
-    // Classroom is mandatory for public quizzes
-    if (user.role !== 'student' && isPublic && classrooms.length > 0 && !selectedClassroom) {
-      Alert.alert('Validation Error', 'Please select a classroom for public quiz');
+    // Classroom is optional for public quizzes and students
+    if (user.role !== 'student' && !isPublic && classrooms.length > 0 && !selectedClassroom) {
+      Alert.alert('Validation Error', 'Please select a classroom');
       return;
     }
     if (!summary.trim()) {
@@ -258,7 +268,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
       const shareData = {
         topic: topic.trim(),
         file_name: fileName,
-        classroom_id: selectedClassroom,
+        classroom_id: selectedClassroom || null,
         instructor_id: user.id,
         instructor_name: user.name || user.username || 'Instructor',
         quiz_id: null,
@@ -282,8 +292,8 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
       const response = await apiClient.post('/api/v1/sharequiz', shareData);
       const responseData = response.data;
 
-      // Step 2 & 3: Only create assignments and classroom quizzes if quiz is NOT public
-      if (!isPublic && responseData.quiz_id && responseData.classroom_id) {
+      // Step 2 & 3: Only create assignments and classroom quizzes if classroom is selected
+      if (responseData.quiz_id && responseData.classroom_id) {
         try {
           // Step 2: Create quiz assignment using response data
           const assignmentData = {
@@ -384,6 +394,166 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
           //   console.error('Error sending WhatsApp notifications (non-critical):', whatsappError);
           //   // Don't fail the entire process if WhatsApp fails
           // }
+
+          // Step 6: Send Push Notifications to Students
+          try {
+            console.log('📤 Sending push notifications to classroom students...');
+            
+            
+            // Get the classroom to find student IDs
+            let classroom = classrooms.find(c => c.classroom_id === classroomQuizData.classroom_id);
+            console.log('🎯 Selected classroom:', {
+              found: !!classroom,
+              classroom_id: classroom?.classroom_id,
+              classroom_name: classroom?.classroom_name,
+              total_count: classroom?.total_count,
+              has_students_array: !!classroom?.students,
+              students_length: classroom?.students?.length || 0
+            });
+            
+            // If classroom found but no students array, fetch fresh data
+            if (classroom && (!classroom.students || classroom.students.length === 0)) {
+              console.log('⚠️ No students in cached classroom, fetching fresh data...');
+              try {
+                const token = await getAccessToken();
+                if (token) {
+                  const freshResponse = await fetch(
+                    `https://api.eduvijna.com/api/v1/dashboard/quizzes?view_type=class_wise_students&classroom_id=${responseData.classroom_id}`,
+                    {
+                      method: 'GET',
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                      },
+                    }
+                  );
+                  
+                  if (freshResponse.ok) {
+                    const freshData = await freshResponse.json();
+                    console.log('📥 Fresh classroom data:', JSON.stringify(freshData, null, 2));
+                    
+                    // Extract and parse classroom with students from response
+                    if (freshData.data && freshData.data.length > 0) {
+                      const rawClassroom = freshData.data[0];
+                      
+                      // Parse the attempts field which contains student data as JSON string
+                      let students: any[] = [];
+                      if (rawClassroom.attempts) {
+                        try {
+                          const parsedAttempts = typeof rawClassroom.attempts === 'string' 
+                            ? JSON.parse(rawClassroom.attempts) 
+                            : rawClassroom.attempts;
+                          
+                          // Map student data to consistent format
+                          students = parsedAttempts.map((student: any) => ({
+                            id: student.student_id,
+                            user_id: student.student_id,
+                            student_id: student.student_id,
+                            fullname: student.student_fullname,
+                            username: student.student_username,
+                            email: student.email,
+                            phone: student.phone,
+                            status: student.status,
+                          }));
+                          
+                          console.log('✅ Parsed students from fresh data:', students.length);
+                        } catch (parseError) {
+                          console.error('❌ Failed to parse attempts:', parseError);
+                        }
+                      }
+                      
+                      classroom = {
+                        classroom_id: rawClassroom.classroom_id,
+                        classroom_name: rawClassroom.classroom_name,
+                        total_count: rawClassroom.total_count || students.length,
+                        students: students,
+                      };
+                      
+                      console.log('✅ Updated classroom with fresh data:', {
+                        total_count: classroom?.total_count,
+                        students_length: classroom?.students?.length || 0
+                      });
+                    }
+                  }
+                }
+              } catch (fetchError) {
+                console.error('⚠️ Failed to fetch fresh classroom data:', fetchError);
+              }
+            }
+            
+            if (classroom && classroom.students && classroom.students.length > 0) {
+              console.log('👥 Processing students:', classroom.students);
+              
+              // Extract student IDs from classroom
+              const studentIds = classroom.students.map((student: any) => student.id || student.user_id).filter(Boolean);
+              
+              if (studentIds.length > 0) {
+                console.log(`✅ Sending push notifications to ${studentIds.length} students: ${studentIds.join(', ')}`);
+                
+                // Get auth token
+                const token = await getAccessToken();
+                
+                if (token) {
+                  const classroomName = classroom.classroom_name;
+                  const instructorName = user.name || user.username || 'Instructor';
+                  
+                  // Prepare notification payload
+                  const notificationPayload = {
+                    user_ids: studentIds,
+                    title: `📚 New Quiz: ${responseData.topic || topic.trim()}`,
+                    body: `${instructorName} has assigned a new quiz in ${classroomName}. Tap to start!`,
+                    priority: 'high',
+                    data: {
+                      type: 'QUIZ_ASSIGNED',
+                      quiz_id: String(responseData.quiz_id),
+                      classroom_id: responseData.classroom_id,
+                      session_id: responseData.session_id,
+                      screen: 'QuizTakingScreen',
+                      quizId: String(responseData.quiz_id),
+                      sessionId: responseData.session_id,
+                      classroomId: responseData.classroom_id,
+                    },
+                  };
+                  
+                  console.log('📤 Notification payload:', JSON.stringify(notificationPayload, null, 2));
+                  
+                  // Send push notification via backend API
+                  const notificationResponse = await fetch('https://api.eduvijna.com/api/notifications/send', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(notificationPayload),
+                  });
+                  
+                  console.log('📨 Notification response status:', notificationResponse.status);
+                  
+                  if (notificationResponse.ok) {
+                    const responseJson = await notificationResponse.json();
+                    console.log('✅ Push notifications sent successfully:', responseJson);
+                  } else {
+                    const errorText = await notificationResponse.text();
+                    console.error('⚠️ Push notification failed:', notificationResponse.status, errorText);
+                  }
+                } else {
+                  console.warn('⚠️ No auth token available for push notifications');
+                }
+              } else {
+                console.warn('⚠️ No valid student IDs found in classroom - students array:', classroom.students);
+              }
+            } else {
+              console.warn('⚠️ No students found in classroom for push notifications', {
+                classroom_exists: !!classroom,
+                classroom_id: responseData.classroom_id,
+                total_classrooms: classrooms.length,
+                classroom_ids: classrooms.map(c => c.classroom_id)
+              });
+            }
+          } catch (pushError) {
+            console.error('⚠️ Error sending push notifications (non-critical):', pushError);
+            // Don't fail the entire process if push notification fails
+          }
         } catch (assignmentError) {
           console.error('Error creating assignments/classroom-quizzes (non-critical):', assignmentError);
           // Don't fail the entire process if these optional steps fail
@@ -401,7 +571,13 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         onShareSuccess(quizUrl);
       }
       onClose();
-      Alert.alert('Success', 'Quiz shared successfully!');
+      
+      // Show appropriate success message based on whether classroom was selected
+      const successMessage = responseData.classroom_id 
+        ? 'Quiz shared successfully! Push notifications sent to students.'
+        : 'Quiz shared successfully!';
+      
+      Alert.alert('Success', successMessage);
     } catch (error: any) {
       console.error('Share Assessment error:', error);
       const errorMessage = error.response?.data?.detail 
@@ -437,8 +613,8 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Classroom {user?.role !== 'student' && isPublic && <Text style={styles.required}>*</Text>}</Text>
-              <Text style={[styles.helperText, { color: colors.textSecondary }]}>{isPublic ? 'Required for public quizzes' : 'Optional for private quizzes'}</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Classroom {!isPublic && <Text style={styles.required}>*</Text>}</Text>
+              <Text style={[styles.helperText, { color: colors.textSecondary }]}>{isPublic ? 'Optional - select to send push notifications to students' : 'Required for private quizzes'}</Text>
               <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <Picker 
                   selectedValue={selectedClassroom} 
@@ -446,7 +622,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                   style={[styles.picker, { color: colors.text }]}
                   enabled={user?.role !== 'student'}
                 >
-                  <Picker.Item label={user?.role === 'student' ? 'Not available for students' : (isPublic ? 'Select a classroom (Required)' : 'Select a classroom (Optional)')} value="" />
+                  <Picker.Item label={user?.role === 'student' ? 'Not available for students' : (isPublic ? 'Select a classroom (Optional)' : 'Select a classroom (Required)')} value="" />
                   {classrooms.map((classroom) => (
                     <Picker.Item key={classroom.classroom_id} label={classroom.classroom_name} value={classroom.classroom_id} />
                   ))}

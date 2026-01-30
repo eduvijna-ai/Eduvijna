@@ -7,14 +7,14 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  ActivityIndicator,
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { generateAIQuiz } from '../core/services/sharedApi';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
+import { useDropdowns } from '../context/DropdownContext';
 import { apiClient } from '../core/api/config';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
@@ -33,6 +33,7 @@ interface YouTubeSummary {
 export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
@@ -52,62 +53,10 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const [level, setLevel] = useState('basic');
   const [subject, setSubject] = useState('');
   const [classValue, setClassValue] = useState('');
-  
-  // Dropdown data from API
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
-  const [classError, setClassError] = useState('');
-  const [subjectError, setSubjectError] = useState('');
-
-  const levels = ['basic', 'intermediate', 'advanced'];
 
   useEffect(() => {
     loadRecentSummaries();
-    loadClasses();
-    loadSubjects();
   }, []);
-
-  const loadClasses = async () => {
-    setIsLoadingClasses(true);
-    setClassError('');
-    try {
-      const response = await getClasses();
-      //console.log('Classes loaded:', response.items.length, 'items');
-      setClasses(response.items);
-      // Set first class as default if available
-      if (response.items.length > 0 && !classValue) {
-        console.log('Setting default class:', response.items[0].id);
-        setClassValue(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-      setClassError('Failed to load classes. Using default values.');
-    } finally {
-      setIsLoadingClasses(false);
-    }
-  };
-
-  const loadSubjects = async () => {
-    setIsLoadingSubjects(true);
-    setSubjectError('');
-    try {
-      const response = await getSubjects();
-      console.log('Subjects loaded:', response.items.length, 'items');
-      setSubjects(response.items);
-      // Set first subject as default if available
-      if (response.items.length > 0 && !subject) {
-        console.log('Setting default subject:', response.items[0].id);
-        setSubject(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
-      setSubjectError('Failed to load subjects. Using default values.');
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
 
   const loadRecentSummaries = async () => {
     setIsLoadingSummaries(true);
@@ -365,7 +314,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             disabled={isLoadingVideo}
           >
             {isLoadingVideo ? (
-              <ActivityIndicator size={20} />
+              <LoadingSpinner size={20} />
             ) : (
               <Text style={styles.generateButtonText}>🔍 Analyze Video</Text>
             )}
@@ -379,7 +328,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
               
               {isLoadingSummaries ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size={30} />
+                  <LoadingSpinner size={30} />
                   <Text style={styles.loadingText}>Loading recent summaries...</Text>
                 </View>
               ) : (
@@ -423,16 +372,10 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             showClass={true}
             classValue={classValue}
             onClassChange={setClassValue}
-            classes={classes}
-            isLoadingClasses={isLoadingClasses}
-            classError={classError}
             
             showSubject={true}
             subjectValue={subject}
             onSubjectChange={setSubject}
-            subjects={subjects}
-            isLoadingSubjects={isLoadingSubjects}
-            subjectError={subjectError}
             
             showLesson={true}
             lessonValue={lesson}
@@ -443,7 +386,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             showDifficultyLevel={true}
             difficultyValue={level}
             onDifficultyChange={setLevel}
-            difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
             
             showQuestionCount={true}
             questionCountValue={String(quizQuestionCount)}
@@ -460,7 +402,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             disabled={isGenerating}
           >
             {isGenerating ? (
-              <ActivityIndicator size={20} />
+              <LoadingSpinner size={20} />
             ) : (
               <Text style={styles.generateButtonText}>🚀 Generate Quiz</Text>
             )}

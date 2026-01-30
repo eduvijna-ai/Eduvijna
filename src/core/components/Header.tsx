@@ -116,11 +116,16 @@ export default function Header({
     <View style={styles.container}>
       {/* Logo and Name */}
       <View style={styles.logoSection}>
-        <Image 
-          source={require('../../../assets/eduvijna_logo_sidebar.png')} 
+        <TouchableOpacity 
           style={styles.logo}
-          resizeMode="contain"
-        />
+          onPress={() => onNavigate && onNavigate('Dashboard')}
+        >
+          <Image 
+            source={require('../../../assets/eduvijna_logo_sidebar.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Create Button (Teachers Only) */}

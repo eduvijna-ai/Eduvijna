@@ -7,21 +7,22 @@ import {
   ScrollView,
   Alert,
   Image,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import LoadingSpinner from '../components/LoadingSpinner';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@context/ThemeContext';
 import { generateQuizFromImage } from '../core/services/quizzes';
 import { generateAIQuiz } from '../core/services/sharedApi';
-import { getClasses, getSubjects, ClassItem, SubjectItem } from '../core/services/dropdown';
 import QuizFormFields from '../components/QuizFormFields';
+import { useDropdowns } from '../context/DropdownContext';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
 
 export default function CreateImageQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
@@ -39,62 +40,10 @@ export default function CreateImageQuizScreen({ navigation }: any) {
   const [level, setLevel] = useState('basic');
   const [subject, setSubject] = useState('');
   const [classValue, setClassValue] = useState('');
-  
-  // Dropdown data from API
-  const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [isLoadingClasses, setIsLoadingClasses] = useState(false);
-  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
-  const [classError, setClassError] = useState('');
-  const [subjectError, setSubjectError] = useState('');
-
-  const levels = ['basic', 'intermediate', 'advanced'];
 
   useEffect(() => {
     requestPermissions();
-    loadClasses();
-    loadSubjects();
   }, []);
-
-  const loadClasses = async () => {
-    setIsLoadingClasses(true);
-    setClassError('');
-    try {
-      const response = await getClasses();
-      //console.log('Classes loaded:', response.items.length, 'items');
-      setClasses(response.items);
-      // Set first class as default if available
-      if (response.items.length > 0 && !classValue) {
-        console.log('Setting default class:', response.items[0].id);
-        setClassValue(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-      setClassError('Failed to load classes. Using default values.');
-    } finally {
-      setIsLoadingClasses(false);
-    }
-  };
-
-  const loadSubjects = async () => {
-    setIsLoadingSubjects(true);
-    setSubjectError('');
-    try {
-      const response = await getSubjects();
-      console.log('Subjects loaded:', response.items.length, 'items');
-      setSubjects(response.items);
-      // Set first subject as default if available
-      if (response.items.length > 0 && !subject) {
-        console.log('Setting default subject:', response.items[0].id);
-        setSubject(response.items[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load subjects:', error);
-      setSubjectError('Failed to load subjects. Using default values.');
-    } finally {
-      setIsLoadingSubjects(false);
-    }
-  };
 
   const requestPermissions = async () => {
     const media = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -400,7 +349,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               <View style={styles.statusContainer}>
                 {isValidating && (
                   <View style={styles.statusRow}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
+                    <LoadingSpinner size={60} />
                     <Text style={styles.statusText}>Validating image...</Text>
                   </View>
                 )}
@@ -419,7 +368,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
             {isGenerating && (
               <View style={styles.statusContainer}>
                 <View style={styles.statusRow}>
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                  <LoadingSpinner size={20} />
                   <Text style={styles.statusText}>Generating quiz...</Text>
                 </View>
               </View>
@@ -522,16 +471,10 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               showClass={true}
               classValue={classValue}
               onClassChange={setClassValue}
-              classes={classes}
-              isLoadingClasses={isLoadingClasses}
-              classError={classError}
               
               showSubject={true}
               subjectValue={subject}
               onSubjectChange={setSubject}
-              subjects={subjects}
-              isLoadingSubjects={isLoadingSubjects}
-              subjectError={subjectError}
               
               showLesson={true}
               lessonValue={lesson}
@@ -542,7 +485,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               showDifficultyLevel={true}
               difficultyValue={level}
               onDifficultyChange={setLevel}
-              difficultyLevels={levels.map(l => ({ id: l, name: l.charAt(0).toUpperCase() + l.slice(1) }))}
               
               showQuestionCount={true}
               questionCountValue={String(quizQuestionCount)}
@@ -570,7 +512,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               disabled={isGenerating}
             >
               {isGenerating ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <LoadingSpinner size={20} />
               ) : (
                 <Text style={styles.generateButtonText}>🧠 Generate {quizQuestionCount} Questions</Text>
               )}
