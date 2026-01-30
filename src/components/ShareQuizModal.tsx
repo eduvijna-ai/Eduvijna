@@ -14,7 +14,7 @@ import {Picker} from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
-import { apiClient } from '@core/api/config';
+import { apiClient, API_BASE_URL } from '@core/api/config';
 import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
 import { getAccessToken } from '@core/services/tokenStorage';
@@ -418,7 +418,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                 const token = await getAccessToken();
                 if (token) {
                   const freshResponse = await fetch(
-                    `https://api.eduvijna.com/api/v1/dashboard/quizzes?view_type=class_wise_students&classroom_id=${responseData.classroom_id}`,
+                    `${API_BASE_URL}/api/v1/dashboard/quizzes?view_type=class_wise_students&classroom_id=${responseData.classroom_id}`,
                     {
                       method: 'GET',
                       headers: {
@@ -518,7 +518,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                   console.log('📤 Notification payload:', JSON.stringify(notificationPayload, null, 2));
                   
                   // Send push notification via backend API
-                  const notificationResponse = await fetch('https://api.eduvijna.com/api/notifications/send', {
+                  const notificationResponse = await fetch(`${API_BASE_URL}/api/notifications/send`, {
                     method: 'POST',
                     headers: {
                       'Authorization': `Bearer ${token}`,

@@ -8,6 +8,8 @@ import type { ApiError } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
 import { initializeCache, closeCache } from '../services/cacheService';
+import Constants from "expo-constants";
+
 
 // Initialize cache service
 initializeCache().catch(error => {
@@ -15,8 +17,8 @@ initializeCache().catch(error => {
 });
 
 // Base API URL - configure via environment variables
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.eduvijna.com';
-
+//const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.eduvijna.com';
+export const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'https://api.eduvijna.com';
 /**
  * Create axios instance with default configuration
  */

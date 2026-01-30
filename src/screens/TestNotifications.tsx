@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { API_BASE_URL } from '../core/api/config';
 import * as Device from 'expo-device';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -313,7 +314,7 @@ if (Constants.appOwnership === 'expo') {
       console.log('Token:', token.substring(0, 20) + '...');
 
       // Send test notification via backend API
-      const response = await fetch('https://api.eduvijna.com/api/notifications/send', {
+      const response = await fetch(`${API_BASE_URL}/api/notifications/send`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

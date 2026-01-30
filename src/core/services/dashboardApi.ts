@@ -11,6 +11,7 @@ import {
   toStudentQuiz,
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry } from './cacheService';
+import { API_BASE_URL } from '../api/config';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -18,7 +19,7 @@ import { cachedApiCall, CACHE_TTL, clearCacheEntry } from './cacheService';
 //   mockStudentQuizzes,
 // } from './mockDashboardData';
 
-const API_BASE_URL = 'https://api.eduvijna.com/api/v1';
+const DASHBOARD_API_URL = `${API_BASE_URL}/api/v1`;
 // const USE_MOCK_DATA = false; // Set to true to use mock data
 
 // Helper to build query string from filters
@@ -138,7 +139,7 @@ export async function fetchTeacherDashboardSummary(
         }
 
         const queryString = buildQueryString(defaultFilters);
-        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+        const url = `${DASHBOARD_API_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
         const response = await fetch(url, {
           method: 'GET',
@@ -220,7 +221,7 @@ export async function fetchTeacherQuizzes(
         }
 
         const queryString = buildQueryString(defaultFilters);
-        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+        const url = `${DASHBOARD_API_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
         const response = await fetch(url, {
           method: 'GET',
@@ -301,7 +302,7 @@ export async function fetchStudentQuizzes(
         }
 
         const queryString = buildQueryString(defaultFilters);
-        const url = `${API_BASE_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
+        const url = `${DASHBOARD_API_URL}/dashboard/quizzes${queryString ? `?${queryString}` : ''}`;
 
         const response = await fetch(url, {
           method: 'GET',
@@ -386,7 +387,7 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
         }
 
         // Use class_wise_students to get classroom list with student counts
-        const url = `${API_BASE_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
+        const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
 
         const response = await fetch(url, {
           method: 'GET',
