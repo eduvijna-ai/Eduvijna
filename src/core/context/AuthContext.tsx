@@ -8,7 +8,7 @@ type User = {
   username?: string;
   email?: string;
   role: 'student' | 'instructor' | 'admin';
-  full_name?: string;
+  full_name?: string | null;
 } | null;
 
 type AuthContextValue = {

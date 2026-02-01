@@ -114,7 +114,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
   // File type constants
   const MAX_DOCUMENT_COUNT = 5;
-  const MAX_IMAGE_COUNT = 1;
+  const MAX_IMAGE_COUNT = 5; // Allow up to 5 images for camera capture
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   const allowedDocumentTypes = [
@@ -762,7 +762,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     // Create PDF file object and set as pending upload
     const pdfFile = {
       uri: pdfUri,
-      name: `captured_images_${Date.now()}.pdf`,
+      name: `captured_${Date.now()}.pdf`,
       size: 0,
       type: 'application/pdf',
     };
@@ -1687,6 +1687,9 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 onDifficultyChange={setLevel}
                 
                 showQuestionCount={false}
+                
+                additionalInstructionsValue={additionalInstructions}
+                onAdditionalInstructionsChange={setAdditionalInstructions}
               />
             </ScrollView>
 
@@ -2671,7 +2674,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(241, 243, 232, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,

@@ -118,7 +118,15 @@ export default function Header({
       <View style={styles.logoSection}>
         <TouchableOpacity 
           style={styles.logo}
-          onPress={() => onNavigate && onNavigate('Dashboard')}
+          onPress={() => {
+            if (onNavigate) {
+              // For web navigation
+              onNavigate('dashboard');
+            } else if (navigation && (navigation as any).canGoBack?.()) {
+              // For mobile navigation - just go back
+              (navigation as any).goBack();
+            }
+          }}
         >
           <Image 
             source={require('../../../assets/eduvijna_logo_sidebar.png')} 

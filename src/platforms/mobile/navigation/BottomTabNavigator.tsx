@@ -33,6 +33,8 @@ import QuizResultsScreen from '@screens/QuizResultsScreen';
 import QuizPreviewScreen from '@screens/QuizPreviewScreen';
 import StudentAnalyticsScreen from '@screens/StudentAnalyticsScreen';
 import TestNotifications from '@screens/TestNotifications';
+import QuizStatusScreen from '@screens/QuizStatusScreen';
+import QuizLoadingScreen from '@screens/QuizLoadingScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -69,7 +71,11 @@ function CustomHeader() {
         {/* Logo */}
         <TouchableOpacity 
             style={styles.logo}
-            onPress={() => navigation.navigate('Dashboard')}
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              }
+            }}
           >
           <Image 
             source={require('../../../../assets/eduvijna_logo_sidebar.png')} 
@@ -248,9 +254,21 @@ export default function MobileNavigation() {
           headerShown: true,
           presentation: 'card',
           title: 'Taking Assessment',
-          headerBackTitle: 'Back',
+          headerBackTitle: 'Dashboard',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => {
+                navigation.navigate('Main', { screen: 'Dashboard' });
+              }}
+              style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
+            </TouchableOpacity>
+          ),
           headerRight: () => (
-            <TouchableOpacity onPress={() => navigation.navigate('Dashboard')} style={{ marginRight: 16 }}>
+            <TouchableOpacity onPress={() => {
+              navigation.navigate('Main', { screen: 'Dashboard' });
+            }} style={{ marginRight: 16 }}>
               <Ionicons name="close" size={24} color="#374151" />
             </TouchableOpacity>
           ),
@@ -294,6 +312,32 @@ export default function MobileNavigation() {
           presentation: 'card',
           title: '🔔 Test Push Notifications',
           headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen 
+        name="QuizStatusScreen" 
+        component={QuizStatusScreen as any}
+        options={({ navigation }) => ({
+          headerShown: true,
+          title: 'Quiz Status',
+          headerBackTitle: 'Dashboard',
+          headerLeft: () => (
+            <TouchableOpacity 
+              onPress={() => {
+                navigation.navigate('Main', { screen: 'Dashboard' });
+              }}
+              style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
+            </TouchableOpacity>
+          ),
+        })}
+      />
+      <Stack.Screen 
+        name="QuizLoadingScreen" 
+        component={QuizLoadingScreen as any}
+        options={{
+          headerShown: false,
         }}
       />
     </Stack.Navigator>

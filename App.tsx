@@ -21,10 +21,9 @@ import {
   getInitialDeepLink,
   subscribeToDeepLinks,
   parseDeepLink,
-  DeepLinkData,
 } from './src/core/services/deepLinkService';
-import { handleAssessmentNavigation } from './src/core/services/deepLinkNavigationHandler';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
+import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -46,31 +45,44 @@ import CreateWebsiteQuizScreen from './src/screens/CreateWebsiteQuizScreen';
 import QuizPreviewScreen from './src/screens/QuizPreviewScreen';
 import QuizResultsScreen from './src/screens/QuizResultsScreen';
 import QuizTakingScreen from './src/screens/QuizTakingScreen';
+import QuizStatusScreen from './src/screens/QuizStatusScreen';
+import QuizLoadingScreen from './src/screens/QuizLoadingScreen';
 import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
 
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
-  const notificationPolling = useNotificationPolling(); // Poll for notifications via API
-  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen'>('dashboard');
+  useNotificationPolling(); // Poll for notifications via API
+  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen'>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
-  const [pendingDeepLink, setPendingDeepLink] = useState<DeepLinkData | null>(null);
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
+  const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
+  const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
+  
+  // Reset session guards when authentication state changes
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // User logged out, clear guards
+      setLastProcessedSessionId(null);
+      setLastProcessedTime(0);
+      initialDeepLinkProcessed.current = false; // Allow deep link re-processing after logout
+    } else {
+      // User just authenticated - allow pending deep link to be processed
+      // Reset the flag so post-login deep link can run
+      initialDeepLinkProcessed.current = false;
+    }
+  }, [isAuthenticated]);
   const notificationListener = useRef<any>();
   const responseListener = useRef<any>();
   const processedNotifications = useRef<Set<string>>(new Set());
+  const initialDeepLinkProcessed = useRef<boolean>(false);
 
+  
   // Platform detection
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
-  // Log notification polling status (for debugging)
-  useEffect(() => {
-    if (notificationPolling.polling) {
-      console.log('🔄 Notification polling active, last poll:', notificationPolling.lastPoll);
-    } else if (notificationPolling.error) {
-      console.error('❌ Notification polling error:', notificationPolling.error);
-    }
-  }, [notificationPolling.polling, notificationPolling.lastPoll, notificationPolling.error]);
+  // Notification polling runs in background
 
   // Initialize cache on app startup
   useEffect(() => {
@@ -103,113 +115,58 @@ function AppContent() {
   useEffect(() => {
     if (!isMobile) return;
 
-    console.log('🔔 Setting up notification listeners...');
-
     // Listen for notifications received while app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📬 Notification received in foreground:', notification);
+    notificationListener.current = Notifications.addNotificationReceivedListener(_notification => {
       // Notification will auto-display due to setNotificationHandler in PushNotificationService
     });
 
     // Listen for user tapping on notifications
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(async response => {
       const notificationId = response.notification.request.identifier;
+      const data = response.notification.request.content.data;
+      console.log('🔔 Notification response received:', {
+        notificationId,
+        data,
+      });
       
       // Prevent processing the same notification multiple times
       if (processedNotifications.current.has(notificationId)) {
-        console.log('⏭️ Notification already processed, skipping:', notificationId);
         return;
       }
       
-      console.log('👆 User tapped notification:', response);
+      // Extract sessionId first
+      const sessionId = data?.sessionId || data?.session_id;
+      
+      // Debugging: Log entire notification data
+      console.log('🔍 Full notification data:', data);
+      console.log('🔍 Extracted sessionId:', sessionId);
+
+      // Handle missing sessionId
+      if (!sessionId) {
+        console.log('❌ No sessionId found in notification data');
+        Alert.alert('Error', 'Notification data is incomplete. Please try again.');
+        processedNotifications.current.add(notificationId);
+        return;
+      }
+
+      // Check authentication
+      if (!isAuthenticated) {
+        console.log('🔒 User not authenticated, saving sessionId for post-login');
+        setPendingSessionId(sessionId);
+        processedNotifications.current.add(notificationId);
+        return;
+      }
+
+      // Use centralized handler for notification processing
       processedNotifications.current.add(notificationId);
-      
-      // Clear old processed notifications (keep only last 50)
-      if (processedNotifications.current.size > 50) {
-        const entries = Array.from(processedNotifications.current);
-        processedNotifications.current = new Set(entries.slice(-50));
-      }
-      
-      // Handle notification tap - navigate to relevant screen
-      const data = response.notification.request.content.data;
-      const notificationBody = response.notification.request.content.body || '';
-      
-      if (data?.assessmentId && navigationRef.current) {
-        console.log('🔗 Navigating to assessment:', data.assessmentId);
-        const userRole = (user?.role === 'instructor' || user?.role === 'admin') ? 'instructor' : 'student';
-        
-        const deepLinkData: DeepLinkData = {
-          type: 'assessment',
-          assessmentId: data.assessmentId,
-          sessionId: data.sessionId,
-        };
-        
-        // Create navigation handler wrapper
-        const navHandler = {
-          navigate: (screen: string, params?: any) => {
-            if (navigationRef.current) {
-              (navigationRef.current as any).navigate(screen, params);
-            }
-          },
-          goBack: () => {
-            if (navigationRef.current) {
-              navigationRef.current.goBack();
-            }
+      await handleOpenQuiz(sessionId, 'notification', user, {
+        navigate: (screen, params) => {
+          if (navigationRef.current) {
+            (navigationRef.current as any).navigate(screen, params);
           }
-        };
-        
-        handleAssessmentNavigation(
-          deepLinkData,
-          userRole,
-          navHandler
-        );
-      } else {
-        // Handle notifications without assessmentId or sessionId
-        console.log('📋 Notification data missing quiz info:', data);
-        
-        let message = 'This quiz is not available right now.';
-        let title = 'Quiz Unavailable';
-        
-        // Try to determine the reason based on notification content or data
-        if (notificationBody.toLowerCase().includes('not started') || 
-            notificationBody.toLowerCase().includes('scheduled') ||
-            data?.status === 'scheduled') {
-          message = 'The quiz time has not started yet. Please wait for the scheduled time.';
-          title = 'Quiz Not Started';
-        } else if (notificationBody.toLowerCase().includes('expired') || 
-                   notificationBody.toLowerCase().includes('ended') ||
-                   data?.status === 'expired') {
-          message = 'This quiz has already ended and is no longer available.';
-          title = 'Quiz Ended';
-        } else if (notificationBody.toLowerCase().includes('cancelled') ||
-                   data?.status === 'cancelled') {
-          message = 'This quiz has been cancelled.';
-          title = 'Quiz Cancelled';
-        } else if (!data?.assessmentId && !data?.sessionId) {
-          message = 'Unable to find quiz information. Please check your Notifications list.';
-          title = 'Quiz Information Missing';
-        }
-        
-        // Show alert to user
-        Alert.alert(
-          title,
-          message,
-          [
-            {
-              text: 'Go to Notifications',
-              onPress: () => {
-                if (navigationRef.current) {
-                  (navigationRef.current as any).navigate('Notifications');
-                }
-              }
-            },
-            {
-              text: 'OK',
-              style: 'cancel'
-            }
-          ]
-        );
-      }
+        },
+        alert: Alert.alert,
+      }, setPendingSessionId);
     });
 
     return () => {
@@ -220,12 +177,45 @@ function AppContent() {
         Notifications.removeNotificationSubscription(responseListener.current);
       }
     };
-  }, [isMobile]); // Removed user dependency to prevent listener recreation
+  }, [isMobile, isAuthenticated, user]); // Include auth state to handle login changes
+
+  // Process pending sessionId after successful login
+  useEffect(() => {
+    if (!isMobile || !isAuthenticated || !pendingSessionId || !user) return;
+
+    const sessionId = pendingSessionId;
+
+    // Clear pending sessionId
+    setPendingSessionId(null);
+
+    // Wait for navigation to be ready after login
+    const waitForNavigation = async () => {
+      if (!navigationRef.current) {
+        setTimeout(waitForNavigation, 100);
+        return;
+      }
+
+      // Use unified handler
+      const navigationAdapter = { 
+        navigate: (screen: string, params?: any) => {
+          if (navigationRef.current) {
+            (navigationRef.current as any).navigate(screen, params);
+          }
+        }, 
+        alert: Alert.alert 
+      };
+      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch((error) => {
+        console.error('❌ Error in post-login handleOpenQuiz:', error);
+      });
+    };
+
+    // Start waiting for navigation
+    waitForNavigation();
+  }, [isMobile, isAuthenticated, pendingSessionId, user]);
 
   // Set up auth error navigation callback
   useEffect(() => {
     const handleAuthError = async () => {
-      console.log('🔒 Auth error detected - logging out and redirecting to login');
       
       // Call logout to clear all auth state
       await logout();
@@ -248,55 +238,124 @@ function AppContent() {
 
   // Deep link handling for mobile
   useEffect(() => {
-    if (!isMobile || !isAuthenticated) return;
+    if (!isMobile) return;
 
-    // Handle initial deep link (app opened from link)
+    // Handle initial deep link (app opened from link) - only once per app launch
     const handleInitialLink = async () => {
-      const url = await getInitialDeepLink();
-      if (url) {
-        const deepLinkData = parseDeepLink(url);
-        if (deepLinkData?.type === 'assessment') {
-          console.log('📱 Processing initial deep link');
-          setPendingDeepLink(deepLinkData);
+      // Prevent multiple calls to getInitialURL()
+      if (initialDeepLinkProcessed.current) {
+        console.log('🚫 Initial deep link already processed, skipping');
+        return;
+      }
+
+      try {
+        const url = await getInitialDeepLink();
+        initialDeepLinkProcessed.current = true; // Mark as processed
+        
+        if (url) {
+          console.log('🔗 Processing initial deep link:', url);
+          const deepLinkData = parseDeepLink(url);
+          if (deepLinkData?.type === 'assessment' && deepLinkData.sessionId) {
+            const sessionId = deepLinkData.sessionId;
+            
+            // If not authenticated, save sessionId and show login
+            if (!isAuthenticated) {
+              console.log('👤 Not authenticated, saving sessionId for post-login:', sessionId);
+              setPendingSessionId(sessionId);
+              return;
+            }
+
+            // Guard: Allow different sessions, only block true duplicates
+            const now = Date.now();
+            const isDifferentSession = sessionId !== lastProcessedSessionId;
+            const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
+            
+            if (isDuplicateRecent) {
+              console.log('🚫 Blocking duplicate initial session within 2 seconds:', sessionId);
+              return;
+            }
+            
+            if (isDifferentSession) {
+              console.log('✅ Processing new different initial session:', sessionId);
+            } else {
+              console.log('✅ Re-processing same initial session (after timeout):', sessionId);
+            }
+            
+            setLastProcessedSessionId(sessionId);
+            setLastProcessedTime(now);
+
+        // Use unified handler
+        if (navigationRef.current && user) {
+          const navigationAdapter = { 
+            navigate: (screen: string, params?: any) => {
+              if (navigationRef.current) {
+                (navigationRef.current as any).navigate(screen, params);
+              }
+            }, 
+            alert: Alert.alert 
+          };
+          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
         }
+          } else {
+            console.log('🔗 Initial deep link parsed but not assessment type:', deepLinkData);
+          }
+        } else {
+          console.log('🔗 No initial deep link URL found');
+        }
+      } catch (error) {
+        console.error('❌ Error in handleInitialLink:', error);
+        initialDeepLinkProcessed.current = true; // Mark as processed even on error
       }
     };
 
     handleInitialLink();
 
     // Subscribe to deep links while app is running
-    const unsubscribe = subscribeToDeepLinks((deepLinkData) => {
-      if (deepLinkData?.type === 'assessment') {
-        console.log('📱 Processing runtime deep link');
-        setPendingDeepLink(deepLinkData);
+    const unsubscribe = subscribeToDeepLinks(async (deepLinkData) => {
+      if (deepLinkData?.type === 'assessment' && deepLinkData.sessionId) {
+        const sessionId = deepLinkData.sessionId;
+        
+        // If not authenticated, save sessionId and show login
+        if (!isAuthenticated) {
+          setPendingSessionId(sessionId);
+          return;
+        }
+
+        // Guard: Allow different sessions, only block true duplicates
+        const now = Date.now();
+        const isDifferentSession = sessionId !== lastProcessedSessionId;
+        const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
+        
+        if (isDuplicateRecent) {
+          console.log('🚫 Blocking duplicate session within 2 seconds:', sessionId);
+          return;
+        }
+        
+        if (isDifferentSession) {
+          console.log('✅ Processing new different session:', sessionId);
+        } else {
+          console.log('✅ Re-processing same session (after timeout):', sessionId);
+        }
+        
+        setLastProcessedSessionId(sessionId);
+        setLastProcessedTime(now);
+
+        // Use unified handler
+        if (navigationRef.current && user) {
+          const navigationAdapter = { 
+            navigate: (screen: string, params?: any) => (navigationRef.current as any)?.navigate(screen, params), 
+            alert: Alert.alert 
+          };
+          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
+        }
       }
     });
 
     return unsubscribe;
-  }, [isMobile, isAuthenticated]);
+  }, [isMobile, isAuthenticated, user]); // Include auth to handle state changes
 
-  // Process pending deep link after authentication
-  useEffect(() => {
-    if (isMobile && isAuthenticated && pendingDeepLink && navigationRef.current) {
-      console.log('🔗 Handling pending deep link');
-      
-      const userRole = (user?.role === 'instructor' || user?.role === 'admin') ? 'instructor' : 'student';
-      
-      handleAssessmentNavigation(
-        pendingDeepLink,
-        userRole,
-        {
-          navigate: (screen: string, params?: any) => {
-            if (navigationRef.current) {
-              (navigationRef.current as any).navigate(screen, params);
-            }
-          },
-        }
-      );
-
-      setPendingDeepLink(null);
-    }
-  }, [isMobile, isAuthenticated, pendingDeepLink, user]);
+  // Process pending deep link after authentication - REMOVED
+  // Now handled directly in deep link handlers above with pendingSessionId
 
   // Deep link handling for web - detect openquiz route and redirect to mobile
   useEffect(() => {
@@ -308,11 +367,6 @@ function AppContent() {
       
       // Match /openquiz pattern
       if (path.includes('/openquiz') && search.includes('session_id')) {
-        const params = new URLSearchParams(search);
-        const sessionId = params.get('session_id');
-        
-        console.log('🌐 Web openquiz route detected:', sessionId);
-        
         // Build deep link URL
         const deepLinkUrl = `eduvijna://openquiz${search}`;
         
@@ -320,7 +374,6 @@ function AppContent() {
         const attemptAppOpen = setTimeout(() => {
           // If app didn't open after 2 seconds, user likely doesn't have it installed
           // Continue with web experience - don't redirect to store
-          console.log('📱 App not installed or user chose to stay on web');
         }, 2000);
         
         // Attempt to open the app silently
@@ -329,7 +382,6 @@ function AppContent() {
         // If user stays on web, clear timeout and continue normally
         window.addEventListener('blur', () => {
           clearTimeout(attemptAppOpen);
-          console.log('📱 App opened successfully');
         }, { once: true });
       }
     };
@@ -365,7 +417,7 @@ function AppContent() {
               Theme: 'theme',
             },
           },
-          QuizTakingScreen: 'openquiz',
+          Dashboard: 'openquiz',
           StudentList: 'students',
           ClassesList: 'classes',
           CreateAIQuizScreen: 'create-ai-quiz',
@@ -442,6 +494,15 @@ function AppContent() {
         case 'QuizTakingScreen':
           return <QuizTakingScreen 
             navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} 
+            route={{ params: navigationParams }}
+          />;
+        case 'QuizStatusScreen':
+          return <QuizStatusScreen 
+            navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} 
+            route={{ params: navigationParams }}
+          />;
+        case 'QuizLoadingScreen':
+          return <QuizLoadingScreen 
             route={{ params: navigationParams }}
           />;
         default:

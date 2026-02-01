@@ -290,11 +290,11 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
         offset: 0,
       });
 
-      console.log('✅ Teacher dashboard loaded:', {
-        quizzes: response.data.length,
-        total: response.meta?.total_count || 0,
-        sampleQuiz: response.data[0],
-      });
+      // console.log('✅ Teacher dashboard loaded:', {
+      //   quizzes: response.data.length,
+      //   total: response.meta?.total_count || 0,
+      //   sampleQuiz: response.data[0],
+      // });
 
       // Extract classrooms
       const uniqueClassrooms = new Map<string, Classroom>();

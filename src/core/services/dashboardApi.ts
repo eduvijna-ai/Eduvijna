@@ -548,3 +548,172 @@ export async function clearQuizCache(classroomId?: string, quizId?: number): Pro
   
   console.log('✅ Quiz cache cleared');
 }
+
+/**
+ * Fetch full quiz details by session_id
+ * Uses /api/v1/quiz?session_id={sessionId} endpoint (same as OpenQuiz page)
+ * Then checks quiz-attempts to validate if student already attempted
+ */
+export async function fetchQuizDetailsBySessionId(
+  sessionId: string,
+  userId: any,
+  quizId: number,
+  userRole: 'student' | 'instructor' | 'admin'
+): Promise<{
+  exists: boolean;
+  isExpired: boolean;
+  isScheduled: boolean;
+  isAssigned: boolean;
+  isAttempted: boolean;
+  quizData: any | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  attemptData?: any;
+}> {
+  const defaultResult = {
+    exists: false,
+    isExpired: false,
+    isScheduled: false,
+    isAssigned: false,
+    isAttempted: false,
+    quizData: null,
+    startTime: null,
+    endTime: null,
+  };
+
+  try {
+    const token = await TokenStorage.getAccessToken();
+    if (!token) {
+      console.error('No authentication token available');
+      return defaultResult;
+    }
+
+    // CRITICAL: Sanitize session ID - remove any emojis, special characters
+    // Only allow: alphanumeric, hyphens, underscores
+    const sanitizedSessionId = sessionId.replace(/[^a-zA-Z0-9\-_]/g, '').trim();
+    
+    if (sanitizedSessionId !== sessionId) {
+      console.warn('⚠️ Session ID sanitized:', {
+        original: sessionId,
+        sanitized: sanitizedSessionId
+      });
+    }
+
+    // STEP 1: Fetch quiz data using the same endpoint as OpenQuiz page
+    console.log('🔍 Fetching quiz by session_id:', sanitizedSessionId);
+    const quizUrl = `${DASHBOARD_API_URL}/quiz?session_id=${sanitizedSessionId}&skip_auth=true`;
+    
+    const quizResponse = await fetch(quizUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!quizResponse.ok) {
+      const errorText = await quizResponse.text();
+      console.error('Quiz fetch failed:', quizResponse.status, errorText);
+      await handleAuthError(quizResponse.status, errorText, 'fetchQuizDetailsBySessionId');
+      return defaultResult;
+    }
+
+    const quizDataResponse = await quizResponse.json();
+    
+    console.log('📦 Raw API response:', JSON.stringify(quizDataResponse).substring(0, 200));
+    
+    if (!quizDataResponse.quiz_data) {
+      console.log('❌ No quiz found for session:', sessionId);
+      return defaultResult;
+    }
+
+    const quizData = quizDataResponse.quiz_data;
+    
+    // IMPORTANT: API doesn't return session_id in quiz_data, so we use the sanitized sessionId
+    if (!quizData.session_id) {
+      quizData.session_id = sanitizedSessionId;
+    }
+    
+    console.log('✅ Quiz data fetched:', {
+      quiz_id: quizData.quiz_id,
+      session_id: quizData.session_id,
+      title: quizData.title || quizData.topic,
+      start_time: quizData.start_time,
+      end_time: quizData.end_time,
+      has_time_limit: quizData.has_time_limit,
+      is_public: quizData.is_public
+    });
+
+    const now = new Date();
+    const startTime = quizData.start_time ? new Date(quizData.start_time) : null;
+    const endTime = quizData.end_time ? new Date(quizData.end_time) : null;
+
+    // Validate quiz status
+    const isScheduled = startTime ? now < startTime : false;
+    const isExpired = endTime ? now > endTime : false;
+    
+    // STEP 2: For students, check if they already attempted using quiz-attempts API
+    let isAttempted = false;
+    let attemptData = null;
+    let isAssigned = true; // Default to assigned
+    if (quizData.is_public === true) {
+      isAssigned = true;
+    }
+
+    if (userRole === 'student' && quizData.quiz_id) {
+      console.log('🔍 Checking quiz attempts for student:', userId);
+      
+      try {
+        // Use quiz-attempts API to check if student already completed
+        const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${userId}&quiz_id=${quizData.quiz_id}&class_id=${sanitizedSessionId}`;
+        
+        const attemptsResponse = await fetch(attemptsUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (attemptsResponse.ok) {
+          const attempts = await attemptsResponse.json();
+          console.log('📋 Quiz attempts found:', attempts?.length || 0);
+          
+          if (attempts && Array.isArray(attempts) && attempts.length > 0) {
+            // Check if any attempt is completed
+            const completedAttempt = attempts.find((attempt: any) => attempt.status === 'completed');
+            
+            if (completedAttempt) {
+              isAttempted = true;
+              attemptData = completedAttempt;
+              console.log('✅ Student already completed this quiz:', completedAttempt);
+            }
+            
+            // If student has any attempt (started or completed), they're assigned
+            isAssigned = true;
+          }
+        } else {
+          console.log('ℹ️ No attempts found or error checking attempts');
+        }
+      } catch (attemptsError) {
+        console.error('Error checking quiz attempts:', attemptsError);
+        // Don't block - let them proceed even if attempt check fails
+      }
+    }
+
+    return {
+      exists: true,
+      isExpired,
+      isScheduled,
+      isAssigned,
+      isAttempted,
+      quizData: quizData,
+      startTime,
+      endTime,
+      attemptData,
+    };
+  } catch (error) {
+    console.error('Error fetching quiz details:', error);
+    return defaultResult;
+  }
+}

@@ -178,32 +178,19 @@ export default function Profile({ navigation }: any) {
         const result = await PushNotificationService.enablePushNotifications();
         
         if (result.success) {
-          // Generate FCM/Native Device Token
+          // Generate FCM/Native Device Token (silently)
           try {
             const fcmToken = (await Notifications.getDevicePushTokenAsync()).data;
-            console.log('🔥 FCM Token Generated:', fcmToken);
+            console.log('🔥 FCM Token Generated!');
             
             // Store FCM token in AsyncStorage
             await AsyncStorage.setItem('fcmDeviceToken', fcmToken);
-            
-            Alert.alert(
-              'Success', 
-              `${result.message}\n\n🔥 FCM Token Generated!`,
-              [
-                { text: 'OK' },
-                { 
-                  text: 'Copy FCM Token', 
-                  onPress: async () => {
-                    await Clipboard.setStringAsync(fcmToken);
-                    Alert.alert('Copied!', 'FCM token copied to clipboard');
-                  }
-                }
-              ]
-            );
           } catch (fcmError) {
             console.warn('Could not generate FCM token:', fcmError);
-            Alert.alert('Success', `${result.message}\n\n⚠️ FCM token unavailable on this device`);
           }
+          
+          // Simple success message
+          Alert.alert('Success', 'Push notifications enabled successfully!');
           
           setFormData(prev => ({
             ...prev,

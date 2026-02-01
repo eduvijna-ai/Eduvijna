@@ -40,22 +40,23 @@ export default function NotificationHandler() {
   }, [fetchNotifications]);
 
   // Handle notification clicks (background/foreground)
-  useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('🔔 [Click] Notification tapped:', response);
-      handleNotificationTap(response.notification);
-    });
+  // DISABLED: Notification handling is done in App.tsx to prevent duplicate navigation
+  // useEffect(() => {
+  //   const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+  //     console.log('🔔 [Click] Notification tapped:', response);
+  //     handleNotificationTap(response.notification);
+  //   });
 
-    // Handle notification that opened the app (when app was closed)
-    Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response) {
-        console.log('🔔 [Open] App opened from notification:', response);
-        handleNotificationTap(response.notification);
-      }
-    });
+  //   // Handle notification that opened the app (when app was closed)
+  //   Notifications.getLastNotificationResponseAsync().then(response => {
+  //     if (response) {
+  //       console.log('🔔 [Open] App opened from notification:', response);
+  //       handleNotificationTap(response.notification);
+  //     }
+  //   });
 
-    return () => subscription.remove();
-  }, []);
+  //   return () => subscription.remove();
+  // }, []);
 
   /**
    * Handle notification tap

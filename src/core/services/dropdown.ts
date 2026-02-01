@@ -72,7 +72,7 @@ export async function getClasses(): Promise<DropdownResponse<ClassItem>> {
       slug: cls.slug,
     }));
     
-    console.log(`✅ [getClasses] Successfully loaded ${classes.length} classes from API`);
+    //console.log(`✅ [getClasses] Successfully loaded ${classes.length} classes from API`);
     return { items: classes, total: response.data.items.length };
   } catch (error: any) {
     console.error('❌ [getClasses] API call failed:', error.message);
@@ -88,7 +88,7 @@ export async function getSubjects(): Promise<DropdownResponse<SubjectItem>> {
   try {
     // Use the /all endpoint to get ALL subjects, not paginated
     const response = await apiClient.get('/api/v1/dropdowns/subjects/all');
-    console.log('✅ [getSubjects] API Response received:', response.data);
+    //console.log('✅ [getSubjects] API Response received:', response.data);
     
     // Transform the response to match our SubjectItem interface
     // API returns: { items: [{ id, label, slug, meta }] }
@@ -115,7 +115,7 @@ export async function getSubjectsByClass(classId: string): Promise<DropdownRespo
   console.log(`📖 [getSubjectsByClass] Starting API call for classId: ${classId}`);
   try {
     const response = await apiClient.get(`/api/v1/dropdowns/classes/${classId}/subjects`);
-    console.log('✅ [getSubjectsByClass] API Response received:', response.data);
+    //console.log('✅ [getSubjectsByClass] API Response received:', response.data);
     
     // Transform the response to match our SubjectItem interface
     const subjects = response.data.items.map((subj: any) => ({
@@ -126,7 +126,7 @@ export async function getSubjectsByClass(classId: string): Promise<DropdownRespo
       slug: subj.slug,
     }));
     
-    console.log(`✅ [getSubjectsByClass] Successfully loaded ${subjects.length} subjects for class ${classId}`);
+    //console.log(`✅ [getSubjectsByClass] Successfully loaded ${subjects.length} subjects for class ${classId}`);
     return { items: subjects, total: response.data.items.length };
   } catch (error: any) {
     console.error(`❌ [getSubjectsByClass] API call failed for classId ${classId}:`, error.message);

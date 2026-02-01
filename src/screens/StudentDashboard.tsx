@@ -25,14 +25,20 @@ import {
 
 interface Props {
   navigation?: any;
+  route?: {
+    params?: any;
+  };
 }
 
-export default function StudentDashboard({ navigation }: Props) {
+export default function StudentDashboard({ navigation, route }: Props) {
   const { theme } = useTheme();
   const { colors } = theme;
   const { user, isAuthenticated, isLoading } = useAuth();
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  
+
+  const incomingParams = route?.params;
+  console.log('📥 Incoming Params to StudentDashboard:', incomingParams);
+
   // Dashboard store for sharing data with ClassesList
   const { setQuizzes } = useDashboardStore();
 
@@ -43,7 +49,7 @@ export default function StudentDashboard({ navigation }: Props) {
     user: user ? { id: user.id, role: user.role, name: user.name } : null
   });
   const width = dimensions.width;
-  
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({

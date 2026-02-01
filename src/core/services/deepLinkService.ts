@@ -5,6 +5,7 @@
 
 import { Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { handleOpenQuiz } from './openQuizHandler';
 
 export interface DeepLinkData {
   type: 'assessment' | 'unknown';
@@ -24,7 +25,6 @@ export function parseDeepLink(url: string): DeepLinkData | null {
   if (!url) return null;
 
   try {
-    console.log('🔗 Parsing deep link:', url);
 
     // Match /openquiz pattern
     const openQuizMatch = url.match(/\/openquiz/);
@@ -38,8 +38,6 @@ export function parseDeepLink(url: string): DeepLinkData | null {
       
       // Use session_id as assessmentId for compatibility
       const assessmentId = sessionId || 'unknown';
-      
-      console.log('✅ Parsed session ID:', sessionId);
 
       return {
         type: 'assessment',
@@ -50,7 +48,6 @@ export function parseDeepLink(url: string): DeepLinkData | null {
       };
     }
 
-    console.log('⚠️ No openquiz pattern found in URL');
     return { type: 'unknown' };
   } catch (error) {
     console.error('❌ Error parsing deep link:', error);
@@ -60,16 +57,28 @@ export function parseDeepLink(url: string): DeepLinkData | null {
 
 /**
  * Get the initial deep link URL when app is opened from a link
+ * This can only be called once per app launch
  */
+let initialUrlPromise: Promise<string | null> | null = null;
+
 export async function getInitialDeepLink(): Promise<string | null> {
-  try {
-    const url = await Linking.getInitialURL();
-    console.log('🔗 Initial deep link URL:', url);
-    return url;
-  } catch (error) {
-    console.error('❌ Error getting initial deep link:', error);
-    return null;
+  // Prevent multiple concurrent calls to getInitialURL()
+  if (initialUrlPromise) {
+    console.log('🚫 getInitialDeepLink already called, returning cached promise');
+    return initialUrlPromise;
   }
+  
+  initialUrlPromise = (async () => {
+    try {
+      const url = await Linking.getInitialURL();
+      return url;
+    } catch (error) {
+      console.error('❌ Error getting initial deep link:', error);
+      return null;
+    }
+  })();
+  
+  return initialUrlPromise;
 }
 
 /**
@@ -79,7 +88,6 @@ export function subscribeToDeepLinks(
   handler: (data: DeepLinkData | null) => void
 ): () => void {
   const subscription = Linking.addEventListener('url', (event) => {
-    console.log('🔗 Deep link received:', event.url);
     const data = parseDeepLink(event.url);
     handler(data);
   });
@@ -88,16 +96,43 @@ export function subscribeToDeepLinks(
 }
 
 /**
- * Handle notification response and extract deep link data
+ * Simplified handleNotificationResponse
+ * Directly calls handleOpenQuiz for quiz navigation.
  */
-export function handleNotificationResponse(
-  response: Notifications.NotificationResponse
-): DeepLinkData | null {
-  const url = response.notification.request.content.data?.url;
-  if (url && typeof url === 'string') {
-    return parseDeepLink(url);
+export async function handleNotificationResponse(
+  response: Notifications.NotificationResponse,
+  user: any,
+  navigationHelpers: any
+): Promise<void> {
+  const sessionId = response.notification.request.content.data?.sessionId;
+
+  if (!sessionId) {
+    console.log('❌ No sessionId found in notification data');
+    return;
   }
-  return null;
+
+  if (!user) {
+    console.log('❌ User not logged in');
+    return;
+  }
+
+  try {
+    const navigationAdapter = { 
+      navigate: (screen: string, params?: any) => {
+        navigationHelpers.setActiveScreen(screen);
+        navigationHelpers.setNavigationParams(params || {});
+      }, 
+      alert: (title: string, message: string, buttons?: any[]) => {
+        // For web notifications, perhaps show alert
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`${title}: ${message}`);
+        }
+      }
+    };
+    await handleOpenQuiz(sessionId, 'notification', user, navigationAdapter);
+  } catch (error) {
+    console.error('❌ Error handling notification response:', error);
+  }
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
@@ -45,6 +46,7 @@ interface QuizData {
   lesson?: string;
   duration?: number;
   has_time_limit?: boolean;
+  is_public?: boolean;
   questions: QuizQuestion[];
   regenerationParams?: any;
 }
@@ -55,15 +57,30 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const colors = theme.colors;
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web' && width > 768;
+  
+  // ==========================================
+  // SIMPLIFIED PARAMS - Accept normalized quiz
+  // ==========================================
+  const routeParams = route.params || {};
+  
+  // console.log('📥 QuizTakingScreen received params:', {
+  //   hasNormalizedQuiz: !!routeParams.quiz,
+  //   hasQuizData: !!routeParams.quizData,
+  //   sessionId: routeParams.quiz?.sessionId || routeParams.quizData?.sessionId || routeParams.sessionId,
+  //   quizId: routeParams.quiz?.quizId || routeParams.quizData?.quizId || routeParams.quizId,
+  //   title: routeParams.quiz?.title || routeParams.quizData?.title,
+  // });
+  
   const { 
-    quizData, 
-    quizId, 
-    sessionId, 
-    classroomId,
+    quiz: normalizedQuiz, // Primary: normalized quiz from handleOpenQuiz
+    quizData,             // Legacy: backward compatibility
     showShareButton,
     showActionButtons,
-    onNewQuiz
-  } = route.params || {};
+    onNewQuiz,
+  } = routeParams;
+  
+  // Use normalized quiz if available, otherwise fall back to legacy quizData
+  const quizSource = normalizedQuiz || quizData;
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -72,73 +89,42 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [questionResults, setQuestionResults] = useState<{ [key: number]: boolean }>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
-  const [quizStartTime] = useState(new Date().toISOString()); // Track when quiz started
-  const [isLoading, setIsLoading] = useState(!quizData);
+  const [quizStartTime] = useState(new Date().toISOString());
+  const [isLoading, setIsLoading] = useState(!quizSource);
   const [submitting, setSubmitting] = useState(false);
-  const [quizNotAvailable, setQuizNotAvailable] = useState(false);
-  const [availabilityMessage, setAvailabilityMessage] = useState({ startTime: '', endTime: '' });
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
-  // Use quiz state as currentQuizData for consistency with reference
+  
+  // Use quiz state as currentQuizData for consistency
   const currentQuizData = quiz;
   const setCurrentQuizData = setQuiz;
 
-  // Determine if this is a teacher-assigned quiz
-  // Check both route params AND quiz data for session_id/classroom_id
-  // Teacher-assigned quizzes will have these fields, self-assessments won't
+  // Handle Android hardware back button - navigate to Dashboard
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (Platform.OS === 'android') {
+        navigation.navigate('Main', { screen: 'Dashboard' });
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [navigation]);
+
+  // Determine quiz type from normalized data
   const isAssignedQuiz = Boolean(
-    (sessionId && classroomId) || 
+    quizSource?.type === 'ASSIGNED' ||
+    (quizSource?.sessionId && quizSource?.classroomId) ||
     (quiz?.session_id && quiz?.classroom_id)
   ) && !showActionButtons;
 
-  // Check if quiz is available based on start_time and end_time
-  const checkQuizAvailability = (quizData: any) => {
-    // Only check for assigned quizzes (those with start_time/end_time)
-    if (!quizData?.start_time || !quizData?.end_time) {
-      return { available: true, startTime: '', endTime: '' };
-    }
-
-    const now = new Date();
-    const startTime = new Date(quizData.start_time);
-    const endTime = new Date(quizData.end_time);
-
-    // Format dates for display
-    const formatDateTime = (date: Date) => {
-      return date.toLocaleString('en-US', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      });
-    };
-
-    if (now < startTime) {
-      // Quiz hasn't started yet
-      return {
-        available: false,
-        startTime: formatDateTime(startTime),
-        endTime: formatDateTime(endTime)
-      };
-    }
-
-    if (now > endTime) {
-      // Quiz has ended
-      return {
-        available: false,
-        startTime: formatDateTime(startTime),
-        endTime: formatDateTime(endTime),
-        expired: true
-      };
-    }
-
-    // Quiz is currently available
-    return { available: true, startTime: '', endTime: '' };
-  };
+  // Extract session and classroom IDs for submission (used in backend submission logic)
+  const normalizedSessionId = quizSource?.sessionId || quiz?.session_id || null;
+  const normalizedClassroomId = quizSource?.classroomId || quiz?.classroom_id || null;
 
   // Get performance message based on score
   const getPerformanceMessage = (percentage: number) => {
@@ -176,150 +162,61 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     return { correctCount, incorrectCount, unansweredCount };
   };
 
-  // Fetch quiz data when coming from notifications with IDs
+  // ==========================================
+  // SIMPLIFIED DATA LOADING - No validation
+  // ==========================================
+  // QuizTakingScreen assumes quiz is ALREADY VALIDATED by handleOpenQuiz
+  // It only needs to load and display the normalized quiz data
   useEffect(() => {
-    const fetchQuiz = async () => {
-      if (quizData) {
-        // Validate and set quiz data from params
-        let questions = [];
-        
-        // Try to get questions from various sources
-        if (Array.isArray(quizData.questions)) {
-          questions = quizData.questions;
-        } else if (quizData.subject) {
-          // Parse subject field (contains quiz questions as JSON)
-          try {
-            const subjectData = typeof quizData.subject === 'string'
-              ? JSON.parse(quizData.subject)
-              : quizData.subject;
-            
-            if (subjectData.quizzes && Array.isArray(subjectData.quizzes)) {
-              // Convert from subject format to expected format
-              questions = subjectData.quizzes.map((q: any, index: number) => ({
-                id: (index + 1).toString(),
-                question: q.quiz?.question || q.question || '',
-                options: q.quiz?.options || q.options || [],
-                correctAnswer: q.quiz?.answer || q.answer || '',
-                answer: q.quiz?.answer || q.answer || '',
-                explanation: q.explanation || null,
-              }));
-              console.log('✅ Parsed', questions.length, 'questions from subject field');
-            }
-          } catch (e) {
-            console.error('❌ Error parsing subject field:', e);
-          }
-        }
-        
-        // Ensure questions is always an array
-        const validatedQuestions = Array.isArray(questions) ? questions : [];
-        
-        const validatedQuizData = {
-          ...quizData,
-          // Preserve or extract session_id and classroom_id
-          session_id: quizData.session_id || quizData.sessionId || sessionId,
-          classroom_id: quizData.classroom_id || quizData.classroomId || classroomId,
-          quiz_id: quizData.quiz_id || quizData.quizId || quizData.id || quizId,
-          questions: validatedQuestions.map((q: any, index: number) => ({
-            ...q,
-            id: q.id || `${index}-${q.question?.substring(0, 10) || 'q'}`,
-            options: Array.isArray(q.options) ? q.options : [],
-            explanation: q.explanation ?? null, // Normalize undefined to null
-          })),
-        };
-        
-        console.log('✅ Quiz loaded with', validatedQuestions.length, 'questions');
-        console.log('📋 Quiz IDs:', {
-          quiz_id: validatedQuizData.quiz_id,
-          session_id: validatedQuizData.session_id,
-          classroom_id: validatedQuizData.classroom_id
-        });
-        
-        // Check quiz availability
-        const availability = checkQuizAvailability(validatedQuizData);
-        if (!availability.available) {
-          setQuizNotAvailable(true);
-          setAvailabilityMessage({ startTime: availability.startTime, endTime: availability.endTime });
-        }
-        
-        setQuiz(validatedQuizData);
-        setTimeRemaining(quizData.duration || 1800);
-        setIsLoading(false);
-      } else if (quizId || (sessionId && classroomId)) {
-        // Fetch from API using quiz ID or session ID
-        console.log('📥 Fetching assessment data:', { quizId, sessionId, classroomId });
-        setIsLoading(true);
-        try {
-          // Use sessionId if available, otherwise use quizId
-          const fetchId = sessionId || quizId?.toString();
-          if (!fetchId) {
-            throw new Error('No valid ID to fetch quiz data');
-          }
-          
-          console.log('📡 Fetching quiz with ID:', fetchId);
-          const response = await getQuizBySessionId(fetchId);
-          
-          console.log('📨 API Response:', { 
-            success: response.success, 
-            hasQuizData: !!response.quiz_data,
-            quizId: response.quiz_data?.quiz_id 
-          });
-          
-          if (response.success && response.quiz_data) {
-            // Transform questions from API format
-            const transformedQuestions = response.quiz_data.questions?.quizzes?.map((q: any, index: number) => ({
-              id: (index + 1).toString(),
-              question: q.quiz?.question || q.question || '',
-              options: q.quiz?.options || q.options || [],
-              correctAnswer: q.quiz?.answer || q.answer || '',
-              explanation: q.explanation || null,
-            })) || [];
-            
-            console.log('✅ Loaded', transformedQuestions.length, 'questions');
-            
-            const quizDataFromAPI: QuizData = {
-              quiz_id: response.quiz_data.quiz_id || quizId,
-              session_id: sessionId,
-              classroom_id: classroomId,
-              title: response.quiz_data.topic || 'Assessment',
-              questions: transformedQuestions,
-              duration: response.quiz_data.duration,
-              has_time_limit: response.quiz_data.has_time_limit,
-            };
-            
-            console.log('✅ Quiz data prepared:', {
-              quiz_id: quizDataFromAPI.quiz_id,
-              session_id: quizDataFromAPI.session_id,
-              classroom_id: quizDataFromAPI.classroom_id,
-              questionCount: quizDataFromAPI.questions.length
-            });
-            
-            // Check quiz availability
-            const availability = checkQuizAvailability(response.quiz_data);
-            if (!availability.available) {
-              setQuizNotAvailable(true);
-              setAvailabilityMessage({ startTime: availability.startTime, endTime: availability.endTime });
-            }
-            
-            setCurrentQuizData(quizDataFromAPI);
-            setTimeRemaining(response.quiz_data.duration || 1800);
-          } else {
-            console.error('❌ No questions found in assessment response');
-            Alert.alert('Error', 'Assessment data not available');
-            navigation.goBack();
-          }
-        } catch (error) {
-          console.error('❌ Failed to fetch assessment:', error);
-          Alert.alert('Error', 'Failed to load assessment. Please try again.');
-          navigation.goBack();
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
+    console.log('🔄 useEffect triggered - quizSource changed:', {
+      hasQuizSource: !!quizSource,
+      sessionId: quizSource?.sessionId || quizSource?.session_id,
+      quizId: quizSource?.quizId || quizSource?.quiz_id,
+      title: quizSource?.title,
+      questionCount: quizSource?.questions?.length
+    });
     
-    fetchQuiz();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount - quizData from route.params doesn't change
+    if (quizSource) {
+      console.log('🔄 Loading quiz data for session:', quizSource.sessionId || quizSource.session_id);
+      
+      // Directly use the normalized/validated quiz data
+      const loadedQuiz: QuizData = {
+        id: quizSource.quizId || quizSource.id,
+        quiz_id: quizSource.quizId || quizSource.quiz_id,
+        session_id: quizSource.sessionId || quizSource.session_id,
+        classroom_id: quizSource.classroomId || quizSource.classroom_id,
+        title: quizSource.title || 'Assessment',
+        class: quizSource.class,
+        subject: quizSource.subject,
+        difficulty: quizSource.difficulty,
+        lesson: quizSource.lesson,
+        duration: quizSource.duration || 30,
+        has_time_limit: quizSource.has_time_limit ?? true,
+        is_public: quizSource.is_public ?? false,
+        questions: quizSource.questions || [],
+        regenerationParams: quizSource.regenerationParams,
+      };
+
+      // Reset all quiz state for new quiz
+      setQuiz(loadedQuiz);
+      setTimeRemaining((quizSource.duration || 30) * 60);
+      setCurrentQuestionIndex(0);
+      setSelectedAnswers({});
+      setShowResults(false);
+      setQuestionResults({});
+      setIsLoading(false);
+      
+      console.log('✅ Quiz loaded:', {
+        sessionId: loadedQuiz.session_id,
+        title: loadedQuiz.title,
+        questionCount: loadedQuiz.questions?.length || 0
+      });
+    } else {
+      // No quiz data provided - this shouldn't happen if using handleOpenQuiz
+      console.error('❌ QuizTakingScreen: No quiz data provided');
+      setIsLoading(false);
+    }
+  }, [quizSource]); // Re-run when quiz params change
 
   // Timer countdown
   useEffect(() => {
@@ -350,6 +247,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     );
   }
 
+  // ==========================================
+  // MINIMAL VALIDATION - Quiz should always be valid from handleOpenQuiz
+  // ==========================================
   if (!quiz || !quiz.questions || quiz.questions.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -357,9 +257,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           <Text style={[styles.title, { color: colors.text }]}>No assessment data available</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('Main', { screen: 'Dashboard' })}
           >
-            <Text style={styles.buttonText}>Go Back</Text>
+            <Text style={styles.buttonText}>Go to Dashboard</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -375,9 +275,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           <Text style={[styles.title, { color: colors.text }]}>Error loading question</Text>
           <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.goBack()}
+            onPress={() => navigation.navigate('Main', { screen: 'Dashboard' })}
           >
-            <Text style={styles.buttonText}>Go Back</Text>
+            <Text style={styles.buttonText}>Go to Dashboard</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -551,6 +451,12 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const submitQuiz = async () => {
+    // Guard: Prevent double submission
+    if (submitting) {
+      console.log('⚠️ Submission already in progress, ignoring duplicate call');
+      return;
+    }
+    
     setSubmitting(true);
     
     try {
@@ -588,18 +494,19 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         isAssignedQuiz,
         hasQuizId: !!quiz.quiz_id,
         hasUserId: !!user?.id,
-        sessionId: quiz.session_id || sessionId,
-        classroomId: quiz.classroom_id || classroomId,
+        sessionId: quiz.session_id || normalizedSessionId,
+        classroomId: quiz.classroom_id || normalizedClassroomId,
         showActionButtons,
-        willSubmitToBackend: isAssignedQuiz && quiz.quiz_id && user?.id
+        isPublic: quizSource.is_public,
+        willSubmitToBackend: isAssignedQuiz && quiz.quiz_id && user?.id && !quizSource.is_public
       });
 
       // ONLY submit to backend if this is a teacher-assigned assessment
-      if (isAssignedQuiz && quiz.quiz_id && user?.id) {
+      if (isAssignedQuiz && quiz.quiz_id && user?.id && !quizSource.is_public) {
         console.log('📤 Submitting assigned assessment:', {
           quiz_id: quiz.quiz_id,
-          session_id: quiz.session_id || sessionId,
-          classroom_id: quiz.classroom_id || classroomId,
+          session_id: quiz.session_id || normalizedSessionId,
+          classroom_id: quiz.classroom_id || normalizedClassroomId,
           score
         });
 
@@ -620,7 +527,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           const attemptResponse = await createQuizAttempt({
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            class_id: quiz.session_id || sessionId || '', // Using session_id as class_id
+            class_id: quiz.session_id || normalizedSessionId || '', // Using session_id as class_id
             attempt_number: 1,
             status: 'started',
             started_at: quizStartTime,
@@ -634,7 +541,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           await createQuizSubmission({
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            classroom_id: quiz.session_id || sessionId || '', // Using session_id as classroom_id
+            classroom_id: quiz.session_id || normalizedSessionId || '', // Using session_id as classroom_id
             score: score,
             summary: 'Auto-scored client-side',
             log_data: {
@@ -671,6 +578,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           setSubmitting(false);
           return;
         }
+      } else if (quiz.is_public) {
+        console.log('ℹ️ Public Quiz - skipping backend submission');
       } else {
         console.log('ℹ️ Self-Generated Assessment - skipping backend submission');
       }
@@ -693,34 +602,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     }
   };
 
-  // Show "Quiz Not Yet Available" message if quiz hasn't started
-  if (quizNotAvailable) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.notAvailableContainer}>
-          <View style={styles.notAvailableCard}>
-            <View style={styles.clockIcon}>
-              <Ionicons name="time-outline" size={80} color={colors.primary} />
-            </View>
-            <Text style={[styles.notAvailableTitle, { color: colors.text }]}>Quiz Not Yet Available</Text>
-            <View style={styles.availabilityInfo}>
-              <Text style={[styles.availabilityLabel, { color: colors.textSecondary }]}>This quiz will be available in between:</Text>
-              <Text style={[styles.availabilityTime, { color: colors.primary }]}>{availabilityMessage.startTime}</Text>
-              <Text style={[styles.availabilityLabel, { color: colors.textSecondary }]}>and</Text>
-              <Text style={[styles.availabilityTime, { color: colors.primary }]}>{availabilityMessage.endTime}</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.backButton, { backgroundColor: colors.primary }]}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={20} color="#fff" />
-              <Text style={styles.backButtonText}>Go Back</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }
+  // ==========================================
+  // RENDER QUIZ UI - No validation checks
+  // ==========================================
+  // All validation is done in handleOpenQuiz before navigation
+  // QuizTakingScreen only renders the quiz interface
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

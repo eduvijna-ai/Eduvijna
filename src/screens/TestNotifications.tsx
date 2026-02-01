@@ -321,16 +321,23 @@ if (Constants.appOwnership === 'expo') {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_ids: [userId],  // API expects array of user IDs
-          title: '\ud83e\uddea Test Notification from Backend',
-          body: 'If you see this, backend push notifications are working! \ud83c\udf89',
-          priority: 'high',
-          data: {
-            type: 'QUIZ_READY',
-            quiz_id: 'test-123',
-            screen: 'QuizReadyStart',
-          },
-        }),
+  "user_ids": [
+    11
+  ],
+  "title": "📚 New Quiz: Ghui Quiz",
+  "body": "sam has assigned a new quiz in class-maths-4th-sec-b. Tap to start!",
+  "priority": "high",
+  "data": {
+    "type": "QUIZ_ASSIGNED",
+    "quiz_id": "86",
+    "classroom_id": "class_3017c343",
+    "session_id": "770b9930-3f6e-49af-a0ea-f5da5b3b661e",
+    "screen": "QuizTakingScreen",
+    "quizId": "86",
+    "sessionId": "770b9930-3f6e-49af-a0ea-f5da5b3b661e",
+    "classroomId": "class_3017c343"
+  }
+}),
       });
 
       const responseText = await response.text();

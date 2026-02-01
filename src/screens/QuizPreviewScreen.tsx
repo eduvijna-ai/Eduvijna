@@ -151,9 +151,9 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.text }]}>Quiz Preview</Text>
           
-          <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
+          {/* <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="close" size={28} color={colors.text} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
 
         {/* Quiz Info */}
