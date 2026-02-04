@@ -1049,7 +1049,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       {/* Header with Close Button */}
-      <View style={styles.headerBar}>
+      {/* <View style={styles.headerBar}>
         <TouchableOpacity 
           style={styles.closeButton}
           onPress={() => navigation.goBack()}
@@ -1058,7 +1058,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Create Document Quiz</Text>
         <View style={styles.headerPlaceholder} />
-      </View>
+      </View> */}
 
       <ScrollView 
         showsVerticalScrollIndicator={false}

@@ -17,7 +17,6 @@ import {
   createQuizAttempt, 
   updateQuizAttempt, 
   createQuizSubmission, 
-  getQuizBySessionId,
   generateAIQuiz
 } from '../core/services/sharedApi';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
@@ -81,6 +80,17 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   
   // Use normalized quiz if available, otherwise fall back to legacy quizData
   const quizSource = normalizedQuiz || quizData;
+  // Ensure questions are extracted from subject if not directly available
+  if (!quizSource?.questions && quizSource?.subject) {
+    try {
+      const parsedSubject = JSON.parse(quizSource.subject);
+      if (Array.isArray(parsedSubject.quizzes)) {
+        quizSource.questions = parsedSubject.quizzes.map((q: any) => q.quiz);
+      }
+    } catch (error) {
+      console.error('Failed to parse subject field for questions:', error);
+    }
+  }
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);

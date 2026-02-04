@@ -18,31 +18,7 @@ import { apiClient } from '@core/api/config';
 import { formatDistanceToNow } from 'date-fns';
 import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
-
-interface StudentSubmission {
-  student_id: string;
-  student_name: string;
-  quiz_id: number;
-  session_id: string;
-  quiz_topic: string;
-  classroom_name: string;
-  classroom_id: string;
-  score: number;
-  created_at: string;
-  completed_at: string;
-  time_spent_seconds: number;
-  attempt_id?: number;
-}
-
-interface StudentQuizNotification {
-  quiz_id: number;
-  session_id: string;
-  quiz_topic: string;
-  classroom_name: string;
-  created_at: string;
-  availability_status: string;
-  total_questions?: number;
-}
+import { getQuizBySessionId } from '@core/services/sharedApi';
 
 interface Props {
   navigation?: any;
@@ -144,8 +120,8 @@ export default function Notifications({ navigation, onNavigate }: Props) {
 
       // Sort by assigned_at (newest first)
       parsed.sort((a, b) => {
-        const dateA = new Date(a.assigned_at || a.created_at).getTime();
-        const dateB = new Date(b.assigned_at || b.created_at).getTime();
+        const dateA = new Date((a as any).assigned_at || a.created_at).getTime();
+        const dateB = new Date((b as any).assigned_at || b.created_at).getTime();
         return dateB - dateA;
       });
 
@@ -190,19 +166,71 @@ export default function Notifications({ navigation, onNavigate }: Props) {
       .slice(0, 50); // Show last 50 submissions
   };
 
-  const handleStudentQuizPress = (quiz: ParsedQuiz) => {
-    if (navigation) {
-      navigation.navigate('QuizTakingScreen', {
-        quizId: quiz.quiz_id,
-        sessionId: quiz.session_id,
-        classroomId: quiz.class_id,
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizTakingScreen', {
-        quizId: quiz.quiz_id,
-        sessionId: quiz.session_id,
-        classroomId: quiz.class_id,
-      });
+  const handleStudentQuizPress = async (quiz: ParsedQuiz) => {
+    const sessionId = (quiz as any).session_id;
+    
+    if (!sessionId) {
+      Alert.alert('Error', 'Unable to load quiz. Missing session ID.');
+      return;
+    }
+
+    try {
+      // Fetch complete quiz data with questions
+      const response = await getQuizBySessionId(sessionId);
+      //console.log('Fetched quiz data from sessionId:', sessionId, response);
+      if (!response.success || !response.quiz_data) {
+        Alert.alert('Error', 'Unable to load quiz details.');
+        return;
+      }
+
+      const fetchedQuiz = response.quiz_data;
+      
+      // Extract questions from the nested structure
+      let questions: any[] = [];
+      if (fetchedQuiz.questions?.quizzes && Array.isArray(fetchedQuiz.questions.quizzes)) {
+        questions = fetchedQuiz.questions.quizzes.map((q: any, index: number) => ({
+          id: `q-${index}`,
+          question: q.quiz.question,
+          options: q.quiz.options,
+          correctAnswer: q.quiz.answer,
+          answer: q.answer,
+          explanation: null,
+        }));
+      }
+
+      // Prepare complete quiz data
+      const quizData = {
+        id: fetchedQuiz.quiz_id || quiz.quiz_id,
+        quiz_id: fetchedQuiz.quiz_id || quiz.quiz_id,
+        session_id: sessionId,
+        classroom_id: quiz.class_id,
+        title: fetchedQuiz.topic || quiz.quiz_name || 'Assessment',
+        subject: fetchedQuiz.summary,
+        duration: fetchedQuiz.duration || 30,
+        has_time_limit: fetchedQuiz.has_time_limit ?? true,
+        is_public: fetchedQuiz.is_public ?? false,
+        questions: questions,
+      };
+
+      // Navigate with complete quiz data
+      if (navigation) {
+        navigation.navigate('QuizTakingScreen', {
+          quizId: quiz.quiz_id,
+          sessionId: sessionId,
+          classroomId: quiz.class_id,
+          quizData: quizData,
+        });
+      } else if (onNavigate) {
+        onNavigate('QuizTakingScreen', {
+          quizId: quiz.quiz_id,
+          sessionId: sessionId,
+          classroomId: quiz.class_id,
+          quizData: quizData,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch quiz:', error);
+      Alert.alert('Error', 'Failed to load quiz. Please try again.');
     }
   };
 
@@ -361,11 +389,11 @@ export default function Notifications({ navigation, onNavigate }: Props) {
                     <Text style={[styles.classroomName, { color: colors.textSecondary }]} numberOfLines={1}>
                       {item.classroom_name}
                     </Text>
-                    {item.due_date && (
+                    {(item as any).due_date && (
                       <View style={styles.dueRow}>
                         <Ionicons name="time-outline" size={14} color={colors.error} />
                         <Text style={[styles.dueText, { color: colors.error }]}>
-                          Due {formatTimeAgo(item.due_date)}
+                          Due {formatTimeAgo((item as any).due_date)}
                         </Text>
                       </View>
                     )}
@@ -373,7 +401,7 @@ export default function Notifications({ navigation, onNavigate }: Props) {
                   
                   <View style={styles.notificationRight}>
                     <Text style={[styles.timeText, { color: colors.textSecondary }]}>
-                      {formatTimeAgo(item.assigned_at || item.created_at)}
+                      {formatTimeAgo((item as any).assigned_at || item.created_at)}
                     </Text>
                     <View style={[styles.pendingBadge, { backgroundColor: `${colors.primary}20` }]}>
                       <Text style={[styles.pendingText, { color: colors.primary }]}>Start</Text>
