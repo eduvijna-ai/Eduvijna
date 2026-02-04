@@ -718,24 +718,90 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       
       const base64Images = await Promise.all(imagePromises);
       
-      // Create HTML with all images
+      // Create HTML with all images - each image on its own page
       const htmlContent = `
         <html>
           <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <style>
-              body { margin: 0; padding: 20px; }
-              img { width: 100%; height: auto; page-break-after: always; margin-bottom: 20px; }
+              @page { 
+                size: A4;
+                margin: 0; 
+              }
+              * { 
+                margin: 0; 
+                padding: 0; 
+                box-sizing: border-box;
+              }
+              body { 
+                margin: 0; 
+                padding: 0;
+                width: 100%;
+                height: 100%;
+              }
+              .page { 
+                width: 100%;
+                height: 100vh;
+                page-break-after: always;
+                page-break-inside: avoid;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                position: relative;
+              }
+              .page:last-child { 
+                page-break-after: auto;
+              }
+              img { 
+                max-width: 100%;
+                max-height: 100%;
+                width: auto;
+                height: auto;
+                object-fit: contain;
+                display: block;
+              }
             </style>
           </head>
           <body>
-            ${base64Images.map(img => `<img src="${img}" />`).join('')}
+            ${base64Images.map(img => `<div class="page"><img src="${img}" /></div>`).join('')}
           </body>
         </html>
       `;
+
+      console.log(`Captured Images: ${capturedImages.length}`); // Debug log
       
       // Generate PDF
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
+
+      // Log URI and file details
+      console.log(`📄 PDF Generated URI: ${uri}`);
+      console.log(`📄 Number of pages: ${capturedImages.length}`);
+      
+      // Get file size and page count
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        if (fileInfo.exists && 'size' in fileInfo) {
+          console.log(`📄 PDF File Size: ${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`);
+        }
+        
+        // Read PDF file as base64 to count pages
+        const pdfBase64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Count pages by looking for /Type /Page occurrences in PDF structure
+        // This is a simple heuristic that works for most PDFs
+        const pdfContent = atob(pdfBase64);
+        const pageMatches = pdfContent.match(/\/Type\s*\/Page[^s]/g);
+        const pageCount = pageMatches ? pageMatches.length : capturedImages.length;
+        
+        console.log(`📄 PDF Page Count (detected): ${pageCount}`);
+        console.log(`📄 PDF Page Count (expected): ${capturedImages.length}`);
+      } catch (sizeError) {
+        console.log('Could not determine file size or page count:', sizeError);
+      }
+      
       return uri;
     } catch (error) {
       console.error('Error converting images to PDF:', error);
