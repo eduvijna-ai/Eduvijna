@@ -497,37 +497,34 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                   const classroomName = classroom.classroom_name;
                   const instructorName = user.name || user.username || 'Instructor';
                   
-                  // Prepare notification payload matching backend schema
+                  // Prepare notification payload
                   const notificationPayload = {
-                    student_ids: studentIds,
+                    user_ids: studentIds,
                     title: `📚 New Quiz: ${responseData.topic || topic.trim()}`,
                     body: `${instructorName} has assigned a new quiz in ${classroomName}. Tap to start!`,
+                    priority: 'high',
                     data: {
                       type: 'QUIZ_ASSIGNED',
+                      quiz_id: String(responseData.quiz_id),
+                      classroom_id: responseData.classroom_id,
+                      session_id: responseData.session_id,
+                      screen: 'QuizTakingScreen',
                       quizId: String(responseData.quiz_id),
                       sessionId: responseData.session_id,
-                      quizTitle: responseData.topic || topic.trim(),
-                      teacherName: instructorName,
-                      classroom_id: responseData.classroom_id,
-                      screen: 'QuizTakingScreen',
+                      classroomId: responseData.classroom_id,
                     },
                   };
                   
                   console.log('📤 Notification payload:', JSON.stringify(notificationPayload, null, 2));
                   
                   // Send push notification via backend API
-                  const notificationResponse = await fetch(`${API_BASE_URL}/api/notifications/send-quiz-notification`, {
+                  const notificationResponse = await fetch(`${API_BASE_URL}/api/notifications/send`, {
                     method: 'POST',
                     headers: {
                       'Authorization': `Bearer ${token}`,
                       'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                      student_ids: notificationPayload.student_ids,
-                      title: notificationPayload.title,
-                      body: notificationPayload.body,
-                      data: notificationPayload.data,
-                    }),
+                    body: JSON.stringify(notificationPayload),
                   });
                   
                   console.log('📨 Notification response status:', notificationResponse.status);
