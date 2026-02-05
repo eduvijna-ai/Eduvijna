@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -62,35 +62,67 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // ==========================================
   const routeParams = route.params || {};
   
-  // console.log('📥 QuizTakingScreen received params:', {
-  //   hasNormalizedQuiz: !!routeParams.quiz,
-  //   hasQuizData: !!routeParams.quizData,
-  //   sessionId: routeParams.quiz?.sessionId || routeParams.quizData?.sessionId || routeParams.sessionId,
-  //   quizId: routeParams.quiz?.quizId || routeParams.quizData?.quizId || routeParams.quizId,
-  //   title: routeParams.quiz?.title || routeParams.quizData?.title,
-  // });
-  
   const { 
     quiz: normalizedQuiz, // Primary: normalized quiz from handleOpenQuiz
     quizData,             // Legacy: backward compatibility
+    quizId: routeQuizId,
+    sessionId: routeSessionId,
+    classroomId: routeClassroomId,
     showShareButton,
     showActionButtons,
     onNewQuiz,
   } = routeParams;
   
-  // Use normalized quiz if available, otherwise fall back to legacy quizData
-  const quizSource = normalizedQuiz || quizData;
-  // Ensure questions are extracted from subject if not directly available
-  if (!quizSource?.questions && quizSource?.subject) {
-    try {
-      const parsedSubject = JSON.parse(quizSource.subject);
-      if (Array.isArray(parsedSubject.quizzes)) {
-        quizSource.questions = parsedSubject.quizzes.map((q: any) => q.quiz);
+  // Use useMemo to stabilize quizSource object reference and prevent infinite loops
+  const quizSource = useMemo(() => {
+    const baseSource = normalizedQuiz || quizData;
+    
+    if (!baseSource) return null;
+    
+    // If already normalized, return as-is
+    if (normalizedQuiz) return normalizedQuiz;
+    
+    // Normalize quizData from Assessment page
+    let normalized = { ...baseSource };
+    
+    // Parse questions from subject field if not directly available
+    if (!normalized.questions && normalized.subject) {
+      try {
+        const parsedSubject = JSON.parse(normalized.subject);
+        if (Array.isArray(parsedSubject.quizzes)) {
+          normalized.questions = parsedSubject.quizzes.map((q: any) => q.quiz);
+        }
+      } catch (error) {
+        console.error('Failed to parse subject field for questions:', error);
       }
-    } catch (error) {
-      console.error('Failed to parse subject field for questions:', error);
     }
-  }
+    
+    // Map Assessment page fields to QuizTakingScreen expected fields
+    return {
+      ...normalized,
+      quizId: normalized.quiz_id || routeQuizId,
+      sessionId: normalized.class_id || routeSessionId,
+      classroomId: normalized.class_id || routeClassroomId,
+      title: normalized.quiz_name || normalized.topic || normalized.title,
+      lesson: normalized.topic || normalized.lesson,
+      duration: normalized.duration || 30,
+      has_time_limit: normalized.has_time_limit ?? true,
+      question_count: normalized.question_count || normalized.questions?.length,
+    };
+  }, [normalizedQuiz, quizData, routeQuizId, routeSessionId, routeClassroomId]);
+  
+  // Log only once when component mounts
+  useEffect(() => {
+    if (quizSource) {
+      console.log('📋 QuizTakingScreen initialized:', {
+        quizId: quizSource.quizId,
+        sessionId: quizSource.sessionId,
+        classroomId: quizSource.classroomId,
+        title: quizSource.title,
+        questionCount: quizSource.questions?.length,
+      });
+    }
+  }, []);
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -178,16 +210,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // QuizTakingScreen assumes quiz is ALREADY VALIDATED by handleOpenQuiz
   // It only needs to load and display the normalized quiz data
   useEffect(() => {
-    console.log('🔄 useEffect triggered - quizSource changed:', {
-      hasQuizSource: !!quizSource,
-      sessionId: quizSource?.sessionId || quizSource?.session_id,
-      quizId: quizSource?.quizId || quizSource?.quiz_id,
-      title: quizSource?.title,
-      questionCount: quizSource?.questions?.length
-    });
-    
     if (quizSource) {
-      console.log('🔄 Loading quiz data for session:', quizSource.sessionId || quizSource.session_id);
       
       // Directly use the normalized/validated quiz data
       const loadedQuiz: QuizData = {
@@ -215,15 +238,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setShowResults(false);
       setQuestionResults({});
       setIsLoading(false);
-      
-      console.log('✅ Quiz loaded:', {
-        sessionId: loadedQuiz.session_id,
-        title: loadedQuiz.title,
-        questionCount: loadedQuiz.questions?.length || 0
-      });
     } else {
-      // No quiz data provided - this shouldn't happen if using handleOpenQuiz
-      console.error('❌ QuizTakingScreen: No quiz data provided');
+      // No quiz data provided
       setIsLoading(false);
     }
   }, [quizSource]); // Re-run when quiz params change
