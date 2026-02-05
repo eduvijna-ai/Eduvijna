@@ -394,8 +394,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           sessionId: attemptData?.class_id, // Use class_id as sessionId for assigned quizzes
           classroomId: attemptData?.class_id, // Use class_id as classroomId
           quizData: attemptData,
-          quiz: attemptData,
-          is_public: false,
         });
       } else if (onNavigate) {
         onNavigate('QuizTakingScreen', {
