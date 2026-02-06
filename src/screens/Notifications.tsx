@@ -19,6 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId } from '@core/services/sharedApi';
+import { isStudentQuizActive } from '../utils/quizFilters';
 
 interface Props {
   navigation?: any;
@@ -111,9 +112,12 @@ export default function Notifications({ navigation, onNavigate }: Props) {
         parsedQuiz.session_id = quiz.session_id;
         parsedQuiz.assigned_at = quiz.assigned_at;
         parsedQuiz.due_date = quiz.due_date;
+        parsedQuiz.start_time = quiz.start_time;
+        parsedQuiz.end_time = quiz.end_time;
 
-        // Filter: active availability + pending status
-        if (quiz.availability_status === 'active' && parsedQuiz.status === 'pending') {
+        // Filter using common utility: active availability + pending status + time window check
+        // Only show quizzes that are currently active and available
+        if (isStudentQuizActive(parsedQuiz)) {
           parsed.push(parsedQuiz);
         }
       }

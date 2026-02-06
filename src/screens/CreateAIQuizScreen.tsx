@@ -62,14 +62,14 @@ export default function CreateAIQuizScreen({ navigation }: any) {
       navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${formData.lesson} Quiz`,
+          title: `${formData.lesson} Assessment`,
           questions: result.quiz || [],
           class: classes.find((c: any) => c.id === formData.class)?.name,
           subject: subjects.find((s: any) => s.id === formData.subject)?.name,
           difficulty: difficultyLevels.find((l: any) => l.id === formData.level)?.name,
           lesson: formData.lesson,
           additional_instructions: formData.itext || '',
-          // Thread data from the actual quiz generation
+          // Thread data from the actual assessment generation
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           reused_thread: result.reused_thread,
@@ -86,8 +86,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         showActionButtons: true,
       });
     } catch (error: any) {
-      console.error('Quiz generation error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate quiz';
+      console.error('Assessment generation error:', error);
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment';
       Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
@@ -104,7 +104,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         >
           <Ionicons name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create AI Quiz</Text>
+        <Text style={styles.headerTitle}>Create AI Assessment</Text>
         <View style={styles.headerPlaceholder} />
       </View> */}
 
@@ -112,6 +112,11 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        <View style={styles.header}>
+          {/* <Text style={styles.title}> Image Quiz</Text> */}
+          <Text style={styles.subtitle}> Generate assessment on given topic</Text>
+        </View>
+        
         <View style={styles.form}>
         <QuizFormFields
           showClass={true}
@@ -148,7 +153,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           {loading ? (
             <LoadingSpinner size={20} />
           ) : (
-            <Text style={styles.generateButtonText}>Generate Quiz</Text>
+            <Text style={styles.generateButtonText}>Generate Assessment</Text>
           )}
         </TouchableOpacity>
         </View>
@@ -258,5 +263,13 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.buttonText,
     fontSize: 16,
     fontWeight: '600',
+  },
+  header: {
+    padding: 20,
+    paddingTop: 30,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

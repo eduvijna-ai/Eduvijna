@@ -19,6 +19,7 @@ import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
+import { filterPendingQuizzes, filterUpcomingQuizzes, filterCompletedQuizzes, filterMissedQuizzes } from '../utils/quizFilters';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -131,7 +132,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
   // Filter tabs based on role
   const teacherTabs: FilterTab[] = ['all', 'active', 'available_soon', 'expired'];
-  const studentTabs: FilterTab[] = ['all', /* 'upcoming', */ 'ongoing', 'completed', 'missed'];
+  const studentTabs: FilterTab[] = ['all', /* 'upcoming', */ 'ongoing', 'completed', 'missed'];  
   const tabs = isTeacher ? teacherTabs : studentTabs;
 
   // Update selectedTab when route params change
@@ -168,89 +169,41 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   }, [allQuizzes]);
   
   const filteredQuizzes = React.useMemo(() => {
-    return allQuizzes.filter((quiz: any) => {
-      // Classroom filter - use selectedClassroom from state (which may have been initialized from route params)
-      if (selectedClassroom && selectedClassroom !== 'all') {
-        // Check both classroom_id and class_id for compatibility
-        // Convert to strings for comparison to handle type mismatches
+    let quizzes: any[] = allQuizzes;
+
+    if (selectedTab === 'ongoing') {
+      quizzes = filterPendingQuizzes(quizzes);
+    } else if (selectedTab === 'upcoming') {
+      quizzes = filterUpcomingQuizzes(quizzes); // Use the existing filter for upcoming quizzes
+    }
+
+    // Classroom filter
+    if (selectedClassroom && selectedClassroom !== 'all') {
+      quizzes = quizzes.filter((quiz: any) => {
         const quizClassroomId = String(quiz.classroom_id || quiz.class_id || '');
         const filterClassroomId = String(selectedClassroom);
-        
-        if (quizClassroomId !== filterClassroomId) {
-          return false;
-        }
-      }
-    
-      // Date range filter - DateRangeFilter component already provides proper date range
-      if (selectedDateFilter !== 'all') {
+        return quizClassroomId === filterClassroomId;
+      });
+    }
+
+    // Date range filter
+    if (selectedDateFilter !== 'all') {
+      quizzes = quizzes.filter((quiz: any) => {
         const quizDateString = quiz.created_at || quiz.start_time || quiz.assigned_at;
-        if (!quizDateString) {
-          return true; // Skip date filtering if no date available
-        }
-        
+        if (!quizDateString) return true;
+
         const quizDate = new Date(quizDateString);
-        
-        // Create new Date objects to avoid mutating the originals
         const start = new Date(dateRangeStart.getTime());
         const end = new Date(dateRangeEnd.getTime());
-        
-        // Set time to start/end of day for accurate comparison (on copies, not originals)
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
-        
-        const isInRange = quizDate >= start && quizDate <= end;
-        
-        if (!isInRange) {
-          return false;
-        }
-      }
 
-    // Search filter
-    if (searchQuery) {
-      const searchLower = searchQuery.toLowerCase();
-      const quizName = quiz.quiz_name || '';
-      const topic = quiz.topic || '';
-      if (!quizName.toLowerCase().includes(searchLower) &&
-          !topic.toLowerCase().includes(searchLower)) {
-        return false;
-      }
+        return quizDate >= start && quizDate <= end;
+      });
     }
 
-    // Tab filter for teachers
-    if (isTeacher) {
-      if (selectedTab === 'all') return true;
-      if (selectedTab === 'active') return quiz.availability_status === 'active';
-      if (selectedTab === 'available_soon') return quiz.availability_status === 'available_soon';
-      if (selectedTab === 'expired') return quiz.availability_status === 'expired';
-      return true;
-    }
-    
-    // Tab filter for students - use status field from ParsedQuiz
-    if (selectedTab === 'all') return true;
-    
-    // Upcoming: pending quizzes (not started yet) that are available or coming soon
-    if (selectedTab === 'upcoming') {
-      return quiz.status === 'available_soon' || quiz.status === 'pending';
-    }
-    
-    // Ongoing: quizzes that are in progress (started but not completed)
-    if (selectedTab === 'ongoing') {
-      return quiz.status === 'pending';
-    }
-    
-    // Completed: quizzes that have been completed
-    if (selectedTab === 'completed') {
-      return quiz.status === 'completed';
-    }
-    
-    // Missed: quizzes that were missed (expired without attempt)
-    if (selectedTab === 'missed') {
-      return quiz.status === 'missed';
-    }
-    
-    return true;
-    });
-  }, [allQuizzes, classroomId, selectedClassroom, selectedDateFilter, dateRangeStart, dateRangeEnd, searchQuery, selectedTab, isTeacher]);
+    return quizzes;
+  }, [allQuizzes, selectedTab, selectedClassroom, selectedDateFilter, dateRangeStart, dateRangeEnd, searchQuery]);
 
   // Calculate tab counts (with classroom and search filters applied)
   const getTabCount = (tab: FilterTab): number => {
@@ -311,7 +264,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         return true;
       } else {
         if (tab === 'all') return true;
-        if (tab === 'upcoming') return quiz.status === 'pending';
+        if (tab === 'upcoming') return quiz.status === 'upcoming';
         if (tab === 'ongoing') return quiz.status === 'pending';
         if (tab === 'completed') return quiz.status === 'completed';
         if (tab === 'missed') return quiz.status === 'missed';
@@ -320,16 +273,20 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     }).length;
   };
 
-  const tabCounts = {
-    all: getTabCount('all'),
-    active: getTabCount('active'),
-    available_soon: getTabCount('available_soon'),
-    expired: getTabCount('expired'),
-    upcoming: getTabCount('upcoming'),
-    ongoing: getTabCount('ongoing'),
-    completed: getTabCount('completed'),
-    missed: getTabCount('missed'),
-  };
+  const tabCounts = React.useMemo(() => {
+    const counts: Record<FilterTab, number> = {
+      all: allQuizzes.length,
+      ongoing: filterPendingQuizzes(allQuizzes).length,
+      upcoming: filterUpcomingQuizzes(allQuizzes).length,
+      //coming_soon: filterUpcomingQuizzes(allQuizzes).length,
+      completed: filterCompletedQuizzes(allQuizzes).length,
+      missed: filterMissedQuizzes(allQuizzes).length,
+      active: 0, // Placeholder for teacher tabs
+      available_soon: 0, // Placeholder for teacher tabs
+      expired: 0, // Placeholder for teacher tabs
+    };
+    return counts;
+  }, [allQuizzes]);
 
   // const handleCreateAssessment = () => {
   //   console.log('Create new assessment');
@@ -388,18 +345,32 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: Start or Resume quiz
     if (!isTeacher && (action === 'start' || action === 'resume')) {
+      console.log(`Student action: ${action} quiz ${quizId} with attempt data:`, attemptData);
+      
+      // Extract correct IDs - ensure we use the right fields
+      const correctQuizId = attemptData?.quiz_id || quizId;
+      const correctSessionId = attemptData?.session_id || '';
+      const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
+      
+      console.log('🔍 Navigation params:', {
+        quizId: correctQuizId,
+        sessionId: correctSessionId,
+        classroomId: correctClassroomId,
+        questionCount: attemptData?.question_count,
+      });
+      
       if (navigation) {
         navigation.navigate('QuizTakingScreen', {
-          quizId,
-          sessionId: attemptData?.class_id, // Use class_id as sessionId for assigned quizzes
-          classroomId: attemptData?.class_id, // Use class_id as classroomId
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
           quizData: attemptData,
         });
       } else if (onNavigate) {
         onNavigate('QuizTakingScreen', {
-          quizId,
-          sessionId: attemptData?.class_id, // Use class_id as sessionId for assigned quizzes
-          classroomId: attemptData?.class_id, // Use class_id as classroomId
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
           quizData: attemptData,
           quiz: attemptData,
           is_public: false,
@@ -1621,5 +1592,24 @@ const styles = StyleSheet.create({
   attemptInfoText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  generateAssessmentContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  generateAssessmentTile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  generateAssessmentLabel: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#374151',
   },
 });

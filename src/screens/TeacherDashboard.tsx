@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import LoadingSpinner from '@components/LoadingSpinner';
+import QuizGenerationGrid from '@components/QuizGenerationGrid';
 
 interface Props {
   navigation?: any;
@@ -111,7 +112,7 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="school" size={32} color="#F59E0B" />
+          <Ionicons name="school" size={24} color="#F59E0B" />
           <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
             {stats.total_classes}
           </Text>
@@ -134,7 +135,7 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="document-text" size={32} color="#3B82F6" />
+          <Ionicons name="document-text" size={24} color="#3B82F6" />
           <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
             {stats.total_assessments}
           </Text>
@@ -157,7 +158,7 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="checkmark-done" size={32} color="#10B981" />
+          <Ionicons name="checkmark-done" size={24} color="#10B981" />
           <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
             {stats.active_assessments}
           </Text>
@@ -166,6 +167,14 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Generate Assessments Section */}
+      <QuizGenerationGrid
+        navigation={navigation}
+        onNavigate={onNavigate}
+        theme={theme}
+        showTitle={true}
+      />
 
       {/* Two Column Layout for Web/Tablet */}
       <View style={[
@@ -334,31 +343,31 @@ const styles = StyleSheet.create({
   },
   summarySection: {
     flexDirection: 'row',
-    padding: 10,
-    gap: 8,
+    padding: 8,
+    gap: 6,
   },
   summaryCard: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    borderRadius: 12,
+    padding: 8,
+    borderRadius: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
-    minHeight: 100,
+    minHeight: 70,
   },
   summaryCardLabel: {
-    fontSize: 14,
-    marginTop: 8,
+    fontSize: 10,
+    marginTop: 4,
     textAlign: 'center',
   },
   summaryCardValue: {
-    fontSize: 32,
+    fontSize: 22,
     fontWeight: '700',
-    marginTop: 8,
+    marginTop: 4,
   },
   section: {
     padding: 10,

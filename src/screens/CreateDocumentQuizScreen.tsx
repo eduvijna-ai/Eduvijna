@@ -53,7 +53,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     displayName: string;
     uri: string;
     type: string;
-    uploadedFileName?: string; // Backend uploaded filename for quiz generation
+    uploadedFileName?: string; // Backend uploaded filename for assessment generation
     metadata?: {
       gradeLevel: string;
       subject: string;
@@ -91,7 +91,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   // Share modal states
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string>('');
+  const [shareUrl] = useState<string>('');
   
   // Form validation states
   const [formError, setFormError] = useState('');
@@ -174,11 +174,11 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   };
 
   const removeUploadedFile = (index: number) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setUploadedFiles((prev: any[]) => prev.filter((_: any, i: number) => i !== index));
   };
 
   const removeUploadedUrl = (index: number) => {
-    setUploadedUrls(prev => prev.filter((_, i) => i !== index));
+    setUploadedUrls((prev: string[]) => prev.filter((_: string, i: number) => i !== index));
   };
 
   const executeUpload = async (includeMetadata: boolean) => {
@@ -247,7 +247,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
             }
             if (subject.trim()) {
               // Get subject label from subjects array
-              const selectedSubjectObj = subjects.find(s => s.id === subject);
+              const selectedSubjectObj = subjects.find((s: any) => s.id === subject);
               const subjectLabel = selectedSubjectObj?.name || subject;
               formData.append('subject', subjectLabel);
               console.log(`  └─ Subject: ${subjectLabel}`);
@@ -299,7 +299,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       // Add successfully uploaded files to the list
       if (uploadedFileEntries.length > 0) {
         console.log(`✅ ${uploadedFileEntries.length} file(s) uploaded successfully`);
-        setUploadedFiles(prev => [...prev, ...uploadedFileEntries]);
+        setUploadedFiles((prev: any[]) => [...prev, ...uploadedFileEntries]);
       }
       
       setPendingUploadFiles([]);
@@ -369,7 +369,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           }
           if (subject.trim()) {
             // Get subject label from subjects array
-            const selectedSubjectObj = subjects.find(s => s.id === subject);
+            const selectedSubjectObj = subjects.find((s: any) => s.id === subject);
             const subjectLabel = selectedSubjectObj?.name || subject;
             formData.append('subject', subjectLabel);
             console.log(`  └─ Subject: ${subjectLabel}`);
@@ -397,7 +397,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         console.log(`✅ URL uploaded successfully. Backend filename: ${uploadedTitle}`);
 
         // Add URL to uploaded list with backend filename
-        setUploadedFiles(prev => [...prev, {
+        setUploadedFiles((prev: any[]) => [...prev, {
           displayName: pendingUploadUrl,
           uri: pendingUploadUrl,
           type: 'url',
@@ -560,6 +560,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           );
           return;
         }
+        
 
         if (images.length > MAX_IMAGE_COUNT) {
           Alert.alert(
@@ -571,7 +572,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         }
 
         // Check for duplicates
-        const existingNames = uploadedFiles.map(f => f.displayName);
+        const existingNames = uploadedFiles.map((f: any) => f.displayName);
         const duplicates = newFiles.filter(file => existingNames.includes(file.name));
         if (duplicates.length > 0) {
           Alert.alert(
@@ -653,7 +654,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const imageUri = result.assets[0].uri;
-        setCapturedImages(prev => [...prev, imageUri]);
+        setCapturedImages((prev: string[]) => [...prev, imageUri]);
         Alert.alert('Success', `Image captured! (${capturedImages.length + 1}/5)`);
       }
     } catch (error) {
@@ -685,7 +686,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         const imagesToAdd = result.assets.slice(0, remainingSlots);
         const imageUris = imagesToAdd.map(asset => asset.uri);
         
-        setCapturedImages(prev => [...prev, ...imageUris]);
+        setCapturedImages((prev: string[]) => [...prev, ...imageUris]);
         Alert.alert(
           'Success', 
           `${imagesToAdd.length} image(s) added! (${capturedImages.length + imagesToAdd.length}/5)`
@@ -698,117 +699,59 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   };
 
   const removeCapturedImage = (index: number) => {
-    setCapturedImages(prev => prev.filter((_, i) => i !== index));
+    setCapturedImages((prev: string[]) => prev.filter((_: string, i: number) => i !== index));
   };
 
   const convertImagesToPdf = async (): Promise<string | null> => {
-    if (capturedImages.length === 0) {
-      Alert.alert('No Images', 'Please capture at least one image.');
-      return null;
-    }
+  if (capturedImages.length === 0) {
+    Alert.alert('No Images', 'Please capture at least one image.');
+    return null;
+  }
 
-    try {
-      // Read all images as base64
-      const imagePromises = capturedImages.map(async (uri) => {
+  try {
+    // Convert images to base64
+    const base64Images = await Promise.all(
+      capturedImages.map(async (uri: string) => {
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         return `data:image/jpeg;base64,${base64}`;
-      });
-      
-      const base64Images = await Promise.all(imagePromises);
-      
-      // Create HTML with all images - each image on its own page
-      const htmlContent = `
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <style>
-              @page { 
-                size: A4;
-                margin: 0; 
-              }
-              * { 
-                margin: 0; 
-                padding: 0; 
-                box-sizing: border-box;
-              }
-              body { 
-                margin: 0; 
-                padding: 0;
-                width: 100%;
-                height: 100%;
-              }
-              .page { 
-                width: 100%;
-                height: 100vh;
-                page-break-after: always;
-                page-break-inside: avoid;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                overflow: hidden;
-                position: relative;
-              }
-              .page:last-child { 
-                page-break-after: auto;
-              }
-              img { 
-                max-width: 100%;
-                max-height: 100%;
-                width: auto;
-                height: auto;
-                object-fit: contain;
-                display: block;
-              }
-            </style>
-          </head>
-          <body>
-            ${base64Images.map(img => `<div class="page"><img src="${img}" /></div>`).join('')}
-          </body>
-        </html>
-      `;
+      })
+    );
 
-      console.log(`Captured Images: ${capturedImages.length}`); // Debug log
-      
-      // Generate PDF
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+    // Minimal HTML – image per page
+    const html = `
+      <html>
+        <body style="margin:0;padding:0;">
+          ${base64Images
+            .map(
+              (img: string) => `
+                <div style="page-break-after: always; width:100%; height:100%;">
+                  <img src="${img}" style="width:100%; height:100%; object-fit:contain;" />
+                </div>
+              `
+            )
+            .join('')}
+        </body>
+      </html>
+    `;
 
-      // Log URI and file details
-      console.log(`📄 PDF Generated URI: ${uri}`);
-      console.log(`📄 Number of pages: ${capturedImages.length}`);
-      
-      // Get file size and page count
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(uri);
-        if (fileInfo.exists && 'size' in fileInfo) {
-          console.log(`📄 PDF File Size: ${(fileInfo.size / 1024 / 1024).toFixed(2)} MB`);
-        }
-        
-        // Read PDF file as base64 to count pages
-        const pdfBase64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        // Count pages by looking for /Type /Page occurrences in PDF structure
-        // This is a simple heuristic that works for most PDFs
-        const pdfContent = atob(pdfBase64);
-        const pageMatches = pdfContent.match(/\/Type\s*\/Page[^s]/g);
-        const pageCount = pageMatches ? pageMatches.length : capturedImages.length;
-        
-        console.log(`📄 PDF Page Count (detected): ${pageCount}`);
-        console.log(`📄 PDF Page Count (expected): ${capturedImages.length}`);
-      } catch (sizeError) {
-        console.log('Could not determine file size or page count:', sizeError);
-      }
-      
-      return uri;
-    } catch (error) {
-      console.error('Error converting images to PDF:', error);
-      Alert.alert('Error', 'Failed to convert images to PDF');
-      return null;
-    }
-  };
+    // Generate PDF
+    const { uri } = await Print.printToFileAsync({
+      html,
+      base64: false,
+    });
+
+    console.log('📄 PDF generated:', uri);
+    console.log('📄 Pages:', capturedImages.length);
+
+    return uri;
+  } catch (error) {
+    console.error('❌ PDF generation failed:', error);
+    Alert.alert('Error', 'Failed to convert images to PDF');
+    return null;
+  }
+};
 
   const handleUploadImages = async () => {
     if (capturedImages.length === 0) {
@@ -845,7 +788,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     if (!hasFiles && !hasUrls) {
       Alert.alert(
         'Missing Document',
-        'Please upload a document or provide a URL before generating a quiz.',
+        'Please upload a document or provide a URL before generating a assessment.',
         [{ text: 'OK' }]
       );
       return;
@@ -882,11 +825,11 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     setGenerating(true);
     try {
       // Get the selected class label from classes array
-      const selectedClassObj = classes.find(c => c.id === classValue);
+      const selectedClassObj = classes.find((c: any) => c.id === classValue);
       const classLabel = selectedClassObj?.name || classValue;
       
       // Get the selected subject label from subjects array
-      const selectedSubjectObj = subjects.find(s => s.id === subject);
+      const selectedSubjectObj = subjects.find((s: any) => s.id === subject);
       const subjectLabel = selectedSubjectObj?.name || subject;
       
       // Get uploaded filename from backend response (for file uploads)
@@ -895,7 +838,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         ? uploadedFiles[0].uploadedFileName
         : undefined;
       
-      console.log('📄 Starting quiz generation...');
+      console.log('📄 Starting assessment generation...');
       console.log('📄 Uploaded filename:', uploadedFileName);
       console.log('📄 Subject:', subjectLabel);
       console.log('📄 Level:', level);
@@ -903,18 +846,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       console.log('📄 Question count:', questionCount);
       console.log('📄 Additional instructions:', additionalInstructions.trim());
 
-      // Verify we have an uploaded filename (required for document quiz)
+      // Verify we have an uploaded filename (required for document assessment)
       if (!uploadedFileName) {
         Alert.alert(
           'Upload Required',
-          'Please upload a document first. The document must be processed by the backend before generating a quiz.',
+          'Please upload a document first. The document must be processed by the backend before generating an assessment.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
         return;
       }
       
-      // Build the quiz generation request body
+      // Build the assessment generation request body
       const requestBody: any = {
         subject: subjectLabel,
         level: level,
@@ -922,7 +865,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         count: questionCount,
         itext: additionalInstructions.trim(),
         type: 'document',
-        file_name: uploadedFileName, // Send the backend filename for document-based quiz
+        file_name: uploadedFileName, // Send the backend filename for document-based assessment
       };
       
       // Add class if provided
@@ -930,21 +873,21 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         requestBody.class = classLabel;
       }
       
-      console.log('📤 Sending quiz generation request:', JSON.stringify(requestBody, null, 2));
+      console.log('📤 Sending assessment generation request:', JSON.stringify(requestBody, null, 2));
       
-      // Call the quiz generation API with the document
+      // Call the assessment generation API with the document
       const response = await apiClient.post('/api/v1/quiz/generate', requestBody, {
-        timeout: 90000, // 90 seconds for quiz generation
+        timeout: 90000, // 90 seconds for assessment generation
       });
       const result = response.data;
       
       // Debug log the response
-      console.log('📨 Quiz generation response:', JSON.stringify(result, null, 2));
+      console.log('📨 Assessment generation response:', JSON.stringify(result, null, 2));
       
       // Extract questions - try different possible response structures
       let questions = result.quiz || result.questions || [];
       
-      // If first API call returns empty quiz (thread creation), retry with the thread_id
+      // If first API call returns empty assessment (thread creation), retry with the thread_id
       if ((!questions || questions.length === 0) && result.thread_id && !result.reused_thread) {
         console.log('⚠️ First request created thread but no questions. Retrying with thread_id...');
         
@@ -972,7 +915,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         console.warn('⚠️ No questions in response after retry. Full response:', result);
         Alert.alert(
           'No Questions Generated',
-          'The quiz generation completed but returned no questions. Please try again with different parameters.',
+          'The assessment generation completed but returned no questions. Please try again with different parameters.',
           [{ text: 'OK' }]
         );
         setGenerating(false);
@@ -987,18 +930,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       // Refresh notifications
       await refreshAfterQuizGenerated();
       
-      // Navigate to quiz screen with generated quiz data
+      // Navigate to assessment screen with generated assessment data
       navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${lesson.trim()} Quiz`,
+          title: `${lesson.trim()} Assessment`,
           questions: questions,
           class: classLabel,
           subject: subjectLabel,
           difficulty: level,
           lesson: lesson.trim(),
           additional_instructions: additionalInstructions.trim(),
-          // Thread data from the quiz generation response
+          // Thread data from the assessment generation response
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           reused_thread: result.reused_thread,
@@ -1018,14 +961,14 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
           },
         },
         showShareButton: true, // Show share button at top
-        showActionButtons: true, // Show Regenerate, Retake, New Quiz buttons
+        showActionButtons: true, // Show Regenerate, Retake, New Assessment buttons
       });
     } catch (error: any) {
-      console.error('❌ Failed to generate quiz:', error);
+      console.error('❌ Failed to generate assessment:', error);
       console.error('❌ Error response:', error.response?.data);
       
       // Extract detailed error message
-      let errorMessage = 'Failed to generate quiz. Please try again.';
+      let errorMessage = 'Failed to generate assessment. Please try again.';
       if (error.response?.data) {
         if (typeof error.response.data === 'string') {
           errorMessage = error.response.data;
@@ -1050,7 +993,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
   const handleAnswerSelection = (questionIndex: number, selectedOption: string) => {
     if (allQuestionsVerified) return;
 
-    setSelectedAnswers(prev => ({
+    setSelectedAnswers((prev: { [key: number]: string }) => ({
       ...prev,
       [questionIndex]: selectedOption,
     }));
@@ -1060,7 +1003,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     const results: { [key: number]: boolean } = {};
     const questions = quizData?.questions || [];
 
-    questions.forEach((question, index) => {
+    questions.forEach((question: any, index: number) => {
       const selectedAnswer = selectedAnswers[index];
       const correctAnswer = question.correctAnswer || question.answer;
       results[index] = selectedAnswer === correctAnswer;
@@ -1122,7 +1065,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         >
           <Ionicons name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Document Quiz</Text>
+        <Text style={styles.headerTitle}>Create Document Assessment</Text>
         <View style={styles.headerPlaceholder} />
       </View> */}
 
@@ -1133,9 +1076,9 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         {currentStep === 'upload' && (
         <View style={styles.uploadContainer}>
           <View style={styles.header}>
-            <Ionicons name="document-text" size={64} color={theme.colors.success} />
-            <Text style={styles.title}>Document Quiz Generator</Text>
-            <Text style={styles.subtitle}>Generate quiz questions from any document or URL</Text>
+            {/* <Ionicons name="document-text" size={64} color={theme.colors.success} />
+            <Text style={styles.title}> Document Assessment Generator</Text> */}
+            <Text style={styles.subtitle}>Generate assessment questions from any document or URL</Text>
           </View>
 
           {/* Input Type Selector */}
@@ -1211,7 +1154,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               {uploadedFiles.length > 0 && (
                 <View style={styles.uploadedFilesList}>
                   <Text style={styles.uploadedFilesTitle}>Uploaded Files:</Text>
-                  {uploadedFiles.map((file, index) => (
+                  {uploadedFiles.map((file: any, index: number) => (
                     <View key={index} style={styles.uploadedFileItem}>
                       <View style={styles.uploadedFileInfo}>
                         <Ionicons 
@@ -1271,7 +1214,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 <View style={styles.capturedImagesContainer}>
                   <Text style={styles.capturedImagesTitle}>Captured Images:</Text>
                   <View style={styles.imagesGrid}>
-                    {capturedImages.map((imageUri, index) => (
+                    {capturedImages.map((imageUri: string, index: number) => (
                       <View key={index} style={styles.imageCard}>
                         <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                         <TouchableOpacity
@@ -1299,7 +1242,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               {uploadedFiles.length > 0 && (
                 <View style={styles.uploadedFilesList}>
                   <Text style={styles.uploadedFilesTitle}>Uploaded Files:</Text>
-                  {uploadedFiles.map((file, index) => (
+                  {uploadedFiles.map((file: any, index: number) => (
                     <View key={index} style={styles.uploadedFileItem}>
                       <View style={styles.uploadedFileInfo}>
                         <Ionicons 
@@ -1360,7 +1303,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
               {uploadedUrls.length > 0 && (
                 <View style={styles.uploadedFilesList}>
                   <Text style={styles.uploadedFilesTitle}>Added URLs:</Text>
-                  {uploadedUrls.map((url, index) => (
+                  {uploadedUrls.map((url: string, index: number) => (
                     <View key={index} style={styles.uploadedFileItem}>
                       <View style={styles.uploadedFileInfo}>
                         <Ionicons name="link" size={24} color={theme.colors.primary} />
@@ -1458,7 +1401,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
           {/* Quiz Questions */}
           <View style={styles.questionsContainer}>
-            {quizData.questions.map((question, index) => {
+            {quizData.questions.map((question: any, index: number) => {
               const isCorrect = questionResults[index] === true;
               const isWrong = questionResults[index] === false;
 
@@ -1484,7 +1427,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                   <MathRenderer text={question.question} colors={theme.colors} />
 
                   <View style={styles.optionsContainer}>
-                    {question.options.map((option, optionIndex) => {
+                    {question.options.map((option: any, optionIndex: number) => {
                       const optionLetter = String.fromCharCode(65 + optionIndex);
                       const isSelected = selectedAnswers[index] === option;
                       const isCorrectOption = allQuestionsVerified && option === question.correctAnswer;
@@ -1618,7 +1561,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 <TextInput
                   style={styles.metadataInput}
                   value={documentMetadata.board}
-                  onChangeText={(text) => setDocumentMetadata({ ...documentMetadata, board: text })}
+                  onChangeText={(text: string) => setDocumentMetadata({ ...documentMetadata, board: text })}
                   placeholder="e.g., Maharashtra Board, UP Board"
                   placeholderTextColor={theme.colors.placeholder}
                 />
@@ -1629,7 +1572,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 <TextInput
                   style={styles.metadataInput}
                   value={documentMetadata.medium}
-                  onChangeText={(text) => setDocumentMetadata({ ...documentMetadata, medium: text })}
+                  onChangeText={(text: string) => setDocumentMetadata({ ...documentMetadata, medium: text })}
                   placeholder="e.g., English, Hindi"
                   placeholderTextColor={theme.colors.placeholder}
                 />
@@ -1640,7 +1583,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 <TextInput
                   style={styles.metadataInput}
                   value={documentMetadata.chapter}
-                  onChangeText={(text) => setDocumentMetadata({ ...documentMetadata, chapter: text })}
+                  onChangeText={(text: string) => setDocumentMetadata({ ...documentMetadata, chapter: text })}
                   placeholder="e.g., Chapter 1, Introduction"
                   placeholderTextColor={theme.colors.placeholder}
                 />
@@ -1651,7 +1594,7 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
                 <TextInput
                   style={styles.metadataInput}
                   value={documentMetadata.unit}
-                  onChangeText={(text) => setDocumentMetadata({ ...documentMetadata, unit: text })}
+                  onChangeText={(text: string) => setDocumentMetadata({ ...documentMetadata, unit: text })}
                   placeholder="e.g., Unit 1, Algebra"
                   placeholderTextColor={theme.colors.placeholder}
                   multiline

@@ -258,6 +258,9 @@ export interface QuizDetails {
   
   /** Total count from API response */
   total_count?: number;
+
+  quiz_type?: string;
+  questions?: QuizQuestionsData;
 }
 
 /**
@@ -1046,59 +1049,121 @@ export function toTeacherQuiz(apiData: any): TeacherQuiz {
  * Handles individual attempt objects from student_details view
  * 
  * IMPORTANT: Now receives INDIVIDUAL attempt objects from the attempts array
- * Each attempt object structure:
- * {
- *   quiz_id: 1,
- *   class_id: "class_xxx",
- *   status: "completed" | "pending" | "missed",
- *   score: 20,
- *   questions: {quizzes: [...]},
- *   attempt_id: 1,
- *   started_at: "...",
- *   completed_at: "...",
- *   end_time: "...",
- *   ...
- * }
+ * Quiz-level fields (session_id, class_id, etc.) are NOT in attempt objects
+ * They come from the parent quiz response and must be passed separately
+ * 
+ * @param attemptData - Individual attempt object from attempts array
+ * @param quizLevelData - Quiz-level fields from parent quiz object (session_id, class_id, classroom_name, instructor, etc.)
  */
-export function toStudentQuiz(attemptData: any): StudentQuiz {
+export function toStudentQuiz(attemptData: any, quizLevelData?: any): StudentQuiz {
   // This is now a SINGLE attempt object, not a wrapper with attempts array
+  
+  // DEBUG: Log what we receive
+  if (!quizLevelData?.session_id) {
+    console.log('⚠️ toStudentQuiz: Missing session_id in quizLevelData', {
+      quizLevelData,
+      attemptQuizId: attemptData.quiz_id
+    });
+  }
   
   // Parse questions to get count
   let questionCount = 0;
-  if (attemptData.questions) {
+  let actualSubject = '';
+  
+  // Try to get question count from multiple sources
+  if (quizLevelData?.question_count && quizLevelData.question_count > 0) {
+    questionCount = quizLevelData.question_count;
+  } else if (attemptData.question_count && attemptData.question_count > 0) {
+    questionCount = attemptData.question_count;
+  } else {
+    // Try parsing from questions or subject field
     try {
-      const questionsData = typeof attemptData.questions === 'string' 
-        ? JSON.parse(attemptData.questions) 
-        : attemptData.questions;
-      questionCount = questionsData?.quizzes?.length || 0;
+      // Check if questions field exists
+      const questionsField = attemptData.questions || quizLevelData?.questions;
+      
+      // Check if subject field contains quiz JSON
+      const subjectField = attemptData.subject || quizLevelData?.subject;
+      
+      let questionsData = null;
+      
+      if (questionsField) {
+        questionsData = typeof questionsField === 'string' 
+          ? JSON.parse(questionsField) 
+          : questionsField;
+      } else if (subjectField && typeof subjectField === 'string' && subjectField.includes('quizzes')) {
+        // Subject field contains the quiz JSON - parse carefully
+        try {
+          questionsData = JSON.parse(subjectField);
+        } catch (parseError) {
+          console.error('Failed to parse subject field for questions:', parseError);
+          // Subject might be a plain text subject name, not JSON
+          questionsData = null;
+        }
+      }
+      
+      if (questionsData?.quizzes && Array.isArray(questionsData.quizzes)) {
+        questionCount = questionsData.quizzes.length;
+        console.log('✅ Parsed question count from JSON:', questionCount);
+      }
     } catch (e) {
-      console.error('Failed to parse questions:', e);
+      console.error('Failed to parse questions (outer):', e);
     }
   }
+  
+  // Handle subject field - KEEP ORIGINAL subject with questions JSON
+  // Don't transform it - QuizTakingScreen needs the questions JSON
+  const subjectField = quizLevelData?.subject || attemptData.subject || '';
 
   // Determine student status
-  const studentStatus: AttemptStatus = attemptData.status || 'pending';
+  const studentStatus: AttemptStatus = attemptData.status || quizLevelData?.status || 'pending';
+
+  // Generate a unique quiz_id if none exists or is 0 - use session_id hash or timestamp
+  let uniqueQuizId = attemptData.quiz_id || quizLevelData?.quiz_id;
+  // Check for both null/undefined AND 0 (which is invalid)
+  if (!uniqueQuizId || uniqueQuizId === 0) {
+    // Generate a unique ID from session_id
+    const sessionId = quizLevelData?.session_id || attemptData.session_id || '';
+    if (sessionId) {
+      // Simple hash function to convert session_id to a number
+      uniqueQuizId = Math.abs(sessionId.split('').reduce((acc: number, char: string) => {
+        return ((acc << 5) - acc) + char.charCodeAt(0);
+      }, 0));
+    } else {
+      // Last resort: use timestamp + random
+      uniqueQuizId = Date.now() + Math.floor(Math.random() * 10000);
+    }
+    console.warn('⚠️ Quiz missing quiz_id (was: ' + (attemptData.quiz_id || quizLevelData?.quiz_id) + '), generated:', uniqueQuizId, 'from session:', sessionId);
+  }
 
   return {
-    // Core quiz fields from attempt object
-    quiz_id: attemptData.quiz_id,
-    session_id: attemptData.session_id || '',
-    quiz_name: attemptData.quiz_name || 'Untitled Quiz',
-    topic: attemptData.topic || '',
-    subject: attemptData.subject || '',
+    // Core quiz fields - prioritize quizLevelData for consistency
+    quiz_id: uniqueQuizId,
+    
+    // Quiz-level fields from parent quiz object (not in attempt)
+    // Use fallback chain: quizLevelData -> attemptData -> default
+    session_id: quizLevelData?.session_id || attemptData.session_id || '',
+    classroom_id: quizLevelData?.class_id || quizLevelData?.classroom_id || attemptData.classroom_id || '',
+    //class_id: quizLevelData?.class_id || quizLevelData?.classroom_id || attemptData.classroom_id || '', // Alias for backward compatibility
+    classroom_name: quizLevelData?.classroom_name || attemptData.classroom_name || 'Unknown Classroom',
+    instructor: quizLevelData?.instructor || attemptData.instructor || null,
+    
+    // Attempt-level fields with quiz-level fallbacks
+    quiz_name: quizLevelData?.quiz_name || attemptData.quiz_name || 'Untitled Quiz',
+    topic: quizLevelData?.topic || attemptData.topic || '',
+    subject: subjectField,
+    //questions: quizLevelData?.questions || attemptData.questions || null,
     question_count: questionCount,
-    duration: attemptData.duration,
-    created_at: attemptData.created_at,
-    start_time: attemptData.start_time,
-    end_time: attemptData.end_time,
-    assigned_at: attemptData.assigned_at || attemptData.created_at,
-    due_date: attemptData.due_date || attemptData.end_time,
+    quiz_type: quizLevelData?.quiz_type || attemptData.quiz_type,
+    duration: quizLevelData?.duration || attemptData.duration || null,
+    created_at: quizLevelData?.created_at || attemptData.created_at || new Date().toISOString(),
+    start_time: quizLevelData?.start_time || attemptData.start_time || null,
+    end_time: quizLevelData?.end_time || attemptData.end_time || null,
+    assigned_at: attemptData.assigned_at || quizLevelData?.assigned_at || quizLevelData?.created_at || attemptData.created_at || new Date().toISOString(),
+    due_date: attemptData.due_date || quizLevelData?.due_date || quizLevelData?.end_time || attemptData.end_time || null,
     file_name: attemptData.file_name,
-    availability_status: attemptData.availability_status || 'active',
+    availability_status: quizLevelData?.availability_status || attemptData.availability_status || 'active',
     quiz_status: attemptData.quiz_status || 'active',
-    classroom_id: attemptData.class_id || attemptData.classroom_id,
-    classroom_name: attemptData.classroom_name || 'Unknown Classroom',
-    has_time_limit: attemptData.has_time_limit ?? false,
+    has_time_limit: attemptData.has_time_limit ?? (quizLevelData?.duration ? true : false),
     
     // Student-specific fields from this attempt
     student_status: studentStatus,
@@ -1118,7 +1183,6 @@ export function toStudentQuiz(attemptData: any): StudentQuiz {
     
     // Optional fields
     attempts_allowed: attemptData.attempts_allowed,
-    instructor: attemptData.instructor,
     view_type: attemptData.view_type,
     total_count: attemptData.total_count,
   };

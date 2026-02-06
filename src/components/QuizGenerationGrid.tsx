@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 interface QuizGenerationGridProps {
   navigation?: any;
+  onNavigate?: (screen: string, params?: any) => void;
   isDark?: boolean;
   theme: any;
   showTitle?: boolean;
@@ -18,7 +19,8 @@ interface QuizGenerationGridProps {
 }
 
 export default function QuizGenerationGrid({ 
-  navigation, 
+  navigation,
+  onNavigate, 
   isDark = false, 
   theme,
   showTitle = true,
@@ -26,10 +28,13 @@ export default function QuizGenerationGrid({
 }: QuizGenerationGridProps) {
   
   const handlePress = (screen: string) => {
-    if (onQuizTypePress) {
+    // Update the screen name to match the registered name in the navigation stack
+    if (navigation?.navigate) {
+      navigation.navigate(screen);
+    } else if (onNavigate) {
+      onNavigate(screen);
+    } else if (onQuizTypePress) {
       onQuizTypePress(screen);
-    } else if (navigation) {
-      navigation.navigate(screen as never);
     }
   };
 
@@ -49,11 +54,11 @@ export default function QuizGenerationGrid({
       <View style={styles.quizOptionsGrid}>
         <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#E3F2FD' }]}
-          onPress={() => handlePress('CreateAIQuiz')}
+          onPress={() => handlePress('CreateAIQuizScreen')}
           activeOpacity={0.7}
         >
           <View style={[styles.quizOptionIcon, { backgroundColor: '#0891B2' }]}>
-            <Ionicons name="bulb" size={28} color="#FFF" />
+            <Ionicons name="bulb" size={20} color="#FFF" />
           </View>
           <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>AI Assessment</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Topic-based</Text>
@@ -61,11 +66,11 @@ export default function QuizGenerationGrid({
 
         <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#FFE5F1' }]}
-          onPress={() => handlePress('CreateDocumentQuiz')}
+          onPress={() => handlePress('CreateDocumentQuizScreen')}
           activeOpacity={0.7}
         >
           <View style={[styles.quizOptionIcon, { backgroundColor: '#DC2626' }]}>
-            <Ionicons name="document" size={28} color="#FFF" />
+            <Ionicons name="document" size={20} color="#FFF" />
           </View>
           <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Document</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>PDF/Text</Text>
@@ -73,11 +78,11 @@ export default function QuizGenerationGrid({
 
         <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#FFF3E0' }]}
-          onPress={() => handlePress('CreateImageQuiz')}
+          onPress={() => handlePress('CreateImageQuizScreen')}
           activeOpacity={0.7}
         >
           <View style={[styles.quizOptionIcon, { backgroundColor: '#D97706' }]}>
-            <Ionicons name="image" size={28} color="#FFF" />
+            <Ionicons name="image" size={20} color="#FFF" />
           </View>
           <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Image</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Photo/PDF</Text>
@@ -85,19 +90,19 @@ export default function QuizGenerationGrid({
 
         <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#E8F5E9' }]}
-          onPress={() => handlePress('CreateYouTubeQuiz')}
+          onPress={() => handlePress('CreateYouTubeQuizScreen')}
           activeOpacity={0.7}
         >
           <View style={[styles.quizOptionIcon, { backgroundColor: '#059669' }]}>
-            <Ionicons name="logo-youtube" size={28} color="#FFF" />
+            <Ionicons name="logo-youtube" size={20} color="#FFF" />
           </View>
           <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>YouTube</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Video-based</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#F3E5F5' }]}
-          onPress={() => handlePress('CreateWebsiteQuiz')}
+          onPress={() => handlePress('CreateWebsiteQuizScreen')}
           activeOpacity={0.7}
         >
           <View style={[styles.quizOptionIcon, { backgroundColor: '#9C27B0' }]}>
@@ -105,7 +110,7 @@ export default function QuizGenerationGrid({
           </View>
           <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Website</Text>
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>URL-based</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
     </View>
   );
@@ -113,56 +118,55 @@ export default function QuizGenerationGrid({
 
 const styles = StyleSheet.create({
   quizGenerationSection: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingHorizontal: 10,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   sectionHeader: {
-    marginBottom: 12,
+    marginBottom: 6,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 11,
   },
   quizOptionsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 6,
     marginTop: 4,
   },
   quizOptionCard: {
-    width: '31%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    padding: 10,
+    flex: 1,
+    height: 70,
+    borderRadius: 8,
+    padding: 6,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 2,
   },
   quizOptionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   quizOptionTitle: {
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   quizOptionSubtitle: {
-    fontSize: 10,
+    fontSize: 8,
     textAlign: 'center',
   },
 });

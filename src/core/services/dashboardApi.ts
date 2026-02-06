@@ -324,23 +324,94 @@ export async function fetchStudentQuizzes(
 
         const data = await response.json();
         
-        // Extract attempts array from response.data[0].attempts (which is a JSON string)
-        let attemptsData: any[] = [];
+        // API returns multiple quiz sessions in data.data array
+        // Each element has quiz-level fields AND an attempts array
+        let allStudentQuizzes: any[] = [];
         
-        if (data.data && data.data.length > 0 && data.data[0].attempts) {
-          try {
-            // Parse the attempts JSON string to get actual quiz data
-            attemptsData = JSON.parse(data.data[0].attempts);
-          } catch (parseError) {
-            console.error('Failed to parse attempts JSON:', parseError);
-            attemptsData = [];
-          }
+        if (data.data && Array.isArray(data.data)) {
+          // Loop through each quiz session
+          data.data.forEach((quizSession: any, index: number) => {
+            // Extract attempts array from this quiz session (JSON string)
+            let attemptsData: any[] = [];
+            
+            if (quizSession.attempts) {
+              try {
+                // Parse the attempts JSON string to get actual quiz data
+                attemptsData = JSON.parse(quizSession.attempts);
+              } catch (parseError) {
+                console.error(`Failed to parse attempts for quiz session ${index}:`, parseError);
+                attemptsData = [];
+              }
+            }
+            
+            // Extract quiz-level fields from this quiz session
+            // Include all possible fields that might be at quiz level
+            
+            // DEBUG: Log raw quiz session data to see what fields are available
+            if (index === 0) {
+              console.log('🔍 Raw Quiz Session Sample:', {
+                quiz_id: quizSession.quiz_id,
+                session_id: quizSession.session_id,
+                allFields: Object.keys(quizSession),
+              });
+            }
+            
+            const quizLevelData = {
+              quiz_id: quizSession.quiz_id,
+              session_id: quizSession.session_id,
+              class_id: quizSession.class_id,
+              classroom_id: quizSession.classroom_id,
+              classroom_name: quizSession.classroom_name,
+              instructor: quizSession.instructor,
+              quiz_name: quizSession.quiz_name,
+              topic: quizSession.topic,
+              quiz_type: quizSession.quiz_type,
+              subject: quizSession.subject,
+              questions: quizSession.questions, // Add questions field
+              created_at: quizSession.created_at,
+              start_time: quizSession.start_time,
+              end_time: quizSession.end_time,
+              duration: quizSession.duration,
+              question_count: quizSession.question_count,
+              availability_status: quizSession.availability_status,
+            };
+            
+            // If there are attempts, convert them to StudentQuiz objects
+            if (attemptsData && attemptsData.length > 0) {
+              const quizzesFromSession = attemptsData.map((attempt: any) => 
+                toStudentQuiz(attempt, quizLevelData)
+              );
+              allStudentQuizzes = allStudentQuizzes.concat(quizzesFromSession);
+            } else {
+              // No attempts yet - create a quiz record from quiz-level data only
+              // This represents an assigned but not-yet-attempted quiz
+              const pendingQuiz = toStudentQuiz({}, quizLevelData);
+              allStudentQuizzes.push(pendingQuiz);
+            }
+          });
+          
+          // DEBUG: Log summary of processing
+          console.log('🔍 API Processing Summary:', {
+            totalQuizSessions: data.data.length,
+            totalStudentQuizzes: allStudentQuizzes.length,
+            sampleQuizLevelData: data.data[0] ? {
+              session_id: data.data[0].session_id,
+              class_id: data.data[0].class_id,
+              classroom_name: data.data[0].classroom_name,
+              quiz_name: data.data[0].quiz_name,
+            } : 'No data',
+            sampleAttempt: allStudentQuizzes[0] ? {
+              quiz_id: allStudentQuizzes[0].quiz_id,
+              quiz_name: allStudentQuizzes[0].quiz_name,
+              classroom_name: allStudentQuizzes[0].classroom_name,
+            } : 'No quizzes'
+          });
         }
         
-        // Convert attempts array to StudentQuiz[]
+        // Return all student quizzes from all sessions
         return {
           meta: data.meta,
-          data: attemptsData.map((attempt: any) => toStudentQuiz(attempt)),
+          data: allStudentQuizzes,
         };
       } catch (error) {
         console.error('Error fetching student quizzes:', error);

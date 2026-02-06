@@ -46,7 +46,13 @@ export default function QuizStatusScreen({ route, navigation }: QuizStatusScreen
   // Handle Android hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      navigation.navigate('Main', { screen: 'Dashboard' });
+      // Go back to previous screen in navigation stack
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        // Fallback to Dashboard if no history
+        navigation.navigate('Main', { screen: 'Dashboard' });
+      }
       return true; // Prevent default back behavior
     });
 
@@ -204,18 +210,23 @@ export default function QuizStatusScreen({ route, navigation }: QuizStatusScreen
               </Text>
             </TouchableOpacity>
 
-            {/* Go Back to Dashboard Button */}
+            {/* Go Back Button */}
             <TouchableOpacity
               style={[styles.button, styles.secondaryButton, { borderColor: colors.border }]}
               onPress={() => {
-                // Navigate to Dashboard tab
-                navigation.navigate('Main', {
-                  screen: 'Dashboard',
-                });
+                // Go back to previous screen in navigation stack
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  // Fallback to Dashboard if no history
+                  navigation.navigate('Main', {
+                    screen: 'Dashboard',
+                  });
+                }
               }}
             >
-              <Ionicons name="home-outline" size={20} color={colors.text} />
-              <Text style={[styles.buttonText, { color: colors.text }]}>Go to Dashboard</Text>
+              <Ionicons name="arrow-back-outline" size={20} color={colors.text} />
+              <Text style={[styles.buttonText, { color: colors.text }]}>Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>

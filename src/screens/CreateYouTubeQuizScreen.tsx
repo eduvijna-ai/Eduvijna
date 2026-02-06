@@ -55,7 +55,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const [classValue, setClassValue] = useState('');
 
   useEffect(() => {
-    loadRecentSummaries();
+    // loadRecentSummaries();
   }, []);
 
   const loadRecentSummaries = async () => {
@@ -174,7 +174,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
       }
 
       if (!finalPrompt) {
-        finalPrompt = 'Generate quiz questions based on the video content.';
+        finalPrompt = 'Generate assessment questions based on the video content.';
       }
 
       const result = await generateAIQuiz({
@@ -186,14 +186,27 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         itext: finalPrompt,
       });
 
-      console.log('Quiz generated:', result);
+      console.log('Assessment generated:', {
+        quiz_id: result.quiz_id,
+        questionCount: result.quiz?.length,
+      });
+      
+      // Validate that quiz was generated with questions
+      if (!result.quiz || !Array.isArray(result.quiz) || result.quiz.length === 0) {
+        console.error('No questions generated from YouTube video:', result);
+        Alert.alert(
+          'Generation Failed',
+          'The quiz was created but no questions were generated from the video. Please try again or use a different video.'
+        );
+        return;
+      }
 
       await refreshAfterQuizGenerated();
       
       navigation.navigate('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${lesson} Quiz`,
+          title: `${lesson} Assessment`,
           questions: result.quiz || [],
           class: classes.find((c) => c.id === classValue)?.name,
           subject: subjects.find((s) => s.id === subject)?.name,
@@ -220,8 +233,8 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         },
       });
     } catch (error: unknown) {
-      console.error('Quiz generation error:', error);
-      const errorMsg = (error as any)?.response?.data?.detail || (error as any)?.message || 'Failed to generate quiz from video';
+      console.error('Assessment generation error:', error);
+      const errorMsg = (error as any)?.response?.data?.detail || (error as any)?.message || 'Failed to generate assessment from video';
       Alert.alert('Error', errorMsg);
     } finally {
       setIsGenerating(false);
@@ -231,13 +244,13 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const handleSelectRecentSummary = (summary: YouTubeSummary) => {
     Alert.alert(
       'Use Recent Video',
-      `Generate quiz from "${summary.title}"?`,
+      `Generate assessment from "${summary.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Generate Quiz',
+          text: 'Generate Assessment',
           onPress: () => {
-            // Mock generating quiz from existing summary
+            // Mock generating assessment from existing summary
             navigation.navigate('QuizTakingScreen', {
               quizData: {
                 title: summary.title,
@@ -274,7 +287,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         >
           <Ionicons name="close" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create YouTube Quiz</Text>
+        <Text style={styles.headerTitle}>Create YouTube Assessment</Text>
         <View style={styles.headerPlaceholder} />
       </View> */}
 
@@ -283,11 +296,11 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>📺 YouTube Quiz</Text>
+          {/* <Text style={styles.title}> YouTube Assessment</Text> */}
           <Text style={styles.subtitle}>
             {currentStep === 'input' 
-              ? 'Generate quiz from YouTube video' 
-              : 'Configure your quiz'}
+              ? 'Generate assessment from YouTube video' 
+              : 'Configure your assessment'}
           </Text>
         </View>
 
@@ -324,7 +337,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
           {recentSummaries.length > 0 && (
             <View style={styles.recentSection}>
               <Text style={styles.sectionTitle}>📋 Recent YouTube Summaries</Text>
-              <Text style={styles.sectionSubtitle}>Or generate quiz from a recent video</Text>
+              <Text style={styles.sectionSubtitle}>Or generate assessment from a recent video</Text>
               
               {isLoadingSummaries ? (
                 <View style={styles.loadingContainer}>
@@ -404,7 +417,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             {isGenerating ? (
               <LoadingSpinner size={20} />
             ) : (
-              <Text style={styles.generateButtonText}>🚀 Generate Quiz</Text>
+              <Text style={styles.generateButtonText}>🚀 Generate Assessment</Text>
             )}
           </TouchableOpacity>
 

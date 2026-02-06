@@ -16,6 +16,12 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { fetchTeacherQuizzes, fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { Classroom } from '@core/types/quiz.types';
+import { 
+  isStudentQuizActive, 
+  isStudentQuizUpcoming,
+  filterCompletedQuizzes,
+  filterMissedQuizzes 
+} from '../utils/quizFilters';
 
 interface ClassData extends Classroom {
   studentCount?: number;
@@ -145,11 +151,11 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         let completedQuizzes = 0;
         
         if (isStudent) {
-          // For students: count by student status from raw attempts
-          activeQuizzes = classQuizzes.filter(q => q.status === 'pending').length;
-          expiredQuizzes = classQuizzes.filter(q => q.status === 'missed').length;
-          completedQuizzes = classQuizzes.filter(q => q.status === 'completed').length;
-          upcomingQuizzes = Math.max(0, quizCount - activeQuizzes - expiredQuizzes - completedQuizzes);
+          // For students: Use common filter utilities for consistency
+          activeQuizzes = classQuizzes.filter(isStudentQuizActive).length;
+          upcomingQuizzes = classQuizzes.filter(isStudentQuizUpcoming).length;
+          completedQuizzes = filterCompletedQuizzes(classQuizzes).length;
+          expiredQuizzes = filterMissedQuizzes(classQuizzes).length;
         } else {
           // For teachers: count by availability status
           activeQuizzes = classQuizzes.filter(q => q.availability_status === 'active').length;
@@ -398,6 +404,20 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
             </Text>
           </TouchableOpacity>
           
+          <TouchableOpacity 
+            style={[styles.statusBadge, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleStatusPress(item, 'upcoming');
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="time-outline" size={14} color="#F59E0B" />
+            <Text style={[styles.statusBadgeText, { color: '#F59E0B' }]}>
+              {item.upcomingQuizzes || 0} Upcoming
+            </Text>
+          </TouchableOpacity>
+          
           {isStudent && (
             <TouchableOpacity 
               style={[styles.statusBadge, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}
@@ -410,22 +430,6 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
               <Ionicons name="checkmark-done" size={14} color={theme.colors.primary} />
               <Text style={[styles.statusBadgeText, { color: theme.colors.primary }]}>
                 {item.completedQuizzes || 0} Completed
-              </Text>
-            </TouchableOpacity>
-          )}
-          
-          {!isStudent && (
-            <TouchableOpacity 
-              style={[styles.statusBadge, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B' }]}
-              onPress={(e) => {
-                e.stopPropagation();
-                handleStatusPress(item, 'upcoming');
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="time-outline" size={14} color="#F59E0B" />
-              <Text style={[styles.statusBadgeText, { color: '#F59E0B' }]}>
-                {item.upcomingQuizzes || 0} Upcoming
               </Text>
             </TouchableOpacity>
           )}
@@ -620,21 +624,21 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   quizStatusContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
+    flexDirection: 'row', // Ensure all items are in a single row
+    flexWrap: 'nowrap', // Prevent wrapping to the next line
+    gap: 6, // Maintain spacing between items
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
   },
   statusBadgeText: {
-    fontSize: 12,
+    fontSize: 9,
     fontWeight: '600',
   },
   classFooter: {

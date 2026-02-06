@@ -19,6 +19,7 @@ import {
   createQuizSubmission, 
   generateAIQuiz
 } from '../core/services/sharedApi';
+import { clearCacheEntry } from '../core/services/cacheService';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
@@ -46,9 +47,19 @@ interface QuizData {
   duration?: number;
   has_time_limit?: boolean;
   is_public?: boolean;
+  start_time?: string;
+  end_time?: string;
   questions: QuizQuestion[];
   regenerationParams?: any;
 }
+
+type QuizAvailability = {
+  isAvailable: boolean;
+  status: 'not_started' | 'active' | 'expired';
+  message: string;
+  startTime?: Date;
+  endTime?: Date;
+};
 
 export default function QuizTakingScreen({ route, navigation }: any) {
   const { theme } = useTheme();
@@ -101,13 +112,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     return {
       ...normalized,
       quizId: normalized.quiz_id || routeQuizId,
-      sessionId: normalized.class_id || routeSessionId,
-      classroomId: normalized.class_id || routeClassroomId,
+      sessionId: normalized.session_id || routeSessionId,
+      classroomId: normalized.classroom_id || normalized.class_id || routeClassroomId,
       title: normalized.quiz_name || normalized.topic || normalized.title,
       lesson: normalized.topic || normalized.lesson,
       duration: normalized.duration || 30,
       has_time_limit: normalized.has_time_limit ?? true,
       question_count: normalized.question_count || normalized.questions?.length,
+      questions: normalized.questions || [],
     };
   }, [normalizedQuiz, quizData, routeQuizId, routeSessionId, routeClassroomId]);
   
@@ -158,15 +170,42 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   }, [navigation]);
 
   // Determine quiz type from normalized data
+  // Teacher-assigned quiz must meet ALL these criteria:
+  // 1. Explicitly marked as ASSIGNED type, OR has session_id AND classroom_id
+  // 2. NOT a self-generated quiz (showActionButtons = false)
+  // 3. NOT a public quiz (is_public = false)
   const isAssignedQuiz = Boolean(
-    quizSource?.type === 'ASSIGNED' ||
-    (quizSource?.sessionId && quizSource?.classroomId) ||
-    (quiz?.session_id && quiz?.classroom_id)
-  ) && !showActionButtons;
+    (
+      quizSource?.type === 'ASSIGNED' ||
+      (quizSource?.sessionId && quizSource?.classroomId) ||
+      (quiz?.session_id && quiz?.classroom_id)
+    ) &&
+    !showActionButtons 
+  );
 
   // Extract session and classroom IDs for submission (used in backend submission logic)
   const normalizedSessionId = quizSource?.sessionId || quiz?.session_id || null;
   const normalizedClassroomId = quizSource?.classroomId || quiz?.classroom_id || null;
+
+  // Debug logging for assignment detection
+  useEffect(() => {
+    console.log('🔍 [QUIZ TYPE DETECTION]', {
+      isAssignedQuiz,
+      conditions: {
+        type: quizSource?.type,
+        typeIsAssigned: quizSource?.type === 'ASSIGNED',
+        hasSessionId: !!quizSource?.sessionId || !!quiz?.session_id,
+        sessionId: quizSource?.sessionId || quiz?.session_id,
+        hasClassroomId: !!quizSource?.classroomId || !!quiz?.classroom_id,
+        classroomId: quizSource?.classroomId || quiz?.classroom_id,
+        showActionButtons,
+        isPublic: quizSource?.is_public,
+      },
+      willSubmit: isAssignedQuiz && !!quiz?.quiz_id && !!user?.id,
+    });
+  }, [isAssignedQuiz, quizSource?.type, showActionButtons, quizSource?.is_public, quiz?.quiz_id, user?.id]);
+
+  
 
   // Get performance message based on score
   const getPerformanceMessage = (percentage: number) => {
@@ -211,6 +250,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // It only needs to load and display the normalized quiz data
   useEffect(() => {
     if (quizSource) {
+      console.log('Loading quiz data:', {
+        hasQuestions: !!quizSource.questions,
+        questionCount: quizSource.questions?.length,
+        title: quizSource.title,
+      });
       
       // Directly use the normalized/validated quiz data
       const loadedQuiz: QuizData = {
@@ -226,6 +270,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         duration: quizSource.duration || 30,
         has_time_limit: quizSource.has_time_limit ?? true,
         is_public: quizSource.is_public ?? false,
+        start_time: quizSource.start_time,
+        end_time: quizSource.end_time,
         questions: quizSource.questions || [],
         regenerationParams: quizSource.regenerationParams,
       };
@@ -238,11 +284,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setShowResults(false);
       setQuestionResults({});
       setIsLoading(false);
+      
+      console.log('✅ Quiz loaded into state:', {
+        hasQuestions: !!loadedQuiz.questions,
+        questionCount: loadedQuiz.questions?.length,
+        title: loadedQuiz.title,
+      });
     } else {
+      console.warn('No quiz source provided to QuizTakingScreen');
       // No quiz data provided
       setIsLoading(false);
     }
-  }, [quizSource]); // Re-run when quiz params change
+  }, [quizSource, navigation, isAssignedQuiz]); // Re-run when quiz params change
 
   // Timer countdown
   useEffect(() => {
@@ -273,23 +326,42 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     );
   }
 
+  // Quiz unavailable check is now handled by navigation in useEffect
+  // No need for custom UI here - QuizStatusScreen handles it
+
   // ==========================================
   // MINIMAL VALIDATION - Quiz should always be valid from handleOpenQuiz
   // ==========================================
-  if (!quiz || !quiz.questions || quiz.questions.length === 0) {
+  // Wait for quiz to be loaded before validating
+  if (!quiz) {
+    // Quiz is still being loaded in useEffect, show loading
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.centerContainer}>
-          <Text style={[styles.title, { color: colors.text }]}>No assessment data available</Text>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('Main', { screen: 'Dashboard' })}
-          >
-            <Text style={styles.buttonText}>Go to Dashboard</Text>
-          </TouchableOpacity>
+          <LoadingSpinner size={60} fullScreen />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Preparing assessment...</Text>
         </View>
       </View>
     );
+  }
+  
+  // Now validate the loaded quiz
+  if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+    console.error('Quiz validation failed - no questions:', {
+      hasQuiz: !!quiz,
+      hasQuestions: !!quiz.questions,
+      isArray: Array.isArray(quiz?.questions),
+      questionCount: quiz?.questions?.length,
+      quizTitle: quiz.title,
+    });
+    
+    navigation.replace('QuizStatusScreen', {
+      status: 'unavailable',
+      title: quiz.title || 'Assessment',
+      message: 'No questions were generated for this assessment. Please try creating a new assessment.',
+      icon: 'alert-circle-outline',
+    });
+    return null;
   }
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
@@ -515,24 +587,44 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       // Store elapsed time for display
       setElapsedTime(timeSpent);
 
+      // Prepare submission data
+      const sessionId = quiz.session_id || normalizedSessionId;
+      const classroomId = quiz.classroom_id || normalizedClassroomId;
+
       // Debug: Log all conditions for backend submission
-      console.log('🔍 Submission conditions check:', {
-        isAssignedQuiz,
-        hasQuizId: !!quiz.quiz_id,
-        hasUserId: !!user?.id,
-        sessionId: quiz.session_id || normalizedSessionId,
-        classroomId: quiz.classroom_id || normalizedClassroomId,
-        showActionButtons,
-        isPublic: quizSource.is_public,
-        willSubmitToBackend: isAssignedQuiz && quiz.quiz_id && user?.id && !quizSource.is_public
-      });
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔍 [SUBMISSION CONDITIONS CHECK]');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('Quiz Type Detection:');
+      console.log('  isAssignedQuiz:', isAssignedQuiz);
+      console.log('  quizSource.type:', quizSource?.type);
+      console.log('  showActionButtons:', showActionButtons);
+      console.log('  quizSource.is_public:', quizSource?.is_public);
+      console.log('');
+      console.log('Required Fields:');
+      console.log('  quiz.quiz_id:', quiz.quiz_id);
+      console.log('  user.id:', user?.id);
+      console.log('  sessionId:', sessionId);
+      console.log('  classroomId:', classroomId);
+      console.log('');
+      console.log('Final Decision:');
+      console.log('  Will Submit to Backend:', isAssignedQuiz && !!quiz.quiz_id && !!user?.id);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // Validate required fields before submission
+      if (isAssignedQuiz && !sessionId) {
+        console.error('❌ Missing session_id for teacher-assigned quiz submission');
+        Alert.alert('Error', 'Session ID is missing. Cannot submit quiz.');
+        setSubmitting(false);
+        return;
+      }
 
       // ONLY submit to backend if this is a teacher-assigned assessment
-      if (isAssignedQuiz && quiz.quiz_id && user?.id && !quizSource.is_public) {
+      if (isAssignedQuiz && quiz.quiz_id && user?.id) {
         console.log('📤 Submitting assigned assessment:', {
           quiz_id: quiz.quiz_id,
-          session_id: quiz.session_id || normalizedSessionId,
-          classroom_id: quiz.classroom_id || normalizedClassroomId,
+          session_id: sessionId,
+          classroom_id: classroomId,
           score
         });
 
@@ -550,16 +642,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           });
 
           // Step 1: Create quiz attempt
-          const attemptResponse = await createQuizAttempt({
+          console.log('📤 Creating quiz attempt with data:', {
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            class_id: quiz.session_id || normalizedSessionId || '', // Using session_id as class_id
+            class_id: sessionId,
             attempt_number: 1,
             status: 'started',
             started_at: quizStartTime,
           });
 
-          console.log('✅ Quiz attempt created:', attemptResponse.id);
+          const attemptResponse = await createQuizAttempt({
+            quiz_id: quiz.quiz_id,
+            student_id: user.id,
+            class_id: sessionId, // Using session_id as class_id
+            attempt_number: 1,
+            status: 'started',
+            started_at: quizStartTime,
+          });
+
+          console.log('✅ Quiz attempt created:', attemptResponse);
 
           
 
@@ -567,7 +668,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           await createQuizSubmission({
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            classroom_id: quiz.session_id || normalizedSessionId || '', // Using session_id as classroom_id
+            classroom_id: sessionId, // Using session_id as classroom_id
             score: score,
             summary: 'Auto-scored client-side',
             log_data: {
@@ -590,6 +691,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           });
 
           console.log('✅ Assessment attempt updated');
+
+          // Step 4: Invalidate student_quizzes cache to reflect new submission
+          // Clear both 'all' and classroom-specific cache entries
+          await clearCacheEntry('student_quizzes_all_100_0');
+          if (sessionId) {
+            await clearCacheEntry(`student_quizzes_${sessionId}_100_0`);
+          }
+          console.log('✅ Student quizzes cache invalidated');
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);
           console.error('Error details:', {
@@ -1057,48 +1166,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  notAvailableContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  notAvailableCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
-    maxWidth: 500,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  clockIcon: {
-    marginBottom: 24,
-  },
-  notAvailableTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  availabilityInfo: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  availabilityLabel: {
-    fontSize: 16,
-    marginVertical: 4,
-    textAlign: 'center',
-  },
-  availabilityTime: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginVertical: 4,
-  },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',

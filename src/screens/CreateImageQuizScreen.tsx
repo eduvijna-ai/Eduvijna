@@ -134,7 +134,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       
       console.log('Image analysis response:', response);
 
-      // The API returns a full response with quiz, summary, etc.
+      // The API returns a full response with assessment, summary, etc.
       // Extract the analysis information
       const analysisData = {
         summary: response.summary || response.message || 'Image analyzed successfully.',
@@ -210,43 +210,43 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       
       // If no content, use a default message
       if (!finalPrompt) {
-        finalPrompt = 'Generate quiz questions based on the uploaded image content.';
+        finalPrompt = 'Generate assessment questions based on the uploaded image content.';
       }
 
-      // Call the quiz generation API (same as AI Quiz)
-      // Use the FULL prompt for quiz generation to get quality questions
+      // Call the assessment generation API (same as AI Quiz)
+      // Use the FULL prompt for assessment generation to get quality questions
       const result = await generateAIQuiz({
         class: classValue,
         subject: subject,
         lesson: lesson,
         level: level,
         count: quizQuestionCount,
-        itext: finalPrompt, // Pass the full combined prompt for quiz generation
+        itext: finalPrompt, // Pass the full combined prompt for assessment generation
       });
 
-      console.log('Quiz generated:', result);
+      console.log('Assessment generated:', result);
       
       // Create a short summary for display/storage (max 500 chars)
-      // This is only for metadata, NOT for quiz generation
+      // This is only for metadata, NOT for assessment generation
       const displaySummary = finalPrompt.length > 500 
         ? finalPrompt.substring(0, 497) + '...' 
         : finalPrompt;
       
-      // Refresh notifications after quiz creation
+      // Refresh notifications after assessment creation
       await refreshAfterQuizGenerated();
       
-      // Navigate to quiz taking screen with the generated quiz
+      // Navigate to assessment taking screen with the generated assessment
       navigation.navigate('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${lesson} Quiz`,
+          title: `${lesson} Assessment`,
           questions: result.quiz || [],
           class: classes.find((c: any) => c.id === classValue)?.name,
           subject: subjects.find((s: any) => s.id === subject)?.name,
           difficulty: level,
           lesson: lesson,
           additional_instructions: displaySummary, // Use truncated version for metadata
-          // Thread data from the actual quiz generation
+          // Thread data from the actual assessment generation
           thread_id: result.thread_id,
           thread_slug: result.thread_slug,
           reused_thread: result.reused_thread,
@@ -272,7 +272,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       });
     } catch (error: any) {
       console.error('Quiz generation error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate quiz from image';
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment from image';
       Alert.alert('Error', errorMsg);
     } finally {
       setIsGenerating(false);
@@ -302,8 +302,8 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         {currentStep === 'upload' && (
           <>
             <View style={styles.header}>
-              <Text style={styles.title}>🖼️ Image Quiz</Text>
-              <Text style={styles.subtitle}>Generate quiz from an image</Text>
+              {/* <Text style={styles.title}> Image Quiz</Text> */}
+              <Text style={styles.subtitle}> Generate assessment from an image</Text>
             </View>
 
           <View style={styles.form}>
@@ -369,7 +369,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               <View style={styles.statusContainer}>
                 <View style={styles.statusRow}>
                   <LoadingSpinner size={20} />
-                  <Text style={styles.statusText}>Generating quiz...</Text>
+                  <Text style={styles.statusText}>Generating assessment...</Text>
                 </View>
               </View>
             )}
@@ -383,7 +383,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
               disabled={isValidating || isGenerating}
             >
               <Text style={styles.generateButtonText}>
-                {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '� Analyze Image'}
+                {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '🖼️ Analyze Image'}
               </Text>
             </TouchableOpacity>
 
@@ -391,7 +391,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
             {recentSummaries.length > 0 && (
               <View style={styles.recentSection}>
                 <Text style={styles.sectionTitle}>📋 Recent Image Summaries</Text>
-                <Text style={styles.sectionSubtitle}>Or generate quiz from a recent image</Text>
+                <Text style={styles.sectionSubtitle}>Or generate assessment from a recent image</Text>
                 
                 {isLoadingSummaries ? (
                   <View style={styles.loadingContainer}>
@@ -426,7 +426,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
           <View style={styles.analysisHeader}>
             <View>
               <Text style={styles.analysisTitle}>🖼️ Image Analysis</Text>
-              <Text style={styles.subtitle}>Review the detected content and set quiz parameters</Text>
+              <Text style={styles.subtitle}>Review the detected content and set assessment parameters</Text>
             </View>
             <TouchableOpacity onPress={handleBackToUpload} style={styles.backButton}>
               <Text style={styles.backButtonText}>← Back</Text>
