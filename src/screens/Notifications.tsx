@@ -59,7 +59,7 @@ export default function Notifications({ navigation, onNavigate }: Props) {
       
       const params = new URLSearchParams({
         view_type: 'student_total_details',
-        limit: '100',
+        limit: '1000',
         offset: '0',
       });
 

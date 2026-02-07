@@ -152,6 +152,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
               : quiz.attempts;
             
             if (Array.isArray(attempts)) {
+              // Add ALL students from attempts array (including those who haven't started)
               attempts.forEach((attempt: any) => {
                 const studentId = attempt.student_id;
                 
@@ -227,6 +228,14 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
           return a.student_fullname.localeCompare(b.student_fullname);
         case 'score':
           return (b.score || 0) - (a.score || 0);
+        case 'completion':
+          // For classroom view, sort by completion rate
+          if (classroomId) {
+            const rateA = (a.completed_quizzes || 0) / (a.total_quizzes || 1);
+            const rateB = (b.completed_quizzes || 0) / (b.total_quizzes || 1);
+            return rateB - rateA;
+          }
+          return 0;
         default:
           return 0;
       }

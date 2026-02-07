@@ -99,10 +99,10 @@ export function useAssessments(filters?: AssessmentFilters): UseAssessmentsRetur
     setGlobalLoading(true);
     try {
       if (user.role === 'instructor') {
-        const response = await fetchTeacherQuizzes({ view_type: 'summary', limit: 100, offset: 0 });
+        const response = await fetchTeacherQuizzes({ view_type: 'summary', limit: 1000, offset: 0 });
         setGlobalQuizzes(response.data, response.meta?.total_count || response.data.length);
       } else {
-        const response = await fetchStudentQuizzes({ view_type: 'student_total_details', limit: 100, offset: 0 });
+        const response = await fetchStudentQuizzes({ view_type: 'student_total_details', limit: 1000, offset: 0 });
         setGlobalQuizzes(response.data, response.meta?.total_count || response.data.length);
       }
     } catch (err) {

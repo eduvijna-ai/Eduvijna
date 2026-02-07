@@ -292,7 +292,18 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         } catch (error: any) {
           console.error(`❌ Error uploading ${file.name}:`, error);
           console.error(`❌ Error response:`, error.response?.data);
-          failedFiles.push(file.name);
+          
+          // Extract detailed error message
+          let errorDetail = '';
+          if (error.response?.data) {
+            const errorData = error.response.data;
+            errorDetail = errorData.detail || errorData.message || errorData.error || '';
+          } else if (error.message) {
+            errorDetail = error.message;
+          }
+          
+          // Store filename with error detail for better error reporting
+          failedFiles.push(`${file.name}${errorDetail ? ` (${errorDetail})` : ''}`);
         }
       }
 
@@ -320,13 +331,13 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       } else if (uploadedFileEntries.length > 0) {
         Alert.alert(
           'Partial Success',
-          `Uploaded ${uploadedFileEntries.length} file(s), but ${failedFiles.length} failed: ${failedFiles.join(', ')}`,
+          `Uploaded ${uploadedFileEntries.length} file(s), but ${failedFiles.length} failed:\n\n${failedFiles.join('\n')}`,
           [{ text: 'OK' }]
         );
       } else {
         Alert.alert(
           'Upload Failed',
-          `Failed to upload all files: ${failedFiles.join(', ')}`,
+          `Failed to upload all files:\n\n${failedFiles.join('\n')}\n\nPlease check your internet connection and try again.`,
           [{ text: 'OK' }]
         );
       }
@@ -654,6 +665,17 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const imageUri = result.assets[0].uri;
+        
+        // Check for duplicate image
+        if (capturedImages.includes(imageUri)) {
+          Alert.alert(
+            'Duplicate Image',
+            'This image has already been captured.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
         setCapturedImages((prev: string[]) => [...prev, imageUri]);
         Alert.alert('Success', `Image captured! (${capturedImages.length + 1}/5)`);
       }
@@ -686,11 +708,35 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
         const imagesToAdd = result.assets.slice(0, remainingSlots);
         const imageUris = imagesToAdd.map(asset => asset.uri);
         
-        setCapturedImages((prev: string[]) => [...prev, ...imageUris]);
-        Alert.alert(
-          'Success', 
-          `${imagesToAdd.length} image(s) added! (${capturedImages.length + imagesToAdd.length}/5)`
-        );
+        // Filter out duplicate images
+        const newImageUris = imageUris.filter(uri => !capturedImages.includes(uri));
+        
+        if (newImageUris.length === 0) {
+          Alert.alert(
+            'Duplicate Images',
+            'All selected images have already been added.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        if (newImageUris.length < imageUris.length) {
+          const duplicateCount = imageUris.length - newImageUris.length;
+          Alert.alert(
+            'Duplicates Removed',
+            `${duplicateCount} duplicate image(s) were skipped. ${newImageUris.length} new image(s) added.`,
+            [{ text: 'OK' }]
+          );
+        }
+        
+        setCapturedImages((prev: string[]) => [...prev, ...newImageUris]);
+        
+        if (newImageUris.length === imageUris.length) {
+          Alert.alert(
+            'Success', 
+            `${newImageUris.length} image(s) added! (${capturedImages.length + newImageUris.length}/5)`
+          );
+        }
       }
     } catch (error) {
       console.error('Error picking images:', error);
@@ -745,10 +791,29 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
     console.log('📄 PDF generated:', uri);
     console.log('📄 Pages:', capturedImages.length);
 
+    // Check PDF file size
+    const fileInfo = await FileSystem.getInfoAsync(uri);
+    if (fileInfo.exists && fileInfo.size) {
+      const fileSizeMB = (fileInfo.size / (1024 * 1024)).toFixed(2);
+      console.log(`📄 PDF size: ${fileSizeMB} MB`);
+      
+      if (fileInfo.size > MAX_FILE_SIZE) {
+        Alert.alert(
+          'File Too Large',
+          `The generated PDF (${fileSizeMB} MB) exceeds the maximum allowed size of ${(MAX_FILE_SIZE / (1024 * 1024)).toFixed(0)} MB.\n\nPlease reduce the number of images or use lower quality images.`,
+          [{ text: 'OK' }]
+        );
+        return null;
+      }
+    }
+
     return uri;
   } catch (error) {
     console.error('❌ PDF generation failed:', error);
-    Alert.alert('Error', 'Failed to convert images to PDF');
+    Alert.alert(
+      'PDF Generation Failed',
+      `Failed to convert images to PDF. ${error instanceof Error ? error.message : 'Please try again with fewer images or lower quality.'}`
+    );
     return null;
   }
 };
@@ -768,11 +833,15 @@ export default function CreateDocumentQuizScreen({ navigation }: any) {
       return; // Error already shown in convertImagesToPdf
     }
 
+    // Get PDF file size
+    const fileInfo = await FileSystem.getInfoAsync(pdfUri);
+    const pdfSize = fileInfo.exists && fileInfo.size ? fileInfo.size : 0;
+    
     // Create PDF file object and set as pending upload
     const pdfFile = {
       uri: pdfUri,
       name: `captured_${Date.now()}.pdf`,
-      size: 0,
+      size: pdfSize,
       type: 'application/pdf',
     };
 

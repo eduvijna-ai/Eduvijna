@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -45,6 +45,11 @@ interface TopicPerformance {
   completedCount: number;
 }
 
+interface QuizOption {
+  quiz_id: number;
+  quiz_name: string;
+}
+
 interface StudentSummary {
   totalQuizzes: number;
   attemptedCount: number;
@@ -86,6 +91,8 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
   const [statusFilter, setStatusFilter] = useState<'All' | 'Completed' | 'Absent' | 'In Progress'>('All');
   const [sortBy, setSortBy] = useState<'score' | 'date'>('date');
   const [dateFilter, setDateFilter] = useState<DateFilterType>('this_month');
+  const [selectedQuiz, setSelectedQuiz] = useState<number | null>(null);
+  const [availableQuizzes, setAvailableQuizzes] = useState<QuizOption[]>([]);
   
   // Initialize with current month's date range
   const getCurrentMonthRange = () => {
@@ -115,15 +122,55 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     }
   }, [studentId, dateFilter, selectedClassroom]);
 
+  // Calculate filter counts based on quiz filter (before status filter)
+  const filterCounts = useMemo(() => {
+    // First apply quiz filter if selected
+    let baseFiltered = [...quizAttempts];
+    if (selectedQuiz) {
+      baseFiltered = baseFiltered.filter(attempt => attempt.quiz_id === selectedQuiz);
+    }
+
+    // Calculate counts from quiz-filtered data
+    const completed = baseFiltered.filter(a => a.status?.toLowerCase() === 'completed');
+    const missed = baseFiltered.filter(a => {
+      const s = a.status?.toLowerCase() || '';
+      return s === 'missed' || s === 'absent';
+    });
+    const inProgress = baseFiltered.filter(a => {
+      const s = a.status?.toLowerCase() || '';
+      return s === 'pending' || s === 'in_progress';
+    });
+
+    const scores = completed.map(a => a.score).filter(s => s !== null) as number[];
+    const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+    const highScore = scores.length > 0 ? Math.max(...scores) : 0;
+    const lowScore = scores.length > 0 ? Math.min(...scores) : 0;
+
+    return {
+      total: baseFiltered.length,
+      completed: completed.length,
+      inProgress: inProgress.length,
+      missed: missed.length,
+      averageScore: avgScore,
+      highestScore: highScore,
+      lowestScore: lowScore,
+    };
+  }, [quizAttempts, selectedQuiz]);
+
   useEffect(() => {
     applyFilters();
-  }, [quizAttempts, statusFilter, sortBy]);
+  }, [quizAttempts, statusFilter, sortBy, selectedQuiz]);
 
   const applyFilters = () => {
     let filtered = [...quizAttempts];
     
     // Reset display count when filters change
     setDisplayCount(10);
+
+    // Apply quiz filter
+    if (selectedQuiz) {
+      filtered = filtered.filter(attempt => attempt.quiz_id === selectedQuiz);
+    }
 
     // Apply status filter (summary view uses different status values)
     if (statusFilter !== 'All') {
@@ -209,6 +256,22 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       setClassrooms(classroomsList);
 
       console.log('📚 Available Classrooms:', classroomsList.length, classroomsList);
+
+      // Extract unique quizzes from the complete dataset for quiz filter dropdown
+      const uniqueQuizzes = new Map<number, string>();
+      response.data.forEach((item: any) => {
+        if (item.quiz_id && item.quiz_name) {
+          uniqueQuizzes.set(item.quiz_id, item.quiz_name);
+        }
+      });
+
+      const quizzesList = Array.from(uniqueQuizzes.entries()).map(([id, name]) => ({
+        quiz_id: id,
+        quiz_name: name,
+      }));
+      setAvailableQuizzes(quizzesList);
+
+      console.log('📝 Available Quizzes:', quizzesList.length, quizzesList);
 
       // Data is already filtered by classroom if we used fetchTeacherQuizzes
       let filteredData = response.data;
@@ -592,15 +655,15 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
             onPress={() => setStatusFilter('All')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{summary.totalQuizzes}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Assigned</Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{filterCounts.total}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total{selectedQuiz ? ' in Quiz' : ' Assigned'}</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.summaryItem, statusFilter === 'Completed' && styles.summaryItemActive]}
             onPress={() => setStatusFilter('Completed')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.summaryValue, { color: '#10B981' }]}>{summary.completedCount}</Text>
+            <Text style={[styles.summaryValue, { color: '#10B981' }]}>{filterCounts.completed}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Completed</Text>
           </TouchableOpacity>
           <TouchableOpacity 
@@ -608,7 +671,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
             onPress={() => setStatusFilter('In Progress')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>{summary.attemptedCount - summary.completedCount}</Text>
+            <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>{filterCounts.inProgress}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>In Progress</Text>
           </TouchableOpacity>
           <TouchableOpacity 
@@ -616,7 +679,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
             onPress={() => setStatusFilter('Absent')}
             activeOpacity={0.7}
           >
-            <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{summary.missedCount}</Text>
+            <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{filterCounts.missed}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Missed/Absent</Text>
           </TouchableOpacity>
         </View>
@@ -624,15 +687,15 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         <View style={[styles.scoreRow, { borderTopColor: colors.border }]}>
           <View style={styles.scoreItem}>
             <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Average</Text>
-            <Text style={[styles.scoreValue, { color: colors.text }]}>{summary.averageScore.toFixed(1)}%</Text>
+            <Text style={[styles.scoreValue, { color: colors.text }]}>{filterCounts.averageScore.toFixed(1)}%</Text>
           </View>
           <View style={styles.scoreItem}>
             <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Highest</Text>
-            <Text style={[styles.scoreValue, { color: '#10B981' }]}>{summary.highestScore.toFixed(0)}%</Text>
+            <Text style={[styles.scoreValue, { color: '#10B981' }]}>{filterCounts.highestScore.toFixed(0)}%</Text>
           </View>
           <View style={styles.scoreItem}>
             <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Lowest</Text>
-            <Text style={[styles.scoreValue, { color: '#EF4444' }]}>{summary.lowestScore.toFixed(0)}%</Text>
+            <Text style={[styles.scoreValue, { color: '#EF4444' }]}>{filterCounts.lowestScore.toFixed(0)}%</Text>
           </View>
         </View>
       </View>
@@ -706,6 +769,44 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
           <Ionicons name="list" size={24} color={colors.primary} />
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Submitted Quizzes</Text>
         </View>
+
+        {/* Quiz Filter Chips */}
+        {availableQuizzes.length > 1 && (
+          <View style={styles.quizFilterSection}>
+            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Filter by Quiz:</Text>
+            {/* <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipsScroll}>
+              <TouchableOpacity
+                style={[
+                  styles.quizFilterChip,
+                  { borderColor: colors.border },
+                  selectedQuiz === null && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
+                onPress={() => setSelectedQuiz(null)}
+              >
+                <Text style={[
+                  styles.quizFilterChipText,
+                  { color: selectedQuiz === null ? '#fff' : colors.text },
+                ]}>All Quizzes</Text>
+              </TouchableOpacity>
+              {availableQuizzes.map((quiz) => (
+                <TouchableOpacity
+                  key={quiz.quiz_id}
+                  style={[
+                    styles.quizFilterChip,
+                    { borderColor: colors.border },
+                    selectedQuiz === quiz.quiz_id && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  ]}
+                  onPress={() => setSelectedQuiz(quiz.quiz_id)}
+                >
+                  <Text style={[
+                    styles.quizFilterChipText,
+                    { color: selectedQuiz === quiz.quiz_id ? '#fff' : colors.text },
+                  ]} numberOfLines={1}>{quiz.quiz_name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView> */}
+          </View>
+        )}
 
         {/* Sort Options */}
         <View style={styles.sortRow}>
@@ -819,6 +920,11 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                     <Text style={[styles.quizListSubtitle, { color: colors.textSecondary }]}>
                       {attempt.quiz_name.match(/\((\d+)\s*Qs?\)/)?.[0] || '1 quiz'} • {timeText}
                     </Text>
+                    {attempt.completed_at && (
+                      <Text style={[styles.quizCompletedDate, { color: colors.textSecondary }]}>
+                        Completed: {new Date(attempt.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    )}
                   </View>
                   
                   <View style={styles.quizListRight}>
@@ -1111,6 +1217,32 @@ const styles = StyleSheet.create({
   },
   quizListSubtitle: {
     fontSize: 13,
+  },
+  quizCompletedDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  quizFilterSection: {
+    marginBottom: 12,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  filterChipsScroll: {
+    flexGrow: 0,
+  },
+  quizFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  quizFilterChipText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   quizListRight: {
     alignItems: 'flex-end',

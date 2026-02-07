@@ -71,7 +71,7 @@ async function loadTeacherData(): Promise<void> {
     // Load dashboard summary (includes quizzes, stats, etc.)
     const summaryResponse = await fetchTeacherDashboardSummary({
       view_type: 'summary',
-      limit: 100,
+      limit: 1000,
       offset: 0,
     });
     
@@ -115,7 +115,7 @@ async function loadStudentData(): Promise<void> {
     // Load student quizzes with complete details for statistics and analytics
     const quizzesResponse = await fetchStudentQuizzes({
       view_type: 'student_total_details',
-      limit: 100,
+      limit: 1000,
       offset: 0,
     });
     
@@ -262,10 +262,10 @@ export async function refreshData(dataType: 'quizzes' | 'classrooms' | 'dropdown
   try {
     if (dataType === 'quizzes') {
       if (user.role === 'instructor') {
-        const response = await fetchTeacherDashboardSummary({ view_type: 'summary', limit: 100 });
+        const response = await fetchTeacherDashboardSummary({ view_type: 'summary', limit: 1000 });
         useDashboardStore.getState().setQuizzes(response.data, response.meta.total_count);
       } else {
-        const response = await fetchStudentQuizzes({ view_type: 'student_total_details', limit: 100 });
+        const response = await fetchStudentQuizzes({ view_type: 'student_total_details', limit: 1000 });
         useDashboardStore.getState().setQuizzes(response.data, response.meta.total_count);
       }
     } else if (dataType === 'classrooms' && user.role === 'instructor') {

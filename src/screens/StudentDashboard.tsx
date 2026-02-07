@@ -91,7 +91,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
       // Use dashboardApi service which properly extracts quiz-level fields
       const filters: any = {
-        limit: 100,
+        limit: 1000,
         offset: 0,
       };
 

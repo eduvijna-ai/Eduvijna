@@ -102,52 +102,80 @@ export const isStudentQuizUpcoming = (quiz: any): boolean => {
 };
 
 /**
- * Filter quizzes to get only active ones for students
+ * TEACHER FILTERS - Based on availability_status only
+ */
+
+/**
+ * Filter quizzes to get active ones for teachers
  * @param quizzes Array of quiz objects
- * @returns Filtered array of active quizzes
+ * @returns Filtered array of active quizzes (availability_status = 'active')
  */
 export const filterActiveQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(isStudentQuizActive);
+  return quizzes.filter(quiz => quiz.availability_status === 'active');
 };
 
 /**
- * Filter quizzes to get only upcoming ones for students
+ * Filter quizzes to get available soon quizzes for teachers
  * @param quizzes Array of quiz objects
- * @returns Filtered array of upcoming quizzes
+ * @returns Filtered array of available soon quizzes (availability_status = 'coming soon')
+ */
+export const filterAvailableSoonQuizzes = (quizzes: any[]): any[] => {
+  return quizzes.filter(quiz => quiz.availability_status === 'coming soon');
+};
+
+/**
+ * Filter quizzes to get expired quizzes for teachers
+ * @param quizzes Array of quiz objects
+ * @returns Filtered array of expired quizzes (availability_status = 'expired')
+ */
+export const filterExpiredQuizzes = (quizzes: any[]): any[] => {
+  return quizzes.filter(quiz => quiz.availability_status === 'expired');
+};
+
+/**
+ * STUDENT FILTERS - Based on availability_status AND status
+ */
+
+/**
+ * Filter quizzes to get upcoming ones for students
+ * @param quizzes Array of quiz objects
+ * @returns Filtered array of upcoming quizzes (availability_status = 'coming soon' AND status = 'pending')
  */
 export const filterUpcomingQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(isStudentQuizUpcoming);
+  return quizzes.filter(quiz => 
+    quiz.availability_status === 'coming soon' && quiz.status === 'pending'
+  );
 };
 
 /**
- * Filter quizzes to get only completed ones for students
+ * Filter quizzes to get ongoing ones for students (pending quizzes)
  * @param quizzes Array of quiz objects
- * @returns Filtered array of completed quizzes
- */
-export const filterCompletedQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(q => q.status === 'completed');
-};
-
-/**
- * Filter quizzes to get only missed ones for students
- * @param quizzes Array of quiz objects
- * @returns Filtered array of missed quizzes
- */
-export const filterMissedQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(q => q.status === 'missed');
-};
-
-/**
- * Filter quizzes to get only pending ones for students
- * Pending = pending status + active availability + within time window
- * @param quizzes Array of quiz objects
- * @returns Filtered array of pending quizzes
+ * @returns Filtered array of ongoing quizzes (availability_status = 'active' AND status = 'pending')
  */
 export const filterPendingQuizzes = (quizzes: any[]): any[] => {
   return quizzes.filter(quiz => 
-    quiz.status === 'pending' && 
-    quiz.availability_status === 'active' && 
-    !isQuizUpcoming(quiz) && // Exclude upcoming quizzes
-    isQuizWithinTimeWindow(quiz)
+    quiz.availability_status === 'active' && quiz.status === 'pending'
+  );
+};
+
+/**
+ * Filter quizzes to get completed ones for students
+ * @param quizzes Array of quiz objects
+ * @returns Filtered array of completed quizzes (availability_status = 'active' AND status = 'completed')
+ */
+export const filterCompletedQuizzes = (quizzes: any[]): any[] => {
+  return quizzes.filter(quiz => 
+    quiz.availability_status === 'active' && quiz.status === 'completed'
+  );
+};
+
+/**
+ * Filter quizzes to get missed ones for students
+ * @param quizzes Array of quiz objects
+ * @returns Filtered array of missed quizzes (availability_status = 'expired' AND status = 'pending')
+ */
+export const filterMissedQuizzes = (quizzes: any[]): any[] => {
+  return quizzes.filter(quiz => 
+    quiz.availability_status === 'expired' && quiz.status === 'pending'
   );
 };

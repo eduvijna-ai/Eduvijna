@@ -107,7 +107,7 @@ export async function fetchTeacherDashboardSummary(
   // Apply default filters for dashboard analytics
   const defaultFilters: TeacherQuizFilters = {
     view_type: 'summary',
-    limit: filters.limit || 100,
+    limit: filters.limit || 1000,
     offset: filters.offset || 0,
     ...filters,
   };
@@ -270,7 +270,7 @@ export async function fetchStudentQuizzes(
   // Apply default filters
   const defaultFilters: StudentQuizFilters = {
     view_type: 'student_total_details',
-    limit: filters.limit || 100,
+    limit: filters.limit || 1000,
     offset: filters.offset || 0,
     ...filters,
   };
@@ -458,7 +458,7 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
         }
 
         // Use class_wise_students to get classroom list with student counts
-        const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=class_wise_students&limit=100&offset=0`;
+        const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=class_wise_students&limit=1000&offset=0`;
 
         const response = await fetch(url, {
           method: 'GET',
