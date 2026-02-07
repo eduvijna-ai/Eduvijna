@@ -402,7 +402,8 @@ export default function StudentDashboard({ navigation, route }: Props) {
                 //     sessionId: firstPendingQuiz.session_id 
                 //   });
                 // } else {
-                  navigation?.navigate('Assessments', { filterStatus: 'ongoing' });
+                  //navigation?.navigate('Assessments', { filterStatus: 'ongoing' });
+                  navigation?.navigate('Notifications');
                 //}
               }}
             >
