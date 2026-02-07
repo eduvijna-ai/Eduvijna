@@ -5,7 +5,7 @@
  * Shows students who attempted the quiz with their scores
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -63,45 +63,22 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   const classroomId = route?.params?.classroomId;
   const classroomName = route?.params?.classroomName;
 
-  // Fetch quiz data with attempts on mount
-  useEffect(() => {
-    if (quizId) {
-      fetchQuizStudents();
-    } else if (classroomId) {
-      fetchClassroomStudents();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quizId, classroomId]);
-
-  // Apply filters when search or sort changes
-  useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, sortBy, students]);
-
-  const fetchQuizStudents = async () => {
+  const fetchQuizStudents = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('📚 Fetching quiz students for quizId:', quizId);
       
-      // Fetch quiz data with attempts
       const response = await fetchTeacherQuizzes({
         view_type: 'all',
         quiz_id: quizId,
       });
       
-      console.log('✅ Quiz data response:', response);
-      
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
         const quiz = response.data[0];
-        console.log('📝 Quiz:', quiz);
         
         if (quiz.attempts) {
           const attempts = typeof quiz.attempts === 'string'
             ? JSON.parse(quiz.attempts)
             : quiz.attempts;
-          
-          console.log('👥 Attempts:', attempts);
           
           if (Array.isArray(attempts)) {
             // Filter to only show students who have attempted (score is not null)
@@ -111,25 +88,21 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         }
       }
     } catch (error) {
-      console.error('❌ Error fetching quiz students:', error);
+      console.error('Error fetching quiz students:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [quizId]);
 
-  const fetchClassroomStudents = async () => {
+  const fetchClassroomStudents = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('🏫 Fetching classroom students for classroomId:', classroomId);
       
-      // Fetch all quizzes for this classroom with all attempts
       const response = await fetchTeacherQuizzes({
         view_type: 'all',
         classroom_id: classroomId,
         limit: 1000,
       });
-      
-      console.log('✅ Classroom quizzes response:', response);
       
       if (response?.data && Array.isArray(response.data)) {
         // Map to store student performance across all quizzes
@@ -178,8 +151,6 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
           }
         });
         
-        console.log('👥 Total unique students found:', studentPerformanceMap.size);
-        
         // Convert map to array and calculate averages
         const studentsWithPerformance: QuizAttempt[] = Array.from(studentPerformanceMap.values()).map(student => {
           const completed_quizzes = student.scores.length;
@@ -208,9 +179,18 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [classroomId]);
 
-  const applyFilters = () => {
+  // Fetch quiz data with attempts on mount
+  useEffect(() => {
+    if (quizId) {
+      fetchQuizStudents();
+    } else if (classroomId) {
+      fetchClassroomStudents();
+    }
+  }, [quizId, classroomId, fetchQuizStudents, fetchClassroomStudents]);
+
+  const applyFilters = useCallback(() => {
     let filtered = [...students];
     
     // Search filter
@@ -243,13 +223,18 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     
     setFilteredStudents(filtered);
     setDisplayCount(10); // Reset to show first 10
-  };
+  }, [students, searchQuery, sortBy, classroomId]);
 
-  const loadMoreStudents = () => {
+  // Apply filters when dependencies change
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  const loadMoreStudents = useCallback(() => {
     setDisplayCount(prev => prev + 10);
-  };
+  }, []);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (quizId) {
       await fetchQuizStudents();
@@ -257,14 +242,11 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
       await fetchClassroomStudents();
     }
     setRefreshing(false);
-  };
+  }, [quizId, classroomId, fetchQuizStudents, fetchClassroomStudents]);
 
-  const handleStudentPress = (student: QuizAttempt) => {
-    console.log('📊 Opening student details for:', student.student_id);
-    
+  const handleStudentPress = useCallback((student: QuizAttempt) => {
     // Check if this is classroom view - navigate to student analytics
     if (classroomId) {
-      console.log('📈 Navigating to student analytics');
       if (navigation) {
         navigation.navigate('StudentAnalytics', {
           studentId: student.student_id,
@@ -285,7 +267,6 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     
     // Quiz view - navigate to quiz results if student has completed
     if (!student.attempt_id) {
-      console.log('⚠️ Student has not attempted the quiz yet');
       return;
     }
     
@@ -311,21 +292,21 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         isTeacherView: true,
       });
     }
-  };
+  }, [classroomId, classroomName, navigation, onNavigate, quizId, quizName]);
 
-  const getPerformanceColor = (score: number) => {
+  const getPerformanceColor = useCallback((score: number) => {
     if (score >= 80) return theme.colors.success;
     if (score >= 60) return theme.colors.warning;
     return theme.colors.error;
-  };
+  }, [theme.colors]);
 
-  const getInitials = (name: string) => {
+  const getInitials = useCallback((name: string) => {
     const parts = name.split(' ');
     if (parts.length >= 2) {
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     }
     return name.substring(0, 2).toUpperCase();
-  };
+  }, []);
 
   const renderStudentCard = ({ item }: { item: QuizAttempt }) => {
     // Score is already a percentage or null for pending

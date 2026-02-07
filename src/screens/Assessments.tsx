@@ -357,19 +357,10 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: Start or Resume quiz
     if (!isTeacher && (action === 'start' || action === 'resume')) {
-      console.log(`Student action: ${action} quiz ${quizId} with attempt data:`, attemptData);
-      
       // Extract correct IDs - ensure we use the right fields
       const correctQuizId = attemptData?.quiz_id || quizId;
       const correctSessionId = attemptData?.session_id || '';
       const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
-      
-      console.log('🔍 Navigation params:', {
-        quizId: correctQuizId,
-        sessionId: correctSessionId,
-        classroomId: correctClassroomId,
-        questionCount: attemptData?.question_count,
-      });
       
       if (navigation) {
         navigation.navigate('QuizTakingScreen', {

@@ -173,13 +173,8 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     return option?.label || 'Select Date Range';
   };
 
-  // Calculate and notify parent when filter changes
-  React.useEffect(() => {
-    if (selectedDateFilter !== 'custom') {
-      const { startDate, endDate } = getDateRange(selectedDateFilter);
-      onDateFilterChange(selectedDateFilter, startDate, endDate);
-    }
-  }, [selectedDateFilter]);
+  // No useEffect needed - parent initializes with correct dates
+  // Only call parent when user explicitly changes the filter
 
   const handleDateOptionPress = (filterType: DateFilterType) => {
     if (filterType === 'custom') {

@@ -269,17 +269,14 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
     
     // Skip if already loaded (singleton pattern)
     if (state.isInitialized && state.allQuizzes.length > 0) {
-      console.log('✅ Dashboard data already loaded, skipping API call');
       return;
     }
 
     // Skip if currently loading
     if (state.loading) {
-      console.log('⏳ Dashboard already loading, skipping duplicate call');
       return;
     }
 
-    console.log('📊 Loading teacher dashboard - SINGLE API CALL');
     set({ loading: true, error: null });
 
     try {
@@ -334,13 +331,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
 
       const classroomsList = Array.from(uniqueClassrooms.values());
       
-      console.log('📊 Extracted data:', {
-        classrooms: classroomsList.length,
-        quizzes: response.data.length,
-      });
-      
       const calculatedStats = calculateStats(response.data, classroomsList);
-      console.log('📊 Calculated stats:', calculatedStats);
       
       // Fetch all students data for weak students calculation
       let weak: WeakStudent[] = [];
@@ -349,7 +340,6 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
           view_type: 'all_students' as any,
           limit: 1000,
         });
-        console.log('👥 All students data fetched:', allStudentsResponse.data.length);
         weak = calculateWeakStudents(allStudentsResponse.data);
       } catch (error) {
         console.error('Error fetching all students data:', error);
@@ -358,8 +348,6 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       }
       
       const students = calculateUniqueStudents(response.data);
-
-      console.log('👥 Unique students extracted:', students.length);
 
       set({
         allQuizzes: response.data,
@@ -372,8 +360,6 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
         loading: false,
         error: null,
       });
-
-      console.log('✅ Dashboard store updated successfully');
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard';
@@ -390,7 +376,6 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
    * Refresh - clears cache and reloads
    */
   refresh: async () => {
-    console.log('🔄 Refreshing teacher dashboard');
     set({ 
       allQuizzes: [],
       isInitialized: false,

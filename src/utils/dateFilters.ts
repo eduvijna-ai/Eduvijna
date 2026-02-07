@@ -24,8 +24,11 @@ export interface DateRange {
  */
 export function getDateRange(filterType: DateFilterType): DateRange {
   const now = new Date();
-  const endDate = new Date(now);
   let startDate = new Date(now);
+  let endDate = new Date(now);
+
+  // Set endDate to end of today (23:59:59) for consistency
+  endDate.setHours(23, 59, 59, 999);
 
   switch (filterType) {
     case 'this_week':
@@ -49,6 +52,8 @@ export function getDateRange(filterType: DateFilterType): DateRange {
     case 'this_month':
       startDate.setDate(1);
       startDate.setHours(0, 0, 0, 0);
+      // End date = last day of month at 23:59:59
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       break;
 
     case 'last_3_months':
@@ -64,11 +69,14 @@ export function getDateRange(filterType: DateFilterType): DateRange {
     case 'this_year':
       startDate.setMonth(0, 1);
       startDate.setHours(0, 0, 0, 0);
+      // End date = last day of year at 23:59:59
+      endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
       break;
 
     case 'all':
     default:
       startDate = new Date(0); // Beginning of time
+      endDate = new Date(9999, 11, 31, 23, 59, 59, 999); // Far future
       break;
   }
 

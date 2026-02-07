@@ -34,9 +34,6 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
     refresh,
   } = useTeacherDashboard();
 
-  const incomingParams = route?.params;
-  console.log('📥 Incoming Params to TeacherDashboard:', incomingParams);
-
   const isWeb = width > 768;
   const isTablet = width > 600 && width <= 1024;
 

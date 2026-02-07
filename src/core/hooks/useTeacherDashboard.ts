@@ -26,7 +26,6 @@ export function useTeacherDashboard() {
 
   // Load on mount - store will skip if already loaded
   useEffect(() => {
-    console.log('🎯 useTeacherDashboard hook mounted, calling loadDashboard');
     loadDashboard();
   }, [loadDashboard]);
 

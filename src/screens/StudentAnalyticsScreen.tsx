@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -62,6 +62,7 @@ interface StudentSummary {
 
 export default function StudentAnalyticsScreen({ route, navigation, onNavigate }: Props) {
   const { studentId, studentName, classroomId, classroomName } = route.params || {};
+  
   const { theme } = useTheme();
   const colors = theme.colors;
   
@@ -94,17 +95,15 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
   const [selectedQuiz, setSelectedQuiz] = useState<number | null>(null);
   const [availableQuizzes, setAvailableQuizzes] = useState<QuizOption[]>([]);
   
-  // Initialize with current month's date range
-  const getCurrentMonthRange = () => {
+  // Initialize with current month's date range - use function to ensure it only runs once
+  const [dateRangeStart, setDateRangeStart] = useState<Date>(() => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    return { start, end };
-  };
-  
-  const initialDateRange = getCurrentMonthRange();
-  const [dateRangeStart, setDateRangeStart] = useState<Date>(initialDateRange.start);
-  const [dateRangeEnd, setDateRangeEnd] = useState<Date>(initialDateRange.end);
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [dateRangeEnd, setDateRangeEnd] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  });
   const [selectedClassroom, setSelectedClassroom] = useState<string>('all');
   const [classrooms, setClassrooms] = useState<Array<{ classroom_id: string; classroom_name: string }>>([]);
   const [displayCount, setDisplayCount] = useState(10);
@@ -115,12 +114,6 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       setSelectedClassroom(classroomId);
     }
   }, [classroomId]);
-
-  useEffect(() => {
-    if (studentId) {
-      loadAnalytics();
-    }
-  }, [studentId, dateFilter, selectedClassroom]);
 
   // Calculate filter counts based on quiz filter (before status filter)
   const filterCounts = useMemo(() => {
@@ -157,15 +150,9 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     };
   }, [quizAttempts, selectedQuiz]);
 
+  // Apply filters and sorting - moved setDisplayCount to filter change handlers
   useEffect(() => {
-    applyFilters();
-  }, [quizAttempts, statusFilter, sortBy, selectedQuiz]);
-
-  const applyFilters = () => {
     let filtered = [...quizAttempts];
-    
-    // Reset display count when filters change
-    setDisplayCount(10);
 
     // Apply quiz filter
     if (selectedQuiz) {
@@ -195,50 +182,23 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     // If sortBy is 'date', keep the existing order from API (already sorted by date)
 
     setFilteredAttempts(filtered);
-  };
+  }, [quizAttempts, selectedQuiz, statusFilter, sortBy]);
 
-  const loadAnalytics = async () => {
-    if (!studentId) return;
+  const loadAnalytics = useCallback(async () => {
+    if (!studentId) {
+      console.log('❌ StudentAnalytics: No studentId provided');
+      return;
+    }
     
     try {
       setLoading(true);
       
-      console.log('🔍 StudentAnalytics loadAnalytics - Current filters:', {
-        studentId,
-        selectedClassroom,
-        dateFilter,
-        dateRangeStart,
-        dateRangeEnd,
-        classroomIdFromRoute: classroomId,
+      // Always fetch ALL quizzes first to build complete classroom list
+      const response = await fetchTeacherDashboardSummary({
+        view_type: 'all',
+        limit: 1000,
+        offset: 0,
       });
-      
-      // Use the same API call as StudentList when classroom is selected
-      let response;
-      if (selectedClassroom && selectedClassroom !== 'all') {
-        console.log('📚 Fetching with classroom filter:', selectedClassroom);
-        // Fetch quizzes with 'all' view type for specific classroom
-        response = await fetchTeacherQuizzes({
-          view_type: 'all',
-          classroom_id: selectedClassroom,
-          limit: 1000,
-        });
-      } else {
-        console.log('📊 Fetching with summary view (all classrooms)');
-        // Fetch all quizzes with summary view
-        response = await fetchTeacherDashboardSummary({
-          view_type: 'summary',
-          limit: 1000,
-          offset: 0,
-        });
-      }
-
-      console.log('📊 Student Analytics - API Response:', response);
-      console.log('📊 Student Analytics - Loaded quizzes:', response.data.length);
-      
-      // Log first item for debugging
-      if (response.data.length > 0) {
-        console.log('📋 Sample Quiz Data:', JSON.stringify(response.data[0], null, 2));
-      }
 
       // Extract ALL unique classrooms from the complete dataset (before filtering)
       const uniqueClassrooms = new Map<string, string>();
@@ -255,8 +215,6 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       }));
       setClassrooms(classroomsList);
 
-      console.log('📚 Available Classrooms:', classroomsList.length, classroomsList);
-
       // Extract unique quizzes from the complete dataset for quiz filter dropdown
       const uniqueQuizzes = new Map<number, string>();
       response.data.forEach((item: any) => {
@@ -271,55 +229,33 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       }));
       setAvailableQuizzes(quizzesList);
 
-      console.log('📝 Available Quizzes:', quizzesList.length, quizzesList);
-
-      // Data is already filtered by classroom if we used fetchTeacherQuizzes
+      // Apply classroom filter first
       let filteredData = response.data;
-
-      // Apply date filter only when NOT viewing a specific classroom
-      // When viewing classroom analytics, we want to see ALL quizzes for consistency with StudentList
-      const isClassroomView = selectedClassroom && selectedClassroom !== 'all';
-      
-      console.log('🎯 Filtering logic:', {
-        isClassroomView,
-        dateFilter,
-        totalQuizzes: response.data.length,
-        willApplyDateFilter: !isClassroomView && dateFilter !== 'all',
-      });
-      
-      if (!isClassroomView && dateFilter !== 'all') {
-        console.log('📅 Applying date filter - Date range:', { start: dateRangeStart, end: dateRangeEnd });
-        const beforeFilter = filteredData.length;
-        filteredData = filteredData.filter((item: any) => {
-          const quizDate = new Date(item.created_at || item.end_time);
-          const inRange = quizDate >= dateRangeStart && quizDate <= dateRangeEnd;
-          if (!inRange) {
-            console.log('  ❌ Filtered out quiz:', item.quiz_name, 'Date:', quizDate);
-          }
-          return inRange;
-        });
-        console.log(`📅 After date filter (${dateFilter}): ${beforeFilter} -> ${filteredData.length} quizzes`);
-      } else {
-        console.log('⏭️  Skipping date filter (classroom view or filter set to "all")');
+      if (selectedClassroom && selectedClassroom !== 'all') {
+        filteredData = filteredData.filter((item: any) => item.classroom_id === selectedClassroom);
       }
 
-      console.log('📊 Total quizzes after filtering:', filteredData.length);
+      // Apply date filter
+      if (dateFilter !== 'all') {
+        filteredData = filteredData.filter((item: any) => {
+          const quizDate = new Date(item.created_at || item.end_time);
+          return quizDate >= dateRangeStart && quizDate <= dateRangeEnd;
+        });
+      }
 
       // Process quiz data - handle both 'summary' and 'all' view types
       const studentAttempts: QuizAttempt[] = [];
       
-      console.log('🔄 Processing quizzes - Total to process:', filteredData.length);
-      
       filteredData.forEach((quiz: any) => {
         // Check if this quiz has attempts (view_type: 'all') or student_status (view_type: 'summary')
         if (quiz.attempts) {
-          console.log('📋 Processing quiz with attempts:', quiz.quiz_id, quiz.quiz_name);
+          // console.log('📋 Processing quiz with attempts:', quiz.quiz_id, quiz.quiz_name);
           // Handle 'all' view type - same as StudentList
           const attempts = typeof quiz.attempts === 'string'
             ? JSON.parse(quiz.attempts)
             : quiz.attempts;
           
-          console.log('  👥 Total attempts in quiz:', Array.isArray(attempts) ? attempts.length : 0);
+          // console.log('  👥 Total attempts in quiz:', Array.isArray(attempts) ? attempts.length : 0);
           
           if (Array.isArray(attempts)) {
             // Find this student's attempt in the quiz
@@ -330,15 +266,6 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
             // ONLY process quizzes where the student has an attempt record
             // This ensures we only count quizzes the student is actually assigned to
             if (studentAttempt) {
-              console.log('  ✅ Student found in attempts - Adding to list');
-              console.log('🎯 Found student attempt:', {
-                quiz_id: quiz.quiz_id,
-                quiz_name: quiz.quiz_name,
-                attempt_id: studentAttempt.attempt_id,
-                student_id: studentAttempt.student_id,
-                score: studentAttempt.score,
-                fullAttempt: studentAttempt,
-              });
               
               // Parse subject JSON to get question count
               let questionCount = quiz.question_count || 0;
@@ -378,14 +305,11 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                 log_data: studentAttempt.log_data || null,
                 time_spent_seconds: studentAttempt.time_spent_seconds || null,
               });
-            } else {
-              console.log('  ⏭️  Student NOT found in attempts - Skipping quiz');
             }
             // Note: We no longer create 'missed' entries for quizzes without student attempts
             // This ensures we only count quizzes the student is actually assigned to
           }
         } else if (quiz.student_status && quiz.student_status !== 'not_started') {
-          console.log('📋 Processing quiz with student_status:', quiz.quiz_id, quiz.quiz_name, 'Status:', quiz.student_status);
           // Handle 'summary' view type - original logic
           let topic = quiz.topic || 'General';
           
@@ -420,22 +344,14 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
           });
         }
       });
-
-      // Sort by created_at/end_time descending (newest first) by default
+      // Sort by quiz end time (end_time) descending (newest quiz first) by default
       studentAttempts.sort((a, b) => {
-        const dateA = a.completed_at || a.started_at || a.end_time || '';
-        const dateB = b.completed_at || b.started_at || b.end_time || '';
-        return dateB.localeCompare(dateA); // DESC - newest first
+        const dateA = a.completed_at || a.end_time || '';
+        const dateB = b.completed_at || b.end_time || '';
+        return dateB.localeCompare(dateA); // DESC - newest quiz first
       });
       
       setQuizAttempts(studentAttempts);
-      
-      console.log('✅ Total student attempts after mapping:', studentAttempts.length);
-      console.log('📊 Status breakdown:', {
-        completed: studentAttempts.filter(a => a.status === 'completed').length,
-        missed: studentAttempts.filter(a => a.status === 'missed').length,
-        pending: studentAttempts.filter(a => a.status === 'pending').length,
-      });
 
       // Calculate summary metrics
       const completed = studentAttempts.filter(a => a.status?.toLowerCase() === 'completed');
@@ -494,48 +410,77 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       setStrongTopics(sorted.slice(0, 3));
       setWeakTopics(sorted.slice(-3).reverse());
 
-      console.log('📊 Analytics Summary:', {
-        totalQuizzes: studentAttempts.length,
-        attempted: completed.length + inProgress,
-        completed: completed.length,
-        missed: missed,
-        inProgress: inProgress,
-        averageScore: avgScore.toFixed(1),
-        topics: topicPerformance.length,
-        topicList: topicPerformance.map(t => t.topic),
-      });
+      // console.log('📊 Analytics Summary:', {
+      //   totalQuizzes: studentAttempts.length,
+      //   attempted: completed.length + inProgress,
+      //   completed: completed.length,
+      //   missed: missed,
+      //   inProgress: inProgress,
+      //   averageScore: avgScore.toFixed(1),
+      //   topics: topicPerformance.length,
+      //   topicList: topicPerformance.map(t => t.topic),
+      // });
       
-      console.log('📝 Sample Attempts:', studentAttempts.slice(0, 3).map(a => ({
-        quiz_id: a.quiz_id,
-        name: a.quiz_name,
-        topic: a.topic,
-        status: a.status,
-        score: a.score,
-        classroom: a.classroom_name,
-      })));
+      // console.log('📝 Sample Attempts:', studentAttempts.slice(0, 3).map(a => ({
+      //   quiz_id: a.quiz_id,
+      //   name: a.quiz_name,
+      //   topic: a.topic,
+      //   status: a.status,
+      //   score: a.score,
+      //   classroom: a.classroom_name,
+      // })));
 
     } catch (error) {
-      console.error('Error loading student analytics:', error);
+      console.error('❌ StudentAnalytics: Error loading analytics:', error);
+      console.error('❌ Error details:', JSON.stringify(error, null, 2));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [studentId, selectedClassroom, dateFilter, dateRangeStart.getTime(), dateRangeEnd.getTime(), classroomId]);
 
-  const handleRefresh = () => {
+  // Load analytics when dependencies change
+  useEffect(() => {
+    if (studentId) {
+      loadAnalytics();
+    } else {
+      console.warn('⚠️ StudentAnalytics: No studentId, skipping loadAnalytics');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId, selectedClassroom, dateFilter, dateRangeStart.getTime(), dateRangeEnd.getTime()]);
+
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
+    setDisplayCount(10);
     loadAnalytics();
-  };
+  }, [loadAnalytics]);
 
-  const handleDateFilterChange = (filter: DateFilterType, startDate: Date, endDate: Date) => {
+  const handleDateFilterChange = useCallback((filter: DateFilterType, startDate: Date, endDate: Date) => {
     setDateFilter(filter);
     setDateRangeStart(startDate);
     setDateRangeEnd(endDate);
-  };
+    setDisplayCount(10);
+  }, []);
 
-  const loadMoreQuizzes = () => {
+  const loadMoreQuizzes = useCallback(() => {
     setDisplayCount(prev => prev + 10);
-  };
+  }, []);
+
+  // Filter change handlers that reset display count
+  const handleStatusFilterChange = useCallback((filter: 'All' | 'Completed' | 'Absent' | 'In Progress') => {
+    setStatusFilter(filter);
+    setDisplayCount(10);
+  }, []);
+
+  const handleSortChange = useCallback((sort: 'score' | 'date') => {
+    setSortBy(sort);
+    setDisplayCount(10);
+  }, []);
+
+  const handleQuizFilterChange = useCallback((quizId: number | null) => {
+    setSelectedQuiz(quizId);
+    setDisplayCount(10);
+  }, []);
 
   const getSuggestions = (): string[] => {
     const suggestions: string[] = [];
@@ -652,7 +597,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         <View style={styles.summaryGrid}>
           <TouchableOpacity 
             style={[styles.summaryItem, statusFilter === 'All' && styles.summaryItemActive]}
-            onPress={() => setStatusFilter('All')}
+            onPress={() => handleStatusFilterChange('All')}
             activeOpacity={0.7}
           >
             <Text style={[styles.summaryValue, { color: colors.text }]}>{filterCounts.total}</Text>
@@ -660,7 +605,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.summaryItem, statusFilter === 'Completed' && styles.summaryItemActive]}
-            onPress={() => setStatusFilter('Completed')}
+            onPress={() => handleStatusFilterChange('Completed')}
             activeOpacity={0.7}
           >
             <Text style={[styles.summaryValue, { color: '#10B981' }]}>{filterCounts.completed}</Text>
@@ -668,7 +613,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.summaryItem, statusFilter === 'In Progress' && styles.summaryItemActive]}
-            onPress={() => setStatusFilter('In Progress')}
+            onPress={() => handleStatusFilterChange('In Progress')}
             activeOpacity={0.7}
           >
             <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>{filterCounts.inProgress}</Text>
@@ -676,7 +621,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.summaryItem, statusFilter === 'Absent' && styles.summaryItemActive]}
-            onPress={() => setStatusFilter('Absent')}
+            onPress={() => handleStatusFilterChange('Absent')}
             activeOpacity={0.7}
           >
             <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{filterCounts.missed}</Text>
@@ -781,7 +726,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                   { borderColor: colors.border },
                   selectedQuiz === null && { backgroundColor: colors.primary, borderColor: colors.primary },
                 ]}
-                onPress={() => setSelectedQuiz(null)}
+                onPress={() => handleQuizFilterChange(null)}
               >
                 <Text style={[
                   styles.quizFilterChipText,
@@ -796,7 +741,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                     { borderColor: colors.border },
                     selectedQuiz === quiz.quiz_id && { backgroundColor: colors.primary, borderColor: colors.primary },
                   ]}
-                  onPress={() => setSelectedQuiz(quiz.quiz_id)}
+                  onPress={() => handleQuizFilterChange(quiz.quiz_id)}
                 >
                   <Text style={[
                     styles.quizFilterChipText,
@@ -817,7 +762,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
               { borderColor: colors.border },
               sortBy === 'date' && { backgroundColor: colors.primary + '15', borderColor: colors.primary },
             ]}
-            onPress={() => setSortBy('date')}
+            onPress={() => handleSortChange('date')}
           >
             <Text style={[styles.sortButtonText, { color: sortBy === 'date' ? colors.primary : colors.text }]}>
               Date
@@ -829,7 +774,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
               { borderColor: colors.border },
               sortBy === 'score' && { backgroundColor: colors.primary + '15', borderColor: colors.primary },
             ]}
-            onPress={() => setSortBy('score')}
+            onPress={() => handleSortChange('score')}
           >
             <Text style={[styles.sortButtonText, { color: sortBy === 'score' ? colors.primary : colors.text }]}>
               Score
@@ -864,17 +809,8 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
             const handleQuizPress = () => {
               // Only navigate if quiz has been attempted (has attempt_id or completed_at)
               if (!attempt.attempt_id && !attempt.completed_at) {
-                console.log('⚠️ Quiz not attempted yet');
                 return;
               }
-
-              console.log('📊 Opening quiz result for:', {
-                quizId: attempt.quiz_id,
-                attemptId: attempt.attempt_id,
-                studentId,
-                studentName,
-                attempt: attempt,
-              });
 
               // If no attempt_id, we need to fetch it from the API
               // For now, show a warning if attempt_id is missing for completed quizzes
