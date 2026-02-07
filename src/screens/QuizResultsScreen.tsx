@@ -11,6 +11,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 
 interface QuizResultsScreenProps {
   route: any;
@@ -46,6 +47,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const [quizData, setQuizData] = useState<any>(initialQuizData);
   const [userAnswers, setUserAnswers] = useState<any>(initialUserAnswers);
   const [attemptData, setAttemptData] = useState<any>(null);
+  
 
   // Use current user's ID if studentId is not provided (student viewing their own results)
   const effectiveStudentId = studentId || user?.id;
@@ -377,6 +379,14 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             );
           })}
         </View>
+        <QuizExplanationAccordion
+          questionId={question.id || `q-${index}-${question.question.substring(0, 20)}`}
+          questionText={question.question}
+          options={question.options}
+          selectedAnswer={userAnswers[index] || ''}
+          clearTrigger={false} // Assuming no reset trigger is needed
+          colors={colors}
+        />
       </View>
     );
   };
@@ -421,7 +431,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
 
         {/* Questions */}
         <View style={styles.questionsSection}>
-          {quizData.questions.map((question: any, index: number) => renderQuestion(question, index))}
+          {quizData.questions.map((question: any, index: number) => (
+            <View key={index}>
+              {renderQuestion(question, index)}
+              
+            </View>
+          ))}
         </View>
 
         <View style={{ height: 8 }} />

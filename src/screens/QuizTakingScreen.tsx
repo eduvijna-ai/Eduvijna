@@ -1040,7 +1040,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             {/* Quiz Explanation Accordion - Only in results view */}
         {showResults && (
           <QuizExplanationAccordion
-            questionId={currentQuestion.id}
+            questionId={currentQuestion.id || `q-${currentQuestionIndex}-${currentQuestion.question.substring(0, 20)}`}
             questionText={currentQuestion.question}
             options={currentQuestion.options}
             selectedAnswer={selectedAnswers[currentQuestionIndex] || ''}

@@ -93,26 +93,29 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
         selected_answer: normalizedSelectedAnswer,
       };
 
-      console.log('Request Payload:', requestBody); // Log the request payload for debugging
+      console.log('📤 Fetching explanation with payload:', requestBody);
       
-      try {
-        const data = await getQuizExplanation(requestBody);
+      const data = await getQuizExplanation(requestBody);
 
-        // Store explanation in state
-        setExplanations((prev) => ({
-          ...prev,
-          [questionId]: data,
-        }));
-
-        setIsOpen(true);
-      } catch (err) {
-        setError('⚠️ Unable to load explanation');
-      } finally {
-        setIsLoading(false);
+      // Validate response structure
+      if (!data || !data.explanation) {
+        console.error('❌ Invalid explanation response:', data);
+        throw new Error('Invalid response structure from API');
       }
-    } catch (err) {
-      console.error('Error fetching explanation:', err);
-      setError('⚠️ Unable to load explanation');
+
+      console.log('✅ Explanation received:', data);
+
+      // Store explanation in state
+      setExplanations((prev) => ({
+        ...prev,
+        [questionId]: data,
+      }));
+
+      setIsOpen(true);
+    } catch (err: any) {
+      console.error('❌ Failed to fetch explanation:', err);
+      const errorMessage = err?.response?.data?.detail || err?.message || 'Unable to load explanation';
+      setError(`⚠️ ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -165,54 +168,18 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
         <View style={styles.accordionContent}>
           {/* Correct Answer Section */}
           <View style={styles.correctAnswerSection}>
-            <View style={styles.headerRow}>
-              <Text style={styles.headerIcon}>✅</Text>
-              <View style={styles.headerTextContainer}>
-                <Text style={styles.correctHeaderText}>Correct Answer:</Text>
-                <View style={styles.correctAnswerTextContainer}>
-                  <MathRenderer text={currentExplanation.correct_answer} colors={colors} inline={true} />
-                </View>
-              </View>
-            </View>
-            <View style={styles.reasonContainer}>
-              <MathRenderer text={currentExplanation.explanation.correct_reason} colors={colors} inline={false} />
-            </View>
+            <Text style={styles.correctAnswerHeader}>Correct Answer:</Text>
+            <Text style={styles.correctAnswerText}>{currentExplanation.correct_answer}</Text>
+            <Text style={styles.correctReasonText}>{currentExplanation.explanation.correct_reason}</Text>
           </View>
 
-          {/* Wrong Options Section */}
-          {Object.keys(currentExplanation.explanation.wrong_options).length > 0 && (
-            <View style={styles.wrongOptionsSection}>
-              <View style={styles.wrongOptionsHeader}>
-                <Text style={styles.wrongOptionsIcon}>❌</Text>
-                <Text style={styles.wrongOptionsHeaderText}>Why other options are incorrect:</Text>
-              </View>
-              <View style={styles.wrongOptionsList}>
-                {Object.entries(currentExplanation.explanation.wrong_options).map(([option, reason]) => (
-                  <View key={option} style={styles.wrongOptionItem}>
-                    <View style={styles.wrongOptionHeader}>
-                      <MathRenderer text={option} colors={colors} inline={true} />
-                    </View>
-                    <View style={styles.wrongOptionReason}>
-                      <MathRenderer text={reason} colors={colors} inline={false} />
-                    </View>
-                  </View>
-                ))}
-              </View>
+          {/* Incorrect Options Section */}
+          {Object.entries(currentExplanation.explanation.wrong_options).map(([option, reason]) => (
+            <View key={option} style={styles.individualIncorrectSection}>
+              <Text style={styles.incorrectOptionHeader}>Why option {option} is incorrect:</Text>
+              <Text style={styles.incorrectOptionText}>{reason}</Text>
             </View>
-          )}
-
-          {/* Educational Fact Section */}
-          {currentExplanation.explanation.educational_fact && (
-            <View style={styles.educationalFactSection}>
-              <View style={styles.educationalFactHeader}>
-                <Text style={styles.educationalFactIcon}>📘</Text>
-                <Text style={styles.educationalFactHeaderText}>Educational Fact</Text>
-              </View>
-              <View style={styles.educationalFactContent}>
-                <MathRenderer text={currentExplanation.explanation.educational_fact} colors={colors} inline={false} />
-              </View>
-            </View>
-          )}
+          ))}
         </View>
       )}
     </View>
@@ -260,7 +227,7 @@ const createStyles = (colors: any) =>
       fontWeight: '500',
     },
     accordionContent: {
-      marginTop: 12,
+      marginTop: 4,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
@@ -275,85 +242,37 @@ const createStyles = (colors: any) =>
       marginBottom: 12,
       borderRadius: 8,
     },
-    headerRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: 8,
-      gap: 8,
-    },
-    headerIcon: {
-      fontSize: 18,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    correctHeaderText: {
+    correctAnswerHeader: {
+      fontWeight: 'bold',
       fontSize: 16,
-      fontWeight: '700',
       color: '#065f46',
-      marginBottom: 4,
     },
-    correctAnswerTextContainer: {
-      marginTop: 4,
-    },
-    reasonContainer: {
+    correctAnswerText: {
+      fontSize: 14,
+      color: '#065f46',
       marginTop: 8,
     },
-    wrongOptionsSection: {
-      padding: 16,
-      marginBottom: 12,
-    },
-    wrongOptionsHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    wrongOptionsIcon: {
-      fontSize: 18,
-      marginRight: 8,
-    },
-    wrongOptionsHeaderText: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    wrongOptionsList: {
-      gap: 8,
-    },
-    wrongOptionItem: {
-      padding: 12,
-      backgroundColor: '#fee2e2',
-      borderLeftWidth: 3,
-      borderLeftColor: '#ef4444',
-      borderRadius: 6,
-    },
-    wrongOptionHeader: {
-      marginBottom: 4,
-    },
-    wrongOptionReason: {
+    correctReasonText: {
+      fontSize: 14,
+      color: '#065f46',
       marginTop: 4,
     },
-    educationalFactSection: {
+    individualIncorrectSection: {
       padding: 16,
-      backgroundColor: '#dbeafe',
+      backgroundColor: '#fee2e2',
       borderLeftWidth: 4,
-      borderLeftColor: '#3b82f6',
+      borderLeftColor: '#dc2626',
+      borderRadius: 8,
+      marginBottom: 12,
     },
-    educationalFactHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 8,
-    },
-    educationalFactIcon: {
-      fontSize: 18,
-      marginRight: 8,
-    },
-    educationalFactHeaderText: {
+    incorrectOptionHeader: {
+      fontWeight: 'bold',
       fontSize: 16,
-      fontWeight: '700',
-      color: '#1e40af',
+      color: '#991b1b',
     },
-    educationalFactContent: {
+    incorrectOptionText: {
+      fontSize: 14,
+      color: '#991b1b',
       marginTop: 4,
     },
   });

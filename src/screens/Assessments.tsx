@@ -36,19 +36,6 @@ interface Props {
   };
 }
 
-// Type icon and color mapping - matching UnifiedDashboard design
-const getTypeConfig = (type: string) => {
-  const configs: Record<string, { icon: string; color: string; bg: string }> = {
-    ai: { icon: 'sparkles', color: '#0891B2', bg: '#CFFAFE' },
-    pdf: { icon: 'document-text', color: '#DC2626', bg: '#FEE2E2' },
-    image: { icon: 'camera', color: '#1B4F5C', bg: '#E8F4F8' },
-    web: { icon: 'link', color: '#0284C7', bg: '#E0F2FE' },
-    manual: { icon: 'create-outline', color: '#D97706', bg: '#FEF3C7' },
-    quiz: { icon: 'help-circle', color: '#059669', bg: '#D1FAE5' },
-  };
-  return configs[type.toLowerCase()] || { icon: 'document', color: '#6B7280', bg: '#F3F4F6' };
-};
-
 // Status badge color mapping - matching UnifiedDashboard design (for teachers)
 const getStatusConfig = (status: string) => {
   const configs: Record<string, { color: string; bg: string; text: string }> = {
@@ -546,191 +533,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
               No assessments found
             </Text>
           </View>
-        ) : isWeb ? (
-          // Web Table View
-          <View style={[styles.tableContainer, { backgroundColor: theme.colors.card }]}>
-            {/* Table Header */}
-            <View style={[styles.tableHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.tableHeaderText, styles.colAssessment, { color: theme.colors.text }]}>
-                Assessment
-              </Text>
-              <Text style={[styles.tableHeaderText, styles.colType, { color: theme.colors.text }]}>
-                Type
-              </Text>
-              <Text style={[styles.tableHeaderText, styles.colClass, { color: theme.colors.text }]}>
-                Class
-              </Text>
-              <Text style={[styles.tableHeaderText, styles.colStatus, { color: theme.colors.text }]}>
-                Status
-              </Text>
-              {isTeacher && (
-                <>
-                  <Text style={[styles.tableHeaderText, styles.colAttempted, { color: theme.colors.text }]}>
-                    Students
-                  </Text>
-                  <Text style={[styles.tableHeaderText, styles.colDates, { color: theme.colors.text }]}>
-                    Start - End
-                  </Text>
-                  <Text style={[styles.tableHeaderText, styles.colCounts, { color: theme.colors.text }]}>
-                    A/C/P
-                  </Text>
-                </>
-              )}
-              <Text style={[styles.tableHeaderText, styles.colCreated, { color: theme.colors.text }]}>
-                Created
-              </Text>
-              <Text style={[styles.tableHeaderText, styles.colActions, { color: theme.colors.text }]}>
-                Actions
-              </Text>
-            </View>
-
-            {/* Table Rows */}
-            {filteredQuizzes.map((quiz: any, index: number) => {
-              const typeConfig = getTypeConfig(quiz.quiz_type || 'manual');
-              // Use different status configs for teacher vs student
-              const statusConfig = isTeacher 
-                ? getStatusConfig(quiz.availability_status) 
-                : getStudentStatusConfig(quiz.status);
-              
-              return (
-                <View
-                  key={quiz.quiz_id}
-                  style={[
-                    styles.tableRow,
-                    { borderBottomColor: theme.colors.border },
-                    index === filteredQuizzes.length - 1 && { borderBottomWidth: 0 },
-                  ]}
-                >
-                  {/* Assessment Name */}
-                  <View style={styles.colAssessment}>
-                    <View style={[styles.assessmentIcon, { backgroundColor: typeConfig.bg }]}>
-                      <Ionicons name={typeConfig.icon as any} size={20} color={typeConfig.color} />
-                    </View>
-                    <View style={styles.assessmentInfo}>
-                      <Text style={[styles.assessmentName, { color: theme.colors.text }]} numberOfLines={1}>
-                        {quiz.quiz_name}
-                      </Text>
-                      <Text style={[styles.assessmentTopic, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {quiz.topic}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Type */}
-                  <View style={styles.colType}>
-                    <View style={[styles.typeBadge, { backgroundColor: typeConfig.bg }]}>
-                      <Ionicons name={typeConfig.icon as any} size={14} color={typeConfig.color} />
-                      <Text style={[styles.typeBadgeText, { color: typeConfig.color }]}>
-                        {(quiz.quiz_type || 'Manual').toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Class */}
-                  <Text style={[styles.colClass, { color: theme.colors.text }]} numberOfLines={1}>
-                    {quiz.classroom_name || 'N/A'}
-                  </Text>
-
-                  {/* Status */}
-                  <View style={styles.colStatus}>
-                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-                      <Text style={[styles.statusBadgeText, { color: statusConfig.color }]}>
-                        {statusConfig.text}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Students (Teacher only) */}
-                  {isTeacher && (
-                    <TouchableOpacity 
-                      style={styles.colAttempted}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleAction('view', quiz.quiz_id);
-                      }}
-                    >
-                      <Text style={[{ color: theme.colors.primary, textDecorationLine: 'underline' }]}>
-                        {quiz.attempted_students || 0} / {quiz.total_students || 0}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Start - End Dates (Teacher only) */}
-                  {isTeacher && (
-                    <View style={styles.colDates}>
-                      <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {quiz.start_time ? new Date(quiz.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
-                      </Text>
-                      <Text style={[styles.dateText, { color: theme.colors.textSecondary }]}>-</Text>
-                      <Text style={[styles.dateText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {quiz.end_time ? new Date(quiz.end_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Assigned/Completed/Pending Counts (Teacher only) */}
-                  {isTeacher && (
-                    <View style={styles.colCounts}>
-                      <Text style={[styles.countText, { color: theme.colors.primary }]}>{quiz.total_students || 0}</Text>
-                      <Text style={[styles.countText, { color: '#10B981' }]}>{quiz.completed_count || 0}</Text>
-                      <Text style={[styles.countText, { color: '#F59E0B' }]}>{quiz.pending_count || 0}</Text>
-                    </View>
-                  )}
-
-                  {/* Created */}
-                  <Text style={[styles.colCreated, { color: theme.colors.textSecondary }]}>
-                    {new Date(quiz.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </Text>
-
-                  {/* Actions */}
-                  <View style={styles.colActions}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: theme.colors.primary + '20' }]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleAction('view', quiz.quiz_id);
-                      }}
-                    >
-                      <Ionicons name="eye" size={18} color={theme.colors.primary} />
-                    </TouchableOpacity>
-                    {isTeacher && (
-                      <>
-                        <TouchableOpacity
-                          style={[styles.actionButton, { backgroundColor: theme.colors.primary + '20' }]}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleAction('edit', quiz.quiz_id);
-                          }}
-                        >
-                          <Ionicons name="pencil" size={18} color={theme.colors.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionButton, { backgroundColor: '#10B98120' }]}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleAction('more', quiz.quiz_id);
-                          }}
-                        >
-                          <Ionicons name="ellipsis-horizontal" size={18} color="#10B981" />
-                        </TouchableOpacity>
-                      </>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: theme.colors.primary + '20' }]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleAction('navigate', quiz.quiz_id);
-                      }}
-                    >
-                      <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
         ) : (
-          // Mobile Card View
+          // Card View (Mobile & Desktop)
           <View style={styles.cardsContainer}>
             {filteredQuizzes.slice(0, displayCount).map((quiz: any) => {
               // Use different status configs for teacher vs student
@@ -1277,10 +1081,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Mobile Card Styles
+  // Card Styles (Mobile & Desktop)
   cardsContainer: {
     padding: 6,
     gap: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
   },
   card: {
     borderRadius: 12,
@@ -1293,6 +1099,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    minWidth: 300,
+    flex: 1,
+    flexBasis: '48%',
+    maxWidth: 600,
   },
   cardHeader: {
     flexDirection: 'row',
