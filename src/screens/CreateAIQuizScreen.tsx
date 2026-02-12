@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 export default function CreateAIQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
-  const { classes, subjects, difficultyLevels } = useDropdowns();
+  const { classes, subjects, difficultyLevels, refreshAll } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [formData, setFormData] = useState({
     class: '',
@@ -29,6 +29,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     itext: '',
   });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
 
 
 

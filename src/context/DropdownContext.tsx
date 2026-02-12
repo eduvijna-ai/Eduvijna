@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { getClasses, getSubjects, getDifficultyLevels, type DropdownResponse } from '../core/services/dropdown';
 import { useAuth } from '../core/context/AuthContext';
 
@@ -61,6 +61,7 @@ interface DropdownProviderProps {
 
 export function DropdownProvider({ children }: DropdownProviderProps) {
   const { user, token } = useAuth();
+  const wasAuthenticatedRef = useRef(false);
   
   // Classes state
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -78,12 +79,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
   const [difficultyError, setDifficultyError] = useState<string | null>(null);
 
   // Load classes
-  const loadClasses = async () => {
-    // Only load if user is authenticated
-    if (!user || !token) {
-      return;
-    }
-
+  const loadClasses = useCallback(async () => {
     console.log('🔄 [DropdownContext] Loading classes...');
     setIsLoadingClasses(true);
     setClassesError(null);
@@ -99,15 +95,10 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     } finally {
       setIsLoadingClasses(false);
     }
-  };
+  }, []);
 
   // Load subjects
-  const loadSubjects = async () => {
-    // Only load if user is authenticated
-    if (!user || !token) {
-      return;
-    }
-
+  const loadSubjects = useCallback(async () => {
     console.log('🔄 [DropdownContext] Loading subjects...');
     setIsLoadingSubjects(true);
     setSubjectsError(null);
@@ -123,15 +114,10 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     } finally {
       setIsLoadingSubjects(false);
     }
-  };
+  }, []);
 
   // Load difficulty levels
-  const loadDifficulty = async () => {
-    // Only load if user is authenticated
-    if (!user || !token) {
-      return;
-    }
-
+  const loadDifficulty = useCallback(async () => {
     console.log('🔄 [DropdownContext] Loading difficulty levels...');
     setIsLoadingDifficulty(true);
     setDifficultyError(null);
@@ -147,43 +133,46 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     } finally {
       setIsLoadingDifficulty(false);
     }
-  };
+  }, []);
 
   // Auto-load dropdown data on mount and when auth status changes
   useEffect(() => {
-    // Only load if user is authenticated
-    if (!user || !token) {
+    const isAuthenticated = Boolean(user || token);
+
+    if (!isAuthenticated && wasAuthenticatedRef.current) {
       // Clear data when logged out
-      console.log('🔒 [DropdownContext] User not authenticated - clearing dropdown data');
+      console.log('🔒 [DropdownContext] User logged out - clearing dropdown data');
       setClasses([]);
       setSubjects([]);
       setDifficultyLevels([]);
       setClassesError(null);
       setSubjectsError(null);
       setDifficultyError(null);
+      wasAuthenticatedRef.current = false;
       return;
     }
 
-    console.log('🚀 [DropdownContext] User authenticated - loading all dropdown data');
+    console.log('🚀 [DropdownContext] Loading all dropdown data');
     loadClasses();
     loadSubjects();
     loadDifficulty();
-  }, [user, token]);
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [user, token, loadClasses, loadSubjects, loadDifficulty]);
 
   // Refresh functions
-  const refreshClasses = async () => {
+  const refreshClasses = useCallback(async () => {
     await loadClasses();
-  };
+  }, [loadClasses]);
 
-  const refreshSubjects = async () => {
+  const refreshSubjects = useCallback(async () => {
     await loadSubjects();
-  };
+  }, [loadSubjects]);
 
-  const refreshDifficulty = async () => {
+  const refreshDifficulty = useCallback(async () => {
     await loadDifficulty();
-  };
+  }, [loadDifficulty]);
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     console.log('🔄 [DropdownContext] Refreshing all dropdown data...');
     await Promise.all([
       loadClasses(),
@@ -191,7 +180,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
       loadDifficulty(),
     ]);
     console.log('✅ [DropdownContext] All dropdown data refreshed');
-  };
+  }, [loadClasses, loadSubjects, loadDifficulty]);
 
   const value: DropdownContextType = {
     classes,
