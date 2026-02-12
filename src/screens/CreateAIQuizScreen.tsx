@@ -5,9 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Formik, type FormikHelpers, type FormikProps } from 'formik';
+import * as Yup from 'yup';
 import { useTheme } from '@context/ThemeContext';
 import useNotifications from '@core/hooks/useNotifications';
 import { generateAIQuiz } from '../core/services/sharedApi';
@@ -20,83 +20,36 @@ export default function CreateAIQuizScreen({ navigation }: any) {
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects, difficultyLevels, refreshAll } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
-  const [formData, setFormData] = useState({
+  type FormValues = {
+    class: string;
+    subject: string;
+    lesson: string;
+    level: string;
+    count: string;
+    itext: string;
+  };
+
+  const [formData, setFormData] = useState<FormValues>({
     class: '',
     subject: '',
     lesson: '',
-    level: 'basic',
+    level: '',
     count: '5',
     itext: '',
   });
-  const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
 
-
-
-
-
-
-
-
-
-
-  const handleGenerate = async () => {
-    if (!formData.class || !formData.subject || !formData.lesson) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await generateAIQuiz({
-        class: formData.class,
-        subject: formData.subject,
-        lesson: formData.lesson,
-        level: formData.level,
-        count: parseInt(formData.count) || 5,
-        itext: formData.itext,
-      });
-      
-      await refreshAfterQuizGenerated();
-      
-      // Use replace to prevent going back to creation screen and avoid refresh
-      navigation.replace('QuizTakingScreen', {
-        quizData: {
-          id: result.quiz_id,
-          title: `${formData.lesson} Assessment`,
-          questions: result.quiz || [],
-          class: classes.find((c: any) => c.id === formData.class)?.name,
-          subject: subjects.find((s: any) => s.id === formData.subject)?.name,
-          difficulty: difficultyLevels.find((l: any) => l.id === formData.level)?.name,
-          lesson: formData.lesson,
-          additional_instructions: formData.itext || '',
-          // Thread data from the actual assessment generation
-          thread_id: result.thread_id,
-          thread_slug: result.thread_slug,
-          reused_thread: result.reused_thread,
-          // Regeneration parameters
-          regenerationParams: {
-            type: 'ai',
-            classId: formData.class,
-            subjectId: formData.subject,
-            count: parseInt(formData.count) || 5,
-            itext: formData.itext,
-          },
-        },
-        showShareButton: true,
-        showActionButtons: true,
-      });
-    } catch (error: any) {
-      console.error('Assessment generation error:', error);
-      const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment';
-      Alert.alert('Error', errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const validationSchema = Yup.object({
+    class: Yup.string().required('Class is required'),
+    subject: Yup.string().required('Subject is required'),
+    lesson: Yup.string().required('Lesson/Topic is required'),
+    level: Yup.string().required('Difficulty level is required'),
+    itext: Yup.string().trim().required('Additional instructions are required'),
+  });
 
   return (
     <View style={styles.container}>
@@ -112,56 +65,142 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         <View style={styles.headerPlaceholder} />
       </View> */}
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+      <Formik
+        initialValues={formData}
+        validationSchema={validationSchema}
+        onSubmit={async (
+          values: FormValues,
+          { setSubmitting }: FormikHelpers<FormValues>
+        ) => {
+            setSubmitError('');
+            setSubmitting(true);
+            try {
+              const result = await generateAIQuiz({
+                class: values.class,
+                subject: values.subject,
+                lesson: values.lesson,
+                level: values.level,
+                count: parseInt(values.count) || 5,
+                itext: values.itext,
+              });
+
+              await refreshAfterQuizGenerated();
+              setFormData(values);
+
+              navigation.replace('QuizTakingScreen', {
+                quizData: {
+                  id: result.quiz_id,
+                  title: `${values.lesson} Assessment`,
+                  questions: result.quiz || [],
+                  class: classes.find((c: any) => c.id === values.class)?.name,
+                  subject: subjects.find((s: any) => s.id === values.subject)?.name,
+                  difficulty: difficultyLevels.find((l: any) => l.id === values.level)?.name,
+                  lesson: values.lesson,
+                  additional_instructions: values.itext || '',
+                  thread_id: result.thread_id,
+                  thread_slug: result.thread_slug,
+                  reused_thread: result.reused_thread,
+                  regenerationParams: {
+                    type: 'ai',
+                    classId: values.class,
+                    subjectId: values.subject,
+                    count: parseInt(values.count) || 5,
+                    itext: values.itext,
+                  },
+                },
+                showShareButton: true,
+                showActionButtons: true,
+              });
+            } catch (error: any) {
+              console.error('Assessment generation error:', error);
+              const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment';
+              setSubmitError(errorMsg);
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          validateOnBlur={true}
+          validateOnChange={false}
       >
-        <View style={styles.header}>
-          {/* <Text style={styles.title}> Image Quiz</Text> */}
-          <Text style={styles.subtitle}> Generate assessment on given topic</Text>
-        </View>
-        
-        <View style={styles.form}>
-        <QuizFormFields
-          showClass={true}
-          classValue={formData.class}
-          onClassChange={(value) => setFormData({ ...formData, class: value })}
-          
-          showSubject={true}
-          subjectValue={formData.subject}
-          onSubjectChange={(value) => setFormData({ ...formData, subject: value })}
-          
-          showLesson={true}
-          lessonValue={formData.lesson}
-          onLessonChange={(text) => setFormData({ ...formData, lesson: text })}
-          lessonPlaceholder="e.g., Simple Present Tense"
-          lessonLabel="Lesson/Topic"
-          
-          showDifficultyLevel={true}
-          difficultyValue={formData.level}
-          onDifficultyChange={(value) => setFormData({ ...formData, level: value })}
+        {({
+          values,
+          errors,
+          touched,
+          submitCount,
+          isSubmitting,
+          handleSubmit,
+          setFieldValue,
+          setFieldTouched,
+          handleBlur,
+        }: FormikProps<FormValues>) => (
+          <>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              <View style={styles.form}>
+                <QuizFormFields
+                  showClass={true}
+                  classValue={values.class}
+                  onClassChange={(value) => {
+                    setFieldValue('class', value);
+                    setFieldTouched('class', true, false);
+                  }}
+                  classError={(touched.class || submitCount > 0) ? (errors.class as string) : ''}
 
-          showQuestionCount={true}
-          questionCountValue={formData.count}
-          onQuestionCountChange={(text) => setFormData({ ...formData, count: text })}
-          
-          additionalInstructionsValue={formData.itext}
-          onAdditionalInstructionsChange={(text) => setFormData({ ...formData, itext: text })}
-        />
+                  showSubject={true}
+                  subjectValue={values.subject}
+                  onSubjectChange={(value) => {
+                    setFieldValue('subject', value);
+                    setFieldTouched('subject', true, false);
+                  }}
+                  subjectError={(touched.subject || submitCount > 0) ? (errors.subject as string) : ''}
 
-        <TouchableOpacity
-          style={[styles.generateButton, loading && styles.buttonDisabled]}
-          onPress={handleGenerate}
-          disabled={loading}
-        >
-          {loading ? (
-            <LoadingSpinner size={20} />
-          ) : (
-            <Text style={styles.generateButtonText}>Generate Assessment</Text>
-          )}
-        </TouchableOpacity>
-        </View>
-      </ScrollView>
+                  showLesson={true}
+                  lessonValue={values.lesson}
+                  onLessonChange={(text) => setFieldValue('lesson', text)}
+                  onLessonBlur={() => handleBlur('lesson')({} as any)}
+                  lessonPlaceholder="e.g., Simple Present Tense"
+                  lessonLabel="Lesson/Topic"
+                  lessonError={(touched.lesson || submitCount > 0) ? (errors.lesson as string) : ''}
+
+                  showDifficultyLevel={true}
+                  difficultyValue={values.level}
+                  onDifficultyChange={(value) => {
+                    setFieldValue('level', value);
+                    setFieldTouched('level', true, false);
+                  }}
+                  difficultyError={(touched.level || submitCount > 0) ? (errors.level as string) : ''}
+
+                  showQuestionCount={true}
+                  questionCountValue={values.count}
+                  onQuestionCountChange={(text) => setFieldValue('count', text)}
+
+                  additionalInstructionsValue={values.itext}
+                  onAdditionalInstructionsChange={(text) => setFieldValue('itext', text)}
+                  onAdditionalInstructionsBlur={() => handleBlur('itext')({} as any)}
+                  additionalInstructionsError={(touched.itext || submitCount > 0) ? (errors.itext as string) : ''}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.footer}>
+              {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+              <TouchableOpacity
+                style={[styles.generateButton, isSubmitting && styles.buttonDisabled]}
+                onPress={() => handleSubmit()}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <LoadingSpinner size={20} />
+                ) : (
+                  <Text style={styles.generateButtonText}>Generate Assessment</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </Formik>
     </View>
   );
 }
@@ -199,66 +238,25 @@ const createStyles = (colors: any) => StyleSheet.create({
     width: 40,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 120,
+  },
+  footer: {
+    padding: 16,
+    paddingBottom: 20,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   form: {
     padding: 16,
     paddingTop: 12,
-  },
-  field: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: colors.cardBackground,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    fontSize: 14,
-    color: colors.text,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  levelContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  levelButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.cardBackground,
-    alignItems: 'center',
-  },
-  levelButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  levelButtonText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  levelButtonTextActive: {
-    color: colors.buttonText,
-    fontWeight: '600',
   },
   generateButton: {
     backgroundColor: colors.primary,
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+    width: '100%',
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -268,12 +266,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  header: {
-    padding: 20,
-    paddingTop: 30,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
+  submitError: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
   },
 });

@@ -4,7 +4,7 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import type { ApiError } from '../types';
+import type { ApiError, AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
 import { initializeCache, closeCache } from '../services/cacheService';
@@ -30,13 +30,24 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
+const refreshClient: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
 /**
  * Request interceptor to attach authentication token
  */
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     // Skip auth token for login/register endpoints
-    const isAuthEndpoint = config.url?.includes('/auth/login') || config.url?.includes('/auth/register');
+    const isAuthEndpoint =
+      config.url?.includes('/auth/login') ||
+      config.url?.includes('/auth/register') ||
+      config.url?.includes('/auth/refresh');
     
     if (!isAuthEndpoint) {
       // Get token from secure storage
@@ -56,6 +67,17 @@ apiClient.interceptors.request.use(
 
 // Track if we've already logged out to prevent duplicate messages
 let isLoggingOut = false;
+let isRefreshing = false;
+let refreshQueue: Array<(token: string | null) => void> = [];
+
+function enqueueRefreshSubscriber(callback: (token: string | null) => void) {
+  refreshQueue.push(callback);
+}
+
+function notifyRefreshSubscribers(token: string | null) {
+  refreshQueue.forEach((callback) => callback(token));
+  refreshQueue = [];
+}
 
 /**
  * Response interceptor for error handling and token refresh
@@ -79,20 +101,93 @@ apiClient.interceptors.response.use(
         responseData.detail.toLowerCase().includes('user id not available')
       ));
 
-    // Handle authentication errors
+    // Handle authentication errors with refresh token flow
     if (isAuthError && !isLoggingOut) {
-      console.error(`🔒 Authentication failed (${status || 'detected in response'}) on ${url}`);
-      console.error('Response:', responseData);
-      isLoggingOut = true;
-      try {
-        // Clear auth data (silent logout)
-        await handleAuthenticationFailure();
-      } catch (e) {
-        console.error('Error during authentication failure handler:', e);
-      } finally {
-        setTimeout(() => { isLoggingOut = false; }, 1000);
+      const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+      const isAuthRequest =
+        originalRequest?.url?.includes('/auth/login') ||
+        originalRequest?.url?.includes('/auth/register') ||
+        originalRequest?.url?.includes('/auth/refresh');
+
+      if (!originalRequest) {
+        return Promise.reject(handleApiError(error));
       }
-      return Promise.reject(new Error('Session expired'));
+
+      if (isAuthRequest) {
+        return Promise.reject(handleApiError(error));
+      }
+
+      if (originalRequest._retry) {
+        console.error('🔒 Authentication retry failed - logging out');
+        isLoggingOut = true;
+        try {
+          await handleAuthenticationFailure();
+        } catch (e) {
+          console.error('Error during authentication failure handler:', e);
+        } finally {
+          setTimeout(() => { isLoggingOut = false; }, 1000);
+        }
+        return Promise.reject(new Error('Session expired'));
+      }
+
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          enqueueRefreshSubscriber((token) => {
+            if (!token) {
+              reject(new Error('Session expired'));
+              return;
+            }
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+            }
+            resolve(apiClient(originalRequest));
+          });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshToken = await TokenStorage.getRefreshToken();
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
+        }
+
+        const refreshResponse = await refreshClient.post<{ access_token: string; refresh_token: string }>(
+          '/api/v1/auth/refresh',
+          { refresh_token: refreshToken }
+        );
+
+        const tokens: AuthTokens = {
+          accessToken: refreshResponse.data.access_token,
+          refreshToken: refreshResponse.data.refresh_token,
+          expiresIn: 3600,
+        };
+
+        await TokenStorage.storeAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn);
+        useUserStore.getState().setTokens(tokens);
+
+        notifyRefreshSubscribers(tokens.accessToken);
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`;
+        }
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        console.error('❌ Refresh token failed:', refreshError);
+        notifyRefreshSubscribers(null);
+        isLoggingOut = true;
+        try {
+          await handleAuthenticationFailure();
+        } catch (e) {
+          console.error('Error during authentication failure handler:', e);
+        } finally {
+          setTimeout(() => { isLoggingOut = false; }, 1000);
+        }
+        return Promise.reject(new Error('Session expired'));
+      } finally {
+        isRefreshing = false;
+      }
     }
     
     // Handle network errors

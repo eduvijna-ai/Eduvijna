@@ -58,6 +58,7 @@ export interface QuizFormFieldsProps {
   showDifficultyLevel?: boolean;
   difficultyValue?: string;
   onDifficultyChange?: (value: string) => void;
+  difficultyError?: string;
   difficultyLevels?: Array<{ id: string; name: string; label?: string; value?: string }>; // Now optional - will load from API if not provided
   
   // Number of Questions field
@@ -71,13 +72,17 @@ export interface QuizFormFieldsProps {
   showLesson?: boolean;
   lessonValue?: string;
   onLessonChange?: (value: string) => void;
+  onLessonBlur?: (event: any) => void;
   lessonPlaceholder?: string;
   lessonLabel?: string;
+  lessonError?: string;
 
   // Additional Instructions field
   showAdditionalInstructions?: boolean;
   additionalInstructionsValue?: string;
   onAdditionalInstructionsChange?: (value: string) => void;
+  onAdditionalInstructionsBlur?: (event: any) => void;
+  additionalInstructionsError?: string;
 }
 
 export default function QuizFormFields(props: QuizFormFieldsProps) {
@@ -117,6 +122,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     showDifficultyLevel = false,
     difficultyValue = '',
     onDifficultyChange,
+    difficultyError = '',
     difficultyLevels: propDifficultyLevels,
     
     showQuestionCount = false,
@@ -128,12 +134,16 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     showLesson = false,
     lessonValue = '',
     onLessonChange,
+    onLessonBlur,
     lessonPlaceholder = 'Enter lesson or topic name',
     lessonLabel = 'Lesson/Topic',
+    lessonError = '',
 
     showAdditionalInstructions = true,
     additionalInstructionsValue = '',
     onAdditionalInstructionsChange,
+    onAdditionalInstructionsBlur,
+    additionalInstructionsError = '',
   } = props;
 
   // Use prop data if provided, otherwise use context data (loaded once for entire app)
@@ -347,7 +357,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
   // Get selected difficulty name
   const getSelectedDifficultyName = () => {
     const selected = difficultyLevels.find(d => d.id === difficultyValue);
-    return selected?.name || 'Select difficulty...';
+    return selected?.name;
   };
 
   // Get selected question count display
@@ -363,7 +373,6 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {showClass && (
         <View style={styles.field}>
           <Text style={styles.label}>Class/Grade *</Text>
-          {classError ? <Text style={styles.errorText}>{classError}</Text> : null}
           {isLoadingClasses ? (
             <View style={styles.loadingContainer}>
               <LoadingSpinner size={20} />
@@ -393,6 +402,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               )}
             </View>
           )}
+          {classError ? <Text style={styles.errorText}>{classError}</Text> : null}
         </View>
       )}
 
@@ -472,7 +482,6 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {showSubject && (
         <View style={styles.field}>
           <Text style={styles.label}>Subject *</Text>
-          {subjectError ? <Text style={styles.errorText}>{subjectError}</Text> : null}
           {isLoadingSubjects ? (
             <View style={styles.loadingContainer}>
               <LoadingSpinner size={20} />
@@ -502,6 +511,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               )}
             </View>
           )}
+          {subjectError ? <Text style={styles.errorText}>{subjectError}</Text> : null}
         </View>
       )}
 
@@ -617,16 +627,18 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
             style={styles.input}
             value={lessonValue}
             onChangeText={onLessonChange}
+            onBlur={onLessonBlur}
             placeholder={lessonPlaceholder}
             placeholderTextColor={colors.placeholder}
           />
+          {lessonError ? <Text style={styles.errorText}>{lessonError}</Text> : null}
         </View>
       )}
 
       {/* Difficulty Level Field */}
       {showDifficultyLevel && (
         <View style={styles.field}>
-          <Text style={styles.label}>Difficulty Level</Text>
+          <Text style={styles.label}>Difficulty Level *</Text>
           <View style={styles.dropdownContainer}>
             <TouchableOpacity
               style={styles.dropdownButton}
@@ -636,19 +648,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
                 styles.dropdownButtonText,
                 !difficultyValue && styles.placeholderText
               ]}>
-                {difficultyValue ? getSelectedDifficultyName() : 'Select difficulty...'}
+                {difficultyValue ? getSelectedDifficultyName() : 'Select a difficulty...'}
               </Text>
               <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-            {difficultyValue && (
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={() => onDifficultyChange && onDifficultyChange('')}
-              >
-                <Ionicons name="close" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
           </View>
+          {difficultyError ? <Text style={styles.errorText}>{difficultyError}</Text> : null}
         </View>
       )}
 
@@ -805,16 +810,20 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {/* Additional Instructions Field */}
       {showAdditionalInstructions && (
         <View style={styles.field}>
-          <Text style={styles.label}>Additional Instructions</Text>
+          <Text style={styles.label}>Additional Instructions *</Text>
           <TextInput
             style={styles.textArea}
             value={additionalInstructionsValue}
             onChangeText={onAdditionalInstructionsChange}
+            onBlur={onAdditionalInstructionsBlur}
             placeholder="Enter any additional instructions here..."
             placeholderTextColor={colors.placeholder}
             multiline={true}
             numberOfLines={4}
           />
+          {additionalInstructionsError ? (
+            <Text style={styles.errorText}>{additionalInstructionsError}</Text>
+          ) : null}
         </View>
       )}
     </View>

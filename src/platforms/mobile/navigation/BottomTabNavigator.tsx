@@ -16,7 +16,7 @@ import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 import AssessmentsScreen from '@screens/Assessments';
-import AnalyticsScreen from '../screens/Analytics';
+// import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
 import TeacherDashboard from '@screens/TeacherDashboard';
