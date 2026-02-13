@@ -65,6 +65,7 @@ export interface QuizFormFieldsProps {
   showQuestionCount?: boolean;
   questionCountValue?: string;
   onQuestionCountChange?: (value: string) => void;
+  questionCountError?: string;
   questionCountOptions?: string[];
   usePickerForCount?: boolean;
   
@@ -83,6 +84,9 @@ export interface QuizFormFieldsProps {
   onAdditionalInstructionsChange?: (value: string) => void;
   onAdditionalInstructionsBlur?: (event: any) => void;
   additionalInstructionsError?: string;
+
+  // Compact sizing
+  compact?: boolean;
 }
 
 export default function QuizFormFields(props: QuizFormFieldsProps) {
@@ -128,6 +132,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     showQuestionCount = false,
     questionCountValue = '5',
     onQuestionCountChange,
+    questionCountError = '',
     questionCountOptions = ['3', '5', '10', '15', '20', '25', '30'],
     usePickerForCount = true,
     
@@ -144,6 +149,8 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     onAdditionalInstructionsChange,
     onAdditionalInstructionsBlur,
     additionalInstructionsError = '',
+
+    compact = false,
   } = props;
 
   // Use prop data if provided, otherwise use context data (loaded once for entire app)
@@ -371,7 +378,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     <View>
       {/* Class/Grade Field */}
       {showClass && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Class/Grade *</Text>
           {isLoadingClasses ? (
             <View style={styles.loadingContainer}>
@@ -381,11 +388,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
           ) : (
             <View style={styles.dropdownContainer}>
               <TouchableOpacity
-                style={styles.dropdownButton}
+                style={[styles.dropdownButton, compact && styles.dropdownButtonCompact]}
                 onPress={() => setShowClassModal(true)}
               >
                 <Text style={[
                   styles.dropdownButtonText,
+                  compact && styles.dropdownButtonTextCompact,
                   !classValue && styles.placeholderText
                 ]}>
                   {classValue ? getSelectedClassName() : 'Select a class...'}
@@ -394,7 +402,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               </TouchableOpacity>
               {classValue && (
                 <TouchableOpacity
-                  style={styles.clearButton}
+                  style={[styles.clearButton, compact && styles.clearButtonCompact]}
                   onPress={() => onClassChange && onClassChange('')}
                 >
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -480,7 +488,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Subject Field */}
       {showSubject && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Subject *</Text>
           {isLoadingSubjects ? (
             <View style={styles.loadingContainer}>
@@ -490,11 +498,12 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
           ) : (
             <View style={styles.dropdownContainer}>
               <TouchableOpacity
-                style={styles.dropdownButton}
+                style={[styles.dropdownButton, compact && styles.dropdownButtonCompact]}
                 onPress={() => setShowSubjectModal(true)}
               >
                 <Text style={[
                   styles.dropdownButtonText,
+                  compact && styles.dropdownButtonTextCompact,
                   !subjectValue && styles.placeholderText
                 ]}>
                   {subjectValue ? getSelectedSubjectName() : 'Select a subject...'}
@@ -503,7 +512,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               </TouchableOpacity>
               {subjectValue && (
                 <TouchableOpacity
-                  style={styles.clearButton}
+                  style={[styles.clearButton, compact && styles.clearButtonCompact]}
                   onPress={() => onSubjectChange && onSubjectChange('')}
                 >
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -589,7 +598,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Student Level Field (alternative to class/subject) */}
       {showStudentLevel && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Student Level *</Text>
           {isLoadingStudentLevels ? (
             <View style={styles.loadingContainer}>
@@ -597,11 +606,11 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               <Text style={styles.loadingText}>Loading levels...</Text>
             </View>
           ) : (
-            <View style={styles.pickerContainer}>
+            <View style={[styles.pickerContainer, compact && styles.pickerContainerCompact]}>
               <Picker
                 selectedValue={studentLevelValue}
                 onValueChange={onStudentLevelChange}
-                style={styles.picker}
+                style={[styles.picker, compact && styles.pickerCompact]}
                 dropdownIconColor={colors.primary}
                 mode="dropdown"
               >
@@ -621,10 +630,10 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Lesson/Topic Field */}
       {showLesson && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>{lessonLabel} *</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, compact && styles.inputCompact]}
             value={lessonValue}
             onChangeText={onLessonChange}
             onBlur={onLessonBlur}
@@ -637,15 +646,16 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Difficulty Level Field */}
       {showDifficultyLevel && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Difficulty Level *</Text>
           <View style={styles.dropdownContainer}>
             <TouchableOpacity
-              style={styles.dropdownButton}
+              style={[styles.dropdownButton, compact && styles.dropdownButtonCompact]}
               onPress={() => setShowDifficultyModal(true)}
             >
               <Text style={[
                 styles.dropdownButtonText,
+                compact && styles.dropdownButtonTextCompact,
                 !difficultyValue && styles.placeholderText
               ]}>
                 {difficultyValue ? getSelectedDifficultyName() : 'Select a difficulty...'}
@@ -715,16 +725,17 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Number of Questions Field */}
       {showQuestionCount && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Number of Questions *</Text>
           {usePickerForCount ? (
             <View style={styles.dropdownContainer}>
               <TouchableOpacity
-                style={styles.dropdownButton}
+                style={[styles.dropdownButton, compact && styles.dropdownButtonCompact]}
                 onPress={() => setShowQuestionCountModal(true)}
               >
                 <Text style={[
                   styles.dropdownButtonText,
+                  compact && styles.dropdownButtonTextCompact,
                   !questionCountValue && styles.placeholderText
                 ]}>
                   {questionCountValue ? getSelectedQuestionCount() : 'Select number...'}
@@ -733,7 +744,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               </TouchableOpacity>
               {questionCountValue && (
                 <TouchableOpacity
-                  style={styles.clearButton}
+                  style={[styles.clearButton, compact && styles.clearButtonCompact]}
                   onPress={() => onQuestionCountChange && onQuestionCountChange('')}
                 >
                   <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -742,7 +753,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
             </View>
           ) : (
             <TextInput
-              style={styles.input}
+              style={[styles.input, compact && styles.inputCompact]}
               value={questionCountValue}
               onChangeText={onQuestionCountChange}
               placeholder="5"
@@ -750,6 +761,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               keyboardType="number-pad"
             />
           )}
+          {questionCountError ? <Text style={styles.errorText}>{questionCountError}</Text> : null}
         </View>
       )}
 
@@ -809,17 +821,17 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Additional Instructions Field */}
       {showAdditionalInstructions && (
-        <View style={styles.field}>
+        <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Additional Instructions *</Text>
           <TextInput
-            style={styles.textArea}
+            style={[styles.textArea, compact && styles.textAreaCompact]}
             value={additionalInstructionsValue}
             onChangeText={onAdditionalInstructionsChange}
             onBlur={onAdditionalInstructionsBlur}
             placeholder="Enter any additional instructions here..."
             placeholderTextColor={colors.placeholder}
             multiline={true}
-            numberOfLines={4}
+            numberOfLines={compact ? 3 : 4}
           />
           {additionalInstructionsError ? (
             <Text style={styles.errorText}>{additionalInstructionsError}</Text>
@@ -833,6 +845,9 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 const createStyles = (colors: any) => StyleSheet.create({
   field: {
     marginBottom: 24,
+  },
+  fieldCompact: {
+    marginBottom: 16,
   },
   label: {
     fontSize: 15,
@@ -849,6 +864,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  inputCompact: {
+    padding: 10,
+    borderRadius: 8,
+    fontSize: 14,
+  },
   pickerContainer: {
     backgroundColor: colors.surface,
     borderRadius: 10,
@@ -856,10 +876,16 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
+  pickerContainerCompact: {
+    borderRadius: 8,
+  },
   picker: {
     height: 52,
     color: colors.text,
     backgroundColor: colors.surface,
+  },
+  pickerCompact: {
+    height: 44,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -894,10 +920,17 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  dropdownButtonCompact: {
+    padding: 10,
+    borderRadius: 8,
+  },
   dropdownButtonText: {
     fontSize: 15,
     color: colors.text,
     flex: 1,
+  },
+  dropdownButtonTextCompact: {
+    fontSize: 14,
   },
   placeholderText: {
     color: colors.placeholder,
@@ -908,6 +941,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     top: 13,
     padding: 4,
     zIndex: 10,
+  },
+  clearButtonCompact: {
+    top: 9,
   },
   modalOverlay: {
     flex: 1,
@@ -998,5 +1034,12 @@ const createStyles = (colors: any) => StyleSheet.create({
     minHeight: 110,
     maxHeight: 160,
     textAlignVertical: 'top',
+  },
+  textAreaCompact: {
+    padding: 10,
+    borderRadius: 8,
+    fontSize: 14,
+    minHeight: 80,
+    maxHeight: 120,
   },
 });

@@ -201,7 +201,7 @@ export default function MobileNavigation() {
         options={{
           headerShown: true,
           presentation: 'modal',
-          title: 'Create Document Assessment',
+          title: 'Document Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
             <Ionicons name="document-text" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
@@ -250,29 +250,46 @@ export default function MobileNavigation() {
       <Stack.Screen 
         name="QuizTakingScreen" 
         component={QuizTakingScreen}
-        options={({ navigation }) => ({
-          headerShown: true,
-          presentation: 'card',
-          title: 'Taking Assessment',
-          headerBackTitle: 'Dashboard',
-          headerLeft: () => (
-            <TouchableOpacity 
-              onPress={() => {
+        options={({ navigation, route }) => {
+          const routeParams: any = route?.params;
+          const isDocumentFlow = routeParams?.source === 'document';
+
+          if (isDocumentFlow) {
+            return {
+              headerShown: true,
+              presentation: 'card',
+              title: 'Document Assessment',
+              headerBackTitle: 'Back',
+              headerRight: () => (
+                <Ionicons name="document-text" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+              ),
+            };
+          }
+
+          return {
+            headerShown: true,
+            presentation: 'card',
+            title: 'Taking Assessment',
+            headerBackTitle: 'Dashboard',
+            headerLeft: () => (
+              <TouchableOpacity 
+                onPress={() => {
+                  navigation.navigate('Main', { screen: 'Dashboard' });
+                }}
+                style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+              >
+                <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
+              </TouchableOpacity>
+            ),
+            headerRight: () => (
+              <TouchableOpacity onPress={() => {
                 navigation.navigate('Main', { screen: 'Dashboard' });
-              }}
-              style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
-            >
-              <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
-            </TouchableOpacity>
-          ),
-          headerRight: () => (
-            <TouchableOpacity onPress={() => {
-              navigation.navigate('Main', { screen: 'Dashboard' });
-            }} style={{ marginRight: 16 }}>
-              <Ionicons name="close" size={24} color="#374151" />
-            </TouchableOpacity>
-          ),
-        })}
+              }} style={{ marginRight: 16 }}>
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            ),
+          };
+        }}
       />
       <Stack.Screen 
         name="QuizResultsScreen" 
