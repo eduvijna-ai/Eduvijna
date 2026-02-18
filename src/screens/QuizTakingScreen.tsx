@@ -83,6 +83,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     showActionButtons,
     onNewQuiz,
   } = routeParams;
+  const source = routeParams?.source;
   
   // Use useMemo to stabilize quizSource object reference and prevent infinite loops
   const quizSource = useMemo(() => {
@@ -160,6 +161,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (Platform.OS === 'android') {
+        if (source === 'image') {
+          navigation.goBack();
+          return true;
+        }
+
         navigation.navigate('Main', { screen: 'Dashboard' });
         return true;
       }
@@ -167,7 +173,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     });
 
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [navigation, source]);
 
   // Determine quiz type from normalized data
   // Teacher-assigned quiz must meet ALL these criteria:
@@ -344,6 +350,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       </View>
     );
   }
+
+  const handleHeaderBack = () => {
+    navigation.goBack();
+  };
+
+  const handleHeaderClose = () => {
+    if (source === 'image') {
+      navigation.navigate('CreateImageQuizScreen');
+      return;
+    }
+    navigation.goBack();
+  };
   
   // Now validate the loaded quiz
   if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
@@ -929,6 +947,16 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         );
       })()}
 
+      <View style={[styles.topHeaderBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity style={[styles.topHeaderButton, { backgroundColor: colors.inputBackground }]} onPress={handleHeaderBack}>
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.topHeaderTitle, { color: colors.text }]}>{quiz.title}</Text>
+        <TouchableOpacity style={[styles.topHeaderButton, { backgroundColor: colors.inputBackground }]} onPress={handleHeaderClose}>
+          <Ionicons name="close" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
       {!showResults && (
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}> 
           <View style={styles.headerTop}>
@@ -1338,6 +1366,28 @@ const styles = StyleSheet.create({
   },
   statLabelInline: {
     fontSize: 9,
+    fontWeight: '600',
+  },
+  topHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 16,
+    borderBottomWidth: 1,
+  },
+  topHeaderButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topHeaderTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
     fontWeight: '600',
   },
   header: { padding: 8, borderBottomWidth: 1 },

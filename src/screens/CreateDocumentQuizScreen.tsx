@@ -14,6 +14,7 @@ import * as Yup from 'yup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,6 +72,7 @@ export default function CreateDocumentQuizScreen() {
   const [inputType, setInputType] = useState<'file' | 'url' | 'camera'>('file');
   const [currentStep, setCurrentStep] = useState<'upload' | 'config' | 'quiz'>('upload');
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
+  const [capturedImageSources, setCapturedImageSources] = useState<string[]>([]);
   const [isConvertingToPdf, setIsConvertingToPdf] = useState(false);
   
   // Quiz states
@@ -377,6 +379,7 @@ export default function CreateDocumentQuizScreen() {
       // Clear captured images if this was from camera
       if (inputType === 'camera') {
         setCapturedImages([]);
+        setCapturedImageSources([]);
       }
 
       // Show results
@@ -646,6 +649,34 @@ export default function CreateDocumentQuizScreen() {
     return true;
   };
 
+  const openCameraPrompt = () => {
+    if (capturedImages.length >= 5) {
+      setCameraError('You can only have up to 5 images in total.');
+      return;
+    }
+
+    setCameraError('');
+    captureImage();
+  };
+
+  const cropToSquare = async (uri: string, width?: number, height?: number) => {
+    if (!width || !height) {
+      return uri;
+    }
+
+    const size = Math.min(width, height);
+    const originX = Math.floor((width - size) / 2);
+    const originY = Math.floor((height - size) / 2);
+
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ crop: { originX, originY, width: size, height: size } }],
+      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+    );
+
+    return result.uri;
+  };
+
   const captureImage = async () => {
     if (capturedImages.length >= 5) {
       setCameraError('You can only have up to 5 images in total.');
@@ -658,7 +689,7 @@ export default function CreateDocumentQuizScreen() {
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
+        allowsEditing: true,
         quality: 0.8,
       });
 
@@ -666,12 +697,13 @@ export default function CreateDocumentQuizScreen() {
         const imageUri = result.assets[0].uri;
         
         // Check for duplicate image
-        if (capturedImages.includes(imageUri)) {
+        if (capturedImageSources.includes(imageUri)) {
           setCameraError('This image has already been captured.');
           return;
         }
         
         setCapturedImages((prev: string[]) => [...prev, imageUri]);
+        setCapturedImageSources((prev: string[]) => [...prev, imageUri]);
         setCameraError('');
       }
     } catch (error) {
@@ -695,26 +727,46 @@ export default function CreateDocumentQuizScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const remainingSlots = 5 - capturedImages.length;
-        const imagesToAdd = result.assets.slice(0, remainingSlots);
-        const imageUris = imagesToAdd.map(asset => asset.uri);
+        let failedCropCount = 0;
+        const processedAssets = await Promise.all(
+          result.assets.map(async (asset) => {
+            if (capturedImageSources.includes(asset.uri)) {
+              return null;
+            }
+
+            try {
+              const croppedUri = await cropToSquare(asset.uri, asset.width, asset.height);
+              return { uri: croppedUri, sourceUri: asset.uri };
+            } catch (error) {
+              failedCropCount += 1;
+              return null;
+            }
+          })
+        );
+
+        const newItems = processedAssets.filter(Boolean) as Array<{ uri: string; sourceUri: string }>;
+        const imageUris = newItems.map(item => item.uri);
         
         // Filter out duplicate images
         const newImageUris = imageUris.filter(uri => !capturedImages.includes(uri));
         
         if (newImageUris.length === 0) {
-          setCameraError('All selected images have already been added.');
+          const message = failedCropCount > 0
+            ? 'Selected images could not be processed. Please try again.'
+            : 'All selected images have already been added.';
+          setCameraError(message);
           return;
         }
         
-        if (newImageUris.length < imageUris.length) {
-          const duplicateCount = imageUris.length - newImageUris.length;
-          setCameraError(`${duplicateCount} duplicate image(s) were skipped.`);
-        }
-        
         setCapturedImages((prev: string[]) => [...prev, ...newImageUris]);
+        setCapturedImageSources((prev: string[]) => [
+          ...prev,
+          ...newItems.map(item => item.sourceUri),
+        ]);
         
-        if (newImageUris.length === imageUris.length) {
+        if (failedCropCount > 0) {
+          setCameraError(`${failedCropCount} image(s) could not be processed.`);
+        } else {
           setCameraError('');
         }
       }
@@ -726,6 +778,7 @@ export default function CreateDocumentQuizScreen() {
 
   const removeCapturedImage = (index: number) => {
     setCapturedImages((prev: string[]) => prev.filter((_: string, i: number) => i !== index));
+    setCapturedImageSources((prev: string[]) => prev.filter((_: string, i: number) => i !== index));
   };
 
   const convertImagesToPdf = async (): Promise<string | null> => {
@@ -994,6 +1047,7 @@ export default function CreateDocumentQuizScreen() {
       chapter: '',
       unit: '',
     });
+    setCapturedImageSources([]);
     
     // Clear AsyncStorage
     AsyncStorage.removeItem('uploadedFiles');
@@ -1167,8 +1221,8 @@ export default function CreateDocumentQuizScreen() {
               {/* Camera and Gallery Buttons */}
               <View style={styles.imageSourceButtons}>
                 <TouchableOpacity
-                  style={[styles.imageSourceButton, capturedImages.length >= 5 && styles.buttonDisabled]}
-                  onPress={captureImage}
+                  style={[styles.imageSourceButton, capturedImages.length >= 5 && styles.imageSourceButtonDisabled]}
+                  onPress={openCameraPrompt}
                   disabled={capturedImages.length >= 5}
                 >
                   <Ionicons name="camera" size={32} color={capturedImages.length >= 5 ? theme.colors.placeholder : theme.colors.primary} />
@@ -1178,7 +1232,7 @@ export default function CreateDocumentQuizScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.imageSourceButton, capturedImages.length >= 5 && styles.buttonDisabled]}
+                  style={[styles.imageSourceButton, capturedImages.length >= 5 && styles.imageSourceButtonDisabled]}
                   onPress={pickImagesFromGallery}
                   disabled={capturedImages.length >= 5}
                 >
@@ -2782,6 +2836,11 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  imageSourceButtonDisabled: {
+    backgroundColor: 'transparent',
+    borderColor: colors.placeholder,
+    opacity: 0.5,
   },
   imageSourceButtonText: {
     fontSize: 14,

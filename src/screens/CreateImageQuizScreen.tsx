@@ -8,6 +8,8 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { Formik, type FormikHelpers, type FormikProps } from 'formik';
+import * as Yup from 'yup';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,20 +32,76 @@ export default function CreateImageQuizScreen({ navigation }: any) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<'none' | 'valid' | 'invalid'>('none');
   const [validationMessage, setValidationMessage] = useState('');
-  const [currentStep, setCurrentStep] = useState<'upload' | 'analysis'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'analysis' | 'assessment'>('upload');
   const [imagePreviewUri, setImagePreviewUri] = useState<string | null>(null);
 
   // Analysis state (mirrors web ImageAnalysisResponse)
   const [imageAnalysis, setImageAnalysis] = useState<any | null>(null);
   const [quizQuestionCount, setQuizQuestionCount] = useState<number>(5);
   const [lesson, setLesson] = useState('');
-  const [level, setLevel] = useState('basic');
+  const [level, setLevel] = useState('');
   const [subject, setSubject] = useState('');
   const [classValue, setClassValue] = useState('');
+
+  type FormValues = {
+    class: string;
+    subject: string;
+    lesson: string;
+    level: string;
+    count: string;
+    itext: string;
+  };
+
+  const [formData, setFormData] = useState<FormValues>({
+    class: '',
+    subject: '',
+    lesson: '',
+    level: '',
+    count: '5',
+    itext: '',
+  });
+  const [submitError, setSubmitError] = useState('');
+  const [assessmentStep, setAssessmentStep] = useState<'analysis' | 'assessment'>('analysis');
+
+  const validationSchema = Yup.object({
+    class: Yup.string().required('Class is required'),
+    subject: Yup.string().required('Subject is required'),
+    lesson: Yup.string().required('Lesson/Topic is required'),
+    level: Yup.string().required('Difficulty level is required'),
+    itext: Yup.string().trim().required('Additional instructions are required'),
+  });
 
   useEffect(() => {
     requestPermissions();
   }, []);
+
+  useEffect(() => {
+    navigation.setOptions({ title: 'Image Assessment' });
+  }, [navigation]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      const actionType = e?.data?.action?.type;
+      const isBackAction = actionType === 'GO_BACK' || actionType === 'POP' || actionType === 'POP_TO_TOP';
+      if (!isBackAction) {
+        return;
+      }
+
+      e.preventDefault();
+      if (currentStep === 'assessment') {
+        setCurrentStep('analysis');
+        setAssessmentStep('analysis');
+        return;
+      }
+
+      if (currentStep === 'analysis') {
+        setCurrentStep('upload');
+        setAssessmentStep('analysis');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, currentStep]);
 
   const requestPermissions = async () => {
     const media = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -120,19 +178,12 @@ export default function CreateImageQuizScreen({ navigation }: any) {
     setValidationMessage('');
 
     try {
-      console.log('Analyzing image with instructions:', additionalInstructions);
-      
-
-      console.log('Uploading image for analysis...');
-
       // Call the analyze-image API endpoint
       const response = await generateQuizFromImage(
         selectedImage.uri,
         'advance', // studentLevel
         additionalInstructions.trim() // additionalInstructions
       );
-      
-      console.log('Image analysis response:', response);
 
       // The API returns a full response with assessment, summary, etc.
       // Extract the analysis information
@@ -145,15 +196,16 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         raw_response: response, // Store full response for debugging
       };
 
-      console.log('Image analysis complete:', analysisData);
-
       setImageAnalysis(analysisData);
       setValidationStatus('valid');
       setValidationMessage('✅ Image analyzed successfully!');
       setIsValidating(false);
 
       // Move to analysis step
-      setTimeout(() => setCurrentStep('analysis'), 350);
+      setTimeout(() => {
+        setAssessmentStep('analysis');
+        setCurrentStep('analysis');
+      }, 350);
 
     } catch (error: any) {
       console.error('Image validation error:', error);
@@ -182,12 +234,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
     }
   };
 
-  const generateQuiz = async () => {
-    if (!classValue || !subject || !lesson) {
-      Alert.alert('Error', 'Please fill in Class, Subject, and Lesson fields');
-      return;
-    }
-
+  const generateQuiz = async (values: FormValues) => {
     setIsGenerating(true);
     
     try {
@@ -200,12 +247,12 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       }
       
       // Add additional instructions
-      if (additionalInstructions.trim()) {
+      if (values.itext.trim()) {
         // Add separator if summary exists
         if (finalPrompt) {
           finalPrompt += '\n\n';
         }
-        finalPrompt += `Additional instructions: ${additionalInstructions.trim()}`;
+        finalPrompt += `Additional instructions: ${values.itext.trim()}`;
       }
       
       // If no content, use a default message
@@ -216,16 +263,14 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       // Call the assessment generation API (same as AI Quiz)
       // Use the FULL prompt for assessment generation to get quality questions
       const result = await generateAIQuiz({
-        class: classValue,
-        subject: subject,
-        lesson: lesson,
-        level: level,
-        count: quizQuestionCount,
+        class: values.class,
+        subject: values.subject,
+        lesson: values.lesson,
+        level: values.level,
+        count: parseInt(values.count, 10) || 5,
         itext: finalPrompt, // Pass the full combined prompt for assessment generation
       });
 
-      console.log('Assessment generated:', result);
-      
       // Create a short summary for display/storage (max 500 chars)
       // This is only for metadata, NOT for assessment generation
       const displaySummary = finalPrompt.length > 500 
@@ -234,17 +279,27 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       
       // Refresh notifications after assessment creation
       await refreshAfterQuizGenerated();
+
+      setClassValue(values.class);
+      setSubject(values.subject);
+      setLesson(values.lesson);
+      setLevel(values.level);
+      setQuizQuestionCount(parseInt(values.count, 10) || 5);
+      setAdditionalInstructions(values.itext);
       
+      const classLabel = classes.find((c: any) => c.id === values.class)?.name || values.class;
+      const subjectLabel = subjects.find((s: any) => s.id === values.subject)?.name || values.subject;
+
       // Navigate to assessment taking screen with the generated assessment
       navigation.navigate('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
-          title: `${lesson} Assessment`,
+          title: `${values.lesson} Assessment`,
           questions: result.quiz || [],
-          class: classes.find((c: any) => c.id === classValue)?.name,
-          subject: subjects.find((s: any) => s.id === subject)?.name,
-          difficulty: level,
-          lesson: lesson,
+          class: classLabel,
+          subject: subjectLabel,
+          difficulty: values.level,
+          lesson: values.lesson,
           additional_instructions: displaySummary, // Use truncated version for metadata
           // Thread data from the actual assessment generation
           thread_id: result.thread_id,
@@ -253,17 +308,18 @@ export default function CreateImageQuizScreen({ navigation }: any) {
           regenerationParams: {
             type: 'image',
             fileUri: selectedImage.uri,
-            studentLevel: level === 'basic' ? 'elementary' : 
-                         level === 'intermediate' ? 'middle_school' : 
+            studentLevel: values.level === 'basic' ? 'elementary' : 
+                         values.level === 'intermediate' ? 'middle_school' : 
                          'pre_medical',
             classroomId: undefined,
-            topic: lesson,
-            classId: classValue,
-            subjectId: subject,
-            count: quizQuestionCount,
+            topic: values.lesson,
+            classId: values.class,
+            subjectId: values.subject,
+            count: parseInt(values.count, 10) || 5,
             itext: finalPrompt,
           },
         },
+        source: 'image',
         showShareButton: true,
         showActionButtons: true,
         onNewQuiz: () => {
@@ -273,7 +329,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
     } catch (error: any) {
       console.error('Quiz generation error:', error);
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment from image';
-      Alert.alert('Error', errorMsg);
+      setSubmitError(errorMsg);
     } finally {
       setIsGenerating(false);
     }
@@ -281,7 +337,32 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
   const handleBackToUpload = () => {
     setCurrentStep('upload');
+    setAssessmentStep('analysis');
     // keep selectedImage so user can re-edit instructions
+  };
+
+  const handleBackToAnalysis = () => {
+    setCurrentStep('analysis');
+    setAssessmentStep('analysis');
+  };
+
+  const handleCloseToImageAssessment = () => {
+    setCurrentStep('upload');
+    setAssessmentStep('analysis');
+  };
+
+  const handleGoToAssessment = () => {
+    setSubmitError('');
+    setFormData({
+      class: classValue,
+      subject: subject,
+      lesson: lesson,
+      level: level,
+      count: String(quizQuestionCount),
+      itext: additionalInstructions,
+    });
+    setAssessmentStep('assessment');
+    setCurrentStep('assessment');
   };
 
   return (
@@ -298,231 +379,272 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         <View style={styles.headerPlaceholder} />
       </View> */}
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {currentStep === 'upload' && (
-          <>
-            <View style={styles.header}>
-              {/* <Text style={styles.title}> Image Quiz</Text> */}
-              <Text style={styles.subtitle}> Generate assessment from an image</Text>
-            </View>
-
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Upload Image *</Text>
-              
-              {selectedImage ? (
-                <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-                  <Image source={{ uri: imagePreviewUri || selectedImage.uri }} style={styles.selectedImage} />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.imagePickerPlaceholder}>
-                  <Text style={styles.imagePickerIcon}>📷</Text>
-                  <Text style={styles.imagePickerText}>No image selected</Text>
-                  <Text style={styles.imagePickerSubtext}>Choose an option below</Text>
-                </View>
-              )}
-
-              {/* Image picker buttons */}
-              <View style={styles.imageButtonsRow}>
-                <TouchableOpacity 
-                  style={[styles.imageButton, styles.galleryButton]} 
-                  onPress={pickImage}
+      {currentStep === 'assessment' ? (
+        <Formik
+          initialValues={formData}
+          validationSchema={validationSchema}
+          onSubmit={async (
+            values: FormValues,
+            { setSubmitting }: FormikHelpers<FormValues>
+          ) => {
+            setSubmitError('');
+            setSubmitting(true);
+            try {
+              await generateQuiz(values);
+            } catch (error: any) {
+              console.error('Assessment generation error:', error);
+              const errorMsg = error.response?.data?.detail || error.message || 'Failed to generate assessment';
+              setSubmitError(errorMsg);
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          validateOnBlur={true}
+          validateOnChange={false}
+        >
+          {({
+            values,
+            errors,
+            touched,
+            submitCount,
+            isSubmitting,
+            handleSubmit,
+            setFieldValue,
+            setFieldTouched,
+            handleBlur,
+          }: FormikProps<FormValues>) => (
+            <>
+              <View style={[styles.headerBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={handleBackToAnalysis}
                 >
-                  <Text style={styles.imageButtonIcon}>🖼️</Text>
-                  <Text style={[styles.imageButtonText, { color: '#7C3AED' }]}>Choose from Gallery</Text>
+                  <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
                 </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.imageButton, styles.cameraButton]} 
-                  onPress={pickFromCamera}
+                <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Generate Assessment</Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={handleCloseToImageAssessment}
                 >
-                  <Text style={styles.imageButtonIcon}>📸</Text>
-                  <Text style={[styles.imageButtonText, { color: '#fff' }]}>Take Photo</Text>
+                  <Ionicons name="close" size={22} color={theme.colors.text} />
                 </TouchableOpacity>
               </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+              >
+                <View style={styles.form}>
+                  <QuizFormFields
+                    showClass={true}
+                    classValue={values.class}
+                    onClassChange={(value) => {
+                      setFieldValue('class', value);
+                      setFieldTouched('class', true, false);
+                    }}
+                    classError={(touched.class || submitCount > 0) ? (errors.class as string) : ''}
 
-              <Text style={styles.hint}>Select an image containing text, diagrams, or educational content</Text>
-            </View>
+                    showSubject={true}
+                    subjectValue={values.subject}
+                    onSubjectChange={(value) => {
+                      setFieldValue('subject', value);
+                      setFieldTouched('subject', true, false);
+                    }}
+                    subjectError={(touched.subject || submitCount > 0) ? (errors.subject as string) : ''}
 
-            {/* Validation Status */}
-            {(isValidating || validationStatus !== 'none') && (
-              <View style={styles.statusContainer}>
-                {isValidating && (
-                  <View style={styles.statusRow}>
-                    <LoadingSpinner size={60} />
-                    <Text style={styles.statusText}>Validating image...</Text>
-                  </View>
-                )}
-                {validationMessage !== '' && (
-                  <Text style={[
-                    styles.validationMessage,
-                    validationStatus === 'valid' ? styles.validMessage : styles.invalidMessage
-                  ]}>
-                    {validationMessage}
-                  </Text>
-                )}
-              </View>
-            )}
+                    showLesson={true}
+                    lessonValue={values.lesson}
+                    onLessonChange={(text) => setFieldValue('lesson', text)}
+                    onLessonBlur={() => handleBlur('lesson')({} as any)}
+                    lessonPlaceholder="e.g., Photosynthesis, Cell Division"
+                    lessonLabel="Lesson/Topic"
+                    lessonError={(touched.lesson || submitCount > 0) ? (errors.lesson as string) : ''}
 
-            {/* Generation Status */}
-            {isGenerating && (
-              <View style={styles.statusContainer}>
-                <View style={styles.statusRow}>
-                  <LoadingSpinner size={20} />
-                  <Text style={styles.statusText}>Generating assessment...</Text>
-                </View>
-              </View>
-            )}
+                    showDifficultyLevel={true}
+                    difficultyValue={values.level}
+                    onDifficultyChange={(value) => {
+                      setFieldValue('level', value);
+                      setFieldTouched('level', true, false);
+                    }}
+                    difficultyError={(touched.level || submitCount > 0) ? (errors.level as string) : ''}
 
-            <TouchableOpacity
-              style={[
-                styles.generateButton,
-                (isValidating || isGenerating) && styles.buttonDisabled
-              ]}
-              onPress={handleValidateAndGenerate}
-              disabled={isValidating || isGenerating}
-            >
-              <Text style={styles.generateButtonText}>
-                {isValidating ? 'Validating...' : isGenerating ? 'Generating...' : '🖼️ Analyze Image'}
-              </Text>
-            </TouchableOpacity>
+                    showQuestionCount={true}
+                    questionCountValue={values.count}
+                    onQuestionCountChange={(text) => setFieldValue('count', text)}
 
-            {/* Recent Summaries Section
-            {recentSummaries.length > 0 && (
-              <View style={styles.recentSection}>
-                <Text style={styles.sectionTitle}>📋 Recent Image Summaries</Text>
-                <Text style={styles.sectionSubtitle}>Or generate assessment from a recent image</Text>
-                
-                {isLoadingSummaries ? (
-                  <View style={styles.loadingContainer}>
-                    <LoadingSpinner size={20} />
-                    <Text style={styles.loadingText}>Loading recent summaries...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={recentSummaries}
-                    renderItem={renderRecentSummary}
-                    keyExtractor={(item) => item.id.toString()}
-                    style={styles.summariesList}
-                    showsVerticalScrollIndicator={false}
+                    additionalInstructionsValue={values.itext}
+                    onAdditionalInstructionsChange={(text) => setFieldValue('itext', text)}
+                    onAdditionalInstructionsBlur={() => handleBlur('itext')({} as any)}
+                    additionalInstructionsError={(touched.itext || submitCount > 0) ? (errors.itext as string) : ''}
                   />
-                )}
-              </View>
-            )}
-
-            <View style={styles.infoBox}>
-              <Text style={styles.infoTitle}>💡 How it works:</Text>
-              <Text style={styles.infoText}>• Analyzes text and visual content in the image</Text>
-              <Text style={styles.infoText}>• Extracts key concepts and information</Text>
-              <Text style={styles.infoText}>• Creates targeted questions based on the content</Text>
-              <Text style={styles.infoText}>• Works with diagrams, charts, text, and educational materials</Text>
-            </View> */}
-          </View>
-        </>
-      )}
-
-      {currentStep === 'analysis' && imageAnalysis && (
-        <View style={styles.form}>
-          <View style={styles.analysisHeader}>
-            <View>
-              <Text style={styles.analysisTitle}>🖼️ Image Analysis</Text>
-              <Text style={styles.subtitle}>Review the detected content and set assessment parameters</Text>
-            </View>
-            <TouchableOpacity onPress={handleBackToUpload} style={styles.backButton}>
-              <Text style={styles.backButtonText}>← Back</Text>
-            </TouchableOpacity>
-          </View>
-
-          {imagePreviewUri && (
-            <View style={styles.imagePreviewContainer}>
-              <Image source={{ uri: imagePreviewUri }} style={styles.imagePreview} />
-            </View>
-          )}
-
-          <View style={styles.analysisSection}>
-            <Text style={styles.analysisSectionTitle}>Summary</Text>
-            <MathRenderer text={imageAnalysis.summary} colors={theme.colors} />
-          </View>
-
-          {imageAnalysis.keywords && Array.isArray(imageAnalysis.keywords) && imageAnalysis.keywords.length > 0 && (
-            <View style={styles.analysisSection}>
-              <Text style={styles.analysisSectionTitle}>Keywords</Text>
-              <Text style={styles.sectionText}>{imageAnalysis.keywords.join(' | ')}</Text>
-            </View>
-          )}
-
-          {imageAnalysis.elements && Array.isArray(imageAnalysis.elements) && imageAnalysis.elements.length > 0 && (
-            <View style={styles.analysisSection}>
-              <Text style={styles.analysisSectionTitle}>Detected Elements</Text>
-              {imageAnalysis.elements.map((el: any, idx: number) => (
-                <View key={idx} style={styles.elementCard}>
-                  <Text style={styles.elementLabel}>{el.label || el.name || 'Element'}</Text>
-                  <Text style={styles.elementDescription}>{el.description || el.value || ''}</Text>
                 </View>
-              ))}
-            </View>
+              </ScrollView>
+
+              <View style={styles.footer}>
+                {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
+                <TouchableOpacity
+                  style={[styles.generateButton, (isSubmitting || isGenerating) && styles.buttonDisabled]}
+                  onPress={() => handleSubmit()}
+                  disabled={isSubmitting || isGenerating}
+                >
+                  {isSubmitting || isGenerating ? (
+                    <LoadingSpinner size={20} />
+                  ) : (
+                    <Text style={styles.generateButtonText}>Generate Assessment</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </Formik>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {currentStep === 'upload' && (
+            <>
+              <View style={styles.form}>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Upload Image *</Text>
+                  
+                  {selectedImage ? (
+                    <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+                      <Image source={{ uri: imagePreviewUri || selectedImage.uri }} style={styles.selectedImage} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={styles.imagePickerPlaceholder} onPress={pickFromCamera}>
+                      <Ionicons name="image-outline" size={48} color={theme.colors.textSecondary} />
+                      <Text style={styles.imagePickerText}>No image selected</Text>
+                      <Text style={styles.imagePickerSubtext}>Choose an option below</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Image picker buttons */}
+                  <View style={styles.imageButtonsRow}>
+                    <TouchableOpacity 
+                      style={[styles.imageButton, styles.galleryButton]} 
+                      onPress={pickImage}
+                    >
+                      <Ionicons name="images-outline" size={20} color={theme.colors.buttonText} />
+                      <Text style={[styles.imageButtonText, styles.galleryButtonText]}>Choose from Gallery</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.imageButton, styles.cameraButton]} 
+                      onPress={pickFromCamera}
+                    >
+                      <Ionicons name="camera-outline" size={20} color={theme.colors.text} />
+                      <Text style={styles.imageButtonText}>Take Photo</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.hint}>Select an image containing text, diagrams, or educational content.</Text>
+                </View>
+
+                {/* Validation Status */}
+                {validationMessage !== '' && !isValidating && (
+                  <View style={styles.statusContainer}>
+                    <Text style={[
+                      styles.validationMessage,
+                      validationStatus === 'valid' ? styles.validMessage : styles.invalidMessage
+                    ]}>
+                      {validationMessage}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Generation Status */}
+                {isGenerating && (
+                  <View style={styles.statusContainer}>
+                    <View style={styles.statusRow}>
+                      <LoadingSpinner size={20} />
+                      <Text style={styles.statusText}>Generating assessment...</Text>
+                    </View>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.generateButton,
+                    (!selectedImage || isValidating || isGenerating) && styles.buttonDisabled
+                  ]}
+                  onPress={handleValidateAndGenerate}
+                  disabled={!selectedImage || isValidating || isGenerating}
+                >
+                  {isValidating ? (
+                    <LoadingSpinner size={20} />
+                  ) : isGenerating ? (
+                    <Text style={styles.generateButtonText}>Generating...</Text>
+                  ) : (
+                    <View style={styles.generateButtonContent}>
+                      <Ionicons name="scan-outline" size={20} color={theme.colors.buttonText} />
+                      <Text style={styles.generateButtonText}>Analyze Image</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
           )}
 
-          {/* Quiz Form Fields using QuizFormFields component */}
-          <View style={styles.quizConfigSection}>
-            <Text style={styles.configLabel}>📝 Quiz Configuration</Text>
-            
-            <QuizFormFields
-              showClass={true}
-              classValue={classValue}
-              onClassChange={setClassValue}
-              
-              showSubject={true}
-              subjectValue={subject}
-              onSubjectChange={setSubject}
-              
-              showLesson={true}
-              lessonValue={lesson}
-              onLessonChange={setLesson}
-              lessonPlaceholder="e.g., Photosynthesis, Cell Division"
-              lessonLabel="Lesson/Topic"
-              
-              showDifficultyLevel={true}
-              difficultyValue={level}
-              onDifficultyChange={setLevel}
-              
-              showQuestionCount={true}
-              questionCountValue={String(quizQuestionCount)}
-              onQuestionCountChange={(text) => setQuizQuestionCount(parseInt(text) || 5)}
-              
-              additionalInstructionsValue={additionalInstructions}
-              onAdditionalInstructionsChange={setAdditionalInstructions}
-            />
-          </View>
+          {currentStep === 'analysis' && imageAnalysis && assessmentStep === 'analysis' && (
+            <View style={styles.form}>
+              <View style={styles.analysisHeader}>
+                <View>
+                  <Text style={styles.analysisTitle}>Image Analysis</Text>
+                </View>
+                <TouchableOpacity onPress={handleBackToUpload} style={styles.backButton}>
+                  <Ionicons name="arrow-back" size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
 
-          {/* Action Buttons */}
-          <View style={{ marginTop: 20, gap: 12 }}>
-            {/* Topic Summary Button */}
-            {/* <TouchableOpacity 
-              style={styles.analyzeButton}
-              onPress={() => setShowAnalysisModal(true)}
-            >
-              <Text style={styles.analyzeButtonText}>📊 Topic Summary</Text>
-            </TouchableOpacity> */}
-
-            {/* Generate Quiz Button */}
-            <TouchableOpacity 
-              onPress={generateQuiz} 
-              style={[styles.generateButton, isGenerating && styles.buttonDisabled]}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <LoadingSpinner size={20} />
-              ) : (
-                <Text style={styles.generateButtonText}>🧠 Generate {quizQuestionCount} Questions</Text>
+              {imagePreviewUri && (
+                <View style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: imagePreviewUri }} style={styles.imagePreview} />
+                </View>
               )}
-            </TouchableOpacity>
+
+              <View style={styles.analysisSection}>
+                <Text style={styles.analysisSectionTitle}>Summary</Text>
+                <MathRenderer text={imageAnalysis.summary} colors={theme.colors} />
+              </View>
+
+              {imageAnalysis.keywords && Array.isArray(imageAnalysis.keywords) && imageAnalysis.keywords.length > 0 && (
+                <View style={styles.analysisSection}>
+                  <Text style={styles.analysisSectionTitle}>Keywords</Text>
+                  <Text style={styles.sectionText}>{imageAnalysis.keywords.join(' | ')}</Text>
+                </View>
+              )}
+
+              {imageAnalysis.elements && Array.isArray(imageAnalysis.elements) && imageAnalysis.elements.length > 0 && (
+                <View style={styles.analysisSection}>
+                  <Text style={styles.analysisSectionTitle}>Detected Elements</Text>
+                  {imageAnalysis.elements.map((el: any, idx: number) => (
+                    <View key={idx} style={styles.elementCard}>
+                      <Text style={styles.elementLabel}>{el.label || el.name || 'Element'}</Text>
+                      <Text style={styles.elementDescription}>{el.description || el.value || ''}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <TouchableOpacity
+                onPress={handleGoToAssessment}
+                style={styles.generateButton}
+              >
+                <Text style={styles.generateButtonText}>Generate Assessment</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      )}
+      {(isValidating || isGenerating) && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <LoadingSpinner size={60} />
+            <Text style={styles.loadingOverlayText}>
+              {isValidating ? 'Analyzing image...' : 'Generating assessment...'}
+            </Text>
+            <Text style={styles.loadingOverlaySubtext}>Please wait</Text>
           </View>
         </View>
       )}
-
-
-      </ScrollView>
     </View>
   );
 }
@@ -560,7 +682,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     width: 40,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   header: {
     padding: 20,
@@ -637,18 +759,23 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   generateButton: {
     backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 8,
+    padding: 18,
+    borderRadius: 12,
     alignItems: 'center',
     marginBottom: 20,
   },
+  generateButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   generateButtonText: {
     color: colors.buttonText,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   buttonDisabled: {
-    opacity: 0.6,
+    backgroundColor: colors.placeholder,
   },
   analyzeButton: {
     backgroundColor: colors.primary,
@@ -675,6 +802,19 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     marginBottom: 12,
+  },
+  footer: {
+    padding: 16,
+    paddingBottom: 20,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  submitError: {
+    color: colors.error,
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -778,26 +918,28 @@ const createStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 14,
+    padding: 12,
     borderRadius: 8,
-    borderWidth: 1,
+    borderWidth: 2,
+    backgroundColor: colors.cardBackground,
+    borderColor: colors.border,
+    gap: 8,
   },
   galleryButton: {
-    backgroundColor: colors.card,
     borderColor: colors.primary,
+    backgroundColor: colors.primary,
   },
   cameraButton: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  imageButtonIcon: {
-    fontSize: 20,
-    marginRight: 8,
+    backgroundColor: colors.cardBackground,
+    borderColor: colors.border,
   },
   imageButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  galleryButtonText: {
+    color: colors.buttonText,
   },
   analysisHeader: {
     marginBottom: 12,
@@ -859,5 +1001,41 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: 12,
     fontWeight: '600',
     color: colors.text,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(241, 243, 232, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContent: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loadingOverlayText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  loadingOverlaySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
