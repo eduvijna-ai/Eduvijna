@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -154,8 +154,27 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
   } = props;
 
   // Use prop data if provided, otherwise use context data (loaded once for entire app)
-  const classes = propClasses || contextClasses;
-  const subjects = propSubjects || contextSubjects;
+  const rawClasses = propClasses || contextClasses;
+  const rawSubjects = propSubjects || contextSubjects;
+  const normalizeDropdownItems = <T extends { id?: string; name?: string; label?: string; value?: string }>(items: T[]): T[] =>
+    (items || []).filter((item) => Boolean(item?.id) && Boolean(item?.name || item?.label || item?.value));
+
+  const classes = useMemo(
+    () =>
+      normalizeDropdownItems(rawClasses as ClassItem[]).map((item) => ({
+        ...item,
+        name: item.name || item.label || item.value || '',
+      })),
+    [rawClasses]
+  );
+  const subjects = useMemo(
+    () =>
+      normalizeDropdownItems(rawSubjects as SubjectItem[]).map((item) => ({
+        ...item,
+        name: item.name || item.label || item.value || '',
+      })),
+    [rawSubjects]
+  );
   const difficultyLevels = propDifficultyLevels || contextDifficultyLevels;
   const isLoadingClasses = propLoadingClasses ?? contextLoadingClasses;
   const isLoadingSubjects = propLoadingSubjects ?? contextLoadingSubjects;
@@ -204,11 +223,13 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     
     // If less than 3 characters, show all classes (local filter)
     if (query.length < 3) {
-      let filtered = classes.filter((c) =>
-        c.name.toLowerCase().includes(query.toLowerCase()) ||
-        c.label?.toLowerCase().includes(query.toLowerCase()) ||
-        c.value?.toLowerCase().includes(query.toLowerCase())
-      );
+      let filtered = classes.filter((c) => {
+        const name = (c?.name || '').toLowerCase();
+        const label = (c?.label || '').toLowerCase();
+        const value = (c?.value || '').toLowerCase();
+        const q = query.toLowerCase();
+        return name.includes(q) || label.includes(q) || value.includes(q);
+      });
       
       // Always include the currently selected class, even if it doesn't match the search
       if (classValue) {
@@ -229,7 +250,15 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     // Debounce API search - wait 300ms after user stops typing
     classSearchTimer.current = setTimeout(async () => {
       try {
-        const results = await searchDropdown('classes', query, 10);
+        const q = query.toLowerCase();
+        const results = (await searchDropdown('classes', query, 10)).filter(
+          (item: any) => item?.id && (item?.name || item?.label || item?.value)
+        ).filter((item: any) => {
+          const name = (item?.name || '').toLowerCase();
+          const label = (item?.label || '').toLowerCase();
+          const value = (item?.value || '').toLowerCase();
+          return name.includes(q) || label.includes(q) || value.includes(q);
+        });
         
         // Always include the currently selected class, even if it's not in search results
         let finalResults = [...results];
@@ -261,11 +290,13 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     
     // If less than 3 characters, show all subjects (local filter)
     if (query.length < 3) {
-      let filtered = subjects.filter((s) =>
-        s.name.toLowerCase().includes(query.toLowerCase()) ||
-        s.label?.toLowerCase().includes(query.toLowerCase()) ||
-        s.value?.toLowerCase().includes(query.toLowerCase())
-      );
+      let filtered = subjects.filter((s) => {
+        const name = (s?.name || '').toLowerCase();
+        const label = (s?.label || '').toLowerCase();
+        const value = (s?.value || '').toLowerCase();
+        const q = query.toLowerCase();
+        return name.includes(q) || label.includes(q) || value.includes(q);
+      });
       
       // Always include the currently selected subject, even if it doesn't match the search
       if (subjectValue) {
@@ -286,7 +317,15 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     // Debounce API search - wait 300ms after user stops typing
     subjectSearchTimer.current = setTimeout(async () => {
       try {
-        const results = await searchDropdown('subjects', query, 10);
+        const q = query.toLowerCase();
+        const results = (await searchDropdown('subjects', query, 10)).filter(
+          (item: any) => item?.id && (item?.name || item?.label || item?.value)
+        ).filter((item: any) => {
+          const name = (item?.name || '').toLowerCase();
+          const label = (item?.label || '').toLowerCase();
+          const value = (item?.value || '').toLowerCase();
+          return name.includes(q) || label.includes(q) || value.includes(q);
+        });
         
         // Always include the currently selected subject, even if it's not in search results
         let finalResults = [...results];
@@ -455,7 +494,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               )}
 
               <ScrollView style={styles.optionsList}>
-                {filteredClasses.map((cls) => (
+                {filteredClasses.filter(Boolean).map((cls) => (
                   <TouchableOpacity
                     key={cls.id}
                     style={[
@@ -468,7 +507,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
                       styles.optionText,
                       classValue === cls.id && styles.optionTextSelected,
                     ]}>
-                      {cls.name}
+                      {cls.name || cls.label || cls.value || 'Unnamed class'}
                     </Text>
                     {classValue === cls.id && (
                       <Ionicons name="checkmark" size={20} color={colors.primary} />
@@ -565,7 +604,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
               )}
 
               <ScrollView style={styles.optionsList}>
-                {filteredSubjects.map((subj) => (
+                {filteredSubjects.filter(Boolean).map((subj) => (
                   <TouchableOpacity
                     key={subj.id}
                     style={[
@@ -578,7 +617,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
                       styles.optionText,
                       subjectValue === subj.id && styles.optionTextSelected,
                     ]}>
-                      {subj.name}
+                      {subj.name || subj.label || subj.value || 'Unnamed subject'}
                     </Text>
                     {subjectValue === subj.id && (
                       <Ionicons name="checkmark" size={20} color={colors.primary} />

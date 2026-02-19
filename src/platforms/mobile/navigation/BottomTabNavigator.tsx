@@ -227,7 +227,7 @@ export default function MobileNavigation() {
         options={{
           headerShown: true,
           presentation: 'modal',
-          title: 'Create YouTube Assessment',
+          title: 'YouTube Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
             <Ionicons name="logo-youtube" size={24} color="#FF0000" style={{ marginRight: 16 }} />

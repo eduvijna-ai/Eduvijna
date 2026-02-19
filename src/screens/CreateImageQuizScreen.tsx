@@ -81,6 +81,10 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (currentStep === 'upload') {
+        return;
+      }
+
       const actionType = e?.data?.action?.type;
       const isBackAction = actionType === 'GO_BACK' || actionType === 'POP' || actionType === 'POP_TO_TOP';
       if (!isBackAction) {
@@ -322,9 +326,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         source: 'image',
         showShareButton: true,
         showActionButtons: true,
-        onNewQuiz: () => {
-          navigation.goBack();
-        }
       });
     } catch (error: any) {
       console.error('Quiz generation error:', error);

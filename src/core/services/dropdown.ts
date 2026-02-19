@@ -189,6 +189,25 @@ export async function searchDropdown(
   searchQuery: string,
   limit: number = 10
 ): Promise<ClassItem[] | SubjectItem[]> {
+  const safeText = (value: unknown): string => (typeof value === 'string' ? value : '').trim();
+  const toDropdownItem = (item: any) => {
+    const rawId = item?.id ?? item?.value ?? item?.slug;
+    const id = rawId != null ? String(rawId) : '';
+    const name = safeText(item?.label) || safeText(item?.name) || safeText(item?.value);
+
+    if (!id || !name) {
+      return null;
+    }
+
+    return {
+      id,
+      name,
+      value: id,
+      label: name,
+      slug: item?.slug,
+    };
+  };
+
   try {
     console.log(`🔍 Searching ${dropdownType} for: "${searchQuery}"`);
 
@@ -206,13 +225,9 @@ export async function searchDropdown(
     const data = Array.isArray(response.data) ? response.data : (response.data.items || []);
     
     // Transform the response to match our interface
-    const items = data.map((item: any) => ({
-      id: item.id.toString(),
-      name: item.label || item.name,
-      value: item.id.toString(),
-      label: item.label || item.name,
-      slug: item.slug,
-    }));
+    const items = data
+      .map((item: any) => toDropdownItem(item))
+      .filter((item: any) => item !== null);
     
     return items;
   } catch (error: any) {
@@ -230,10 +245,12 @@ export async function searchDropdown(
         : await getSubjects();
       
       const query = searchQuery.toLowerCase().trim();
-      const filtered = allItemsResponse.items.filter((item: ClassItem | SubjectItem) =>
-        item.name.toLowerCase().includes(query) ||
-        item.label?.toLowerCase().includes(query) ||
-        item.value?.toLowerCase().includes(query)
+      const filtered = allItemsResponse.items.filter((item: ClassItem | SubjectItem) => {
+        const name = safeText((item as any)?.name).toLowerCase();
+        const label = safeText((item as any)?.label).toLowerCase();
+        const value = safeText((item as any)?.value).toLowerCase();
+        return name.includes(query) || label.includes(query) || value.includes(query);
+      }
       );
       
       console.log(`✅ Local filter found ${filtered.length} items`);
@@ -246,12 +263,12 @@ export async function searchDropdown(
       const fallbackData = dropdownType === 'classes' ? FALLBACK_CLASSES : FALLBACK_SUBJECTS;
       const query = searchQuery.toLowerCase().trim();
       
-      const filtered = fallbackData.filter(
-        (item) =>
-          item.name.toLowerCase().includes(query) ||
-          item.label?.toLowerCase().includes(query) ||
-          item.value?.toLowerCase().includes(query)
-      );
+      const filtered = fallbackData.filter((item) => {
+        const name = safeText((item as any)?.name).toLowerCase();
+        const label = safeText((item as any)?.label).toLowerCase();
+        const value = safeText((item as any)?.value).toLowerCase();
+        return name.includes(query) || label.includes(query) || value.includes(query);
+      });
       
       console.log(`⚠️ Using hardcoded fallback, found ${filtered.length} items`);
       return filtered.slice(0, limit);

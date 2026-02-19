@@ -81,9 +81,17 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     classroomId: routeClassroomId,
     showShareButton,
     showActionButtons,
-    onNewQuiz,
   } = routeParams;
   const source = routeParams?.source;
+
+  const handleCreateNewQuiz = () => {
+    if (source === 'image' || source === 'youtube' || source === 'document') {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('Main', { screen: 'Dashboard' });
+  };
   
   // Use useMemo to stabilize quizSource object reference and prevent infinite loops
   const quizSource = useMemo(() => {
@@ -858,7 +866,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             </TouchableOpacity>
           )}
           
-          {showActionButtons && onNewQuiz && (
+          {showActionButtons && (
             <TouchableOpacity 
               style={[styles.actionButton, styles.newButton]}
               onPress={() => {
@@ -867,7 +875,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                   'Go back to create a new assessment?',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Yes', onPress: onNewQuiz }
+                    { text: 'Yes', onPress: handleCreateNewQuiz }
                   ]
                 );
               }}
