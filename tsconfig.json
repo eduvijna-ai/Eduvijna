@@ -3,13 +3,11 @@
   "compilerOptions": {
     "strict": true,
     "target": "ES2020",
-    "module": "ESNext",
     "lib": [
       "ES2020",
       "DOM"
     ],
     "jsx": "react-native",
-    "moduleResolution": "node",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
