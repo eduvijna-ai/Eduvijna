@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
 import { useNotificationPolling } from './src/core/hooks/useNotificationPolling';
@@ -527,13 +528,15 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <DropdownProvider>
-          <AppContent />
-        </DropdownProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <DropdownProvider>
+            <AppContent />
+          </DropdownProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 

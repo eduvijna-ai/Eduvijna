@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { useTheme } from '@context/ThemeContext';
@@ -19,6 +20,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects, difficultyLevels, refreshAll } = useDropdowns();
+  const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   type FormValues = {
     class: string;
@@ -131,7 +133,6 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           handleSubmit,
           setFieldValue,
           setFieldTouched,
-          handleBlur,
         }: FormikProps<FormValues>) => (
           <>
             <ScrollView
@@ -159,7 +160,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
                   showLesson={true}
                   lessonValue={values.lesson}
                   onLessonChange={(text) => setFieldValue('lesson', text)}
-                  onLessonBlur={() => handleBlur('lesson')({} as any)}
+                  onLessonBlur={() => setFieldTouched('lesson', true)}
                   lessonPlaceholder="e.g., Simple Present Tense"
                   lessonLabel="Lesson/Topic"
                   lessonError={(touched.lesson || submitCount > 0) ? (errors.lesson as string) : ''}
@@ -170,7 +171,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
                     setFieldValue('level', value);
                     setFieldTouched('level', true, false);
                   }}
-                  difficultyError={(touched.level || submitCount > 0) ? (errors.level as string) : ''}
+                  difficultyError={submitCount > 0 ? (errors.level as string) : ''}
 
                   showQuestionCount={true}
                   questionCountValue={values.count}
@@ -178,13 +179,13 @@ export default function CreateAIQuizScreen({ navigation }: any) {
 
                   additionalInstructionsValue={values.itext}
                   onAdditionalInstructionsChange={(text) => setFieldValue('itext', text)}
-                  onAdditionalInstructionsBlur={() => handleBlur('itext')({} as any)}
+                  onAdditionalInstructionsBlur={() => setFieldTouched('itext', true)}
                   additionalInstructionsError={(touched.itext || submitCount > 0) ? (errors.itext as string) : ''}
                 />
               </View>
             </ScrollView>
 
-            <View style={styles.footer}>
+            <View style={[styles.footer, { paddingBottom: Math.max(20, insets.bottom) }]}>
               {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
               <TouchableOpacity
                 style={[styles.generateButton, isSubmitting && styles.buttonDisabled]}
@@ -198,6 +199,15 @@ export default function CreateAIQuizScreen({ navigation }: any) {
                 )}
               </TouchableOpacity>
             </View>
+            {isSubmitting && (
+              <View style={styles.loadingOverlay}>
+                <View style={styles.loadingContent}>
+                  <LoadingSpinner size={60} />
+                  <Text style={styles.loadingText}>Generating assessment...</Text>
+                  <Text style={styles.loadingSubtext}>Please wait while we prepare your quiz</Text>
+                </View>
+              </View>
+            )}
           </>
         )}
       </Formik>
@@ -271,5 +281,39 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     marginBottom: 8,
+  },
+  loadingOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(241, 243, 232, 0.7)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    zIndex: 9999,
+  },
+  loadingContent: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center' as const,
+    minWidth: 250,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: colors.text,
+    marginTop: 16,
+  },
+  loadingSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
   },
 });

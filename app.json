@@ -62,7 +62,7 @@
 
     "runtimeVersion": "1.0.0",
 
-    "plugins": ["expo-notifications"],
+    "plugins": ["expo-notifications", "./plugins/withCropButtonLabel"],
 
     "experiments": {
       "typedRoutes": false

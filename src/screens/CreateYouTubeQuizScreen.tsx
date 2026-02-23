@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import useNotifications from '@core/hooks/useNotifications';
 export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const insets = useSafeAreaInsets();
   const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [youtubeUrl, setYoutubeUrl] = useState('');
@@ -473,7 +475,6 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
             handleSubmit,
             setFieldValue,
             setFieldTouched,
-            handleBlur,
           }: FormikProps<FormValues>) => (
             <>
               <View style={[styles.headerBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
@@ -493,7 +494,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
               </View>
               <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(120, insets.bottom + 20) }]}
               >
                 <View style={styles.form}>
                   <QuizFormFields
@@ -516,7 +517,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
                     showLesson={true}
                     lessonValue={values.lesson}
                     onLessonChange={(text) => setFieldValue('lesson', text)}
-                    onLessonBlur={() => handleBlur('lesson')({} as any)}
+                    onLessonBlur={() => setFieldTouched('lesson', true)}
                     lessonError={(touched.lesson || submitCount > 0) ? (errors.lesson as string) : ''}
                     lessonPlaceholder="e.g., JavaScript Basics, React Hooks"
                     lessonLabel="Lesson/Topic"
@@ -527,7 +528,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
                       setFieldValue('level', value);
                       setFieldTouched('level', true, false);
                     }}
-                    difficultyError={(touched.level || submitCount > 0) ? (errors.level as string) : ''}
+                    difficultyError={submitCount > 0 ? (errors.level as string) : ''}
 
                     showQuestionCount={true}
                     questionCountValue={values.count}
@@ -535,7 +536,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
 
                     additionalInstructionsValue={values.itext}
                     onAdditionalInstructionsChange={(text) => setFieldValue('itext', text)}
-                    onAdditionalInstructionsBlur={() => handleBlur('itext')({} as any)}
+                    onAdditionalInstructionsBlur={() => setFieldTouched('itext', true)}
                     additionalInstructionsError={(touched.itext || submitCount > 0) ? (errors.itext as string) : ''}
                   />
 

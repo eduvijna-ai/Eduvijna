@@ -8,9 +8,9 @@ import {
   RefreshControl,
   useWindowDimensions,
   TextInput,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
@@ -90,6 +90,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const [selectedDateFilter, setSelectedDateFilter] = useState<DateFilterType>('all');
   const [dateRangeStart, setDateRangeStart] = useState<Date>(new Date());
   const [dateRangeEnd, setDateRangeEnd] = useState<Date>(new Date());
+  const [loadingQuizId, setLoadingQuizId] = useState<number | null>(null);
 
   const isWeb = width > 768;
   const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
@@ -349,22 +350,28 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       const correctSessionId = attemptData?.session_id || '';
       const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
       
-      if (navigation) {
-        navigation.navigate('QuizTakingScreen', {
-          quizId: correctQuizId,
-          sessionId: correctSessionId,
-          classroomId: correctClassroomId,
-          quizData: attemptData,
-        });
-      } else if (onNavigate) {
-        onNavigate('QuizTakingScreen', {
-          quizId: correctQuizId,
-          sessionId: correctSessionId,
-          classroomId: correctClassroomId,
-          quizData: attemptData,
-          quiz: attemptData,
-          is_public: false,
-        });
+      setLoadingQuizId(correctQuizId);
+      try {
+        if (navigation) {
+          navigation.navigate('QuizTakingScreen', {
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            quizData: attemptData,
+          });
+        } else if (onNavigate) {
+          onNavigate('QuizTakingScreen', {
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            quizData: attemptData,
+            quiz: attemptData,
+            is_public: false,
+          });
+        }
+      } finally {
+        // Clear loading after a short delay to allow navigation transition
+        setTimeout(() => setLoadingQuizId(null), 1000);
       }
       return;
     }
@@ -720,22 +727,32 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       {/* STUDENT LOGIC: Pending quizzes - Start button */}
                       {quiz.status === 'pending' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }]}
+                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('start', quiz.quiz_id, quiz)}
+                          disabled={loadingQuizId === quiz.quiz_id}
                         >
-                          <Ionicons name="play" size={14} color="#FFFFFF" />
-                          <Text style={styles.smallButtonText}>Start</Text>
+                          {loadingQuizId === quiz.quiz_id ? (
+                            <LoadingSpinner size={14} />
+                          ) : (
+                            <Ionicons name="play" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.smallButtonText}>{loadingQuizId === quiz.quiz_id ? 'Loading...' : 'Start'}</Text>
                         </TouchableOpacity>
                       )}
                       
                       {/* STUDENT LOGIC: In-progress quizzes - Resume button */}
                       {quiz.status === 'in_progress' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: '#06B6D4' }]}
+                          style={[styles.smallButton, { backgroundColor: '#06B6D4' }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('resume', quiz.quiz_id, quiz)}
+                          disabled={loadingQuizId === quiz.quiz_id}
                         >
-                          <Ionicons name="refresh" size={14} color="#FFFFFF" />
-                          <Text style={styles.smallButtonText}>Resume</Text>
+                          {loadingQuizId === quiz.quiz_id ? (
+                            <LoadingSpinner size={14} />
+                          ) : (
+                            <Ionicons name="refresh" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.smallButtonText}>{loadingQuizId === quiz.quiz_id ? 'Loading...' : 'Resume'}</Text>
                         </TouchableOpacity>
                       )}
                       

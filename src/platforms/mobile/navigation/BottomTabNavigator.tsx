@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Image, Platform, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -363,6 +364,7 @@ export default function MobileNavigation() {
 
 function BottomTabNavigator() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
 
@@ -461,8 +463,8 @@ function BottomTabNavigator() {
         tabBarInactiveTintColor: '#9CA3AF',
         header: () => <CustomHeader />,
         tabBarStyle: {
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
       })}

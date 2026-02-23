@@ -9,6 +9,7 @@ import {
   Modal,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -51,6 +52,7 @@ export default function CreateDocumentQuizScreen() {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();
+  const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [documentUrl, setDocumentUrl] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<Array<{
@@ -1045,6 +1047,7 @@ export default function CreateDocumentQuizScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           currentStep === 'config' && styles.scrollContentCompact,
+          { paddingBottom: Math.max(40, insets.bottom + 20) },
         ]}
       >
         {currentStep === 'upload' && (

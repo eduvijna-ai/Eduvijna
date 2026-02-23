@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();
+  const insets = useSafeAreaInsets();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
@@ -412,7 +414,6 @@ export default function CreateImageQuizScreen({ navigation }: any) {
             handleSubmit,
             setFieldValue,
             setFieldTouched,
-            handleBlur,
           }: FormikProps<FormValues>) => (
             <>
               <View style={[styles.headerBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
@@ -455,7 +456,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
                     showLesson={true}
                     lessonValue={values.lesson}
                     onLessonChange={(text) => setFieldValue('lesson', text)}
-                    onLessonBlur={() => handleBlur('lesson')({} as any)}
+                    onLessonBlur={() => setFieldTouched('lesson', true)}
                     lessonPlaceholder="e.g., Photosynthesis, Cell Division"
                     lessonLabel="Lesson/Topic"
                     lessonError={(touched.lesson || submitCount > 0) ? (errors.lesson as string) : ''}
@@ -466,7 +467,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
                       setFieldValue('level', value);
                       setFieldTouched('level', true, false);
                     }}
-                    difficultyError={(touched.level || submitCount > 0) ? (errors.level as string) : ''}
+                    difficultyError={submitCount > 0 ? (errors.level as string) : ''}
 
                     showQuestionCount={true}
                     questionCountValue={values.count}
@@ -474,13 +475,13 @@ export default function CreateImageQuizScreen({ navigation }: any) {
 
                     additionalInstructionsValue={values.itext}
                     onAdditionalInstructionsChange={(text) => setFieldValue('itext', text)}
-                    onAdditionalInstructionsBlur={() => handleBlur('itext')({} as any)}
+                    onAdditionalInstructionsBlur={() => setFieldTouched('itext', true)}
                     additionalInstructionsError={(touched.itext || submitCount > 0) ? (errors.itext as string) : ''}
                   />
                 </View>
               </ScrollView>
 
-              <View style={styles.footer}>
+              <View style={[styles.footer, { paddingBottom: Math.max(20, insets.bottom) }]}>
                 {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
                 <TouchableOpacity
                   style={[styles.generateButton, (isSubmitting || isGenerating) && styles.buttonDisabled]}

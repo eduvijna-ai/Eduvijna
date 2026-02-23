@@ -9,6 +9,7 @@ import {
   Alert,
   FlatList,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -27,6 +28,7 @@ interface WebsiteSummary {
 export default function CreateWebsiteQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
+  const insets = useSafeAreaInsets();
   const { classes, subjects } = useDropdowns();
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [websiteUrl, setWebsiteUrl] = useState('');
@@ -279,7 +281,7 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(40, insets.bottom + 20) }]}
       >
         <View style={styles.header}>
           <Text style={styles.title}>🌐 Website Quiz</Text>

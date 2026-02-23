@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   BackHandler,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
@@ -67,6 +68,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const colors = theme.colors;
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web' && width > 768;
+  const insets = useSafeAreaInsets();
   
   // ==========================================
   // SIMPLIFIED PARAMS - Accept normalized quiz
@@ -1125,7 +1127,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       </ScrollView>
 
       {!showResults && (
-        <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+        <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: Math.max(8, insets.bottom) }]}>
           <View style={styles.footerButtons}>
             <TouchableOpacity
               style={[
