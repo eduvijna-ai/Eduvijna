@@ -4,7 +4,7 @@
     "slug": "eduvijna",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/adaptive-icon.png",
+    "icon": "./assets/eduvijna-logo.png",
     "userInterfaceStyle": "light",
 
     "splash": {
@@ -25,7 +25,7 @@
       "googleServicesFile": "./google-services.json",
 
       "adaptiveIcon": {
-        "foregroundImage": "./assets/eduvijna.png",
+        "foregroundImage": "./assets/eduvijna-logo.png",
         "backgroundColor": "#ffffff"
       },
 

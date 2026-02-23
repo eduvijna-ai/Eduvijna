@@ -14,9 +14,9 @@ import * as Yup from 'yup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import { ImageManipulator as ExpoImageManipulator, SaveFormat } from 'expo-image-manipulator';
+// expo-print no longer needed - images sent directly to API
+import { File as ExpoFile } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '../core/api/config';
@@ -73,7 +73,7 @@ export default function CreateDocumentQuizScreen() {
   const [currentStep, setCurrentStep] = useState<'upload' | 'config' | 'quiz'>('upload');
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
   const [capturedImageSources, setCapturedImageSources] = useState<string[]>([]);
-  const [isConvertingToPdf, setIsConvertingToPdf] = useState(false);
+
   
   // Quiz states
   const [quizData, setQuizData] = useState<QuizData | null>(null);
@@ -668,11 +668,12 @@ export default function CreateDocumentQuizScreen() {
     const originX = Math.floor((width - size) / 2);
     const originY = Math.floor((height - size) / 2);
 
-    const result = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ crop: { originX, originY, width: size, height: size } }],
-      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
-    );
+    const context = ExpoImageManipulator.manipulate(uri);
+    context.crop({ originX, originY, width: size, height: size });
+    const image = await context.renderAsync();
+    const result = await image.saveAsync({ compress: 0.9, format: SaveFormat.JPEG });
+    context.release();
+    image.release();
 
     return result.uri;
   };
@@ -702,8 +703,14 @@ export default function CreateDocumentQuizScreen() {
           return;
         }
         
-        setCapturedImages((prev: string[]) => [...prev, imageUri]);
-        setCapturedImageSources((prev: string[]) => [...prev, imageUri]);
+        setCapturedImages((prev: string[]) => {
+          if (prev.length >= 5) return prev; // Hard cap at 5
+          return [...prev, imageUri].slice(0, 5);
+        });
+        setCapturedImageSources((prev: string[]) => {
+          if (prev.length >= 5) return prev;
+          return [...prev, imageUri].slice(0, 5);
+        });
         setCameraError('');
       }
     } catch (error) {
@@ -745,27 +752,37 @@ export default function CreateDocumentQuizScreen() {
         );
 
         const newItems = processedAssets.filter(Boolean) as Array<{ uri: string; sourceUri: string }>;
-        const imageUris = newItems.map(item => item.uri);
-        
-        // Filter out duplicate images
-        const newImageUris = imageUris.filter(uri => !capturedImages.includes(uri));
-        
-        if (newImageUris.length === 0) {
+
+        // Filter out duplicates based on cropped URI
+        const uniqueItems = newItems.filter(item => !capturedImages.includes(item.uri));
+
+        // Enforce strict 5-image maximum
+        const availableSlots = Math.max(0, 5 - capturedImages.length);
+        const limitedItems = uniqueItems.slice(0, availableSlots);
+
+        if (limitedItems.length === 0) {
           const message = failedCropCount > 0
             ? 'Selected images could not be processed. Please try again.'
-            : 'All selected images have already been added.';
+            : capturedImages.length >= 5
+              ? 'You can only have up to 5 images in total.'
+              : 'All selected images have already been added.';
           setCameraError(message);
           return;
         }
         
-        setCapturedImages((prev: string[]) => [...prev, ...newImageUris]);
-        setCapturedImageSources((prev: string[]) => [
-          ...prev,
-          ...newItems.map(item => item.sourceUri),
-        ]);
+        setCapturedImages((prev: string[]) => {
+          const updated = [...prev, ...limitedItems.map(item => item.uri)];
+          return updated.slice(0, 5); // Hard cap at 5
+        });
+        setCapturedImageSources((prev: string[]) => {
+          const updated = [...prev, ...limitedItems.map(item => item.sourceUri)];
+          return updated.slice(0, 5); // Hard cap at 5
+        });
         
         if (failedCropCount > 0) {
           setCameraError(`${failedCropCount} image(s) could not be processed.`);
+        } else if (uniqueItems.length > availableSlots) {
+          setCameraError(`Only ${limitedItems.length} image(s) added. Maximum 5 images allowed.`);
         } else {
           setCameraError('');
         }
@@ -781,72 +798,7 @@ export default function CreateDocumentQuizScreen() {
     setCapturedImageSources((prev: string[]) => prev.filter((_: string, i: number) => i !== index));
   };
 
-  const convertImagesToPdf = async (): Promise<string | null> => {
-  if (capturedImages.length === 0) {
-    setCameraError('Please capture at least one image.');
-    return null;
-  }
 
-  try {
-    // Convert images to base64
-    const base64Images = await Promise.all(
-      capturedImages.map(async (uri: string) => {
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return `data:image/jpeg;base64,${base64}`;
-      })
-    );
-
-    // Minimal HTML – image per page
-    const html = `
-      <html>
-        <body style="margin:0;padding:0;">
-          ${base64Images
-            .map(
-              (img: string) => `
-                <div style="page-break-after: always; width:100%; height:100%;">
-                  <img src="${img}" style="width:100%; height:100%; object-fit:contain;" />
-                </div>
-              `
-            )
-            .join('')}
-        </body>
-      </html>
-    `;
-
-    // Generate PDF
-    const { uri } = await Print.printToFileAsync({
-      html,
-      base64: false,
-    });
-
-    console.log('📄 PDF generated:', uri);
-    console.log('📄 Pages:', capturedImages.length);
-
-    // Check PDF file size
-    const fileInfo = await FileSystem.getInfoAsync(uri);
-    if (fileInfo.exists && fileInfo.size) {
-      const fileSizeMB = (fileInfo.size / (1024 * 1024)).toFixed(2);
-      console.log(`📄 PDF size: ${fileSizeMB} MB`);
-      
-      if (fileInfo.size > MAX_FILE_SIZE) {
-        setCameraError(
-          `The generated PDF (${fileSizeMB} MB) exceeds the ${(MAX_FILE_SIZE / (1024 * 1024)).toFixed(0)} MB limit. Reduce the number or quality of images.`
-        );
-        return null;
-      }
-    }
-
-    return uri;
-  } catch (error) {
-    console.error('❌ PDF generation failed:', error);
-    setCameraError(
-      `Failed to convert images to PDF. ${error instanceof Error ? error.message : 'Try fewer images or lower quality.'}`
-    );
-    return null;
-  }
-};
 
   const handleUploadImages = async () => {
     setCameraError('');
@@ -855,28 +807,33 @@ export default function CreateDocumentQuizScreen() {
       return;
     }
 
-    // Convert images to PDF
-    setIsConvertingToPdf(true);
-    const pdfUri = await convertImagesToPdf();
-    setIsConvertingToPdf(false);
-
-    if (!pdfUri) {
-      return; // Error already shown in convertImagesToPdf
+    if (capturedImages.length > 5) {
+      setCameraError('Maximum 5 images allowed. Please remove extra images.');
+      return;
     }
 
-    // Get PDF file size
-    const fileInfo = await FileSystem.getInfoAsync(pdfUri);
-    const pdfSize = fileInfo.exists && fileInfo.size ? fileInfo.size : 0;
-    
-    // Create PDF file object and set as pending upload
-    const pdfFile = {
-      uri: pdfUri,
-      name: `captured_${Date.now()}.pdf`,
-      size: pdfSize,
-      type: 'application/pdf',
-    };
+    // Build image file objects to send directly to the API (no PDF conversion)
+    const imageFiles = capturedImages.map((uri: string, index: number) => {
+      const file = new ExpoFile(uri);
+      const fileSize = file.size ?? 0;
 
-    setPendingUploadFiles([pdfFile]);
+      if (fileSize > MAX_FILE_SIZE) {
+        setCameraError(`Image #${index + 1} exceeds the ${(MAX_FILE_SIZE / (1024 * 1024)).toFixed(0)} MB limit.`);
+        return null;
+      }
+
+      return {
+        uri,
+        name: `image_${Date.now()}_${index}.jpg`,
+        size: fileSize,
+        type: 'image/jpeg',
+      };
+    });
+
+    // Check if any image failed validation
+    if (imageFiles.some(f => f === null)) return;
+
+    setPendingUploadFiles(imageFiles);
     setShowUploadMetadataModal(true);
   };
 
@@ -1921,17 +1878,6 @@ export default function CreateDocumentQuizScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* PDF Conversion Loading Overlay */}
-      {isConvertingToPdf && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingContent}>
-            <LoadingSpinner size={60} />
-            <Text style={styles.loadingText}>Converting images to PDF...</Text>
-            <Text style={styles.loadingSubtext}>This may take a few moments</Text>
-          </View>
-        </View>
-      )}
 
       {/* Document Upload Loading Overlay */}
       {uploading && (

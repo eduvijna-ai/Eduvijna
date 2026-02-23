@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Platform, View, StyleSheet, Alert } from 'react-native';
+import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
@@ -396,7 +396,7 @@ function AppContent() {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <LoadingSpinner size={80} fullScreen />
+        <ActivityIndicator size="large" color="#1B4F5C" />
       </View>
     );
   }
