@@ -536,8 +536,8 @@ export function setupNotificationListeners(
   const responseListener = Notifications.addNotificationResponseReceivedListener(onNotificationResponse);
 
   return () => {
-    Notifications.removeNotificationSubscription(receivedListener);
-    Notifications.removeNotificationSubscription(responseListener);
+    receivedListener.remove();
+    responseListener.remove();
   };
 }
 
