@@ -775,7 +775,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Action Buttons - Top (Regenerate, Retake, New Quiz, Share) */}
       {(showShareButton || showActionButtons) && (
-        <View style={styles.topActionsContainer}>
+        <View style={[styles.topActionsContainer, { backgroundColor: colors.inputBackground, borderBottomColor: colors.border }]}>
           {showActionButtons && currentQuizData?.regenerationParams && (
             <TouchableOpacity 
               style={[styles.actionButton, styles.regenerateButton]}
@@ -905,7 +905,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         const performance = getPerformanceMessage(finalScore);
 
         return (
-          <View style={styles.inlineResultsContainer}>
+          <View style={[styles.inlineResultsContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             {/* Performance Header */}
             <View style={[styles.performanceCard, { backgroundColor: colors.card }]}>
               <View style={[styles.performanceBadge, { backgroundColor: performance.color }]}>
@@ -1100,6 +1100,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     key={index}
                     style={[
                       styles.questionDot,
+                      { backgroundColor: colors.inputBackground, borderColor: colors.border },
                       !showResults && isAnswered && styles.questionDotAnswered,
                       isCurrent && !showResults && styles.questionDotCurrent,
                       !showResults && !isAnswered && !isCurrent && styles.questionDotUnanswered,
@@ -1112,6 +1113,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     <Text
                       style={[
                         styles.questionDotText,
+                        { color: colors.textSecondary },
                         (isAnswered || isCurrent) && styles.questionDotTextActive,
                         !showResults && !isAnswered && !isCurrent && styles.questionDotTextUnanswered,
                       ]}
@@ -1231,9 +1233,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'nowrap',
     padding: 8,
-    backgroundColor: '#f5f5f5',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
     gap: 6,
   },
   actionButton: {
@@ -1262,9 +1262,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   inlineResultsContainer: {
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   performanceCard: {
     padding: 6,
@@ -1320,7 +1318,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: '#f0f0f0',
   },
   toggleText: {
     fontSize: 14,
@@ -1459,9 +1456,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f5f5f5',
     borderWidth: 2,
-    borderColor: '#e0e0e0',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1493,7 +1488,6 @@ const styles = StyleSheet.create({
   questionDotText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
   },
   questionDotTextActive: {
     color: '#fff',

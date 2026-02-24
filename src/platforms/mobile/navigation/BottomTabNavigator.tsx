@@ -68,7 +68,7 @@ function CustomHeader() {
 
   return (
     <>
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border }]}>
         {/* Logo */}
         <TouchableOpacity 
             style={styles.logo}
@@ -92,7 +92,7 @@ function CustomHeader() {
               style={styles.createAssessmentButton}
               onPress={() => setShowCreateModal(true)}
             >
-              <Ionicons name="add-circle" size={24} color="#1B4F5C" />
+              <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
             </TouchableOpacity>
           )}
           
@@ -100,7 +100,7 @@ function CustomHeader() {
             style={styles.iconButton}
             onPress={() => navigation.navigate('Notifications')}
           >
-            <Ionicons name="notifications-outline" size={24} color="#374151" />
+            <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
           </TouchableOpacity>
 
           {/* Theme Toggle Icon */}
@@ -111,7 +111,7 @@ function CustomHeader() {
             <Ionicons 
               name={isDark ? 'sunny-outline' : 'moon-outline'} 
               size={24} 
-              color="#374151" 
+              color={theme.colors.text} 
             />
           </TouchableOpacity>
 
@@ -125,8 +125,8 @@ function CustomHeader() {
                 style={styles.avatar}
               />
             ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Ionicons name="person" size={24} color="#FFFFFF" />
+              <View style={[styles.avatarPlaceholder, { backgroundColor: theme.colors.primary }]}>
+                <Ionicons name="person" size={24} color={theme.colors.buttonText} />
               </View>
             )}
           </TouchableOpacity>
@@ -146,10 +146,19 @@ function CustomHeader() {
 }
 
 export default function MobileNavigation() {
+  const { theme } = useTheme();
+  
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        headerStyle: {
+          backgroundColor: theme.colors.cardBackground,
+        },
+        headerTintColor: theme.colors.text,
+        headerTitleStyle: {
+          color: theme.colors.text,
+        },
       }}
       initialRouteName="Main"
     >
@@ -192,7 +201,7 @@ export default function MobileNavigation() {
           title: 'Create AI Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
-            <Ionicons name="bulb" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+            <Ionicons name="bulb" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
           ),
         }}
       />
@@ -205,7 +214,7 @@ export default function MobileNavigation() {
           title: 'Document Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
-            <Ionicons name="document-text" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+            <Ionicons name="document-text" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
           ),
         }}
       />
@@ -218,7 +227,7 @@ export default function MobileNavigation() {
           title: 'Create Image Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
-            <Ionicons name="image" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+            <Ionicons name="image" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
           ),
         }}
       />
@@ -244,7 +253,7 @@ export default function MobileNavigation() {
           title: 'Create Website Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
-            <Ionicons name="globe" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+            <Ionicons name="globe" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
           ),
         }}
       />
@@ -262,7 +271,7 @@ export default function MobileNavigation() {
               title: 'Document Assessment',
               headerBackTitle: 'Back',
               headerRight: () => (
-                <Ionicons name="document-text" size={24} color="#1B4F5C" style={{ marginRight: 16 }} />
+                <Ionicons name="document-text" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
               ),
             };
           }
@@ -279,14 +288,14 @@ export default function MobileNavigation() {
                 }}
                 style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
               >
-                <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
+                <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
               </TouchableOpacity>
             ),
             headerRight: () => (
               <TouchableOpacity onPress={() => {
                 navigation.navigate('Main', { screen: 'Dashboard' });
               }} style={{ marginRight: 16 }}>
-                <Ionicons name="close" size={24} color="#374151" />
+                <Ionicons name="close" size={24} color={theme.colors.text} />
               </TouchableOpacity>
             ),
           };
@@ -346,7 +355,7 @@ export default function MobileNavigation() {
               }}
               style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
             >
-              <Ionicons name="arrow-back" size={24} color="#1B4F5C" />
+              <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
             </TouchableOpacity>
           ),
         })}
@@ -364,6 +373,7 @@ export default function MobileNavigation() {
 
 function BottomTabNavigator() {
   const { user } = useAuth();
+  const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
@@ -459,13 +469,15 @@ function BottomTabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#1B4F5C',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.textSecondary,
         header: () => <CustomHeader />,
         tabBarStyle: {
           height: 60 + insets.bottom,
           paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
+          backgroundColor: theme.colors.cardBackground,
+          borderTopColor: theme.colors.border,
         },
       })}
     >
@@ -525,9 +537,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     height: 60,
     paddingHorizontal: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
     ...Platform.select({
       ios: {
         paddingTop: 44,
@@ -559,7 +569,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1B4F5C',
     justifyContent: 'center',
     alignItems: 'center',
   },

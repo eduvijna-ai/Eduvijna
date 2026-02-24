@@ -382,7 +382,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
                 <Ionicons name="time" size={24} color="#FFFFFF" />
               </View>
               <View style={styles.bannerText}>
-                <Text style={[styles.bannerTitle, { color: '#2563EB' }]}>
+                <Text style={[styles.bannerTitle, { color: colors.primary }]}>
                   {pendingQuizzes.length} Pending Quiz{pendingQuizzes.length > 1 ? 'zes' : ''}!
                 </Text>
                 <Text style={[styles.bannerSubtitle, { color: colors.text }]}>
@@ -522,8 +522,8 @@ export default function StudentDashboard({ navigation, route }: Props) {
                         {quiz.classroom_name} • {quiz.question_count} Questions
                       </Text>
                     </View>
-                    <View style={[styles.upcomingBadge, { backgroundColor: '#EDE9FE' }]}>
-                      <Text style={[styles.upcomingText, { color: theme.colors.primary }]}>Coming Soon</Text>
+                    <View style={[styles.upcomingBadge, { backgroundColor: colors.primary + '15' }]}>
+                      <Text style={[styles.upcomingText, { color: colors.primary }]}>Coming Soon</Text>
                     </View>
                   </View>
                 );

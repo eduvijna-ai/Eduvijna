@@ -80,7 +80,7 @@ export default function QuizStatusScreen({ route, navigation }: QuizStatusScreen
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.contentContainer}>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
           {/* Icon */}
           <View style={styles.iconContainer}>
             <Ionicons name={icon} size={80} color={getIconColor()} />
@@ -246,7 +246,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 32,
     alignItems: 'center',

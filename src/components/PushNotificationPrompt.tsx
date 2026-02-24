@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from './LoadingSpinner';
+import { useTheme } from '@context/ThemeContext';
 
 interface PushNotificationPromptProps {
   visible: boolean;
@@ -27,6 +28,9 @@ export default function PushNotificationPrompt({
   onDismiss,
   loading = false,
 }: PushNotificationPromptProps) {
+  const { theme, isDark } = useTheme();
+  const colors = theme.colors;
+
   return (
     <Modal
       visible={visible}
@@ -35,17 +39,17 @@ export default function PushNotificationPrompt({
       onRequestClose={onDismiss}
     >
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.surface }]}>
           {/* Icon */}
-          <View style={styles.iconContainer}>
-            <Ionicons name="notifications-outline" size={48} color="#5B21B6" />
+          <View style={[styles.iconContainer, { backgroundColor: isDark ? colors.primary + '20' : '#EDE9FE' }]}>
+            <Ionicons name="notifications-outline" size={48} color={colors.primary} />
           </View>
 
           {/* Title */}
-          <Text style={styles.title}>Enable Push Notifications</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Enable Push Notifications</Text>
 
           {/* Message */}
-          <Text style={styles.message}>
+          <Text style={[styles.message, { color: colors.textSecondary }]}>
             Get alerts for quizzes, reminders and updates. Stay connected with your classes and never miss important announcements.
           </Text>
 
@@ -53,22 +57,22 @@ export default function PushNotificationPrompt({
           <View style={styles.benefitsList}>
             <View style={styles.benefitItem}>
               <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.benefitText}>New quiz assignments</Text>
+              <Text style={[styles.benefitText, { color: colors.text }]}>New quiz assignments</Text>
             </View>
             <View style={styles.benefitItem}>
               <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.benefitText}>Grade updates</Text>
+              <Text style={[styles.benefitText, { color: colors.text }]}>Grade updates</Text>
             </View>
             <View style={styles.benefitItem}>
               <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.benefitText}>Important reminders</Text>
+              <Text style={[styles.benefitText, { color: colors.text }]}>Important reminders</Text>
             </View>
           </View>
 
           {/* Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              style={[styles.button, styles.enableButton]}
+              style={[styles.button, styles.enableButton, { backgroundColor: colors.primary }]}
               onPress={onEnable}
               disabled={loading}
             >
@@ -83,16 +87,16 @@ export default function PushNotificationPrompt({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.laterButton]}
+              style={[styles.button, styles.laterButton, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}
               onPress={onDismiss}
               disabled={loading}
             >
-              <Text style={styles.laterButtonText}>Maybe Later</Text>
+              <Text style={[styles.laterButtonText, { color: colors.textSecondary }]}>Maybe Later</Text>
             </TouchableOpacity>
           </View>
 
           {/* Info text */}
-          <Text style={styles.infoText}>
+          <Text style={[styles.infoText, { color: colors.textSecondary }]}>
             You can change this anytime in Settings
           </Text>
         </View>
@@ -110,7 +114,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   container: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 24,
     width: '100%',
@@ -126,7 +129,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#EDE9FE',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -134,13 +136,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#111827',
     marginBottom: 8,
     textAlign: 'center',
   },
   message: {
     fontSize: 15,
-    color: '#6B7280',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 22,
@@ -157,7 +157,6 @@ const styles = StyleSheet.create({
   },
   benefitText: {
     fontSize: 14,
-    color: '#111827',
     fontWeight: '500',
   },
   buttonContainer: {
@@ -175,7 +174,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   enableButton: {
-    backgroundColor: '#5B21B6',
   },
   enableButtonText: {
     color: '#fff',
@@ -183,18 +181,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   laterButton: {
-    backgroundColor: '#F3F4F6',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
   },
   laterButtonText: {
-    color: '#6B7280',
     fontSize: 16,
     fontWeight: '600',
   },
   infoText: {
     fontSize: 12,
-    color: '#9CA3AF',
     textAlign: 'center',
   },
 });

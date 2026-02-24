@@ -13,10 +13,13 @@ import {
   Image,
 } from 'react-native';
 import { useAuth } from '@core/hooks/useAuth';
+import { useTheme } from '@context/ThemeContext';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function Login() {
   const { login, isLoading, error, clearError } = useAuth();
+  const { theme } = useTheme();
+  const colors = theme.colors;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -32,13 +35,14 @@ export default function Login() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Image source={require('../../../../assets/eduvijna.png')} style={styles.logo} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       
       <TextInput 
         placeholder="Email or Username" 
-        style={styles.input} 
+        placeholderTextColor={colors.textSecondary}
+        style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]} 
         value={email} 
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -48,8 +52,9 @@ export default function Login() {
       
       <TextInput 
         placeholder="Password" 
+        placeholderTextColor={colors.textSecondary}
         secureTextEntry 
-        style={styles.input} 
+        style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]} 
         value={password} 
         onChangeText={setPassword}
         autoCapitalize="none"
@@ -57,7 +62,7 @@ export default function Login() {
       />
       
       <TouchableOpacity 
-        style={[styles.button, isLoading && styles.buttonDisabled]} 
+        style={[styles.button, { backgroundColor: colors.primary }, isLoading && styles.buttonDisabled]} 
         onPress={onLogin} 
         disabled={isLoading}
       >
@@ -76,7 +81,6 @@ const styles = StyleSheet.create({
     flex: 1, 
     alignItems: 'center', 
     justifyContent: 'center', 
-    backgroundColor: '#FFFFFF', 
     padding: 16 
   },
   logo: { 
@@ -89,10 +93,7 @@ const styles = StyleSheet.create({
     padding: 12, 
     marginBottom: 8, 
     borderWidth: 1, 
-    borderColor: '#D1D5DB', 
     borderRadius: 8, 
-    backgroundColor: '#FFFFFF', 
-    color: '#111827' 
   },
   error: { 
     color: '#DC2626', 
@@ -101,7 +102,6 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
-    backgroundColor: '#1B4F5C',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',

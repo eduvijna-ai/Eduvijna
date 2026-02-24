@@ -586,7 +586,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
               return (
                 <View
                   key={quiz.quiz_id}
-                  style={[styles.card, { backgroundColor: theme.colors.card }]}
+                  style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                 >
                   {/* Card Header */}
                   <View style={styles.cardHeader}>
@@ -770,7 +770,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       {/* STUDENT LOGIC: Missed quizzes - View Quiz button */}
                       {quiz.status === 'missed' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: '#1B4F5C' }]}
+                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }]}
                           onPress={() => handleAssessmentPress(quiz.quiz_id)}
                         >
                           <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
@@ -1110,16 +1110,13 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 0,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    minWidth: 300,
-    flex: 1,
-    flexBasis: '48%',
-    maxWidth: 600,
+    width: '100%',
+    flexBasis: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1221,7 +1218,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.06)',
+    borderTopColor: 'rgba(128, 128, 128, 0.15)',
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
@@ -1404,7 +1401,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: 'rgba(128, 128, 128, 0.15)',
   },
   attemptInfoRow: {
     flexDirection: 'row',

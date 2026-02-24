@@ -157,7 +157,7 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
         </View>
 
         {/* Quiz Info */}
-        <View style={[styles.infoCard, { backgroundColor: colors.card }]}>
+        <View style={[styles.infoCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <Text style={[styles.infoTitle, { color: colors.text }]}>
             {quizDetails.quiz_name || 'Quiz Preview'}
           </Text>
@@ -195,7 +195,7 @@ export default function QuizPreviewScreen({ route, navigation }: any) {
                 const correctAnswerLetter = question.answer || quizData.answer || quizData.correctAnswer;
 
                 return (
-                  <View key={question.id || index} style={[styles.questionCard, { backgroundColor: colors.card }]}> 
+                  <View key={question.id || index} style={[styles.questionCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
                     {/* Question Header */}
                     <View style={styles.questionHeader}>
                       <Text style={[styles.questionNumber, { color: colors.primary }]}> 
@@ -341,7 +341,6 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
   },
   infoTitle: {
     fontSize: 16,
@@ -361,7 +360,6 @@ const styles = StyleSheet.create({
     padding: 8,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   questionHeader: {
     marginBottom: 8,

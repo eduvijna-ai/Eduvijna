@@ -29,6 +29,12 @@ export interface Theme {
     buttonText: string;
     linkColor: string;
     linkHover: string;
+    cardBackground: string;
+    inputBackground: string;
+    divider: string;
+    shadow: string;
+    selectedBackground: string;
+    accent: string;
   };
   spacing: {
     xs: number;
@@ -87,6 +93,12 @@ export const lightTheme: Theme = {
     buttonText: '#FFFFFF',
     linkColor: '#1B4F5C',
     linkHover: '#2B5F6C',
+    cardBackground: '#FFFFFF',
+    inputBackground: '#F5F5F5',
+    divider: '#E5E5E5',
+    shadow: '#000000',
+    selectedBackground: '#f0f7ff',
+    accent: '#2B5F6C',
   },
   spacing: {
     xs: 4,
@@ -145,6 +157,12 @@ export const darkTheme: Theme = {
     buttonText: '#FFFFFF',
     linkColor: '#5ABEDB',
     linkHover: '#6BB5C8',
+    cardBackground: '#2C2C2C',
+    inputBackground: '#404040',
+    divider: '#333333',
+    shadow: '#000000',
+    selectedBackground: '#1e3a4a',
+    accent: '#6BB5C8',
   },
   spacing: {
     xs: 4,

@@ -133,7 +133,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     questionCountValue = '5',
     onQuestionCountChange,
     questionCountError = '',
-    questionCountOptions = ['3', '5', '10', '15', '20', '25', '30'],
+    questionCountOptions = ['3', '5', '10', '15', '20'],
     usePickerForCount = true,
     
     showLesson = false,

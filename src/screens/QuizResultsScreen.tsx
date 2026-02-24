@@ -345,12 +345,14 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                 <View style={styles.optionContent}>
                   <View style={[
                     styles.optionBadge,
+                    { borderColor: colors.border },
                     isCorrectAnswer && styles.badgeSuccess,
                     isUserAnswer && !isCorrectAnswer && styles.badgeError,
-                    !isCorrectAnswer && !isUserAnswer && styles.badgeLight,
+                    !isCorrectAnswer && !isUserAnswer && [styles.badgeLight, { backgroundColor: colors.inputBackground, borderColor: colors.border }],
                   ]}>
                     <Text style={[
                       styles.optionBadgeText,
+                      { color: colors.textSecondary },
                       isCorrectAnswer && { color: '#4CAF50', fontWeight: 'bold' },
                       isUserAnswer && !isCorrectAnswer && { color: '#F44336', fontWeight: 'bold' },
                     ]}>
@@ -570,7 +572,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
   },
   badgeSuccess: {
     backgroundColor: '#E8F5E9',
@@ -583,13 +584,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   badgeLight: {
-    backgroundColor: '#F5F5F5',
-    borderColor: '#E0E0E0',
   },
   optionBadgeText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#666',
   },
   optionLabel: {
     fontSize: 13,
