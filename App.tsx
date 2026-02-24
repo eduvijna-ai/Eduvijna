@@ -43,6 +43,7 @@ import CreateDocumentQuizScreen from './src/screens/CreateDocumentQuizScreen';
 import CreateImageQuizScreen from './src/screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from './src/screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from './src/screens/CreateWebsiteQuizScreen';
+import CreateHandwrittenQuizScreen from './src/screens/CreateHandwrittenQuizScreen';
 import QuizPreviewScreen from './src/screens/QuizPreviewScreen';
 import QuizResultsScreen from './src/screens/QuizResultsScreen';
 import QuizTakingScreen from './src/screens/QuizTakingScreen';
@@ -54,7 +55,7 @@ import WebLoginScreen from './src/platforms/web/screens/Login';
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
   useNotificationPolling(); // Poll for notifications via API
-  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen'>('dashboard');
+  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen'>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
@@ -426,6 +427,7 @@ function AppContent() {
           CreateImageQuizScreen: 'create-image-quiz',
           CreateYouTubeQuizScreen: 'create-youtube-quiz',
           CreateWebsiteQuizScreen: 'create-website-quiz',
+          CreateHandwrittenQuizScreen: 'create-handwritten-quiz',
           QuizPreviewScreen: 'quiz-preview',
           QuizResultsScreen: 'quiz-results',
         },
@@ -485,6 +487,8 @@ function AppContent() {
           return <CreateYouTubeQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
         case 'CreateWebsiteQuizScreen':
           return <CreateWebsiteQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+        case 'CreateHandwrittenQuizScreen':
+          return <CreateHandwrittenQuizScreen navigation={{ navigate: handleNavigate, replace: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
         case 'QuizPreviewScreen':
           return <QuizPreviewScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} />;
         case 'QuizResultsScreen':

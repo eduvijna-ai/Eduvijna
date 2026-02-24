@@ -100,6 +100,18 @@ export default function QuizGenerationGrid({
           <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Video-based</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#F3E5F5' }]}
+          onPress={() => handlePress('CreateHandwrittenQuizScreen')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quizOptionIcon, { backgroundColor: '#7C3AED' }]}>
+            <Ionicons name="create" size={20} color="#FFF" />
+          </View>
+          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Handwritten</Text>
+          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Notes/Paper</Text>
+        </TouchableOpacity>
+
         {/* <TouchableOpacity
           style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#F3E5F5' }]}
           onPress={() => handlePress('CreateWebsiteQuizScreen')}

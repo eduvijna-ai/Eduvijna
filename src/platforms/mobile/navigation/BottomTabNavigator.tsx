@@ -29,6 +29,7 @@ import CreateDocumentQuizScreen from '@screens/CreateDocumentQuizScreen';
 import CreateImageQuizScreen from '@screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from '@screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from '@screens/CreateWebsiteQuizScreen';
+import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
 import QuizPreviewScreen from '@screens/QuizPreviewScreen';
@@ -254,6 +255,19 @@ export default function MobileNavigation() {
           headerBackTitle: 'Back',
           headerRight: () => (
             <Ionicons name="globe" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+          ),
+        }}
+      />
+      <Stack.Screen 
+        name="CreateHandwrittenQuizScreen" 
+        component={CreateHandwrittenQuizScreen}
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Handwritten Assessment',
+          headerBackTitle: 'Back',
+          headerRight: () => (
+            <Ionicons name="create" size={24} color="#7C3AED" style={{ marginRight: 16 }} />
           ),
         }}
       />

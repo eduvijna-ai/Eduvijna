@@ -87,7 +87,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const source = routeParams?.source;
 
   const handleCreateNewQuiz = () => {
-    if (source === 'image' || source === 'youtube' || source === 'document') {
+    if (source === 'image' || source === 'youtube' || source === 'document' || source === 'handwritten') {
       navigation.goBack();
       return;
     }
@@ -171,7 +171,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (Platform.OS === 'android') {
-        if (source === 'image') {
+        if (source === 'image' || source === 'handwritten') {
           navigation.goBack();
           return true;
         }
@@ -366,8 +366,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleHeaderClose = () => {
-    if (source === 'image') {
-      navigation.navigate('CreateImageQuizScreen');
+    if (source === 'image' || source === 'handwritten') {
+      navigation.goBack();
       return;
     }
     navigation.goBack();

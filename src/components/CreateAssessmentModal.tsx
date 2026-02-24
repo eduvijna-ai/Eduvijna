@@ -21,7 +21,8 @@ const QUIZ_OPTIONS = [
   { type: 'CreateDocumentQuizScreen', title: 'Document', icon: 'document', iconBg: '#DC2626', bg: '#FFE5F1' },
   { type: 'CreateImageQuizScreen', title: 'Image', icon: 'image', iconBg: '#D97706', bg: '#FFF3E0' },
   { type: 'CreateYouTubeQuizScreen', title: 'YouTube', icon: 'logo-youtube', iconBg: '#059669', bg: '#E8F5E9' },
-  { type: 'CreateWebsiteQuizScreen', title: 'Website', icon: 'globe', iconBg: '#9C27B0', bg: '#F3E5F5' },
+  { type: 'CreateHandwrittenQuizScreen', title: 'Handwritten', icon: 'create', iconBg: '#7C3AED', bg: '#F3E5F5' },
+  { type: 'CreateWebsiteQuizScreen', title: 'Website', icon: 'globe', iconBg: '#9C27B0', bg: '#EDE9FE' },
 ];
 
 export default function CreateAssessmentModal({ 
