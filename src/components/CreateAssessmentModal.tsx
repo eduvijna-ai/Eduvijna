@@ -5,7 +5,8 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedback } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 interface CreateAssessmentModalProps {
@@ -32,9 +33,8 @@ export default function CreateAssessmentModal({
   theme,
   isDark = false 
 }: CreateAssessmentModalProps) {
+  const insets = useSafeAreaInsets();
   
-  if (!visible) return null;
-
   const handleQuizTypePress = (screen: string) => {
     onClose();
     setTimeout(() => {
@@ -45,40 +45,56 @@ export default function CreateAssessmentModal({
   };
 
   return (
-    <View 
-      style={[styles.dropdownContainer, { backgroundColor: theme.colors.card }]}
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
     >
-      <Text style={[styles.dropdownTitle, { color: theme.colors.text }]}>
-        Create Assessment
-      </Text>
-      
-      {QUIZ_OPTIONS.map((option, index) => (
-        <TouchableOpacity
-          key={option.type}
-          style={[
-            styles.menuItem, 
-            { borderBottomColor: theme.colors.border },
-            index === QUIZ_OPTIONS.length - 1 && { borderBottomWidth: 0 }
-          ]}
-          onPress={() => handleQuizTypePress(option.type)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.menuIcon, { backgroundColor: option.iconBg }]}>
-            <Ionicons name={option.icon as any} size={14} color="#FFF" />
-          </View>
-          <Text style={[styles.menuText, { color: theme.colors.text }]}>
-            {option.title}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.backdrop} />
+      </TouchableWithoutFeedback>
+      <View 
+        style={[styles.dropdownContainer, { backgroundColor: theme.colors.card, top: insets.top + 60 }]}
+      >
+        <Text style={[styles.dropdownTitle, { color: theme.colors.text }]}>
+          Create Assessment
+        </Text>
+        
+        {QUIZ_OPTIONS.map((option, index) => (
+          <TouchableOpacity
+            key={option.type}
+            style={[
+              styles.menuItem, 
+              { borderBottomColor: theme.colors.border },
+              index === QUIZ_OPTIONS.length - 1 && { borderBottomWidth: 0 }
+            ]}
+            onPress={() => handleQuizTypePress(option.type)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: option.iconBg }]}>
+              <Ionicons name={option.icon as any} size={14} color="#FFF" />
+            </View>
+            <Text style={[styles.menuText, { color: theme.colors.text }]}>
+              {option.title}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   dropdownContainer: {
     position: 'absolute',
-    top: 60,
     right: 16,
     borderRadius: 8,
     padding: 0,

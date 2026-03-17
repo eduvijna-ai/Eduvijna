@@ -156,7 +156,7 @@ function WebApp() {
 // Placeholder for login function
 async function loginUser(email: string, password: string) {
   // This would be your actual login API call
-  const response = await fetch('https://api.eduvijna.com/api/v1/auth/login', {
+  const response = await fetch('https://eduapi.eduvijna.com/api/v1/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),

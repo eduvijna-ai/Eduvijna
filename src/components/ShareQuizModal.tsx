@@ -494,14 +494,14 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                 const token = await getAccessToken();
                 
                 if (token) {
-                  const classroomName = classroom.classroom_name;
+                  // const classroomName = classroom.classroom_name;
                   const instructorName = user.name || user.username || 'Instructor';
                   
                   // Prepare notification payload
                   const notificationPayload = {
                     user_ids: studentIds,
                     title: `📚 New Quiz: ${responseData.topic || topic.trim()}`,
-                    body: `${instructorName} has assigned a new quiz in ${classroomName}. Tap to start!`,
+                    body: `Quiz Alert! ${instructorName} teacher has scheduled a quiz on ${topic} at ${startTime}. Good Luck! Tap to start!`,
                     priority: 'high',
                     data: {
                       type: 'QUIZ_ASSIGNED',
@@ -512,6 +512,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                       quizId: String(responseData.quiz_id),
                       sessionId: responseData.session_id,
                       classroomId: responseData.classroom_id,
+                      click_action: `https://app.eduvijna.com/openquiz?session_id=${responseData.session_id}`
                     },
                   };
                   
@@ -562,7 +563,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
       // Generate share URL
       const sessionId = responseData.session_id || quizData?.thread_slug;
-      const baseUrl = 'https://ui.eduvijna.com';
+      const baseUrl = 'https://app.eduvijna.com';
       const quizUrl = sessionId 
         ? `${baseUrl}/openquiz?session_id=${sessionId}`
         : `${baseUrl}/quiz/${responseData.quiz_id}`;

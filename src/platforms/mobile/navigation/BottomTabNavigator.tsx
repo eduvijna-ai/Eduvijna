@@ -66,10 +66,11 @@ function CustomHeader() {
   const { user } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const insets = useSafeAreaInsets();
 
   return (
     <>
-      <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border, paddingTop: insets.top, height: 60 + insets.top }]}>
         {/* Logo */}
         <TouchableOpacity 
             style={styles.logo}
@@ -552,12 +553,6 @@ const styles = StyleSheet.create({
     height: 60,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    ...Platform.select({
-      ios: {
-        paddingTop: 44,
-        height: 104,
-      },
-    }),
   },
   logo: {
     width: 120,

@@ -92,7 +92,7 @@ export function useDeepLink() {
   }): string => {
     const baseUrl = Platform.OS === 'web' 
       ? window.location.origin 
-      : 'https://ui.eduvijna.com';
+      : 'https://app.eduvijna.com';
     
     const queryParams = new URLSearchParams();
     

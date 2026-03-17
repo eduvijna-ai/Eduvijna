@@ -19,7 +19,7 @@ export interface DeepLinkData {
  * Parse deep link URL to extract assessment data
  * Supports formats:
  * - eduvijna://openquiz?session_id=xxx
- * - https://ui.eduvijna.com/openquiz?session_id=xxx
+ * - https://app.eduvijna.com/openquiz?session_id=xxx
  */
 export function parseDeepLink(url: string): DeepLinkData | null {
   if (!url) return null;
@@ -143,7 +143,7 @@ export function buildAssessmentLink(params: {
   classroomId?: string;
   quizId?: string;
 }): string {
-  const baseUrl = 'https://ui.eduvijna.com';
+  const baseUrl = 'https://app.eduvijna.com';
   const queryParams = new URLSearchParams();
   
   queryParams.append('session_id', params.sessionId);

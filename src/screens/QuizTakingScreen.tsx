@@ -25,6 +25,7 @@ import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import LoadingSpinner from '../components/LoadingSpinner';
+import MathRenderer from '../components/MathRenderer';
 
 interface QuizQuestion {
   id: string;
@@ -775,47 +776,39 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Action Buttons - Top (Regenerate, Retake, New Quiz, Share) */}
       {(showShareButton || showActionButtons) && (
-        <View style={[styles.topActionsContainer, { backgroundColor: colors.inputBackground, borderBottomColor: colors.border }]}>
+        <View style={[styles.topActionsContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           {showActionButtons && currentQuizData?.regenerationParams && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.regenerateButton]}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
               onPress={async () => {
                 Alert.alert(
                   'ReGenerate assessment',
                   'This will create a new assessment. Your current progress will be lost. Continue?',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { 
-                      text: 'Yes, Regenerate', 
+                    {
+                      text: 'Yes, Regenerate',
                       onPress: async () => {
                         setIsRegenerating(true);
                         try {
                           const newQuizData = await handleRegenerateQuiz();
-                          
-                          // Ensure all questions have proper IDs and structure
-                          const validatedQuestions = Array.isArray(newQuizData?.questions) 
+                          const validatedQuestions = Array.isArray(newQuizData?.questions)
                             ? newQuizData.questions.map((q: any, index: number) => ({
                                 ...q,
                                 id: q.id || `${index}-${q.question?.substring(0, 10) || 'question'}`,
                                 options: Array.isArray(q.options) ? q.options : [],
                               }))
                             : [];
-                          
-                          // Preserve original quiz metadata while updating questions
                           const updatedQuizData = {
                             ...currentQuizData,
                             ...newQuizData,
                             questions: validatedQuestions,
-                            // Ensure these key properties are preserved from original
                             title: currentQuizData.title,
                             class: currentQuizData.class,
                             subject: currentQuizData.subject,
                             difficulty: currentQuizData.difficulty,
                             lesson: currentQuizData.lesson,
                           };
-                          
-                          console.log('✅ ReGenerated Assessment with', validatedQuestions.length, 'questions');
-                          
                           setCurrentQuizData(updatedQuizData);
                           setQuizStarted(true);
                           setSelectedAnswers({});
@@ -825,32 +818,33 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                           setTimeRemaining(1800);
                           Alert.alert('Success', 'New assessment generated with fresh questions!');
                         } catch (error: any) {
-                          console.error('❌ Regeneration failed:', error);
                           Alert.alert('Error', 'Failed to reGenerate assessment: ' + (error.message || 'Unknown error'));
                         } finally {
                           setIsRegenerating(false);
                         }
-                      }
-                    }
+                      },
+                    },
                   ]
                 );
               }}
               disabled={isRegenerating}
+              activeOpacity={0.8}
             >
-              <Text style={styles.actionButtonText}>🔄 Regenerate</Text>
+              <Ionicons name="refresh" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>Regenerate</Text>
             </TouchableOpacity>
           )}
-          
+
           {showActionButtons && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.retakeButton]}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
               onPress={() => {
                 Alert.alert(
                   'ReTake Assessment',
                   'This will reset your answers and restart the assessment. Continue?',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { 
+                    {
                       text: 'Yes, Retake',
                       onPress: () => {
                         setSelectedAnswers({});
@@ -858,40 +852,46 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                         setShowResults(false);
                         setTimeRemaining(1800);
                         setQuestionResults({});
-                      }
-                    }
+                      },
+                    },
                   ]
                 );
               }}
+              activeOpacity={0.8}
             >
-              <Text style={styles.actionButtonText}>🔁 Retake</Text>
+              <Ionicons name="reload" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>Retake</Text>
             </TouchableOpacity>
           )}
-          
+
           {showActionButtons && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.newButton]}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
               onPress={() => {
                 Alert.alert(
                   'Create New Assessment',
                   'Go back to create a new assessment?',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Yes', onPress: handleCreateNewQuiz }
+                    { text: 'Yes', onPress: handleCreateNewQuiz },
                   ]
                 );
               }}
+              activeOpacity={0.8}
             >
-              <Text style={styles.actionButtonText}>✨ New</Text>
+              <Ionicons name="add-circle-outline" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>New</Text>
             </TouchableOpacity>
           )}
-          
+
           {showShareButton && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.shareButton]}
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
               onPress={() => setShowShareModal(true)}
+              activeOpacity={0.8}
             >
-              <Text style={styles.actionButtonText}>📤 Share</Text>
+              <Ionicons name="share-social-outline" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>Share</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -968,24 +968,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       </View>
 
       {!showResults && (
-        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}> 
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.headerTop}>
-            {/* <TouchableOpacity 
-              onPress={() => {
-                Alert.alert('Exit Assessment?', 'Your progress will be lost.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Exit', style: 'destructive', onPress: () => navigation.goBack() }
-                ]);
-              }}
-              style={styles.backButton}
-            >
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
-            </TouchableOpacity> */}
             <Text style={[styles.headerTitle, { color: colors.text }]}>{quiz.title}</Text>
-            <View style={[styles.timerBadge, { backgroundColor: timeRemaining < 300 ? '#F44336' : colors.primary }]}> 
-              <Ionicons name="time-outline" size={16} color="#fff" />
-              <Text style={styles.timerText}>{formatTime(timeRemaining)}</Text>
-            </View>
           </View>
           
           <View style={styles.progressSection}>
@@ -1008,9 +993,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             <Text style={[styles.questionLabel, { color: colors.primary }]}>Question</Text>
           </View>
 
-          <Text style={[styles.questionText, { color: colors.text }]}>
-            {currentQuestion.question}
-          </Text>
+          <View style={styles.questionText}>
+            <MathRenderer text={currentQuestion.question} colors={colors} />
+          </View>
 
           <View style={styles.optionsContainer}>
             {currentQuestion.options.map((option: string, index: number) => {
@@ -1047,7 +1032,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                       {optionLetter}
                     </Text>
                   </View>
-                  <Text style={[styles.optionText, { color: colors.text }]}>{option}</Text>
+                  <View style={styles.optionText}>
+                    <MathRenderer text={option} colors={colors} />
+                  </View>
                   {!showResults && isSelected && (
                     <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                   )}
@@ -1232,34 +1219,31 @@ const styles = StyleSheet.create({
   topActionsContainer: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    gap: 6,
+    gap: 8,
   },
   actionButton: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  regenerateButton: {
-    backgroundColor: '#4CAF50',
-  },
-  retakeButton: {
-    backgroundColor: '#2196F3',
-  },
-  newButton: {
-    backgroundColor: '#FF9800',
-  },
-  shareButton: {
-    backgroundColor: '#9C27B0',
+    gap: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
   },
   actionButtonText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+    flexShrink: 1,
   },
   inlineResultsContainer: {
     borderBottomWidth: 1,
@@ -1396,6 +1380,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 18,
     fontWeight: '600',
+    marginHorizontal: 8,
   },
   header: { padding: 8, borderBottomWidth: 1 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
@@ -1412,12 +1397,12 @@ const styles = StyleSheet.create({
   questionNumber: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   questionNumberText: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
   questionLabel: { fontSize: 14, fontWeight: '600' },
-  questionText: { fontSize: 16, lineHeight: 24, marginBottom: 10, fontWeight: '500' },
+  questionText: { marginBottom: 10 },
   optionsContainer: { gap: 6 },
   optionCard: { flexDirection: 'row', alignItems: 'center', padding: 8, borderRadius: 10, borderWidth: 1 },
   optionBullet: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   optionBulletText: { fontSize: 14, fontWeight: '600' },
-  optionText: { flex: 1, fontSize: 15, lineHeight: 22 },
+  optionText: { flex: 1 },
   footer: { padding: 8, borderTopWidth: 1 },
   footerButtons: { flexDirection: 'row', gap: 12 },
   navButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: 8, gap: 6, borderWidth: 1 },
