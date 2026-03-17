@@ -71,8 +71,10 @@ export const isQuizExpired = (quiz: any): boolean => {
  * @returns true if quiz is active and available for students
  */
 export const isStudentQuizActive = (quiz: any): boolean => {
-  // Must be pending status
-  if (quiz.status !== 'pending') {
+  // Must be pending or in-progress (started) status
+  // 'started' means the student opened the quiz but hasn't submitted yet—
+  // it should still appear as actionable in the pending list.
+  if (quiz.status !== 'pending' && quiz.status !== 'started') {
     return false;
   }
   

@@ -91,14 +91,17 @@ apiClient.interceptors.response.use(
     const url = error.config?.url || 'unknown';
     const responseData = error.response?.data as any;
 
-    // Check if it's an authentication error by status code OR by error message
+    // Check if it's an authentication error by status code OR by error message.
+    // `detail` can be a string (FastAPI error) or an array (422 validation errors) —
+    // guard with typeof to prevent a crash when it is not a string.
+    const detailStr = typeof responseData?.detail === 'string' ? responseData.detail : '';
     const isAuthError = 
       status === 401 || 
       status === 403 ||
-      (responseData?.detail && (
-        responseData.detail.toLowerCase().includes('authentication failed') ||
-        responseData.detail.toLowerCase().includes('invalid or missing jwt token') ||
-        responseData.detail.toLowerCase().includes('user id not available')
+      (detailStr && (
+        detailStr.toLowerCase().includes('authentication failed') ||
+        detailStr.toLowerCase().includes('invalid or missing jwt token') ||
+        detailStr.toLowerCase().includes('user id not available')
       ));
 
     // Handle authentication errors with refresh token flow
@@ -231,15 +234,27 @@ function handleApiError(error: AxiosError<ApiError>): Error {
   if (error.response?.data) {
     // Backend returned an error response
     const apiError = error.response.data as any;
-    
+
+    // Safely extract detail — FastAPI 422 returns detail as an array of objects,
+    // while other routes return it as a plain string.  Never pass a non-string
+    // value to `new Error()` because it will be coerced to "[object Object]".
+    let detailMessage: string | undefined;
+    if (typeof apiError?.detail === 'string') {
+      detailMessage = apiError.detail;
+    } else if (Array.isArray(apiError?.detail)) {
+      detailMessage = apiError.detail
+        .map((d: any) => (typeof d?.msg === 'string' ? d.msg : JSON.stringify(d)))
+        .join('; ');
+    }
+
     // Try different possible error message structures
-    const errorMessage = 
-      apiError?.error?.message || 
-      apiError?.message || 
-      apiError?.detail || 
-      apiError?.error ||
+    const errorMessage =
+      apiError?.error?.message ||
+      apiError?.message ||
+      detailMessage ||
+      (typeof apiError?.error === 'string' ? apiError.error : undefined) ||
       `Request failed with status ${error.response.status}`;
-    
+
     return new Error(errorMessage);
   }
   

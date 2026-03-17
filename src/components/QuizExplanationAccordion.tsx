@@ -79,12 +79,20 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
       return;
     }
 
+    // Normalize before any network call so we can validate it first
+    const normalizedSelectedAnswer = normalizeSelectedAnswer(selectedAnswer, options);
+
+    // The API requires a non-empty selected_answer (matches web behavior where
+    // the accordion is only rendered for answered questions).
+    if (!normalizedSelectedAnswer) {
+      setError('⚠️ Please select an answer before viewing the explanation.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Normalize the selected answer to ensure it's always the full option string
-      const normalizedSelectedAnswer = normalizeSelectedAnswer(selectedAnswer, options);
 
       const requestBody: ExplanationRequest = {
         question_id: questionId,
@@ -114,7 +122,17 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
       setIsOpen(true);
     } catch (err: any) {
       console.error('❌ Failed to fetch explanation:', err);
-      const errorMessage = err?.response?.data?.detail || err?.message || 'Unable to load explanation';
+      // err.response?.data?.detail can be a string, array, or object depending
+      // on the server error format.  Always stringify safely.
+      const rawDetail = err?.response?.data?.detail;
+      let errorMessage: string;
+      if (typeof rawDetail === 'string') {
+        errorMessage = rawDetail;
+      } else if (Array.isArray(rawDetail)) {
+        errorMessage = rawDetail.map((d: any) => d?.msg || JSON.stringify(d)).join('; ');
+      } else {
+        errorMessage = err?.message || 'Unable to load explanation. Please try again.';
+      }
       setError(`⚠️ ${errorMessage}`);
     } finally {
       setIsLoading(false);
@@ -166,20 +184,36 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
       {/* Accordion Content */}
       {isOpen && currentExplanation && (
         <View style={styles.accordionContent}>
-          {/* Correct Answer Section */}
+          {/* Correct Answer */}
           <View style={styles.correctAnswerSection}>
-            <Text style={styles.correctAnswerHeader}>Correct Answer:</Text>
-            <Text style={styles.correctAnswerText}>{currentExplanation.correct_answer}</Text>
-            <Text style={styles.correctReasonText}>{currentExplanation.explanation.correct_reason}</Text>
+            <Text style={styles.correctAnswerHeader}>✅ Correct Answer</Text>
+            <View style={styles.mathBlock}>
+              <MathRenderer text={currentExplanation.correct_answer} colors={{ text: '#065f46', card: '#dcfce7' }} />
+            </View>
+            <View style={styles.mathBlock}>
+              <MathRenderer text={currentExplanation.explanation.correct_reason} colors={{ text: '#065f46', card: '#dcfce7' }} />
+            </View>
           </View>
 
-          {/* Incorrect Options Section */}
+          {/* Incorrect Options */}
           {Object.entries(currentExplanation.explanation.wrong_options).map(([option, reason]) => (
             <View key={option} style={styles.individualIncorrectSection}>
-              <Text style={styles.incorrectOptionHeader}>Why option {option} is incorrect:</Text>
-              <Text style={styles.incorrectOptionText}>{reason}</Text>
+              <Text style={styles.incorrectOptionHeader}>❌ {option.replace(/^option\d+\s*:?\s*/i, '')} — why it's wrong</Text>
+              <View style={styles.mathBlock}>
+                <MathRenderer text={reason as string} colors={{ text: '#991b1b', card: '#fee2e2' }} />
+              </View>
             </View>
           ))}
+
+          {/* Educational Fact */}
+          {currentExplanation.explanation.educational_fact ? (
+            <View style={styles.educationalFactSection}>
+              <Text style={styles.educationalFactHeader}>💡 Did you know?</Text>
+              <View style={styles.mathBlock}>
+                <MathRenderer text={currentExplanation.explanation.educational_fact} colors={{ text: '#1e3a5f', card: '#dbeafe' }} />
+              </View>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -235,45 +269,46 @@ const createStyles = (colors: any) =>
       overflow: 'hidden',
     },
     correctAnswerSection: {
-      padding: 16,
+      padding: 14,
       backgroundColor: '#dcfce7',
       borderLeftWidth: 4,
       borderLeftColor: '#10b981',
-      marginBottom: 12,
-      borderRadius: 8,
+      marginBottom: 1,
     },
     correctAnswerHeader: {
       fontWeight: 'bold',
-      fontSize: 16,
-      color: '#065f46',
-    },
-    correctAnswerText: {
       fontSize: 14,
       color: '#065f46',
-      marginTop: 8,
+      marginBottom: 6,
     },
-    correctReasonText: {
-      fontSize: 14,
-      color: '#065f46',
+    mathBlock: {
       marginTop: 4,
     },
     individualIncorrectSection: {
-      padding: 16,
+      padding: 14,
       backgroundColor: '#fee2e2',
       borderLeftWidth: 4,
       borderLeftColor: '#dc2626',
-      borderRadius: 8,
-      marginBottom: 12,
+      marginBottom: 1,
     },
     incorrectOptionHeader: {
       fontWeight: 'bold',
-      fontSize: 16,
+      fontSize: 13,
       color: '#991b1b',
+      marginBottom: 4,
     },
-    incorrectOptionText: {
+    educationalFactSection: {
+      padding: 14,
+      backgroundColor: '#dbeafe',
+      borderLeftWidth: 4,
+      borderLeftColor: '#3b82f6',
+      marginBottom: 1,
+    },
+    educationalFactHeader: {
+      fontWeight: 'bold',
       fontSize: 14,
-      color: '#991b1b',
-      marginTop: 4,
+      color: '#1e3a5f',
+      marginBottom: 6,
     },
   });
 

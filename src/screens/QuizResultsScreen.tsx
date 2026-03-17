@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
@@ -41,6 +42,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const { theme } = useTheme();
   const { user } = useAuth();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
   
   // Set loading if we need to fetch data (when we don't have initialQuizData or questions/submission)
   const [loading, setLoading] = useState(!initialQuizData && (!passedQuestions || !passedSubmission));
@@ -410,7 +412,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(16, insets.bottom) }}>
         {/* Compact Score Card */}
         <View style={[styles.scoreCard, { backgroundColor: colors.card }]}>
           <View style={styles.scoreRow}>

@@ -65,6 +65,69 @@ export async function updateQuizAttempt(
 }
 
 /**
+ * Find an existing attempt or create a new one — mirrors the web's ensureAttempt().
+ * 1. GET existing attempts for this quiz/student/class combination.
+ * 2. If a 'started' or any attempt is found, reuse it.
+ * 3. Otherwise POST to create a new one.
+ * 4. If creation fails (e.g. 409 race-condition), GET again and return whatever exists.
+ * Returns the attempt ID, or undefined if every approach fails (callers should still
+ * proceed with the submission in that case).
+ */
+export async function findOrCreateAttempt(data: {
+  quiz_id: number | string;
+  student_id: string;
+  class_id: string;   // Should be classroomId ("class_XXXX"), not session UUID
+  started_at: string;
+}): Promise<number | undefined> {
+  const { quiz_id, student_id, class_id, started_at } = data;
+
+  const fetchExisting = async (): Promise<number | undefined> => {
+    try {
+      const params = new URLSearchParams({
+        quiz_id: quiz_id.toString(),
+        student_id,
+        class_id,
+      });
+      const response = await apiClient.get(`/api/v1/dashboard/quiz-attempts?${params.toString()}`);
+      const attempts = response.data;
+      if (Array.isArray(attempts) && attempts.length > 0) {
+        // Prefer a 'started' (in-progress) attempt; otherwise fall back to any
+        const started = attempts.find((a: any) => a.status === 'started');
+        const pick = started ?? attempts[0];
+        console.log('♻️ Reusing existing attempt:', { id: pick.id, status: pick.status });
+        return pick.id as number;
+      }
+    } catch (e: any) {
+      console.warn('⚠️ Could not fetch existing attempts:', e?.message);
+    }
+    return undefined;
+  };
+
+  // Step 1 — look for an existing attempt
+  const existingId = await fetchExisting();
+  if (existingId !== undefined) return existingId;
+
+  // Step 2 — create a new attempt
+  try {
+    const response = await apiClient.post('/api/v1/dashboard/quiz-attempts', {
+      quiz_id,
+      student_id,
+      class_id,
+      attempt_number: 1,
+      status: 'started',
+      started_at,
+    });
+    const newId = response.data?.id as number;
+    console.log('✅ New attempt created:', newId);
+    return newId;
+  } catch (createError: any) {
+    // Step 3 — creation failed (possibly 409 / validation); re-fetch in case it was a race
+    console.warn('⚠️ Attempt creation failed, re-checking for existing:', createError?.message);
+    return fetchExisting();
+  }
+}
+
+/**
  * Check if student has already attempted a quiz
  * Uses GET /api/v1/dashboard/quiz-attempts with filters
  */

@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
@@ -280,10 +281,14 @@ export default function StudentDashboard({ navigation, route }: Props) {
     }
   }, [user, selectedClassroom, refreshing]);
 
-  // Initial load
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+  // Fetch on mount and every time the screen comes back into focus
+  // (e.g. after completing a quiz). This ensures newly-assigned pending
+  // quizzes always appear without a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboardData();
+    }, [fetchDashboardData])
+  );
 
   // Refresh handler
   const onRefresh = () => {

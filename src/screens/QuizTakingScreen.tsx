@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { 
-  createQuizAttempt, 
+  findOrCreateAttempt,
   updateQuizAttempt, 
   createQuizSubmission, 
   generateAIQuiz
@@ -670,60 +670,69 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             }
           });
 
-          // Step 1: Create quiz attempt
-          console.log('📤 Creating quiz attempt with data:', {
+          // Use classroomId as the primary class identifier for all API calls
+          // (matches web OpenQuizPage which uses session_id from the URL as class_id).
+          // In the mobile context the quiz object carries classroom_id ("class_XXXX") which
+          // is the correct identifier; session_id is a separate UUID field.
+          const apiClassId = classroomId || sessionId;
+
+          // Step 1: Ensure attempt exists (create if not; reuse if already started)
+          // Mirrors web's ensureAttempt() which guards against duplicate 409 errors.
+          console.log('📤 Ensuring quiz attempt exists:', {
             quiz_id: quiz.quiz_id,
             student_id: user.id,
-            class_id: sessionId,
-            attempt_number: 1,
-            status: 'started',
+            class_id: apiClassId,
             started_at: quizStartTime,
           });
 
-          const attemptResponse = await createQuizAttempt({
+          const attemptId = await findOrCreateAttempt({
             quiz_id: quiz.quiz_id,
-            student_id: user.id,
-            class_id: sessionId, // Using session_id as class_id
-            attempt_number: 1,
-            status: 'started',
+            student_id: String(user.id),
+            class_id: apiClassId,
             started_at: quizStartTime,
           });
 
-          console.log('✅ Quiz attempt created:', attemptResponse);
-
-          
+          console.log('✅ Attempt ID:', attemptId);
 
           // Step 2: Create submission
           await createQuizSubmission({
             quiz_id: quiz.quiz_id,
-            student_id: user.id,
-            classroom_id: sessionId, // Using session_id as classroom_id
-            score: score,
+            student_id: String(user.id),
+            classroom_id: apiClassId,
+            score,
             summary: 'Auto-scored client-side',
             log_data: {
               answers: answersAsLetters,
               questionCount: quiz.questions.length,
               time_spent_seconds: timeSpent,
-              attempt_id: attemptResponse.id,
+              attempt_id: attemptId,
             },
             submitted_at: completedAt,
           });
 
           console.log('✅ Quiz submission successful');
 
-          // Step 3: Update attempt as completed
-          await updateQuizAttempt(attemptResponse.id, {
-            score: score,
-            status: 'completed',
-            completed_at: completedAt,
-            time_spent_seconds: timeSpent,
-          });
+          // Step 3: Update attempt as completed (if we have an ID)
+          if (attemptId) {
+            try {
+              await updateQuizAttempt(attemptId, {
+                score,
+                status: 'completed',
+                completed_at: completedAt,
+                time_spent_seconds: timeSpent,
+              });
+              console.log('✅ Assessment attempt marked completed');
+            } catch (updateError: any) {
+              // Non-fatal — submission was recorded; attempt status update is best-effort
+              console.warn('⚠️ Could not update attempt status:', updateError?.message);
+            }
+          }
 
-          console.log('✅ Assessment attempt updated');
-
-          // Step 4: Invalidate student_quizzes cache to reflect new submission
-          // Clear both 'all' and classroom-specific cache entries
+          // Step 4: Invalidate student_quizzes cache so the quiz leaves Pending list
           await clearCacheEntry('student_quizzes_all_100_0');
+          if (classroomId) {
+            await clearCacheEntry(`student_quizzes_${classroomId}_100_0`);
+          }
           if (sessionId) {
             await clearCacheEntry(`student_quizzes_${sessionId}_100_0`);
           }
@@ -984,7 +993,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         </View>
       )}
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{ paddingBottom: Math.max(16, insets.bottom) }}>
         <View style={[styles.questionCard, { backgroundColor: colors.card }]}>
           <View style={styles.questionHeader}>
             <View style={[styles.questionNumber, { backgroundColor: colors.primary }]}>
@@ -1100,9 +1109,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     <Text
                       style={[
                         styles.questionDotText,
-                        { color: colors.textSecondary },
-                        (isAnswered || isCurrent) && styles.questionDotTextActive,
-                        !showResults && !isAnswered && !isCurrent && styles.questionDotTextUnanswered,
+                        // Default: high-contrast text so numbers are always visible
+                        { color: colors.text },
+                        // White text only when the background is actually dark/saturated
+                        (!showResults && isAnswered) && styles.questionDotTextActive,
+                        (!showResults && isCurrent) && styles.questionDotTextActive,
+                        (!showResults && !isAnswered && !isCurrent) && styles.questionDotTextUnanswered,
+                        (showResults && isCorrectResult) && styles.questionDotTextActive,
+                        (showResults && isWrongResult) && styles.questionDotTextActive,
                       ]}
                     >
                       {index + 1}
@@ -1147,7 +1161,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                 {submitting ? <LoadingSpinner size={20} /> : (
                   <>
                     <Ionicons name="checkmark-done" size={20} color="#fff" />
-                    <Text style={[styles.navButtonText, { color: '#fff' }]}>Verify Answers</Text>
+                    <Text style={[styles.navButtonText, { color: '#fff' }]}>Submit</Text>
                   </>
                 )}
               </TouchableOpacity>
