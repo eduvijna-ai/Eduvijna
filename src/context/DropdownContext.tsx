@@ -139,16 +139,18 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
   useEffect(() => {
     const isAuthenticated = Boolean(user || token);
 
-    if (!isAuthenticated && wasAuthenticatedRef.current) {
-      // Clear data when logged out
-      console.log('🔒 [DropdownContext] User logged out - clearing dropdown data');
-      setClasses([]);
-      setSubjects([]);
-      setDifficultyLevels([]);
-      setClassesError(null);
-      setSubjectsError(null);
-      setDifficultyError(null);
-      wasAuthenticatedRef.current = false;
+    if (!isAuthenticated) {
+      if (wasAuthenticatedRef.current) {
+        // Clear data when logged out
+        console.log('🔒 [DropdownContext] User logged out - clearing dropdown data');
+        setClasses([]);
+        setSubjects([]);
+        setDifficultyLevels([]);
+        setClassesError(null);
+        setSubjectsError(null);
+        setDifficultyError(null);
+        wasAuthenticatedRef.current = false;
+      }
       return;
     }
 
@@ -156,7 +158,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     loadClasses();
     loadSubjects();
     loadDifficulty();
-    wasAuthenticatedRef.current = isAuthenticated;
+    wasAuthenticatedRef.current = true;
   }, [user, token, loadClasses, loadSubjects, loadDifficulty]);
 
   // Refresh functions

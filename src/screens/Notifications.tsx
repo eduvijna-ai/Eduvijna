@@ -14,12 +14,12 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
-import { apiClient } from '@core/api/config';
 import { formatDistanceToNow } from 'date-fns';
 import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId } from '@core/services/sharedApi';
 import { isStudentQuizActive } from '../utils/quizFilters';
+import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 
 interface Props {
   navigation?: any;
@@ -50,86 +50,28 @@ export default function Notifications({ navigation, onNavigate }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student quizzes (active + pending)
+  // Fetch student pending quizzes via check-record endpoint
+  // status: null → pending (shown here)   |   status: "completed" → not shown
   const fetchStudentQuizzes = useCallback(async () => {
     if (!user || isTeacher) return;
     
     try {
       setLoading(true);
-      
-      const params = new URLSearchParams({
-        view_type: 'student_total_details',
-        limit: '1000',
-        offset: '0',
-      });
 
-      const url = `/api/v1/dashboard/quizzes?${params.toString()}`;
-      const response = await apiClient.get(url);
-      const data = response.data.data || [];
+      const response = await fetchQuizCheckRecord(user.id, 'pending');
+      const mapped = (response.result || [])
+        .map(checkRecordToQuiz)
+        // Only show quizzes whose status came back as null (pending) and are still within the time window
+        .filter(isStudentQuizActive);
 
-      // Process quizzes
-      const parsed: ParsedQuiz[] = [];
-      
-      for (const quiz of data) {
-        let attempts: QuizAttempt[] = [];
-        if (quiz.attempts) {
-          try {
-            attempts = typeof quiz.attempts === 'string' 
-              ? JSON.parse(quiz.attempts) 
-              : quiz.attempts;
-          } catch (e) {
-            console.error('Error parsing attempts:', e);
-            attempts = [];
-          }
-        }
-
-        const attempt = attempts.find(a => a.status === 'completed') || 
-                       attempts.find(a => a.status === 'pending') || 
-                       attempts[0];
-
-        const parsedQuiz: any = attempt 
-          ? parseQuizAttempt(attempt, quiz.classroom_name, quiz.quiz_name)
-          : {
-              quiz_id: quiz.quiz_id,
-              class_id: quiz.classroom_id,
-              classroom_name: quiz.classroom_name,
-              quiz_name: quiz.quiz_name,
-              status: quiz.student_status,
-              score: null,
-              correct_answers: 0,
-              question_count: quiz.question_count,
-              time_spent_seconds: null,
-              completed_at: null,
-              started_at: null,
-              end_time: quiz.end_time,
-              created_at: quiz.created_at,
-            };
-
-        // Add quiz metadata
-        parsedQuiz.quiz_id = quiz.quiz_id;
-        parsedQuiz.class_id = quiz.classroom_id;
-        parsedQuiz.availability_status = quiz.availability_status;
-        parsedQuiz.session_id = quiz.session_id;
-        parsedQuiz.assigned_at = quiz.assigned_at;
-        parsedQuiz.due_date = quiz.due_date;
-        parsedQuiz.start_time = quiz.start_time;
-        parsedQuiz.end_time = quiz.end_time;
-
-        // Filter using common utility: active availability + pending status + time window check
-        // Only show quizzes that are currently active and available
-        if (isStudentQuizActive(parsedQuiz)) {
-          parsed.push(parsedQuiz);
-        }
-      }
-
-      // Sort by assigned_at (newest first)
-      parsed.sort((a, b) => {
-        const dateA = new Date((a as any).assigned_at || a.created_at).getTime();
-        const dateB = new Date((b as any).assigned_at || b.created_at).getTime();
+      // Sort by assigned/created date, newest first
+      mapped.sort((a: any, b: any) => {
+        const dateA = new Date(a.assigned_at || a.created_at).getTime();
+        const dateB = new Date(b.assigned_at || b.created_at).getTime();
         return dateB - dateA;
       });
 
-      setStudentQuizzes(parsed);
+      setStudentQuizzes(mapped);
     } catch (error) {
       console.error('Failed to load student quizzes:', error);
       Alert.alert('Error', 'Failed to load notifications');
@@ -137,7 +79,7 @@ export default function Notifications({ navigation, onNavigate }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, isTeacher]);
+  }, [user, isTeacher, refreshing]);
 
   // Load data on mount
   useEffect(() => {

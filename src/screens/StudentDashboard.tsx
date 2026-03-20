@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { useDashboardStore } from '@core/store/dashboard.store';
-import { fetchStudentQuizzes } from '@core/services/dashboardApi';
+import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   QuizAttempt,
@@ -90,20 +90,11 @@ export default function StudentDashboard({ navigation, route }: Props) {
     try {
       setLoading(true);
 
-      // Use dashboardApi service which properly extracts quiz-level fields
-      const filters: any = {
-        limit: 1000,
-        offset: 0,
-      };
+      // Fetch quizzes using the check-record endpoint
+      // status: null → pending   |   status: "completed" → completed
+      const response = await fetchQuizCheckRecord(user.id, 'pending');
 
-      if (selectedClassroom && selectedClassroom !== 'ALL') {
-        filters.classroom_id = selectedClassroom;
-      }
-
-      const response = await fetchStudentQuizzes(filters);
-
-      // Data is already transformed by toStudentQuiz - use it directly
-      const data = response.data || [];
+      const data = (response.result || []).map(checkRecordToQuiz);
       
       // DEBUG: Log sample data to verify structure
       if (data.length > 0) {

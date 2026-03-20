@@ -788,3 +788,129 @@ export async function fetchQuizDetailsBySessionId(
     return defaultResult;
   }
 }
+
+// ============================================================================
+// CHECK-RECORD API  (POST /api/v1/quiz/check-record)
+// status: null → pending   |   status: "completed" → completed
+// ============================================================================
+
+export interface CheckRecordQuiz {
+  status: null | 'completed';
+  classid: string;
+  student_id: string;
+  quiz_details: {
+    quiz_id: number;
+    topic: string;
+    summary: string;
+    session_id: string;
+    start_time: string;
+    end_time: string;
+    duration: number;
+    has_time_limit: boolean;
+    question_count: number;
+    questions: { quizzes: any[] };
+    status: string;
+    is_active: boolean;
+    is_public: boolean;
+    tags?: { subject?: string; difficulty?: string };
+    type?: string;
+    created_at?: string;
+    created_by?: string;
+    student_level?: string;
+    [key: string]: any;
+  };
+}
+
+export interface CheckRecordResponse {
+  success: boolean;
+  result: CheckRecordQuiz[];
+  check_type: string;
+  message: string;
+}
+
+/**
+ * Fetch student quizzes using the check-record endpoint.
+ * status === null  → pending quiz (not yet attempted)
+ * status === "completed" → completed quiz
+ *
+ * POST /api/v1/quiz/check-record
+ */
+export async function fetchQuizCheckRecord(
+  studentId: string,
+  checkType: 'pending' | 'completed' = 'pending',
+  sessionId: string = '',
+): Promise<CheckRecordResponse> {
+  const token = await TokenStorage.getAccessToken();
+  if (!token) {
+    await TokenStorage.clearAuthData();
+    if (authErrorNavigationCallback) authErrorNavigationCallback();
+    return { success: false, result: [], check_type: checkType, message: 'No token' } as CheckRecordResponse;
+  }
+
+  const url = `${DASHBOARD_API_URL}/quiz/check-record`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      p_check_type: checkType,
+      p_session_id: sessionId,
+      p_student_id: studentId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    await handleAuthError(response.status, errorText, 'fetchQuizCheckRecord');
+    throw new Error(`fetchQuizCheckRecord failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<CheckRecordResponse>;
+}
+
+/**
+ * Convert a CheckRecordQuiz item to a ParsedQuiz-compatible object used
+ * by StudentDashboard and Notifications screens.
+ * status: null → 'pending'   |   status: "completed" → 'completed'
+ */
+export function checkRecordToQuiz(item: CheckRecordQuiz): any {
+  const d = item.quiz_details;
+  const now = new Date();
+  const endDate = d.end_time ? new Date(d.end_time) : null;
+
+  return {
+    quiz_id: d.quiz_id,
+    quiz_name: d.topic,
+    topic: d.topic,
+    session_id: d.session_id,
+    class_id: item.classid,
+    classroom_id: item.classid,
+    classroom_name: item.classid,
+    student_id: item.student_id,
+    status: item.status === null ? 'pending' : item.status,
+    score: null,
+    correct_answers: 0,
+    question_count: d.question_count,
+    time_spent_seconds: null,
+    attempt_number: null,
+    completed_at: null,
+    started_at: null,
+    start_time: d.start_time,
+    end_time: d.end_time,
+    due_date: d.end_time,
+    created_at: d.created_at || d.start_time,
+    assigned_at: d.created_at || d.start_time,
+    availability_status: d.is_active && endDate && now <= endDate ? 'active' : 'expired',
+    duration: d.duration,
+    has_time_limit: d.has_time_limit,
+    is_overdue: endDate ? now > endDate : false,
+    days_until_due: endDate
+      ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : undefined,
+    subject: d.tags?.subject || '',
+    // Keep the raw questions for launching the quiz without a second API call
+    _rawQuestions: d.questions,
+  };
+}

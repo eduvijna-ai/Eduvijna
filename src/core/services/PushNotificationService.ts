@@ -17,6 +17,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@core/api/config';
 
@@ -56,7 +57,11 @@ if (Platform.OS === 'android') {
  */
 function isPushSupported(): boolean {
   // Only Android is supported with Firebase FCM native module
-  return Platform.OS === 'android';
+  if (Platform.OS !== 'android') return false;
+  // Remote push notifications were removed from Expo Go in SDK 53
+  // Only available in development builds and production APKs
+  if (Constants.appOwnership === 'expo') return false;
+  return true;
 }
 
 /**

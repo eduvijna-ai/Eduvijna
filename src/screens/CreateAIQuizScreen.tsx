@@ -77,13 +77,56 @@ export default function CreateAIQuizScreen({ navigation }: any) {
             setSubmitError('');
             setSubmitting(true);
             try {
+              // Resolve labels/slugs from IDs to match WebQuizPage.tsx request pattern
+              const selectedClass = classes.find((c: any) => c.id === values.class);
+              const selectedSubject = subjects.find((s: any) => s.id === values.subject);
+              const selectedLevel = difficultyLevels.find((l: any) => l.id === values.level);
+
               const result = await generateAIQuiz({
-                class: values.class,
-                subject: values.subject,
+                class: selectedClass?.name || values.class,
+                subject: selectedSubject?.name || values.subject,
                 lesson: values.lesson,
-                level: values.level,
+                level: selectedLevel?.slug || values.level,
                 count: parseInt(values.count) || 5,
                 itext: values.itext,
+              });
+
+              // Process quiz response to match WebQuizPage.tsx handling:
+              // Shuffle options and normalise correctAnswer to a letter (A/B/C/D)
+              const processedQuestions = (result.quiz || []).map((item: any) => {
+                const rawOptions: string[] = item.options || [];
+                const rawCorrect: string = item.correctAnswer || item.answer || 'A';
+
+                // Resolve correctAnswer to the actual option text
+                let correctText: string;
+                if (rawCorrect.length === 1 && /^[A-D]$/.test(rawCorrect)) {
+                  // It's already a letter – look up the option text
+                  correctText = rawOptions[rawCorrect.charCodeAt(0) - 65] || rawCorrect;
+                } else {
+                  correctText = rawCorrect;
+                }
+
+                // Fisher-Yates shuffle of options
+                const shuffled = [...rawOptions];
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+
+                // Determine the new letter for the correct answer after shuffling
+                const newIdx = shuffled.findIndex(
+                  (opt) => opt.trim() === correctText.trim()
+                );
+                const newCorrectAnswer = newIdx >= 0
+                  ? String.fromCharCode(65 + newIdx)
+                  : 'A';
+
+                return {
+                  ...item,
+                  options: shuffled,
+                  correctAnswer: newCorrectAnswer,
+                  answer: newCorrectAnswer,
+                };
               });
 
               await refreshAfterQuizGenerated();
@@ -93,10 +136,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
                 quizData: {
                   id: result.quiz_id,
                   title: `${values.lesson} Assessment`,
-                  questions: result.quiz || [],
-                  class: classes.find((c: any) => c.id === values.class)?.name,
-                  subject: subjects.find((s: any) => s.id === values.subject)?.name,
-                  difficulty: difficultyLevels.find((l: any) => l.id === values.level)?.name,
+                  questions: processedQuestions,
+                  class: selectedClass?.name,
+                  subject: selectedSubject?.name,
+                  difficulty: selectedLevel?.name,
                   lesson: values.lesson,
                   additional_instructions: values.itext || '',
                   thread_id: result.thread_id,
