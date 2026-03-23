@@ -318,8 +318,12 @@ export async function getQuizBySessionId(
 }> {
   const queryParams = new URLSearchParams({
     session_id: sessionId,
-    skip_auth: skipAuth.toString(),
   });
+
+  // Only send skip_auth when explicitly requested (web app doesn't send it by default)
+  if (skipAuth) {
+    queryParams.append('skip_auth', 'true');
+  }
 
   if (cfTurnstileToken) {
     queryParams.append('cf_turnstile_token', cfTurnstileToken);

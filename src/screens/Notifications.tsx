@@ -17,7 +17,7 @@ import { useAuth } from '@core/hooks/useAuth';
 import { formatDistanceToNow } from 'date-fns';
 import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
-import { getQuizBySessionId } from '@core/services/sharedApi';
+import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
 import { isStudentQuizActive } from '../utils/quizFilters';
 import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 
@@ -131,10 +131,12 @@ export default function Notifications({ navigation, onNavigate }: Props) {
 
       const fetchedQuiz = response.quiz_data;
       
-      // Extract questions from the nested structure
+      // Extract questions from the nested structure, limited to question_count
+      // (matches web OpenQuizPage which uses only the teacher-selected subset)
       let questions: any[] = [];
       if (fetchedQuiz.questions?.quizzes && Array.isArray(fetchedQuiz.questions.quizzes)) {
-        questions = fetchedQuiz.questions.quizzes.map((q: any, index: number) => ({
+        const questionLimit = fetchedQuiz.question_count || fetchedQuiz.questions.quizzes.length;
+        questions = fetchedQuiz.questions.quizzes.slice(0, questionLimit).map((q: any, index: number) => ({
           id: `q-${index}`,
           question: q.quiz.question,
           options: q.quiz.options,
@@ -157,6 +159,26 @@ export default function Notifications({ navigation, onNavigate }: Props) {
         is_public: fetchedQuiz.is_public ?? false,
         questions: questions,
       };
+
+      // Check if student already completed this quiz — prevent duplicate attempts.
+      // Same guard as Assessments.tsx handleAction.
+      if (user?.id) {
+        const studentIdStr = user.id.toString();
+        const attemptCheck = await checkQuizAttempt(
+          fetchedQuiz.quiz_id || quiz.quiz_id,
+          studentIdStr,
+          sessionId,
+        );
+        if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
+          const scoreMsg = attemptCheck.score != null ? `\nYour score: ${attemptCheck.score}%` : '';
+          Alert.alert(
+            'Quiz Already Completed',
+            `You have already completed this quiz.${scoreMsg}`,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+      }
 
       // Navigate with complete quiz data
       if (navigation) {

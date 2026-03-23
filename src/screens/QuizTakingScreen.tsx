@@ -17,7 +17,6 @@ import { useAuth } from '@core/hooks/useAuth';
 import { 
   findOrCreateAttempt,
   updateQuizAttempt, 
-  createQuizSubmission, 
   generateAIQuiz
 } from '../core/services/sharedApi';
 import { clearCacheEntry } from '../core/services/cacheService';
@@ -725,11 +724,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             }
           });
 
-          // Use classroomId as the primary class identifier for all API calls
+          // Use sessionId as the primary class identifier for all API calls
           // (matches web OpenQuizPage which uses session_id from the URL as class_id).
-          // In the mobile context the quiz object carries classroom_id ("class_XXXX") which
-          // is the correct identifier; session_id is a separate UUID field.
-          const apiClassId = classroomId || sessionId;
+          // The user confirmed: quiz-attempts API uses session_id (UUID) as class_id.
+          // const apiClassId = sessionId || classroomId;
+          const apiClassId = sessionId;
 
           // Step 1: Ensure attempt exists (create if not; reuse if already started)
           // Mirrors web's ensureAttempt() which guards against duplicate 409 errors.
@@ -749,25 +748,13 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
           console.log('✅ Attempt ID:', attemptId);
 
-          // Step 2: Create submission
-          await createQuizSubmission({
-            quiz_id: quiz.quiz_id,
-            student_id: String(user.id),
-            classroom_id: apiClassId,
-            score,
-            summary: 'Auto-scored client-side',
-            log_data: {
-              answers: answersAsLetters,
-              questionCount: quiz.questions.length,
-              time_spent_seconds: timeSpent,
-              attempt_id: attemptId,
-            },
-            submitted_at: completedAt,
-          });
-
-          console.log('✅ Quiz submission successful');
-
-          // Step 3: Update attempt as completed (if we have an ID)
+          // Mark attempt as completed.
+          // NOTE: createQuizSubmission is intentionally NOT called here.
+          // The backend's POST quiz-submissions endpoint creates a NEW quiz_attempts
+          // record as a side-effect (started_at=submitted_at, attempt_number=max+1).
+          // That 'started' record gets picked up by findOrCreateAttempt on the next
+          // submission, creating a chain of duplicate records (1→2→3...).
+          // Using only findOrCreateAttempt + updateQuizAttempt gives exactly 1 record.
           if (attemptId) {
             try {
               await updateQuizAttempt(attemptId, {
@@ -778,10 +765,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               });
               console.log('✅ Assessment attempt marked completed');
             } catch (updateError: any) {
-              // Non-fatal — submission was recorded; attempt status update is best-effort
               console.warn('⚠️ Could not update attempt status:', updateError?.message);
             }
           }
+
+          console.log('✅ Quiz submission successful');
 
           // Step 4: Invalidate student_quizzes cache so the quiz leaves Pending list
           await clearCacheEntry('student_quizzes_all_100_0');
@@ -1037,6 +1025,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.headerTop}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>{quiz.title}</Text>
+            {isAssignedQuiz && !showResults && timeRemaining > 0 && (
+              <View style={[styles.timerBadge, { backgroundColor: timeRemaining <= 60 ? '#FF3B30' : colors.primary + '22', borderColor: timeRemaining <= 60 ? '#FF3B30' : colors.primary }]}>
+                <Ionicons name="time-outline" size={13} color={timeRemaining <= 60 ? '#FF3B30' : colors.primary} />
+                <Text style={[styles.timerBadgeText, { color: timeRemaining <= 60 ? '#FF3B30' : colors.primary }]}>
+                  {formatTime(timeRemaining)}
+                </Text>
+              </View>
+            )}
           </View>
           
           <View style={styles.progressSection}>
@@ -1456,7 +1452,8 @@ const styles = StyleSheet.create({
   header: { padding: 8, borderBottomWidth: 1 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   headerTitle: { fontSize: 18, fontWeight: '600', flex: 1 },
-  timerBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16, gap: 4 },
+  timerBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16, gap: 4, borderWidth: 1 },
+  timerBadgeText: { fontSize: 13, fontWeight: '600' },
   timerText: { fontSize: 14, fontWeight: '600', color: '#fff' },
   progressSection: { gap: 8 },
   progressBar: { height: 6, borderRadius: 3, overflow: 'hidden' },
