@@ -91,43 +91,9 @@ export default function CreateAIQuizScreen({ navigation }: any) {
                 itext: values.itext,
               });
 
-              // Process quiz response to match WebQuizPage.tsx handling:
-              // Shuffle options and normalise correctAnswer to a letter (A/B/C/D)
-              const processedQuestions = (result.quiz || []).map((item: any) => {
-                const rawOptions: string[] = item.options || [];
-                const rawCorrect: string = item.correctAnswer || item.answer || 'A';
-
-                // Resolve correctAnswer to the actual option text
-                let correctText: string;
-                if (rawCorrect.length === 1 && /^[A-D]$/.test(rawCorrect)) {
-                  // It's already a letter – look up the option text
-                  correctText = rawOptions[rawCorrect.charCodeAt(0) - 65] || rawCorrect;
-                } else {
-                  correctText = rawCorrect;
-                }
-
-                // Fisher-Yates shuffle of options
-                const shuffled = [...rawOptions];
-                for (let i = shuffled.length - 1; i > 0; i--) {
-                  const j = Math.floor(Math.random() * (i + 1));
-                  [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-                }
-
-                // Determine the new letter for the correct answer after shuffling
-                const newIdx = shuffled.findIndex(
-                  (opt) => opt.trim() === correctText.trim()
-                );
-                const newCorrectAnswer = newIdx >= 0
-                  ? String.fromCharCode(65 + newIdx)
-                  : 'A';
-
-                return {
-                  ...item,
-                  options: shuffled,
-                  correctAnswer: newCorrectAnswer,
-                  answer: newCorrectAnswer,
-                };
-              });
+              // Pass questions raw to QuizTakingScreen which handles
+              // option label stripping, correctAnswer normalization, and shuffling.
+              const processedQuestions = result.quiz || [];
 
               await refreshAfterQuizGenerated();
               setFormData(values);

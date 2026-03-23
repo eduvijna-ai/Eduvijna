@@ -265,6 +265,61 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // ==========================================
   // QuizTakingScreen assumes quiz is ALREADY VALIDATED by handleOpenQuiz
   // It only needs to load and display the normalized quiz data
+
+  // Fisher-Yates shuffle helper
+  const shuffleArray = <T,>(arr: T[]): T[] => {
+    const result = [...arr];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  };
+
+  // Strip embedded "A. "/"B. "/"C. "/"D. " label prefixes that the API
+  // sometimes includes inside the option text itself (e.g. "A. runs" → "runs").
+  // The UI always generates its own positional labels (A/B/C/D from index),
+  // so leaving these in causes doubled / mismatched labels after shuffling.
+  const stripOptionLabel = (opt: string): string =>
+    opt.replace(/^[A-Da-d]\.\.?\s*/, '').trim();
+
+  // Normalize questions: strip option label prefixes, resolve correctAnswer to a letter,
+  // and shuffle options so the correct answer isn't always at the same position.
+  const normalizeQuestions = (questions: any[]): any[] =>
+    questions.map((q: any) => {
+      const cleanOptions = (q.options || []).map(stripOptionLabel);
+
+      // Resolve correctAnswer — the API may return it as:
+      //   • A single letter: "A", "B", "C", "D"
+      //   • The full option text: "handwritten%20questions-4.jpg"
+      //   • A prefixed text: "A. handwritten%20questions-4.jpg"
+      const rawCorrect: string = (q.correctAnswer || q.answer || '').trim();
+      let correctText: string;
+      if (rawCorrect.length === 1 && /^[A-D]$/i.test(rawCorrect)) {
+        // It's a letter — look up the clean option text by index
+        correctText = cleanOptions[rawCorrect.toUpperCase().charCodeAt(0) - 65] ?? cleanOptions[0] ?? '';
+      } else {
+        // It's the full option text (possibly with prefix) — strip the prefix
+        correctText = stripOptionLabel(rawCorrect);
+      }
+
+      // Shuffle options so the correct answer lands at a random position
+      const shuffledOptions = shuffleArray(cleanOptions);
+
+      // Recompute the correct-answer letter after shuffling
+      const newIdx = shuffledOptions.findIndex(
+        (opt) => opt.trim().toLowerCase() === correctText.trim().toLowerCase()
+      );
+      const correctLetter = newIdx >= 0 ? String.fromCharCode(65 + newIdx) : 'A';
+
+      return {
+        ...q,
+        options: shuffledOptions,
+        correctAnswer: correctLetter,
+        answer: correctLetter,
+      };
+    });
+
   useEffect(() => {
     if (quizSource) {
       console.log('Loading quiz data:', {
@@ -289,7 +344,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         is_public: quizSource.is_public ?? false,
         start_time: quizSource.start_time,
         end_time: quizSource.end_time,
-        questions: quizSource.questions || [],
+        questions: normalizeQuestions(quizSource.questions || []),
         regenerationParams: quizSource.regenerationParams,
       };
 
@@ -801,13 +856,15 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                         setIsRegenerating(true);
                         try {
                           const newQuizData = await handleRegenerateQuiz();
-                          const validatedQuestions = Array.isArray(newQuizData?.questions)
-                            ? newQuizData.questions.map((q: any, index: number) => ({
-                                ...q,
-                                id: q.id || `${index}-${q.question?.substring(0, 10) || 'question'}`,
-                                options: Array.isArray(q.options) ? q.options : [],
-                              }))
-                            : [];
+                          const validatedQuestions = normalizeQuestions(
+                            Array.isArray(newQuizData?.questions)
+                              ? newQuizData.questions.map((q: any, index: number) => ({
+                                  ...q,
+                                  id: q.id || `${index}-${q.question?.substring(0, 10) || 'question'}`,
+                                  options: Array.isArray(q.options) ? q.options : [],
+                                }))
+                              : []
+                          );
                           const updatedQuizData = {
                             ...currentQuizData,
                             ...newQuizData,

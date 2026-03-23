@@ -198,9 +198,17 @@ apiClient.interceptors.response.use(
       return Promise.reject(new Error('Network connection failed'));
     }
     
-    // Handle 500 errors
+    // Handle 500 errors — preserve the server's actual message so screens
+    // can show a meaningful error instead of a generic string.
     if (status && status >= 500) {
-      return Promise.reject(new Error('Server error. Please try again later.'));
+      const serverMsg =
+        (typeof responseData?.detail === 'string' && responseData.detail) ||
+        (typeof responseData?.message === 'string' && responseData.message) ||
+        (typeof responseData?.error === 'string' && responseData.error) ||
+        'Server error. Please try again later.';
+      const serverError = new Error(serverMsg);
+      (serverError as any).response = error.response; // keep response for callers
+      return Promise.reject(serverError);
     }
 
     // Handle other errors
@@ -255,7 +263,10 @@ function handleApiError(error: AxiosError<ApiError>): Error {
       (typeof apiError?.error === 'string' ? apiError.error : undefined) ||
       `Request failed with status ${error.response.status}`;
 
-    return new Error(errorMessage);
+    const richError = new Error(errorMessage);
+    // Preserve the original Axios response so callers can inspect status/data.
+    (richError as any).response = error.response;
+    return richError;
   }
   
   if (error.request) {

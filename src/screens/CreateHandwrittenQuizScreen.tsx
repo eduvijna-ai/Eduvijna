@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { apiClient } from '../core/api/config';
@@ -78,6 +79,21 @@ interface StrictQuizResponse {
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+// Resize + compress image to avoid 413 errors from large phone camera photos
+async function compressImage(uri: string): Promise<string> {
+  try {
+    const context = ImageManipulator.manipulate(uri);
+    context.resize({ width: 1500 });
+    const image = await context.renderAsync();
+    const result = await image.saveAsync({ compress: 0.6, format: SaveFormat.JPEG });
+    context.release();
+    image.release();
+    return result.uri;
+  } catch {
+    return uri; // Fall back to original if compression fails
+  }
+}
 
 function aggregateOcrText(files: BatchOCRFileResult[]): string {
   const parts: string[] = [];
@@ -139,11 +155,16 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
       });
 
       if (!result.canceled && result.assets) {
-        const newImages: PickedImage[] = result.assets.map((asset, idx) => ({
-          uri: asset.uri,
-          name: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
-          type: asset.mimeType || 'image/jpeg',
-        }));
+        const newImages: PickedImage[] = await Promise.all(
+          result.assets.map(async (asset, idx) => {
+            const compressedUri = await compressImage(asset.uri);
+            return {
+              uri: compressedUri,
+              name: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
+              type: 'image/jpeg',
+            };
+          }),
+        );
         const combined = [...pickedImages, ...newImages];
         if (combined.length > 5) {
           Alert.alert('Limit Reached', 'Maximum 5 images allowed.');
@@ -167,9 +188,10 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
       const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
       if (!result.canceled && result.assets.length > 0) {
         const asset = result.assets[0];
+        const compressedUri = await compressImage(asset.uri);
         setPickedImages(prev => [
           ...prev,
-          { uri: asset.uri, name: `hw_${Date.now()}.jpg`, type: 'image/jpeg' },
+          { uri: compressedUri, name: `hw_${Date.now()}.jpg`, type: 'image/jpeg' },
         ]);
         setError('');
       }
@@ -203,6 +225,10 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
       });
 
+      // React Native XHR automatically appends the boundary to multipart/form-data,
+      // so the explicit header is safe and required to override the Axios instance
+      // default (application/json). Without it the server receives the wrong
+      // Content-Type and returns 422 "Field required".
       const ocrResponse = await apiClient.post<BatchOCRResponse>(
         '/api/v1/batch-ocr-upload',
         formData,
@@ -257,11 +283,16 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         showActionButtons: true,
       });
     } catch (err: any) {
-      const message =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message ||
-        'Failed to process your images. Please try again.';
+      let message: string;
+      if (err?.response?.status === 413) {
+        message = 'Images are too large to upload. Please try with fewer or smaller images.';
+      } else {
+        message =
+          err?.response?.data?.detail ||
+          err?.response?.data?.message ||
+          err?.message ||
+          'Failed to process your images. Please try again.';
+      }
       setError(message);
     } finally {
       setIsProcessing(false);

@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   TextInput,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
+import { checkQuizAttempt } from '@core/services/sharedApi';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
 
@@ -91,6 +93,13 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const [dateRangeStart, setDateRangeStart] = useState<Date>(new Date());
   const [dateRangeEnd, setDateRangeEnd] = useState<Date>(new Date());
   const [loadingQuizId, setLoadingQuizId] = useState<number | null>(null);
+  const [completedAttemptModal, setCompletedAttemptModal] = useState<{
+    quizName: string;
+    score: number | null;
+    completedAt: string | null;
+    quizId: number;
+    attemptData: any;
+  } | null>(null);
 
   const isWeb = width > 768;
   const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
@@ -308,7 +317,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     }
   };
 
-  const handleAction = (action: string, quizId: number, attemptData?: any) => {
+  const handleAction = async (action: string, quizId: number, attemptData?: any) => {
     // View quiz students (Teacher)
     if (isTeacher && action === 'view') {
       const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
@@ -325,8 +334,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: View assessment results
     if (!isTeacher && action === 'viewResults' && attemptData) {
-      // Navigate to Quiz Result screen - same pattern as StudentDashboard
-      // Use isTeacherView: true to fetch full quiz data in QuizResultsScreen
       if (onNavigate) {
         onNavigate('QuizResultsScreen', {
           quizId,
@@ -345,13 +352,71 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: Start or Resume quiz
     if (!isTeacher && (action === 'start' || action === 'resume')) {
-      // Extract correct IDs - ensure we use the right fields
       const correctQuizId = attemptData?.quiz_id || quizId;
       const correctSessionId = attemptData?.session_id || '';
       const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
       
       setLoadingQuizId(correctQuizId);
       try {
+        // Use student_id from the quiz record (numeric ID the API expects).
+        // Falls back to user.id if student_id is not on the quiz object.
+        const studentIdForApi =
+          (attemptData?.student_id != null
+            ? attemptData.student_id.toString()
+            : null) ??
+          user?.id?.toString() ??
+          '';
+
+        // Check via API whether this student has already completed this quiz.
+        // GET /api/v1/dashboard/quiz-attempts?student_id={student_id}&quiz_id={quiz_id}&class_id={session_id}
+        // NOTE: the API's class_id field maps to session_id (UUID), not classroom_id.
+        const attemptCheck = await checkQuizAttempt(
+          correctQuizId,
+          studentIdForApi,
+          correctSessionId || undefined,
+        );
+
+        console.log('🎯 Attempt check result:', {
+          quiz_id: correctQuizId,
+          student_id: studentIdForApi,
+          session_id: correctSessionId,
+          hasAttempted: attemptCheck.hasAttempted,
+          status: attemptCheck.status,
+        });
+
+        if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
+          // Quiz already completed — show modal instead of navigating.
+          setCompletedAttemptModal({
+            quizName: attemptData?.quiz_name || 'Quiz',
+            score: attemptCheck.score ?? null,
+            completedAt: attemptCheck.completedAt ?? null,
+            quizId: correctQuizId,
+            attemptData,
+          });
+          return;
+        }
+
+        // Not yet completed — proceed to quiz.
+        if (navigation) {
+          navigation.navigate('QuizTakingScreen', {
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            quizData: attemptData,
+          });
+        } else if (onNavigate) {
+          onNavigate('QuizTakingScreen', {
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            quizData: attemptData,
+            quiz: attemptData,
+            is_public: false,
+          });
+        }
+      } catch {
+        // If the attempt-check fails, proceed to the quiz so the student
+        // is never blocked by a network error.
         if (navigation) {
           navigation.navigate('QuizTakingScreen', {
             quizId: correctQuizId,
@@ -370,7 +435,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           });
         }
       } finally {
-        // Clear loading after a short delay to allow navigation transition
         setTimeout(() => setLoadingQuizId(null), 1000);
       }
       return;
@@ -801,9 +865,179 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         )}
       </ScrollView>
       </View>
+
+      {/* ── Already Completed Modal ───────────────────────────────────────── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={completedAttemptModal !== null}
+        onRequestClose={() => setCompletedAttemptModal(null)}
+      >
+        <View style={modalStyles.overlay}>
+          <View style={[modalStyles.card, { backgroundColor: theme.colors.card }]}>
+            {/* Icon */}
+            <View style={modalStyles.iconCircle}>
+              <Ionicons name="checkmark-circle" size={48} color="#059669" />
+            </View>
+
+            <Text style={[modalStyles.title, { color: theme.colors.text }]}>
+              Already Completed
+            </Text>
+            <Text style={[modalStyles.quizName, { color: theme.colors.primary }]} numberOfLines={2}>
+              {completedAttemptModal?.quizName}
+            </Text>
+            <Text style={[modalStyles.subtitle, { color: theme.colors.textSecondary }]}>
+              You have already submitted this assessment.
+            </Text>
+
+            {/* Score row */}
+            {completedAttemptModal?.score !== null && completedAttemptModal?.score !== undefined && (
+              <View style={[modalStyles.infoRow, { backgroundColor: theme.colors.background }]}>
+                <Ionicons name="trophy" size={18} color="#F59E0B" />
+                <Text style={[modalStyles.infoLabel, { color: theme.colors.textSecondary }]}>Score</Text>
+                <Text style={[modalStyles.infoValue, { color: theme.colors.text }]}>
+                  {typeof completedAttemptModal.score === 'number'
+                    ? `${completedAttemptModal.score.toFixed(1)}%`
+                    : completedAttemptModal.score}
+                </Text>
+              </View>
+            )}
+
+            {/* Completed date row */}
+            {completedAttemptModal?.completedAt && (
+              <View style={[modalStyles.infoRow, { backgroundColor: theme.colors.background }]}>
+                <Ionicons name="calendar" size={18} color={theme.colors.primary} />
+                <Text style={[modalStyles.infoLabel, { color: theme.colors.textSecondary }]}>Completed</Text>
+                <Text style={[modalStyles.infoValue, { color: theme.colors.text }]}>
+                  {new Date(completedAttemptModal.completedAt).toLocaleDateString(undefined, {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </Text>
+              </View>
+            )}
+
+            {/* Buttons */}
+            <View style={modalStyles.buttonRow}>
+              <TouchableOpacity
+                style={[modalStyles.btn, modalStyles.btnOutline, { borderColor: theme.colors.primary }]}
+                onPress={() => setCompletedAttemptModal(null)}
+              >
+                <Text style={[modalStyles.btnOutlineText, { color: theme.colors.primary }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[modalStyles.btn, modalStyles.btnPrimary, { backgroundColor: theme.colors.primary }]}
+                onPress={() => {
+                  const data = completedAttemptModal;
+                  setCompletedAttemptModal(null);
+                  if (data) handleAction('viewResults', data.quizId, data.attemptData);
+                }}
+              >
+                <Ionicons name="document-text" size={16} color="#fff" />
+                <Text style={modalStyles.btnPrimaryText}>View Results</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#D1FAE5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  quizName: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 19,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  infoLabel: {
+    fontSize: 13,
+    flex: 1,
+  },
+  infoValue: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    width: '100%',
+  },
+  btn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  btnOutline: {
+    borderWidth: 1.5,
+  },
+  btnOutlineText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  btnPrimary: {},
+  btnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   safeArea: {

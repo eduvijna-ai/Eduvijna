@@ -1,4 +1,5 @@
 import { apiClient } from '@core/api/config';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 /**
  * Generate quiz from plain text input
@@ -46,11 +47,25 @@ export async function generateQuizFromImage(
   studentLevel: string = 'advance',
   additionalInstructions?: string
 ) {
+  // Compress image before upload to avoid 413 errors from large phone camera photos
+  let uploadUri = fileUri;
+  try {
+    const context = ImageManipulator.manipulate(fileUri);
+    context.resize({ width: 1500 });
+    const image = await context.renderAsync();
+    const result = await image.saveAsync({ compress: 0.6, format: SaveFormat.JPEG });
+    context.release();
+    image.release();
+    uploadUri = result.uri;
+  } catch {
+    // Fall back to original URI if compression fails
+  }
+
   const formData = new FormData();
   formData.append('file', {
-    uri: fileUri,
+    uri: uploadUri,
     type: 'image/jpeg',
-    name: fileUri.split('/').pop() || 'image.jpg',
+    name: 'image.jpg',
   } as any);
   
   if (studentLevel) {
@@ -61,6 +76,8 @@ export async function generateQuizFromImage(
     formData.append('additional_instructions', additionalInstructions);
   }
 
+  // Do NOT omit Content-Type — Axios instance default is application/json.
+  // React Native XHR will append the boundary to multipart/form-data automatically.
   const res = await apiClient.post('/api/v1/analyze-image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
