@@ -248,9 +248,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
       console.log('Analyzing YouTube video:', youtubeUrl);
 
       // Step 1: Get video transcript
-      const transcriptResponse = await apiClient.post('/api/v1/ytlink', {
-        url: youtubeUrl,
-      });
+      const transcriptResponse = await apiClient.get(`/api/v1/yttranscript?url=${encodeURIComponent(youtubeUrl.trim())}`);
       
       //console.log('Transcript response:', transcriptResponse.data);
       
