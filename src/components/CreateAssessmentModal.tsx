@@ -1,13 +1,24 @@
 /**
  * CreateAssessmentModal Component
  * 
- * Compact dropdown showing quiz generation options below the "+" button in header
+ * Compact dropdown showing quiz generation options below the "+" button in header.
+ * Only shows assessment types the current user is permitted to access.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuizNavItems, SCREEN_DEFAULTS } from '@core/hooks/useQuizNavItems';
+
+/** Hard-coded fallback items shown when API returns nothing */
+const FALLBACK_OPTIONS = [
+  { screen: 'CreateAIQuizScreen',          iconColor: '#0891B2', label: 'AI Assessment',  icon: 'bulb' },
+  { screen: 'CreateDocumentQuizScreen',    iconColor: '#DC2626', label: 'Document',       icon: 'document' },
+  { screen: 'CreateImageQuizScreen',       iconColor: '#D97706', label: 'Image',          icon: 'image' },
+  { screen: 'CreateYouTubeQuizScreen',     iconColor: '#059669', label: 'YouTube',        icon: 'logo-youtube' },
+  { screen: 'CreateHandwrittenQuizScreen', iconColor: '#7C3AED', label: 'Handwritten',    icon: 'create' },
+];
 
 interface CreateAssessmentModalProps {
   visible: boolean;
@@ -17,15 +28,6 @@ interface CreateAssessmentModalProps {
   isDark?: boolean;
 }
 
-const QUIZ_OPTIONS = [
-  { type: 'CreateAIQuizScreen', title: 'AI Assessment', icon: 'bulb', iconBg: '#0891B2', bg: '#E3F2FD' },
-  { type: 'CreateDocumentQuizScreen', title: 'Document', icon: 'document', iconBg: '#DC2626', bg: '#FFE5F1' },
-  { type: 'CreateImageQuizScreen', title: 'Image', icon: 'image', iconBg: '#D97706', bg: '#FFF3E0' },
-  { type: 'CreateYouTubeQuizScreen', title: 'YouTube', icon: 'logo-youtube', iconBg: '#059669', bg: '#E8F5E9' },
-  { type: 'CreateHandwrittenQuizScreen', title: 'Handwritten', icon: 'create', iconBg: '#7C3AED', bg: '#F3E5F5' },
-  { type: 'CreateWebsiteQuizScreen', title: 'Website', icon: 'globe', iconBg: '#9C27B0', bg: '#EDE9FE' },
-];
-
 export default function CreateAssessmentModal({ 
   visible, 
   onClose, 
@@ -34,7 +36,21 @@ export default function CreateAssessmentModal({
   isDark = false 
 }: CreateAssessmentModalProps) {
   const insets = useSafeAreaInsets();
-  
+  const { items: navItems } = useQuizNavItems();
+
+  const options = useMemo(() => {
+    if (navItems.length > 0) return navItems;
+    return FALLBACK_OPTIONS.map((f) => ({
+      screen: f.screen,
+      label: f.label,
+      subtitle: SCREEN_DEFAULTS[f.screen]?.subtitle ?? '',
+      iconName: f.icon,
+      iconColor: f.iconColor,
+      bgColor: SCREEN_DEFAULTS[f.screen]?.bg ?? '#F1F5F9',
+      display_order: 0,
+    }));
+  }, [navItems]);
+
   const handleQuizTypePress = (screen: string) => {
     onClose();
     setTimeout(() => {
@@ -55,28 +71,35 @@ export default function CreateAssessmentModal({
         <View style={styles.backdrop} />
       </TouchableWithoutFeedback>
       <View 
-        style={[styles.dropdownContainer, { backgroundColor: theme.colors.card, top: insets.top + 60 }]}
+        style={[
+          styles.dropdownContainer,
+          {
+            backgroundColor: theme.colors.card,
+            top: insets.top + 60,
+            shadowOpacity: isDark ? 0.45 : 0.3,
+          },
+        ]}
       >
         <Text style={[styles.dropdownTitle, { color: theme.colors.text }]}>
           Create Assessment
         </Text>
         
-        {QUIZ_OPTIONS.map((option, index) => (
+        {options.map((option, index) => (
           <TouchableOpacity
-            key={option.type}
+            key={option.screen}
             style={[
               styles.menuItem, 
               { borderBottomColor: theme.colors.border },
-              index === QUIZ_OPTIONS.length - 1 && { borderBottomWidth: 0 }
+              index === options.length - 1 && { borderBottomWidth: 0 }
             ]}
-            onPress={() => handleQuizTypePress(option.type)}
+            onPress={() => handleQuizTypePress(option.screen)}
             activeOpacity={0.7}
           >
-            <View style={[styles.menuIcon, { backgroundColor: option.iconBg }]}>
-              <Ionicons name={option.icon as any} size={14} color="#FFF" />
+            <View style={[styles.menuIcon, { backgroundColor: option.iconColor }]}>
+              <Ionicons name={option.iconName as any} size={14} color="#FFF" />
             </View>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>
-              {option.title}
+              {option.label}
             </Text>
           </TouchableOpacity>
         ))}

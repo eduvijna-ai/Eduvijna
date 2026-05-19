@@ -1,13 +1,37 @@
 /**
  * QuizGenerationGrid Component
- * 
- * Reusable grid of quiz creation options.
- * Used in: Dashboard screens, Assessments screen, and header modal
+ *
+ * Shows assessment-generation tiles that the current user is permitted to see.
+ * - Items fetched from /api/v1/quiz-navigation-items (role-based, from the ERP backend).
+ * - Falls back to all defaults if the API returns nothing (safe offline/new-account behaviour).
+ * - Tile style mirrors the School ERP module grid for visual consistency.
+ *
+ * Used in: TeacherDashboard, CreateAssessmentModal
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  useQuizNavItems,
+  SCREEN_DEFAULTS,
+  type ResolvedNavItem,
+} from '@core/hooks/useQuizNavItems';
+
+/** Hard-coded fallback order – shown when the API returns no items */
+const FALLBACK_SCREENS = [
+  'CreateAIQuizScreen',
+  'CreateDocumentQuizScreen',
+  'CreateImageQuizScreen',
+  'CreateYouTubeQuizScreen',
+  'CreateHandwrittenQuizScreen',
+];
 
 interface QuizGenerationGridProps {
   navigation?: any;
@@ -18,17 +42,35 @@ interface QuizGenerationGridProps {
   onQuizTypePress?: (screen: string) => void;
 }
 
-export default function QuizGenerationGrid({ 
+export default function QuizGenerationGrid({
   navigation,
-  onNavigate, 
-  isDark = false, 
+  onNavigate,
+  isDark = false,
   theme,
   showTitle = true,
-  onQuizTypePress 
+  onQuizTypePress,
 }: QuizGenerationGridProps) {
-  
+  const { items: navItems, loading } = useQuizNavItems();
+
+  /** Tiles to render — API items when available, defaults otherwise */
+  const tiles: ResolvedNavItem[] = useMemo(() => {
+    if (navItems.length > 0) return navItems;
+    // Fallback: show all defaults
+    return FALLBACK_SCREENS.map((screen, i) => {
+      const d = SCREEN_DEFAULTS[screen]!;
+      return {
+        screen,
+        label: d.label,
+        subtitle: d.subtitle,
+        iconName: d.icon,
+        iconColor: d.color,
+        bgColor: d.bg,
+        display_order: i,
+      };
+    });
+  }, [navItems]);
+
   const handlePress = (screen: string) => {
-    // Update the screen name to match the registered name in the navigation stack
     if (navigation?.navigate) {
       navigation.navigate(screen);
     } else if (onNavigate) {
@@ -39,7 +81,7 @@ export default function QuizGenerationGrid({
   };
 
   return (
-    <View style={styles.quizGenerationSection}>
+    <View style={styles.section}>
       {showTitle && (
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
@@ -50,92 +92,69 @@ export default function QuizGenerationGrid({
           </Text>
         </View>
       )}
-      
-      <View style={styles.quizOptionsGrid}>
-        <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#E3F2FD' }]}
-          onPress={() => handlePress('CreateAIQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#0891B2' }]}>
-            <Ionicons name="bulb" size={20} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>AI Assessment</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Topic-based</Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#FFE5F1' }]}
-          onPress={() => handlePress('CreateDocumentQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#DC2626' }]}>
-            <Ionicons name="document" size={20} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Document</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>PDF/Text</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#FFF3E0' }]}
-          onPress={() => handlePress('CreateImageQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#D97706' }]}>
-            <Ionicons name="image" size={20} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Image</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Photo/PDF</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#E8F5E9' }]}
-          onPress={() => handlePress('CreateYouTubeQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#059669' }]}>
-            <Ionicons name="logo-youtube" size={20} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>YouTube</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Video-based</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#F3E5F5' }]}
-          onPress={() => handlePress('CreateHandwrittenQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#7C3AED' }]}>
-            <Ionicons name="create" size={20} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Handwritten</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>Notes/Paper</Text>
-        </TouchableOpacity>
-
-        {/* <TouchableOpacity
-          style={[styles.quizOptionCard, { backgroundColor: isDark ? theme.colors.card : '#F3E5F5' }]}
-          onPress={() => handlePress('CreateWebsiteQuizScreen')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.quizOptionIcon, { backgroundColor: '#9C27B0' }]}>
-            <Ionicons name="globe" size={28} color="#FFF" />
-          </View>
-          <Text style={[styles.quizOptionTitle, { color: theme.colors.text }]}>Website</Text>
-          <Text style={[styles.quizOptionSubtitle, { color: theme.colors.textSecondary }]}>URL-based</Text>
-        </TouchableOpacity> */}
-      </View>
+      {loading ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      ) : (
+        <View style={styles.grid}>
+          {tiles.map((tile) => (
+            <TouchableOpacity
+              key={tile.screen}
+              style={[
+                styles.tile,
+                {
+                  backgroundColor: isDark ? theme.colors.card : '#ffffff',
+                  shadowColor: isDark ? '#000' : '#000',
+                },
+              ]}
+              onPress={() => handlePress(tile.screen)}
+              activeOpacity={0.75}
+            >
+              {/* Icon circle — matches ERP tile icon wrap */}
+              <View
+                style={[
+                  styles.iconWrap,
+                  { backgroundColor: tile.iconColor + '1A' },
+                ]}
+              >
+                <Ionicons
+                  name={tile.iconName as any}
+                  size={26}
+                  color={tile.iconColor}
+                />
+              </View>
+              <Text
+                style={[styles.tileLabel, { color: theme.colors.text }]}
+                numberOfLines={2}
+              >
+                {tile.label}
+              </Text>
+              {tile.subtitle ? (
+                <Text
+                  style={[styles.tileSub, { color: theme.colors.textSecondary }]}
+                  numberOfLines={1}
+                >
+                  {tile.subtitle}
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  quizGenerationSection: {
-    paddingHorizontal: 10,
+  section: {
+    paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 8,
   },
   sectionHeader: {
-    marginBottom: 6,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 14,
@@ -145,40 +164,46 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: 11,
   },
-  quizOptionsGrid: {
+  loadingRow: {
+    height: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /** 3-column wrapping grid — mirrors ERPMainScreen grid */
+  grid: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 4,
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  quizOptionCard: {
-    flex: 1,
-    height: 70,
-    borderRadius: 8,
-    padding: 6,
+  tile: {
+    width: '30%',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  quizOptionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  quizOptionTitle: {
-    fontSize: 10,
-    fontWeight: '700',
+  tileLabel: {
+    fontSize: 11,
+    fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 1,
+    lineHeight: 15,
   },
-  quizOptionSubtitle: {
-    fontSize: 8,
+  tileSub: {
+    fontSize: 9,
     textAlign: 'center',
+    marginTop: 2,
   },
 });
+

@@ -13,12 +13,15 @@ interface UserState {
   tokens: AuthTokens | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** Resolved school ID – centrally managed for all ERP/API calls */
+  schoolId: number | null;
   
   // Actions
   setUser: (user: UserProfile | null) => void;
   setTokens: (tokens: AuthTokens | null) => void;
   setAuthenticated: (isAuthenticated: boolean) => void;
   setLoading: (isLoading: boolean) => void;
+  setSchoolId: (schoolId: number | null) => void;
   logout: () => void;
   reset: () => void;
 }
@@ -28,6 +31,7 @@ const initialState = {
   tokens: null,
   isAuthenticated: false,
   isLoading: true,
+  schoolId: null as number | null,
 };
 
 /**
@@ -44,10 +48,13 @@ export const useUserStore = create<UserState>((set) => ({
   
   setLoading: (isLoading) => set({ isLoading }),
   
+  setSchoolId: (schoolId) => set({ schoolId }),
+
   logout: () => set({
     user: null,
     tokens: null,
     isAuthenticated: false,
+    schoolId: null,
   }),
   
   reset: () => set(initialState),
@@ -62,3 +69,4 @@ export const selectIsAuthenticated = (state: UserState) => state.isAuthenticated
 export const selectIsLoading = (state: UserState) => state.isLoading;
 export const selectUserRole = (state: UserState) => state.user?.role;
 export const selectUserId = (state: UserState) => state.user?.id;
+export const selectSchoolId = (state: UserState) => state.schoolId;

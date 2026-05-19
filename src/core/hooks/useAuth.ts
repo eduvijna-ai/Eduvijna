@@ -10,6 +10,29 @@ import { useTeacherDashboardStore } from '../store/teacherDashboard.store';
 import * as AuthAPI from '../api/auth.api';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
+import { clearQuizNavCache } from './useQuizNavItems';
+
+/** Extract school_id from any user profile shape with multi-field fallbacks */
+function extractSchoolId(user: UserProfile | null): number | null {
+  if (!user) return null;
+  const toNum = (v: any): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return (
+    toNum((user as any).school_id) ??
+    toNum((user as any).schoolId) ??
+    toNum((user as any).school?.id) ??
+    toNum((user as any).school?.school_id) ??
+    toNum((user as any).profile?.school?.id) ??
+    toNum((user as any).profile?.school_id) ??
+    toNum((user as any).profile?.schoolId) ??
+    toNum((user as any).organization_id) ??
+    toNum((user as any).org_id) ??
+    null
+  );
+}
 
 interface UseAuthReturn {
   // State
@@ -41,6 +64,7 @@ export function useAuth(): UseAuthReturn {
     setUser,
     setAuthenticated,
     setLoading,
+    setSchoolId,
     logout: logoutStore,
   } = useUserStore();
   
@@ -114,7 +138,10 @@ export function useAuth(): UseAuthReturn {
         const currentUser = await Promise.race([userPromise, timeoutPromise]);
         setUser(currentUser);
         setAuthenticated(true);
-        console.log('User authenticated:', currentUser.email);
+        // Centrally store school_id for all API calls
+        const sid = extractSchoolId(currentUser);
+        setSchoolId(sid);
+        console.log('User authenticated:', currentUser.email, '| school_id:', sid);
         // NO automatic data loading - data loads only when screens are opened
       } catch (apiError) {
         // API call failed (backend not available), clear auth and show login
@@ -154,7 +181,8 @@ export function useAuth(): UseAuthReturn {
       // Update store
       setUser(response.user);
       setAuthenticated(true);
-      
+      // Centrally store school_id for all API calls
+      setSchoolId(extractSchoolId(response.user));
       // NO automatic data loading - dashboard will load its own data when mounted
     } catch (err) {
       console.error('Login failed:', err);
@@ -164,7 +192,7 @@ export function useAuth(): UseAuthReturn {
     } finally {
       setLoading(false);
     }
-  }, [setUser, setAuthenticated, setLoading]);
+  }, [setUser, setAuthenticated, setLoading, setSchoolId]);
 
   /**
    * Logout user
@@ -179,13 +207,15 @@ export function useAuth(): UseAuthReturn {
 
       // Reset dashboard store
       useTeacherDashboardStore.getState().reset();
-      
+      // Clear quiz nav cache so next login fetches fresh permissions
+      clearQuizNavCache();
       // Clear store (clears user and tokens)
       logoutStore();
     } catch (err) {
       console.error('Logout API failed:', err);
       // Still clear stores even if API call fails
       useTeacherDashboardStore.getState().reset();
+      clearQuizNavCache();
       logoutStore();
     } finally {
       setLoading(false);

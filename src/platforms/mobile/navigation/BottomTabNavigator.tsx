@@ -17,6 +17,8 @@ import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 import AssessmentsScreen from '@screens/Assessments';
+import ERPNavigator from '../../../erp/navigation/ERPNavigator';
+import { AcademicYearProvider } from '../../../erp/contexts/AcademicYearContext';
 // import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
@@ -475,6 +477,8 @@ function BottomTabNavigator() {
             iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === 'Analytics') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+          } else if (route.name === 'ERP') {
+            iconName = focused ? 'business' : 'business-outline';
           } else if (route.name === 'Theme') {
             iconName = focused ? 'color-palette' : 'color-palette-outline';
           } else {
@@ -511,6 +515,16 @@ function BottomTabNavigator() {
         component={ClassesList}
         options={{ title: 'Analytics' }}
       />
+      <Tab.Screen
+        name="ERP"
+        options={{ title: 'ERP' }}
+      >
+        {() => (
+          <AcademicYearProvider>
+            <ERPNavigator />
+          </AcademicYearProvider>
+        )}
+      </Tab.Screen>
       {/* <Tab.Screen 
         name="Theme" 
         component={ThemeSettingsScreen}

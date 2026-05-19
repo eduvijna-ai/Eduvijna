@@ -128,8 +128,14 @@ export interface UserProfile {
   date_of_birth?: string | null;
   
   // ========== Educational/Institutional ==========
+  /** School identifier used by ERP APIs */
+  school_id?: number | null;
+
   /** School/Institution name */
   school?: string | null;
+
+  /** Role identifier from backend auth profile */
+  role_id?: number | null;
   
   /** Board ID (for students - e.g., CBSE, ICSE) */
   board_id?: number | null;
