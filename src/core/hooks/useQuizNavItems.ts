@@ -33,6 +33,7 @@ export const QUIZ_NAV_TO_SCREEN: Record<string, string> = {
   '/ai':                     'CreateAIQuizScreen',
   '/document':               'CreateDocumentQuizScreen',
   '/document-assessment':    'CreateDocumentQuizScreen',
+  '/document-upload':        'DocumentUploadHomeScreen',
   '/handwritten':            'CreateHandwrittenQuizScreen',
   '/handwritten-assessment': 'CreateHandwrittenQuizScreen',
   '/document-handwritten':   'CreateHandwrittenQuizScreen',
@@ -52,6 +53,7 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
   'Quiz':                        'CreateAIQuizScreen',
   'AITimer':                     'CreateAIQuizScreen',
   'CreateDocumentQuizScreen':    'CreateDocumentQuizScreen',
+  'DocumentUploadHomeScreen':    'DocumentUploadHomeScreen',
   'DocumentQuiz':                'CreateDocumentQuizScreen',
   'HandwrittenWorkspace':        'CreateHandwrittenQuizScreen',
   'CreateHandwrittenQuizScreen': 'CreateHandwrittenQuizScreen',
@@ -66,6 +68,7 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
 export const SCREEN_DEFAULTS: Record<string, { color: string; bg: string; icon: string; label: string; subtitle: string }> = {
   CreateAIQuizScreen:          { color: '#0891B2', bg: '#E3F2FD', icon: 'bulb',         label: 'AI Assessment',  subtitle: 'Topic-based' },
   CreateDocumentQuizScreen:    { color: '#DC2626', bg: '#FFE5F1', icon: 'document',     label: 'Document',       subtitle: 'PDF/Text' },
+  DocumentUploadHomeScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'folder-open',  label: 'Document Upload', subtitle: 'New module' },
   CreateHandwrittenQuizScreen: { color: '#7C3AED', bg: '#F3E5F5', icon: 'create',       label: 'Handwritten',    subtitle: 'Notes/Paper' },
   CreateImageQuizScreen:       { color: '#D97706', bg: '#FFF3E0', icon: 'image',        label: 'Image',          subtitle: 'Photo/PDF' },
   CreateYouTubeQuizScreen:     { color: '#059669', bg: '#E8F5E9', icon: 'logo-youtube', label: 'YouTube',        subtitle: 'Video-based' },

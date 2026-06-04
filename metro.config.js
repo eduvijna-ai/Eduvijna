@@ -3,6 +3,30 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
+// Prevent Metro's FallbackWatcher from watching jest packages on Windows.
+// When npm installs jest-changed-files and similar packages with deeply-nested
+// node_modules, Windows creates long-path junctions (\\?\ prefix). If a
+// subsequent npm install removes those nested dirs, stale fs.watch events
+// produce mangled paths (e.g. "...\type\?\D:\...\type") that crash Metro.
+// Blocking these packages stops Metro from watching them entirely.
+{
+  const existingBlockList = config.resolver.blockList;
+  const jestWatchBlockList = [
+    // Block the entire jest-changed-files package (not needed in the app bundle)
+    /.*\/jest-changed-files\/.*/,
+    // Block nested node_modules inside any jest-* package (long-path junctions)
+    /.*\/node_modules\/jest[^/]*\/node_modules\/.*/,
+  ];
+  config.resolver.blockList = existingBlockList
+    ? [
+        ...(Array.isArray(existingBlockList)
+          ? existingBlockList
+          : [existingBlockList]),
+        ...jestWatchBlockList,
+      ]
+    : jestWatchBlockList;
+}
+
 // Force axios to use browser build (prevents Node "crypto" import)
 const originalResolveRequest = config.resolver.resolveRequest;
 

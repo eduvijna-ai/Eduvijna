@@ -162,6 +162,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  // Flag to show a loading state while we navigate away for the empty-questions case
+  const [pendingRedirect, setPendingRedirect] = useState(false);
   
   // Use quiz state as currentQuizData for consistency
   const currentQuizData = quiz;
@@ -386,6 +388,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     return undefined;
   }, [quizStarted, timeRemaining, showResults]);
 
+  // Validate the loaded quiz and redirect outside render if it's invalid.
+  // IMPORTANT: keep this hook above any conditional returns to preserve hook order.
+  useEffect(() => {
+    if (
+      quiz &&
+      (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) &&
+      !pendingRedirect
+    ) {
+      console.error('Quiz validation failed - no questions, redirecting to QuizStatusScreen');
+      setPendingRedirect(true);
+      navigation.replace('QuizStatusScreen', {
+        status: 'unavailable',
+        title: quiz.title || 'Assessment',
+        message: 'No questions were generated for this assessment. Please try creating a new assessment.',
+        icon: 'alert-circle-outline',
+      });
+    }
+  }, [quiz, pendingRedirect, navigation]);
+
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -427,24 +448,17 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     }
     navigation.goBack();
   };
-  
-  // Now validate the loaded quiz
+
   if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
-    console.error('Quiz validation failed - no questions:', {
-      hasQuiz: !!quiz,
-      hasQuestions: !!quiz.questions,
-      isArray: Array.isArray(quiz?.questions),
-      questionCount: quiz?.questions?.length,
-      quizTitle: quiz.title,
-    });
-    
-    navigation.replace('QuizStatusScreen', {
-      status: 'unavailable',
-      title: quiz.title || 'Assessment',
-      message: 'No questions were generated for this assessment. Please try creating a new assessment.',
-      icon: 'alert-circle-outline',
-    });
-    return null;
+    // Show a loading view while the useEffect above triggers the navigation
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.centerContainer}>
+          <LoadingSpinner size={60} fullScreen />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Redirecting...</Text>
+        </View>
+      </View>
+    );
   }
 
   const currentQuestion = quiz.questions[currentQuestionIndex];

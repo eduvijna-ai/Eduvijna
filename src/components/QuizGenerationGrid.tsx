@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -71,14 +72,44 @@ export default function QuizGenerationGrid({
   }, [navItems]);
 
   const handlePress = (screen: string) => {
+    const useWorkspaceRedirect = Platform.OS !== 'web';
+    const resolvedScreen =
+      useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')
+        ? 'AssessmentWorkspaceScreen'
+        : screen;
+
+    const resolvedParams =
+      useWorkspaceRedirect && screen === 'CreateDocumentQuizScreen'
+        ? { mode: 'document' }
+        : useWorkspaceRedirect && screen === 'CreateHandwrittenQuizScreen'
+          ? { mode: 'handwritten' }
+          : undefined;
+
     if (navigation?.navigate) {
-      navigation.navigate(screen);
+      navigation.navigate(resolvedScreen, resolvedParams);
     } else if (onNavigate) {
-      onNavigate(screen);
+      onNavigate(resolvedScreen, resolvedParams);
     } else if (onQuizTypePress) {
-      onQuizTypePress(screen);
+      onQuizTypePress(resolvedScreen);
     }
   };
+
+  const AI_CONTENT_TILES = [
+    {
+      screen: 'RecentAssessmentsScreen',
+      label: 'Recent AI Assessments',
+      subtitle: 'View & retake saved quizzes',
+      iconName: 'time',
+      iconColor: '#0891B2',
+    },
+    {
+      screen: 'WorksheetScreen',
+      label: 'Create Worksheet',
+      subtitle: 'AI-generated printable sheets',
+      iconName: 'document-text',
+      iconColor: '#059669',
+    },
+  ];
 
   return (
     <View style={styles.section}>
@@ -112,7 +143,6 @@ export default function QuizGenerationGrid({
               onPress={() => handlePress(tile.screen)}
               activeOpacity={0.75}
             >
-              {/* Icon circle — matches ERP tile icon wrap */}
               <View
                 style={[
                   styles.iconWrap,
@@ -143,10 +173,47 @@ export default function QuizGenerationGrid({
           ))}
         </View>
       )}
+
+      {/* My AI Content — always visible, separated from generation tiles */}
+      <View style={[styles.aiContentDivider, { borderTopColor: theme.colors.border }]}>
+        <Text style={[styles.aiContentHeading, { color: theme.colors.textSecondary }]}>
+          MY AI CONTENT
+        </Text>
+      </View>
+      <View style={styles.aiContentRow}>
+        {AI_CONTENT_TILES.map((tile) => (
+          <TouchableOpacity
+            key={tile.screen}
+            style={[
+              styles.aiContentTile,
+              {
+                backgroundColor: isDark ? theme.colors.card : '#ffffff',
+                borderColor: tile.iconColor + '40',
+              },
+            ]}
+            onPress={() => handlePress(tile.screen)}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.aiContentIconWrap, { backgroundColor: tile.iconColor + '18' }]}>
+              <Ionicons name={tile.iconName as any} size={22} color={tile.iconColor} />
+            </View>
+            <View style={styles.aiContentText}>
+              <Text style={[styles.aiContentLabel, { color: theme.colors.text }]} numberOfLines={1}>
+                {tile.label}
+              </Text>
+              <Text style={[styles.aiContentSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                {tile.subtitle}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={tile.iconColor} />
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   );
 }
 
+// ─── extra styles injected below the grid ───────────────────────────────────
 const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 12,
@@ -204,6 +271,51 @@ const styles = StyleSheet.create({
     fontSize: 9,
     textAlign: 'center',
     marginTop: 2,
+  },
+  aiContentDivider: {
+    borderTopWidth: 1,
+    marginTop: 14,
+    paddingTop: 10,
+  },
+  aiContentHeading: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  aiContentRow: {
+    gap: 8,
+  },
+  aiContentTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 10,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  aiContentIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiContentText: {
+    flex: 1,
+  },
+  aiContentLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  aiContentSub: {
+    fontSize: 11,
+    marginTop: 1,
   },
 });
 

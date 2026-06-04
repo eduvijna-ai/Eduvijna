@@ -15,8 +15,8 @@ import useNotifications from '@core/hooks/useNotifications';
 
 
 interface WebNavigationProps {
-  activeScreen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen';
-  onNavigate: (screen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen') => void;
+  activeScreen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP';
+  onNavigate: (screen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP') => void;
   children: React.ReactNode;
 }
 
@@ -24,6 +24,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
   const user = useUserStore((state) => state.user);
   const { logout } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme.colors, isDark), [theme.colors, isDark]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
@@ -108,7 +109,11 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
           onPress={() => onNavigate('dashboard')}
         >
           <Image 
-            source={require('../../../../assets/eduvijna_logo_sidebar_white.png')} 
+            source={
+              isDark
+                ? require('../../../../assets/eduvijna_logo_sidebar_white.png')
+                : require('../../../../assets/eduvijna_logo_sidebar.png')
+            }
             style={styles.logoImage}
             resizeMode="contain"
           />
@@ -118,16 +123,19 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
           <NavItem
             title="Dashboard"
             active={activeScreen === 'dashboard'}
+            styles={styles}
             onPress={() => onNavigate('dashboard')}
           />
           <NavItem
             title="Assessments"
             active={activeScreen === 'assessments'}
+            styles={styles}
             onPress={() => onNavigate('assessments')}
           />
           <NavItem
             title="Analytics"
             active={activeScreen === 'analytics'}
+            styles={styles}
             onPress={() => onNavigate('ClassesList')}
           />
           {/* <NavItem
@@ -162,7 +170,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
                 style={styles.createAssessmentButton}
                 onPress={() => setShowCreateModal(true)}
               >
-                <Ionicons name="add-circle" size={24} color="#5B21B6" />
+                <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
               </TouchableOpacity>
             )}
             
@@ -170,7 +178,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
             <NotificationBell
               unreadCount={unreadCount}
               onPress={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
-              iconColor="#374151"
+              iconColor={theme.colors.text}
             />
 
             {/* Theme Toggle Icon */}
@@ -181,7 +189,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
               <Ionicons 
                 name={isDark ? 'sunny-outline' : 'moon-outline'} 
                 size={24} 
-                color="#374151" 
+                color={theme.colors.text}
               />
             </TouchableOpacity>
 
@@ -197,7 +205,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
-                  <Ionicons name="person" size={20} color="#FFFFFF" />
+                  <Ionicons name="person" size={20} color={theme.colors.buttonText} />
                 </View>
               )}
             </TouchableOpacity>
@@ -235,7 +243,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
   );
 }
 
-function NavItem({ title, active, onPress }: { title: string; active: boolean; onPress: () => void }) {
+function NavItem({ title, active, onPress, styles }: { title: string; active: boolean; onPress: () => void; styles: any }) {
   return (
     <TouchableOpacity
       style={[styles.navItem, active && styles.navItemActive]}
@@ -246,22 +254,22 @@ function NavItem({ title, active, onPress }: { title: string; active: boolean; o
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: colors.background,
   },
   sidebar: {
     width: 250,
-    backgroundColor: '#1F2937',
+    backgroundColor: isDark ? colors.cardBackground : '#1F2937',
     borderRightWidth: 1,
-    borderRightColor: '#374151',
+    borderRightColor: colors.border,
   },
   logo: {
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#374151',
+    borderBottomColor: colors.border,
   },
   logoText: {
     fontSize: 24,
@@ -278,46 +286,46 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   navItemActive: {
-    backgroundColor: '#374151',
+    backgroundColor: isDark ? '#111827' : '#374151',
     borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6',
+    borderLeftColor: colors.primary,
   },
   navItemText: {
     fontSize: 16,
-    color: '#9CA3AF',
+    color: isDark ? colors.textSecondary : '#9CA3AF',
   },
   navItemTextActive: {
-    color: '#FFFFFF',
+    color: colors.buttonText,
     fontWeight: '600',
   },
   sidebarFooter: {
     padding: 24,
     borderTopWidth: 1,
-    borderTopColor: '#374151',
+    borderTopColor: colors.border,
   },
   userInfo: {
     marginBottom: 12,
   },
   userRole: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: isDark ? colors.textSecondary : '#9CA3AF',
     textTransform: 'uppercase',
     marginBottom: 4,
   },
   userName: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: colors.buttonText,
     fontWeight: '500',
   },
   logoutButton: {
-    backgroundColor: '#374151',
+    backgroundColor: isDark ? '#111827' : '#374151',
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 6,
     alignItems: 'center',
   },
   logoutText: {
-    color: '#FFFFFF',
+    color: colors.buttonText,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -326,9 +334,9 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 64,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.cardBackground,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -337,7 +345,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.text,
   },
   headerActions: {
     flexDirection: 'row',
@@ -380,7 +388,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#6366F1',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -390,7 +398,7 @@ const styles = StyleSheet.create({
   },
   headerUser: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textSecondary,
   },
   content: {
     flex: 1,

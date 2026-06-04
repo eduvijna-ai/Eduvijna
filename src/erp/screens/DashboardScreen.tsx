@@ -1,6 +1,6 @@
 /**
  * ERP Dashboard Screen
- * Shows KPI summary, attendance overview, recent notices, overdue fees, and admission counts.
+ * Shows KPI summary, 7-day attendance trend chart, recent notices, overdue fees, and admission counts.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -10,8 +10,11 @@ import {
   ScrollView,
   RefreshControl,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
 import {
+  erpDashboardApi,
   classOverviewApi,
   staffAttendanceApi,
   noticesApi,
@@ -30,64 +33,62 @@ import {
 import { useErpRole } from '../hooks/useErpRole';
 import { useAcademicYear } from '../contexts/AcademicYearContext';
 
-interface DashboardKpi {
-  total_classes: number;
-  total_students: number;
-  total_staff: number;
-  attendance_today_pct: number;
-}
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function DashboardScreen() {
-  const { schoolId, isAdmin } = useErpRole();
+  const { schoolId, isAdmin, isTeacher } = useErpRole();
   const { selectedYearId } = useAcademicYear();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [kpis, setKpis] = useState<DashboardKpi | null>(null);
+  const [kpis, setKpis] = useState<any>(null);
+  const [attendanceTrend, setAttendanceTrend] = useState<any[]>([]);
   const [recentNotices, setRecentNotices] = useState<any[]>([]);
   const [overdueFees, setOverdueFees] = useState<any[]>([]);
   const [admissionCounts, setAdmissionCounts] = useState<any>(null);
   const [staffOnLeave, setStaffOnLeave] = useState<number>(0);
+  const [classStats, setClassStats] = useState<{ classes: number; students: number; staff: number }>({
+    classes: 0, students: 0, staff: 0,
+  });
 
   const load = useCallback(async () => {
     try {
-      const params = schoolId ? { school_id: schoolId } : {};
-
+      const params: any = schoolId ? { school_id: schoolId } : {};
       const kpiParams = selectedYearId ? { ...params, academic_year_id: selectedYearId } : params;
-      const [classKpiData, noticesData] = await Promise.all([
+
+      // Always fetch: dashboard summary, class KPIs, notices
+      const [dashData, classKpiData, noticesData] = await Promise.all([
+        erpDashboardApi.get(7, schoolId).catch(() => null),
         classOverviewApi.getKPIs(kpiParams).catch(() => null),
         noticesApi.getAll({ per_page: 5, ...params }).catch(() => null),
       ]);
 
+      if (dashData) {
+        setKpis(dashData?.kpis ?? dashData);
+        const trend: any[] = dashData?.attendance_trend ?? [];
+        setAttendanceTrend(trend);
+      }
+
       if (classKpiData) {
-        const items = classKpiData?.items ?? classKpiData ?? [];
+        const items: any[] = classKpiData?.items ?? classKpiData ?? [];
         const students = items.reduce((s: number, r: any) => s + (r.student_count ?? 0), 0);
-        const teachers = new Set(
-          items.flatMap((r: any) => (r.teacher_name ? [r.teacher_name] : [])),
-        ).size;
-        setKpis({
-          total_classes: items.length,
-          total_students: students,
-          total_staff: teachers,
-          attendance_today_pct: 0,
-        });
+        const teacherSet = new Set(items.flatMap((r: any) => (r.teacher_name ? [r.teacher_name] : [])));
+        setClassStats({ classes: items.length, students, staff: teacherSet.size });
       }
 
-      if (noticesData) {
-        setRecentNotices(noticesData?.items ?? noticesData ?? []);
-      }
+      if (noticesData) setRecentNotices(noticesData?.items ?? noticesData ?? []);
 
+      // Admin-only: overdue fees, admissions, staff on leave
       if (isAdmin) {
         const [feeData, admissionsData, staffData] = await Promise.all([
           feeCollectionsApi.list({ status: 'overdue', per_page: 5, ...params }).catch(() => null),
           admissionsApi.statusCounts(params).catch(() => null),
-          staffAttendanceApi.getAll({ status: 'leave', per_page: 10, ...params }).catch(() => null),
+          staffAttendanceApi.getAll({ status: 'leave', per_page: 20, ...params }).catch(() => null),
         ]);
-
         if (feeData) setOverdueFees(feeData?.items ?? feeData ?? []);
         if (admissionsData) setAdmissionCounts(admissionsData);
         if (staffData) {
-          const items = staffData?.items ?? staffData ?? [];
+          const items: any[] = staffData?.items ?? staffData ?? [];
           setStaffOnLeave(items.length);
         }
       }
@@ -101,6 +102,15 @@ export default function DashboardScreen() {
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
+  // Build chart data from attendance trend
+  const trendLabels = attendanceTrend.map((t: any) => {
+    const d = new Date(t.date);
+    return `${d.getDate()}/${d.getMonth() + 1}`;
+  });
+  const presentData = attendanceTrend.map((t: any) => t.present ?? 0);
+  const absentData  = attendanceTrend.map((t: any) => t.absent  ?? 0);
+  const hasTrend = attendanceTrend.length >= 2;
+
   if (loading) return <LoadingState />;
 
   return (
@@ -108,30 +118,52 @@ export default function DashboardScreen() {
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {/* KPI Row */}
+      {/* KPI Row 1 */}
       <SectionHeader title="Overview" />
       <View style={styles.kpiRow}>
-        <KpiCard label="Classes" value={kpis?.total_classes ?? 0} color={COLORS.primary} icon="school-outline" />
-        <KpiCard label="Students" value={kpis?.total_students ?? 0} color="#8b5cf6" icon="people-outline" />
-        <KpiCard label="Staff" value={kpis?.total_staff ?? 0} color="#10b981" icon="person-outline" />
+        <KpiCard label="Classes"  value={kpis?.total_classes  ?? classStats.classes}  color={COLORS.primary}  icon="school-outline" />
+        <KpiCard label="Students" value={kpis?.total_students ?? classStats.students} color="#8b5cf6" icon="people-outline" />
+        <KpiCard label="Staff"    value={kpis?.total_staff    ?? classStats.staff}    color="#10b981" icon="person-outline" />
       </View>
 
       {isAdmin && (
         <View style={styles.kpiRow}>
-          <KpiCard label="Staff on Leave" value={staffOnLeave} color={COLORS.warning} icon="airplane-outline" />
-          <KpiCard
-            label="Enquiries"
-            value={admissionCounts?.enquiry ?? 0}
-            color="#06b6d4"
-            icon="person-add-outline"
-          />
-          <KpiCard
-            label="Overdue Fees"
-            value={overdueFees.length}
-            color={COLORS.danger}
-            icon="cash-outline"
-          />
+          <KpiCard label="On Leave"     value={staffOnLeave}             color={COLORS.warning} icon="airplane-outline" />
+          <KpiCard label="Enquiries"    value={admissionCounts?.enquiry ?? 0} color="#06b6d4"  icon="person-add-outline" />
+          <KpiCard label="Overdue Fees" value={overdueFees.length}       color={COLORS.danger}  icon="cash-outline" />
         </View>
+      )}
+
+      {/* 7-day Attendance Trend */}
+      {hasTrend && (
+        <>
+          <SectionHeader title="Attendance Trend (7 days)" />
+          <View style={styles.chartCard}>
+            <LineChart
+              data={{
+                labels: trendLabels,
+                datasets: [
+                  { data: presentData, color: () => '#22c55e', strokeWidth: 2 },
+                  { data: absentData,  color: () => '#ef4444', strokeWidth: 2 },
+                ],
+                legend: ['Present', 'Absent'],
+              }}
+              width={SCREEN_WIDTH - 40}
+              height={180}
+              chartConfig={{
+                backgroundGradientFrom: '#fff',
+                backgroundGradientTo: '#fff',
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(59,130,246,${opacity})`,
+                labelColor: () => COLORS.gray[500],
+                propsForDots: { r: '4' },
+                propsForBackgroundLines: { stroke: COLORS.gray[100] },
+              }}
+              bezier
+              style={{ borderRadius: 12 }}
+            />
+          </View>
+        </>
       )}
 
       {/* Recent Notices */}
@@ -165,8 +197,8 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {/* Admission Counts (admin) */}
-      {isAdmin && admissionCounts && (
+      {/* Admission Pipeline (admin) */}
+      {isAdmin && admissionCounts && Object.keys(admissionCounts).length > 0 && (
         <>
           <SectionHeader title="Admissions by Status" />
           <View style={styles.kpiRow}>
@@ -196,6 +228,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
+  },
+  chartCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
 });

@@ -6,29 +6,25 @@
     "orientation": "portrait",
     "icon": "./assets/eduvijna-logo.png",
     "userInterfaceStyle": "light",
-
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
-    "assetBundlePatterns": ["**/*"],
-
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.eduvijna.app"
     },
-
     "android": {
       "package": "com.eduvijna.app",
       "googleServicesFile": "./google-services.json",
-
       "adaptiveIcon": {
         "foregroundImage": "./assets/eduvijna-logo.png",
         "backgroundColor": "#ffffff"
       },
-
       "intentFilters": [
         {
           "action": "VIEW",
@@ -43,38 +39,38 @@
               "scheme": "eduvijna"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
-
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-
     "scheme": "eduvijna",
-
     "updates": {
       "enabled": true,
       "fallbackToCacheTimeout": 0
     },
-
     "runtimeVersion": "1.0.0",
-
-    "plugins": ["expo-notifications", "./plugins/withCropButtonLabel"],
-
+    "plugins": [
+      "expo-notifications",
+      "./plugins/withCropButtonLabel",
+      "expo-asset",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": false
     },
-
     "extra": {
       "API_BASE_URL": "https://eduapi.eduvijna.com",
       "eas": {
         "projectId": "60acc689-aea1-4ce1-9770-4200c1c17c00"
       }
     },
-
     "owner": "samathakotikanyadanam"
   }
 }

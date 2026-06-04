@@ -62,6 +62,24 @@ interface DropdownProviderProps {
 export function DropdownProvider({ children }: DropdownProviderProps) {
   const { user, token } = useAuth();
   const wasAuthenticatedRef = useRef(false);
+
+  const resolvedSchoolId = React.useMemo(() => {
+    const toNum = (v: any): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    return (
+      toNum((user as any)?.school_id) ??
+      toNum((user as any)?.schoolId) ??
+      toNum((user as any)?.school?.id) ??
+      toNum((user as any)?.school?.school_id) ??
+      toNum((user as any)?.profile?.school?.id) ??
+      toNum((user as any)?.profile?.school_id) ??
+      toNum((user as any)?.profile?.schoolId) ??
+      undefined
+    );
+  }, [user]);
   
   // Classes state
   const [classes, setClasses] = useState<ClassItem[]>([]);
@@ -85,7 +103,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     setClassesError(null);
     
     try {
-      const response: DropdownResponse<ClassItem> = await getClasses();
+      const response: DropdownResponse<ClassItem> = await getClasses({ school_id: resolvedSchoolId });
       setClasses(response.items);
       console.log(`✅ [DropdownContext] Loaded ${response.items.length} classes`);
     } catch (error: any) {
@@ -95,7 +113,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     } finally {
       setIsLoadingClasses(false);
     }
-  }, []);
+  }, [resolvedSchoolId]);
 
   // Load subjects
   const loadSubjects = useCallback(async () => {
@@ -104,7 +122,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     setSubjectsError(null);
     
     try {
-      const response: DropdownResponse<SubjectItem> = await getSubjects();
+      const response: DropdownResponse<SubjectItem> = await getSubjects({ school_id: resolvedSchoolId });
       setSubjects(response.items);
       console.log(`✅ [DropdownContext] Loaded ${response.items.length} subjects`);
     } catch (error: any) {
@@ -114,7 +132,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     } finally {
       setIsLoadingSubjects(false);
     }
-  }, []);
+  }, [resolvedSchoolId]);
 
   // Load difficulty levels
   const loadDifficulty = useCallback(async () => {

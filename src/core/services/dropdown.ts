@@ -1,4 +1,5 @@
 import { apiClient } from '../api/config';
+import { useUserStore } from '../store/user.store';
 
 export interface ClassItem {
   id: string;
@@ -17,6 +18,14 @@ export interface SubjectItem {
 export interface DropdownResponse<T> {
   items: T[];
   total?: number;
+}
+
+export interface GenericDropdownItem {
+  id: string;
+  name: string;
+  label?: string;
+  value?: string;
+  slug?: string;
 }
 
 // Fallback data for classes
@@ -55,11 +64,26 @@ const FALLBACK_SUBJECTS: SubjectItem[] = [
 ];
 
 // Get list of classes/grades from instructor dashboard
-export async function getClasses(): Promise<DropdownResponse<ClassItem>> {
+export async function getClasses(params: {
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<ClassItem>> {
   console.log('📚 [getClasses] Starting API call to /api/v1/dropdowns/classes');
   try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const query = qs.toString();
+
     // Use the dashboard classes endpoint
-    const response = await apiClient.get('/api/v1/dropdowns/classes');
+    const response = await apiClient.get(`/api/v1/dropdowns/classes${query ? `?${query}` : ''}`);
     console.log('✅ [getClasses] API Response received:', response.data);
     
     // Transform the response to match our ClassItem interface
@@ -83,11 +107,26 @@ export async function getClasses(): Promise<DropdownResponse<ClassItem>> {
 }
 
 // Get list of subjects - Load ALL subjects without pagination
-export async function getSubjects(): Promise<DropdownResponse<SubjectItem>> {
+export async function getSubjects(params: {
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<SubjectItem>> {
   console.log('📖 [getSubjects] Starting API call to /api/v1/dropdowns/subjects/all');
   try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const query = qs.toString();
+
     // Use the /all endpoint to get ALL subjects, not paginated
-    const response = await apiClient.get('/api/v1/dropdowns/subjects/all');
+    const response = await apiClient.get(`/api/v1/dropdowns/subjects/all${query ? `?${query}` : ''}`);
     //console.log('✅ [getSubjects] API Response received:', response.data);
     
     // Transform the response to match our SubjectItem interface
@@ -111,10 +150,27 @@ export async function getSubjects(): Promise<DropdownResponse<SubjectItem>> {
 }
 
 // Get subjects by class/grade
-export async function getSubjectsByClass(classId: string): Promise<DropdownResponse<SubjectItem>> {
+export async function getSubjectsByClass(classId: string, params: {
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<SubjectItem>> {
   console.log(`📖 [getSubjectsByClass] Starting API call for classId: ${classId}`);
   try {
-    const response = await apiClient.get(`/api/v1/dropdowns/classes/${classId}/subjects`);
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    qs.append('class_id', String(classId));
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const query = qs.toString();
+
+    // Use query-based endpoint to match web client behavior
+    const response = await apiClient.get(`/api/v1/dropdowns/subjects${query ? `?${query}` : ''}`);
     //console.log('✅ [getSubjectsByClass] API Response received:', response.data);
     
     // Transform the response to match our SubjectItem interface
@@ -168,6 +224,123 @@ export async function getDifficultyLevels(): Promise<DropdownResponse<{ id: stri
         { id: '7', name: 'Master' },
       ]
     };
+  }
+}
+
+function mapDropdownItems(items: any[]): GenericDropdownItem[] {
+  return (items || []).map((item: any) => ({
+    id: String(item.id),
+    name: item.label || item.name || String(item.id),
+    value: String(item.id),
+    label: item.label || item.name || String(item.id),
+    slug: item.slug,
+  }));
+}
+
+function resolveSchoolId(explicitSchoolId?: number): number | undefined {
+  if (explicitSchoolId !== null && explicitSchoolId !== undefined && Number.isFinite(Number(explicitSchoolId)) && Number(explicitSchoolId) > 0) {
+    return Number(explicitSchoolId);
+  }
+  const sid = useUserStore.getState().schoolId;
+  if (sid !== null && sid !== undefined && Number.isFinite(Number(sid)) && Number(sid) > 0) {
+    return Number(sid);
+  }
+  return undefined;
+}
+
+export async function getStreams(params: {
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<GenericDropdownItem>> {
+  try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const response = await apiClient.get(`/api/v1/dropdowns/streams?${qs.toString()}`);
+    const items = mapDropdownItems(response.data?.items || []);
+    return { items, total: response.data?.total || items.length };
+  } catch {
+    return { items: [] };
+  }
+}
+
+export async function getExams(params: {
+  stream_id?: number;
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<GenericDropdownItem>> {
+  try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (params.stream_id) qs.append('stream_id', String(params.stream_id));
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const response = await apiClient.get(`/api/v1/dropdowns/exams?${qs.toString()}`);
+    const items = mapDropdownItems(response.data?.items || []);
+    return { items, total: response.data?.total || items.length };
+  } catch {
+    return { items: [] };
+  }
+}
+
+export async function getCategories(params: {
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<GenericDropdownItem>> {
+  try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const response = await apiClient.get(`/api/v1/dropdowns/categories?${qs.toString()}`);
+    const items = mapDropdownItems(response.data?.items || []);
+    return { items, total: response.data?.total || items.length };
+  } catch {
+    return { items: [] };
+  }
+}
+
+export async function getExamSubjects(params: {
+  exam_id?: number;
+  school_id?: number;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  exact?: boolean;
+} = {}): Promise<DropdownResponse<GenericDropdownItem>> {
+  try {
+    const schoolId = resolveSchoolId(params.school_id);
+    const qs = new URLSearchParams();
+    if (params.exam_id) qs.append('exam_id', String(params.exam_id));
+    if (schoolId !== undefined) qs.append('school_id', String(schoolId));
+    if (params.q) qs.append('q', params.q);
+    if (params.page) qs.append('page', String(params.page));
+    if (params.per_page) qs.append('per_page', String(params.per_page));
+    if (params.exact !== undefined) qs.append('exact', String(params.exact));
+    const response = await apiClient.get(`/api/v1/dropdowns/exam-subjects?${qs.toString()}`);
+    const items = mapDropdownItems(response.data?.items || []);
+    return { items, total: response.data?.total || items.length };
+  } catch {
+    return { items: [] };
   }
 }
 

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUserStore } from '../store/user.store';
 import { useTeacherDashboardStore } from '../store/teacherDashboard.store';
 import * as AuthAPI from '../api/auth.api';
+import { get } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
@@ -32,6 +33,46 @@ function extractSchoolId(user: UserProfile | null): number | null {
     toNum((user as any).org_id) ??
     null
   );
+}
+
+function isSuperAdminUser(user: UserProfile | null): boolean {
+  if (!user) return false;
+  const anyUser = user as any;
+  return (
+    anyUser?.role_id === 1 ||
+    anyUser?.role_name === 'super_admin' ||
+    anyUser?.role === 'super_admin' ||
+    (anyUser?.role === 'admin' && !extractSchoolId(user))
+  );
+}
+
+async function enrichUserWithSchoolName(user: UserProfile): Promise<UserProfile> {
+  if (isSuperAdminUser(user)) return user;
+  try {
+    const resp = await get<any>('/api/v1/school-management/my-school');
+    const apiSchoolName =
+      (typeof resp?.school_name === 'string' && resp.school_name) ||
+      (typeof resp?.name === 'string' && resp.name) ||
+      (typeof resp?.data?.school_name === 'string' && resp.data.school_name) ||
+      (typeof resp?.data?.name === 'string' && resp.data.name) ||
+      '';
+
+    // Also extract school_id from the /my-school response (SchoolResponse has school_id field)
+    const apiSchoolId: number | undefined =
+      typeof resp?.school_id === 'number' ? resp.school_id :
+      typeof resp?.data?.school_id === 'number' ? resp.data.school_id :
+      undefined;
+
+    const nextUser = {
+      ...(user as any),
+      ...(apiSchoolName ? { school: apiSchoolName, school_name: apiSchoolName } : {}),
+      ...(apiSchoolId ? { school_id: apiSchoolId } : {}),
+    } as UserProfile;
+
+    return nextUser;
+  } catch {
+    return user;
+  }
 }
 
 interface UseAuthReturn {
@@ -136,12 +177,13 @@ export function useAuth(): UseAuthReturn {
         );
         
         const currentUser = await Promise.race([userPromise, timeoutPromise]);
-        setUser(currentUser);
+        const enrichedUser = await enrichUserWithSchoolName(currentUser);
+        setUser(enrichedUser);
         setAuthenticated(true);
         // Centrally store school_id for all API calls
-        const sid = extractSchoolId(currentUser);
+        const sid = extractSchoolId(enrichedUser);
         setSchoolId(sid);
-        console.log('User authenticated:', currentUser.email, '| school_id:', sid);
+        console.log('User authenticated:', enrichedUser.email, '| school_id:', sid);
         // NO automatic data loading - data loads only when screens are opened
       } catch (apiError) {
         // API call failed (backend not available), clear auth and show login
@@ -179,10 +221,11 @@ export function useAuth(): UseAuthReturn {
       const response = await AuthAPI.login(credentials);
 
       // Update store
-      setUser(response.user);
+      const enrichedUser = await enrichUserWithSchoolName(response.user);
+      setUser(enrichedUser);
       setAuthenticated(true);
       // Centrally store school_id for all API calls
-      setSchoolId(extractSchoolId(response.user));
+      setSchoolId(extractSchoolId(enrichedUser));
       // NO automatic data loading - dashboard will load its own data when mounted
     } catch (err) {
       console.error('Login failed:', err);

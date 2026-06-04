@@ -19,7 +19,6 @@ import { ImageManipulator as ExpoImageManipulator, SaveFormat } from 'expo-image
 // expo-print no longer needed - images sent directly to API
 import { File as ExpoFile } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { apiClient } from '../core/api/config';
 import QuizFormFields from '../components/QuizFormFields';
 import { useDropdowns } from '../context/DropdownContext';
@@ -47,8 +46,30 @@ interface QuizData {
   thread_slug?: string;
 }
 
-export default function CreateDocumentQuizScreen() {
-  const navigation = useNavigation<any>();
+interface Props {
+  navigation?: any;
+  route?: {
+    params?: {
+      fromWorkspace?: boolean;
+      workspacePreset?: {
+        classValue?: string;
+        subject?: string;
+        lesson?: string;
+        difficulty?: 'easy' | 'medium' | 'hard' | '';
+        questionCount?: number;
+        additionalInstructions?: string;
+      };
+    };
+  };
+}
+
+export default function CreateDocumentQuizScreen({ navigation: propNavigation, route }: Props = {}) {
+  const navigation = {
+    navigate: () => {},
+    goBack: () => {},
+    addListener: () => () => {},
+    ...(propNavigation || {}),
+  };
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();
@@ -136,6 +157,9 @@ export default function CreateDocumentQuizScreen() {
     unit: '',
   });
   const [forceOcr, setForceOcr] = useState(false);
+
+  const workspacePreset = route?.params?.workspacePreset;
+  const fromWorkspace = route?.params?.fromWorkspace === true;
   
   // File type constants
   const MAX_DOCUMENT_COUNT = 50;
@@ -172,6 +196,21 @@ export default function CreateDocumentQuizScreen() {
   useEffect(() => {
     loadUploadedFiles();
   }, []);
+
+  useEffect(() => {
+    if (!workspacePreset) return;
+
+    setClassValue(workspacePreset.classValue ?? '');
+    setSubject(workspacePreset.subject ?? '');
+    setLesson(workspacePreset.lesson ?? '');
+    setLevel(workspacePreset.difficulty ?? '');
+    setQuestionCount(workspacePreset.questionCount ?? 5);
+    setAdditionalInstructions(workspacePreset.additionalInstructions ?? '');
+
+    if (fromWorkspace) {
+      setCurrentStep('config');
+    }
+  }, [workspacePreset, fromWorkspace]);
 
   useEffect(() => {
     // Skip saving on initial mount to avoid infinite loop

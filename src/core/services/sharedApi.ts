@@ -348,8 +348,31 @@ export async function generateAIQuiz(data: {
   level: string;
   count: number;
   itext?: string;
+  topic?: string;
+  language?: string;
 }): Promise<any> {
   const response = await apiClient.post('/api/v1/quiz/generate', data);
+  return response.data;
+}
+
+/**
+ * Generate competitive exam assessment
+ * POST /api/v1/quiz/generate-exam-assessment
+ */
+export async function generateCompetitiveAIQuiz(data: {
+  exam: string;
+  count: number;
+  itext?: string;
+  stream: string;
+  category: string;
+  subject_requirement?: string;
+  subject: string;
+  topic: string;
+  level: string;
+  input_text: string;
+  language?: string;
+}): Promise<any> {
+  const response = await apiClient.post('/api/v1/quiz/generate-exam-assessment', data);
   return response.data;
 }
 
@@ -419,5 +442,126 @@ export async function getQuizExplanation(data: {
   };
 }> {
   const response = await apiClient.post('/api/v1/quiz/explanation', data);
+  return response.data;
+}
+
+// ============================================================================
+// USER ASSESSMENTS (saved quiz/worksheet history)
+// ============================================================================
+
+export interface AssessmentListItem {
+  id: number;
+  title: string;
+  subject?: string;
+  class_name?: string;
+  level?: string;
+  lesson?: string;
+  assessment_type: string;
+  question_count: number;
+  created_at: string;
+  source?: string;
+}
+
+export interface AssessmentDetail extends AssessmentListItem {
+  questions: any[];
+  responses?: Record<string, string>;
+}
+
+export interface SaveAssessmentPayload {
+  title: string;
+  subject?: string;
+  class_name?: string;
+  level?: string;
+  lesson?: string;
+  questions: any[];
+  assessment_type: string;
+  school_id?: number | null;
+  source?: string;
+}
+
+/**
+ * List saved user assessments
+ * GET /api/v1/user-assessments
+ */
+export async function listUserAssessments(
+  assessment_type?: string,
+  source?: string,
+): Promise<AssessmentListItem[]> {
+  try {
+    const qs = new URLSearchParams();
+    if (assessment_type) qs.set('assessment_type', assessment_type);
+    if (source) qs.set('source', source);
+    const params = qs.toString() ? `?${qs.toString()}` : '';
+    const response = await apiClient.get(`/api/v1/user-assessments${params}`);
+    return Array.isArray(response.data) ? response.data : (response.data?.items || []);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get a single saved assessment with its questions
+ * GET /api/v1/user-assessments/:id
+ */
+export async function getUserAssessmentById(id: number): Promise<AssessmentDetail | null> {
+  try {
+    const response = await apiClient.get(`/api/v1/user-assessments/${id}`);
+    return response.data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save a new user assessment
+ * POST /api/v1/user-assessments
+ */
+export async function saveUserAssessment(
+  payload: SaveAssessmentPayload,
+): Promise<AssessmentListItem | null> {
+  try {
+    const response = await apiClient.post('/api/v1/user-assessments', payload);
+    return response.data;
+  } catch (err: any) {
+    console.warn('saveUserAssessment failed:', err?.message);
+    return null;
+  }
+}
+
+/**
+ * Delete a saved assessment
+ * DELETE /api/v1/user-assessments/:id
+ */
+export async function deleteUserAssessment(id: number): Promise<void> {
+  try {
+    await apiClient.delete(`/api/v1/user-assessments/${id}`);
+  } catch {
+    // silently ignore
+  }
+}
+
+// ============================================================================
+// WORKSHEET GENERATION
+// ============================================================================
+
+/**
+ * Generate a worksheet
+ * POST /api/v1/worksheet/generate
+ */
+export async function generateWorksheet(data: {
+  class: string;
+  subject: string;
+  lesson: string;
+  level: string;
+  itext?: string;
+  count?: number;
+  mcq_count: number;
+  fitb_count: number;
+  tf_count: number;
+  short_q_count: number;
+  matching_count: number;
+  type?: string;
+}): Promise<any> {
+  const response = await apiClient.post('/api/v1/worksheet/generate', data);
   return response.data;
 }

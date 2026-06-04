@@ -16,8 +16,8 @@ export function useErpRole() {
     return Number.isFinite(n) ? n : undefined;
   };
 
-  const roleId: number | undefined = user?.role_id;
-  const role: string | undefined = user?.role;
+  const roleId: number | undefined = user?.role_id != null ? Number(user.role_id) : undefined;
+  const role: string | undefined = user?.role ?? undefined;
 
   const isSuperAdmin =
     roleId === 1 || role === 'super_admin';
@@ -35,18 +35,19 @@ export function useErpRole() {
 
   // School ID: store value takes priority (set once during auth init),
   // with full multi-field fallback from user profile for edge cases
+  const anyUser = user as any;
   const schoolId: number | undefined =
     (storeSchoolId !== null && storeSchoolId !== undefined ? storeSchoolId : undefined) ??
     toNum(user?.school_id) ??
-    toNum(user?.schoolId) ??
-    toNum(user?.school?.id) ??
-    toNum(user?.school?.school_id) ??
-    toNum(user?.profile?.school?.id) ??
-    toNum(user?.profile?.school_id) ??
-    toNum(user?.profile?.schoolId) ??
-    toNum(user?.organization_id) ??
-    toNum(user?.org_id) ??
-    toNum(user?.tenant_school_id) ??
+    toNum(anyUser?.schoolId) ??
+    toNum(anyUser?.school?.id) ??
+    toNum(anyUser?.school?.school_id) ??
+    toNum(anyUser?.profile?.school?.id) ??
+    toNum(anyUser?.profile?.school_id) ??
+    toNum(anyUser?.profile?.schoolId) ??
+    toNum(anyUser?.organization_id) ??
+    toNum(anyUser?.org_id) ??
+    toNum(anyUser?.tenant_school_id) ??
     undefined;
 
   return { user, roleId, role, isSuperAdmin, isAdmin, isTeacher, isStudent, schoolId };

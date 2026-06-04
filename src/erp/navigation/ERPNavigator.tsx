@@ -8,6 +8,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '@context/ThemeContext';
 import { AcademicYearProvider } from '../contexts/AcademicYearContext';
 import { useErpRole } from '../hooks/useErpRole';
+import ERPErrorBoundary from '../components/ERPErrorBoundary';
 
 import ERPMainScreen from '../screens/ERPMainScreen';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -66,6 +67,7 @@ export default function ERPNavigator() {
   const { schoolId } = useErpRole();
 
   return (
+    <ERPErrorBoundary>
     <AcademicYearProvider schoolId={schoolId}>
     <Stack.Navigator
       initialRouteName="ERPMain"
@@ -82,7 +84,6 @@ export default function ERPNavigator() {
         },
         headerTintColor: theme.colors.text,
         headerBackTitleVisible: false,
-        headerTopInsetEnabled: false,
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >
@@ -199,5 +200,6 @@ export default function ERPNavigator() {
       />
     </Stack.Navigator>
     </AcademicYearProvider>
+    </ERPErrorBoundary>
   );
 }

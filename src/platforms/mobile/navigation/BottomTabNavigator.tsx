@@ -3,13 +3,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, StyleSheet, Image, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@core/hooks/useAuth';
+import { get } from '@core/api/config';
 import { useTheme } from '@context/ThemeContext';
 import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
@@ -18,7 +19,6 @@ import PushNotificationService from '@core/services/PushNotificationService';
 
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
-import { AcademicYearProvider } from '../../../erp/contexts/AcademicYearContext';
 // import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
@@ -26,12 +26,17 @@ import TeacherDashboard from '@screens/TeacherDashboard';
 import StudentDashboard from '@screens/StudentDashboard';
 import StudentList from '@screens/StudentList';
 import ClassesList from '@screens/ClassesList';
-import CreateAIQuizScreen from '@screens/CreateAIQuizScreen';
+import CreateAIQuizScreen from '../../../screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from '@screens/CreateDocumentQuizScreen';
 import CreateImageQuizScreen from '@screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from '@screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from '@screens/CreateWebsiteQuizScreen';
 import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
+import AssessmentWorkspaceScreen from '@screens/AssessmentWorkspaceScreen';
+import DocumentUploadHomeScreen from '@screens/document-upload/DocumentUploadHomeScreen';
+import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
+import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
 import QuizPreviewScreen from '@screens/QuizPreviewScreen';
@@ -39,6 +44,8 @@ import StudentAnalyticsScreen from '@screens/StudentAnalyticsScreen';
 import TestNotifications from '@screens/TestNotifications';
 import QuizStatusScreen from '@screens/QuizStatusScreen';
 import QuizLoadingScreen from '@screens/QuizLoadingScreen';
+import RecentAssessmentsScreen from '../../../screens/RecentAssessmentsScreen';
+import WorksheetScreen from '../../../screens/WorksheetScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -68,26 +75,115 @@ function CustomHeader() {
   const { user } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [fetchedSchoolName, setFetchedSchoolName] = useState('');
   const insets = useSafeAreaInsets();
+
+  const schoolNameFromProfile = (() => {
+    const candidates = [
+      (user as any)?.school_name,
+      (user as any)?.schoolName,
+      typeof (user as any)?.school === 'string' ? (user as any)?.school : undefined,
+      (user as any)?.school?.name,
+      (user as any)?.school?.school_name,
+      (user as any)?.profile?.school_name,
+      (user as any)?.profile?.schoolName,
+      (user as any)?.profile?.school?.name,
+      (user as any)?.profile?.school?.school_name,
+    ];
+
+    return (
+      candidates.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim() ||
+      ''
+    );
+  })();
+
+  const resolvedSchoolId = (() => {
+    const toNum = (v: any): number | undefined => {
+      if (v === null || v === undefined || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    return (
+      toNum((user as any)?.school_id) ??
+      toNum((user as any)?.schoolId) ??
+      toNum((user as any)?.school?.id) ??
+      toNum((user as any)?.school?.school_id) ??
+      toNum((user as any)?.profile?.school?.id) ??
+      toNum((user as any)?.profile?.school_id) ??
+      toNum((user as any)?.profile?.schoolId) ??
+      undefined
+    );
+  })();
+
+  const isSuperAdmin =
+    (user as any)?.role_id === 1 ||
+    (user as any)?.role_name === 'super_admin' ||
+    ((user as any)?.role === 'super_admin') ||
+    ((user as any)?.role === 'admin' && !resolvedSchoolId);
+
+  useEffect(() => {
+    let isActive = true;
+
+    // Use API as primary source for non-super-admin users.
+    if (!isSuperAdmin) {
+      get<any>('/api/v1/school-management/my-school')
+        .then((resp) => {
+          if (!isActive) return;
+          const apiName =
+            (typeof resp?.school_name === 'string' && resp.school_name) ||
+            (typeof resp?.name === 'string' && resp.name) ||
+            (typeof resp?.data?.school_name === 'string' && resp.data.school_name) ||
+            (typeof resp?.data?.name === 'string' && resp.data.name) ||
+            '';
+          setFetchedSchoolName(apiName);
+        })
+        .catch(() => {
+          if (!isActive) return;
+          setFetchedSchoolName('');
+        });
+    } else {
+      setFetchedSchoolName('');
+    }
+
+    return () => {
+      isActive = false;
+    };
+  }, [isSuperAdmin]);
+
+  const schoolName = fetchedSchoolName || schoolNameFromProfile;
 
   return (
     <>
       <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border, paddingTop: insets.top, height: 60 + insets.top }]}>
-        {/* Logo */}
-        <TouchableOpacity 
-            style={styles.logo}
+        {/* Left Section: Logo + School Name */}
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.logoTouch}
             onPress={() => {
               if (navigation.canGoBack()) {
                 navigation.goBack();
               }
             }}
           >
-          <Image 
-            source={require('../../../../assets/eduvijna_logo_sidebar.png')} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
+            <Image
+              source={
+                isDark
+                  ? require('../../../../assets/eduvijna_logo_sidebar_white.png')
+                  : require('../../../../assets/eduvijna_logo_sidebar.png')
+              }
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+
+          {!!schoolName && (
+            <View style={[styles.schoolBadge, { backgroundColor: theme.colors.primary + '14', borderColor: theme.colors.primary + '40' }]}>
+              <Text style={[styles.schoolName, { color: theme.colors.primary }]} numberOfLines={1}>
+                {schoolName}
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Right Section: Create Assessment, Theme Toggle, Notifications & Profile */}
         <View style={styles.headerRight}>
@@ -155,7 +251,8 @@ export default function MobileNavigation() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <CustomHeader />,
         headerStyle: {
           backgroundColor: theme.colors.cardBackground,
         },
@@ -166,7 +263,7 @@ export default function MobileNavigation() {
       }}
       initialRouteName="Main"
     >
-      <Stack.Screen name="Main" component={BottomTabNavigator} />
+      <Stack.Screen name="Main" component={BottomTabNavigator} options={{ headerShown: false }} />
       <Stack.Screen 
         name="Assessments"
         component={RoleAssessments}
@@ -199,14 +296,33 @@ export default function MobileNavigation() {
       <Stack.Screen 
         name="CreateAIQuizScreen" 
         component={CreateAIQuizScreen}
-        options={{
+        options={({ navigation: screenNav }) => ({
           headerShown: true,
           presentation: 'modal',
           title: 'Create AI Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
-            <Ionicons name="bulb" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+            <TouchableOpacity
+              onPress={() => screenNav.navigate('RecentAssessmentsScreen')}
+              style={{ marginRight: 16, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            >
+              <Ionicons name="time-outline" size={18} color={theme.colors.primary} />
+              <Text style={{ color: theme.colors.primary, fontWeight: '600', fontSize: 14 }}>Recent</Text>
+            </TouchableOpacity>
           ),
+        })}
+      />
+      <Stack.Screen 
+        name="AssessmentWorkspaceScreen"
+        component={AssessmentWorkspaceScreen}
+        options={({ route }) => {
+          const mode = (route?.params as any)?.mode;
+          return {
+            headerShown: true,
+            presentation: 'modal',
+            title: mode === 'handwritten' ? 'Handwritten Workspace' : 'Document Workspace',
+            headerBackTitle: 'Back',
+          };
         }}
       />
       <Stack.Screen 
@@ -384,13 +500,66 @@ export default function MobileNavigation() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="RecentAssessmentsScreen"
+        component={RecentAssessmentsScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Recent Assessments',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="WorksheetScreen"
+        component={WorksheetScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Worksheet',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="DocumentUploadHomeScreen"
+        component={DocumentUploadHomeScreen as any}
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Document & Handwritten',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="DocumentUploadPreviewScreen"
+        component={DocumentUploadPreviewScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Preview',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="DocumentUploadHistoryScreen"
+        component={DocumentUploadHistoryScreen as any}
+        options={{
+          headerShown: true,
+          title: 'History',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="DocumentUploadQuizScreen"
+        component={DocumentUploadQuizScreen as any}
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack.Navigator>
   );
 }
 
 function BottomTabNavigator() {
   const { user } = useAuth();
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
@@ -517,14 +686,9 @@ function BottomTabNavigator() {
       />
       <Tab.Screen
         name="ERP"
+        component={ERPNavigator}
         options={{ title: 'ERP' }}
-      >
-        {() => (
-          <AcademicYearProvider>
-            <ERPNavigator />
-          </AcademicYearProvider>
-        )}
-      </Tab.Screen>
+      />
       {/* <Tab.Screen 
         name="Theme" 
         component={ThemeSettingsScreen}
@@ -568,14 +732,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+    minWidth: 0,
+  },
+  logoTouch: {
+    marginRight: 8,
+  },
   logo: {
-    width: 120,
-    height: 40,
+    width: 92,
+    height: 34,
+  },
+  schoolBadge: {
+    maxWidth: 130,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  schoolName: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   iconButton: {
     padding: 1,

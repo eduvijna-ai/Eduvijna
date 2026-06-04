@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedback, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuizNavItems, SCREEN_DEFAULTS } from '@core/hooks/useQuizNavItems';
@@ -14,10 +14,13 @@ import { useQuizNavItems, SCREEN_DEFAULTS } from '@core/hooks/useQuizNavItems';
 /** Hard-coded fallback items shown when API returns nothing */
 const FALLBACK_OPTIONS = [
   { screen: 'CreateAIQuizScreen',          iconColor: '#0891B2', label: 'AI Assessment',  icon: 'bulb' },
-  { screen: 'CreateDocumentQuizScreen',    iconColor: '#DC2626', label: 'Document',       icon: 'document' },
+  { screen: 'DocumentUploadHomeScreen',    iconColor: '#0F766E', label: 'Document Upload', icon: 'folder-open' },
+  { screen: 'AssessmentWorkspaceScreen',   iconColor: '#DC2626', label: 'Document',       icon: 'document', routeParams: { mode: 'document' } },
   { screen: 'CreateImageQuizScreen',       iconColor: '#D97706', label: 'Image',          icon: 'image' },
   { screen: 'CreateYouTubeQuizScreen',     iconColor: '#059669', label: 'YouTube',        icon: 'logo-youtube' },
-  { screen: 'CreateHandwrittenQuizScreen', iconColor: '#7C3AED', label: 'Handwritten',    icon: 'create' },
+  { screen: 'AssessmentWorkspaceScreen',   iconColor: '#7C3AED', label: 'Handwritten',    icon: 'create', routeParams: { mode: 'handwritten' } },
+  { screen: 'WorksheetScreen',             iconColor: '#059669', label: 'Worksheet',      icon: 'document-text' },
+  { screen: 'RecentAssessmentsScreen',     iconColor: '#6366F1', label: 'Recent Quizzes', icon: 'time' },
 ];
 
 interface CreateAssessmentModalProps {
@@ -39,8 +42,9 @@ export default function CreateAssessmentModal({
   const { items: navItems } = useQuizNavItems();
 
   const options = useMemo(() => {
-    if (navItems.length > 0) return navItems;
-    return FALLBACK_OPTIONS.map((f) => ({
+    const base = navItems.length > 0
+      ? navItems
+      : FALLBACK_OPTIONS.map((f) => ({
       screen: f.screen,
       label: f.label,
       subtitle: SCREEN_DEFAULTS[f.screen]?.subtitle ?? '',
@@ -48,14 +52,47 @@ export default function CreateAssessmentModal({
       iconColor: f.iconColor,
       bgColor: SCREEN_DEFAULTS[f.screen]?.bg ?? '#F1F5F9',
       display_order: 0,
+      routeParams: (f as any).routeParams,
     }));
+
+    const hasDocumentUpload = base.some((item) => item.screen === 'DocumentUploadHomeScreen');
+    if (hasDocumentUpload) return base;
+
+    return [
+      ...base,
+      {
+        screen: 'DocumentUploadHomeScreen',
+        label: 'Document Upload',
+        subtitle: 'New module',
+        iconName: 'folder-open',
+        iconColor: '#0F766E',
+        bgColor: '#ECFEFF',
+        display_order: 999,
+      },
+    ];
   }, [navItems]);
 
-  const handleQuizTypePress = (screen: string) => {
+  const handleQuizTypePress = (screen: string, routeParams?: Record<string, any>) => {
     onClose();
+
+    const useWorkspaceRedirect = Platform.OS !== 'web';
+
+    const resolvedScreen =
+      useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')
+        ? 'AssessmentWorkspaceScreen'
+        : screen;
+
+    const resolvedParams =
+      (useWorkspaceRedirect ? routeParams : undefined) ??
+      (useWorkspaceRedirect && screen === 'CreateDocumentQuizScreen'
+        ? { mode: 'document' }
+        : useWorkspaceRedirect && screen === 'CreateHandwrittenQuizScreen'
+          ? { mode: 'handwritten' }
+          : undefined);
+
     setTimeout(() => {
       if (navigation) {
-        navigation.navigate(screen as never);
+        navigation.navigate(resolvedScreen as never, resolvedParams as never);
       }
     }, 200);
   };
@@ -92,7 +129,7 @@ export default function CreateAssessmentModal({
               { borderBottomColor: theme.colors.border },
               index === options.length - 1 && { borderBottomWidth: 0 }
             ]}
-            onPress={() => handleQuizTypePress(option.screen)}
+            onPress={() => handleQuizTypePress(option.screen, (option as any).routeParams)}
             activeOpacity={0.7}
           >
             <View style={[styles.menuIcon, { backgroundColor: option.iconColor }]}>

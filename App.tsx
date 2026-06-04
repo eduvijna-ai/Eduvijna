@@ -49,13 +49,14 @@ import QuizResultsScreen from './src/screens/QuizResultsScreen';
 import QuizTakingScreen from './src/screens/QuizTakingScreen';
 import QuizStatusScreen from './src/screens/QuizStatusScreen';
 import QuizLoadingScreen from './src/screens/QuizLoadingScreen';
+import ERPNavigator from './src/erp/navigation/ERPNavigator';
 import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
 
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
   useNotificationPolling(); // Poll for notifications via API
-  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen'>('dashboard');
+  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP'>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
@@ -237,6 +238,17 @@ function AppContent() {
     setActiveScreen(screen as any);
     setNavigationParams(params || {});
   };
+
+  // Web screens are rendered outside React Navigation stack, so provide
+  // a compatibility navigation object used by screen components that call
+  // navigate/goBack/replace/setOptions.
+  const createWebNavigation = (defaultBackScreen: string = 'dashboard') => ({
+    navigate: (screen: string, params?: any) => handleNavigate(screen, params),
+    replace: (screen: string, params?: any) => handleNavigate(screen, params),
+    goBack: () => handleNavigate(defaultBackScreen),
+    // No-op on web shell; prevents crashes from stack-only APIs.
+    setOptions: (_options: any) => {},
+  });
 
   // Deep link handling for mobile
   useEffect(() => {
@@ -478,38 +490,44 @@ function AppContent() {
         case 'ClassesList':
           return <ClassesListWeb onNavigate={handleNavigate} />;
         case 'CreateAIQuizScreen':
-          return <CreateAIQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateAIQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateDocumentQuizScreen':
-          return <CreateDocumentQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateDocumentQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateImageQuizScreen':
-          return <CreateImageQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateImageQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateYouTubeQuizScreen':
-          return <CreateYouTubeQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateYouTubeQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateWebsiteQuizScreen':
-          return <CreateWebsiteQuizScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateWebsiteQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateHandwrittenQuizScreen':
-          return <CreateHandwrittenQuizScreen navigation={{ navigate: handleNavigate, replace: handleNavigate, goBack: () => handleNavigate('dashboard') }} />;
+          return <CreateHandwrittenQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'QuizPreviewScreen':
-          return <QuizPreviewScreen navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} />;
+          return <QuizPreviewScreen navigation={createWebNavigation('assessments')} />;
         case 'QuizResultsScreen':
           return <QuizResultsScreen 
-            navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} 
+            navigation={createWebNavigation('assessments')} 
             route={{ params: navigationParams }} 
           />;
         case 'QuizTakingScreen':
           return <QuizTakingScreen 
-            navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} 
+            navigation={createWebNavigation('assessments')} 
             route={{ params: navigationParams }}
           />;
         case 'QuizStatusScreen':
           return <QuizStatusScreen 
-            navigation={{ navigate: handleNavigate, goBack: () => handleNavigate('assessments') }} 
+            navigation={createWebNavigation('assessments')} 
             route={{ params: navigationParams }}
           />;
         case 'QuizLoadingScreen':
           return <QuizLoadingScreen 
             route={{ params: navigationParams }}
           />;
+        case 'ERP':
+          return (
+            <NavigationContainer independent>
+              <ERPNavigator />
+            </NavigationContainer>
+          );
         default:
           // Default dashboard based on user role
           if (user?.role === 'instructor' || user?.role === 'admin') {

@@ -1,0 +1,616 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@context/ThemeContext';
+import {
+  DocumentUploadBook,
+  uploadDocumentToRag,
+} from '@core/services/documentUploadApi';
+import {
+  getDocumentUploadBooks,
+  upsertDocumentUploadBook,
+} from '@core/services/documentUploadStorage';
+
+const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
+
+type ActiveTab = 'upload' | 'search';
+
+const createPageList = (totalPages: number): number[] => {
+  const safe = Math.max(1, Math.min(12, totalPages || 1));
+  return Array.from({ length: safe }).map((_, i) => i + 1);
+};
+
+const normalizeErrorMessage = (err: any, fallback: string): string => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string' && detail.message.trim()) {
+      const extra = Array.isArray(detail.details)
+        ? detail.details.join(', ')
+        : typeof detail.details === 'string'
+          ? detail.details
+          : '';
+      return extra ? `${detail.message} (${extra})` : detail.message;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (typeof err?.message === 'string' && err.message.trim()) return err.message;
+  return fallback;
+};
+
+export default function DocumentUploadHomeScreen({ navigation, route }: any) {
+  const { theme } = useTheme();
+  const colors = theme.colors;
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
+  const [books, setBooks] = useState<DocumentUploadBook[]>([]);
+  const [selectedBook, setSelectedBook] = useState<DocumentUploadBook | null>(null);
+  const [bookName, setBookName] = useState('');
+  const [search, setSearch] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [loadingBooks, setLoadingBooks] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const loadBooks = useCallback(async () => {
+    setLoadingBooks(true);
+    const loaded = await getDocumentUploadBooks();
+    setBooks(loaded);
+    if (!selectedBook && loaded.length > 0) {
+      setSelectedBook(loaded[0]);
+      setBookName(loaded[0].title || loaded[0].originalName);
+    }
+    setLoadingBooks(false);
+  }, [selectedBook]);
+
+  useEffect(() => {
+    void loadBooks();
+  }, [loadBooks]);
+
+  useEffect(() => {
+    const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'search' | undefined;
+    if (!autoAction) return;
+
+    if (autoAction === 'upload') {
+      void handleUploadTilePress();
+    } else if (autoAction === 'camera') {
+      void handleCameraTilePress();
+    } else if (autoAction === 'search') {
+      setActiveTab('search');
+    }
+
+    // Clear one-time action so it won't rerun on focus re-entry.
+    navigation.setParams?.({ autoAction: undefined });
+  }, [route?.params?.autoAction]);
+
+  const filteredBooks = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return books;
+    return books.filter((book) => {
+      return (
+        book.title?.toLowerCase().includes(q) ||
+        book.originalName?.toLowerCase().includes(q)
+      );
+    });
+  }, [books, search]);
+
+  const pickAndUpload = async () => {
+    try {
+      setError('');
+      setSuccess('');
+
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: [
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+          'image/*',
+        ],
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      await processAssetAndNavigate(asset, false);
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to upload document.'));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const processAssetAndNavigate = async (asset: {
+    uri: string;
+    name?: string;
+    mimeType?: string;
+    size?: number;
+  }, fromCamera: boolean) => {
+    const rag = await uploadDocumentToRag({
+      fileUri: asset.uri,
+      fileName: asset.name || `document-${Date.now()}`,
+      mimeType: asset.mimeType || 'application/octet-stream',
+      forceOcr: fromCamera,
+    });
+
+    const now = new Date().toISOString();
+    const next: DocumentUploadBook = {
+      id: String(rag.docId || `${Date.now()}`),
+      title: (bookName || asset.name || 'Uploaded Book').trim(),
+      originalName: asset.name || (fromCamera ? 'Captured Document' : 'Document'),
+      uploadedFileName: rag.uploadedFileName,
+      docId: rag.docId,
+      totalPages: rag.totalPages || 5,
+      fileSize: asset.size || rag.fileSize,
+      fileUri: asset.uri,
+      mimeType: asset.mimeType || 'application/octet-stream',
+      thumbnailUri: asset.mimeType?.startsWith('image/') || fromCamera ? asset.uri : undefined,
+      createdAt: now,
+    };
+
+    await upsertDocumentUploadBook(next);
+    setSelectedBook(next);
+    setBookName(next.title);
+    await loadBooks();
+
+    // Required flow: upload/capture success -> direct preview
+    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+  };
+
+  const handleUploadTilePress = async () => {
+    setUploading(true);
+    await pickAndUpload();
+  };
+
+  const handleCameraTilePress = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      setCapturing(true);
+
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Camera permission is required to capture document pages.');
+        return;
+      }
+
+      let cameraResult: ImagePicker.ImagePickerResult;
+      try {
+        cameraResult = await ImagePicker.launchCameraAsync({
+          allowsEditing: false,
+          quality: 0.9,
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        });
+      } catch {
+        if (Platform.OS === 'web') {
+          cameraResult = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: false,
+            quality: 0.9,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          });
+        } else {
+          throw new Error('Unable to open camera.');
+        }
+      }
+
+      if (cameraResult.canceled || !cameraResult.assets?.length) return;
+      const captured = cameraResult.assets[0];
+      await processAssetAndNavigate(
+        {
+          uri: captured.uri,
+          name: captured.fileName || `camera-${Date.now()}.jpg`,
+          mimeType: captured.mimeType || 'image/jpeg',
+          size: captured.fileSize,
+        },
+        true,
+      );
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to capture document.'));
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const goToPreview = () => {
+    if (!selectedBook) {
+      setError('Please upload or select a book first.');
+      return;
+    }
+
+    const mergedBook = {
+      ...selectedBook,
+      title: (bookName || selectedBook.title || selectedBook.originalName).trim(),
+    };
+
+    navigation.navigate('DocumentUploadPreviewScreen', { book: mergedBook });
+  };
+
+  const goToHistory = () => {
+    navigation.navigate('DocumentUploadHistoryScreen');
+  };
+
+  const renderBookPreview = () => {
+    if (!selectedBook) {
+      return (
+        <View style={styles.emptyCard}>
+          <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
+          <Text style={styles.emptyTitle}>No uploaded books yet</Text>
+          <Text style={styles.emptyText}>Upload a document to start the new Document Upload flow.</Text>
+        </View>
+      );
+    }
+
+    const pages = createPageList(selectedBook.totalPages);
+
+    return (
+      <View style={styles.bookCard}>
+        <View style={styles.bookCardHeader}>
+          <Text style={styles.bookCardTitle}>Search Uploaded Book</Text>
+          <TouchableOpacity onPress={goToHistory}>
+            <Text style={styles.linkText}>View All</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.heroRow}>
+          <Image
+            source={{ uri: selectedBook.thumbnailUri || FALLBACK_THUMB }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <View style={styles.heroMeta}>
+            <Text style={styles.pageText}>Page 1 of {selectedBook.totalPages || 1}</Text>
+            <TouchableOpacity style={styles.changeBtn} onPress={() => setActiveTab('search')}>
+              <Ionicons name="refresh-circle-outline" size={16} color={colors.primary} />
+              <Text style={styles.changeBtnText}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
+          {pages.map((page) => (
+            <View key={page} style={[styles.thumbItem, page === 1 && styles.thumbItemActive]}>
+              <Image source={{ uri: selectedBook.thumbnailUri || FALLBACK_THUMB }} style={styles.thumbImage} />
+              <Text style={[styles.thumbLabel, page === 1 && styles.thumbLabelActive]}>{page}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.tabRow}>
+        {([
+          { key: 'upload', label: 'Upload' },
+          { key: 'search', label: 'Search' },
+        ] as const).map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabBtn, active && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {loadingBooks ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading books...</Text>
+          </View>
+        ) : activeTab === 'search' ? (
+          <View style={styles.searchCard}>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search uploaded books"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
+
+            {filteredBooks.length === 0 ? (
+              <View style={styles.emptySmall}>
+                <Text style={styles.emptyText}>No matching books found.</Text>
+              </View>
+            ) : (
+              filteredBooks.map((book) => (
+                <TouchableOpacity
+                  key={book.id}
+                  style={[styles.searchItem, selectedBook?.id === book.id && styles.searchItemActive]}
+                  onPress={() => {
+                    setSelectedBook(book);
+                    setBookName(book.title || book.originalName);
+                    setActiveTab('upload');
+                  }}
+                >
+                  <Ionicons name="book-outline" size={18} color={colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.searchItemTitle}>{book.title || book.originalName}</Text>
+                    <Text style={styles.searchItemMeta}>{book.totalPages} pages</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        ) : (
+          renderBookPreview()
+        )}
+
+        <View>
+          <Text style={styles.label}>Book Name</Text>
+          <TextInput
+            value={bookName}
+            onChangeText={setBookName}
+            placeholder="Enter book name"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+          />
+        </View>
+
+        {!!success && (
+          <View style={styles.successBox}>
+            <Ionicons name="checkmark-circle" size={16} color="#15803D" />
+            <Text style={styles.successText}>{success}</Text>
+          </View>
+        )}
+
+        {!!error && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
+            onPress={handleUploadTilePress}
+            disabled={uploading || capturing}
+          >
+            {uploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-attach-outline" size={18} color={colors.primary} />}
+            <Text style={styles.sourceTileText}>{uploading ? 'Opening...' : 'Upload File'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
+            onPress={() => setActiveTab('search')}
+            disabled={uploading || capturing}
+          >
+            <Ionicons name="link-outline" size={18} color={colors.primary} />
+            <Text style={styles.sourceTileText}>Website URL</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
+            onPress={handleCameraTilePress}
+            disabled={uploading || capturing}
+          >
+            {capturing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="camera-outline" size={18} color={colors.primary} />}
+            <Text style={styles.sourceTileText}>{capturing ? 'Opening...' : 'Camera / OCR'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, uploading && styles.disabledBtn]}
+            onPress={handleUploadTilePress}
+            disabled={uploading || capturing}
+          >
+            {uploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />}
+            <Text style={styles.secondaryBtnText}>{uploading ? 'Uploading...' : 'Upload Book'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.primaryBtn} onPress={goToPreview}>
+            <Ionicons name="search-outline" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>Search</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const makeStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    tabRow: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+    tabBtnActive: { borderBottomColor: colors.primary },
+    tabText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
+    tabTextActive: { color: colors.primary },
+    content: { padding: 14, gap: 14 },
+    loadingWrap: { alignItems: 'center', paddingVertical: 20, gap: 8 },
+    loadingText: { color: colors.textSecondary, fontSize: 12 },
+
+    bookCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      padding: 12,
+      gap: 10,
+    },
+    bookCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    bookCardTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+    linkText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
+    heroRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    heroImage: { width: 170, height: 88, borderRadius: 8, backgroundColor: colors.inputBackground },
+    heroMeta: { flex: 1, gap: 8 },
+    pageText: { fontSize: 15, fontWeight: '700', color: colors.text },
+    changeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.background,
+    },
+    changeBtnText: { color: colors.primary, fontWeight: '600', fontSize: 12 },
+    thumbRow: { gap: 8 },
+    thumbItem: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 4,
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      width: 60,
+    },
+    thumbItemActive: { borderColor: '#38BDF8', backgroundColor: '#E0F2FE' },
+    thumbImage: { width: 50, height: 56, borderRadius: 4, backgroundColor: colors.inputBackground },
+    thumbLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
+    thumbLabelActive: { color: colors.primary, fontWeight: '700' },
+
+    searchCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      padding: 12,
+      gap: 10,
+    },
+    searchItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      padding: 10,
+      backgroundColor: colors.background,
+    },
+    searchItemActive: { borderColor: colors.primary, backgroundColor: colors.primary + '12' },
+    searchItemTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
+    searchItemMeta: { color: colors.textSecondary, fontSize: 11, marginTop: 2 },
+
+    emptyCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      padding: 24,
+      alignItems: 'center',
+      gap: 8,
+    },
+    emptySmall: { alignItems: 'center', paddingVertical: 20 },
+    emptyTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    emptyText: { color: colors.textSecondary, fontSize: 12, textAlign: 'center' },
+
+    label: { fontSize: 13, color: colors.text, fontWeight: '600', marginBottom: 6 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      backgroundColor: colors.card,
+      color: colors.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 14,
+    },
+
+    successBox: {
+      borderWidth: 1,
+      borderColor: '#86EFAC',
+      backgroundColor: '#F0FDF4',
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    successText: { color: '#15803D', fontSize: 13, fontWeight: '600' },
+    errorBox: {
+      borderWidth: 1,
+      borderColor: '#FCA5A5',
+      backgroundColor: '#FEF2F2',
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    errorText: { color: '#B91C1C', fontSize: 12, flex: 1 },
+
+    actionRow: { flexDirection: 'row', gap: 10 },
+    sourceTile: {
+      flex: 1,
+      minHeight: 82,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 6,
+    },
+    sourceTileText: {
+      color: colors.text,
+      fontWeight: '700',
+      fontSize: 11,
+      textAlign: 'center',
+    },
+    secondaryBtn: {
+      flex: 1,
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: 10,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    secondaryBtnText: { color: colors.primary, fontWeight: '700' },
+    primaryBtn: {
+      flex: 1,
+      minHeight: 46,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    primaryBtnText: { color: '#fff', fontWeight: '700' },
+    disabledBtn: { opacity: 0.7 },
+  });

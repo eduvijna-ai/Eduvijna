@@ -619,6 +619,36 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         </ScrollView>
       </View>
 
+      {/* My AI Content Quick Links — teachers only */}
+      {isTeacher && navigation && (
+        <View style={[styles.aiToolsBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity
+            style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
+            onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
+            <Text style={[styles.aiToolBtnText, { color: '#0F766E' }]}>Document Upload</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
+            onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
+            <Text style={[styles.aiToolBtnText, { color: theme.colors.primary }]}>Recent AI Quizzes</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
+            onPress={() => navigation.navigate('WorksheetScreen')}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="document-text-outline" size={16} color="#059669" />
+            <Text style={[styles.aiToolBtnText, { color: '#059669' }]}>Worksheets</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Content */}
       <ScrollView
         style={styles.content}
@@ -1212,6 +1242,26 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  aiToolsBar: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  aiToolBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  aiToolBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   emptyState: {
     alignItems: 'center',

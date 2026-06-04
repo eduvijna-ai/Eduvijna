@@ -3,17 +3,19 @@
  * Entry point for the School ERP section.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useErpRole } from '../hooks/useErpRole';
+import { useAcademicYear } from '../contexts/AcademicYearContext';
 import { COLORS } from '../components/common';
 
 interface Module {
@@ -52,18 +54,39 @@ const MODULES: Module[] = [
 
 export default function ERPMainScreen() {
   const navigation = useNavigation<any>();
-  const { isAdmin, isSuperAdmin } = useErpRole();
+  const { isAdmin, isSuperAdmin, user } = useErpRole();
+  const { academicYears, selectedYearId, selectedYear, setSelectedYearId, loading: yearLoading } = useAcademicYear();
+  const [showYearPicker, setShowYearPicker] = useState(false);
 
   const visibleModules = MODULES.filter(
     (m) => !m.adminOnly || isAdmin || isSuperAdmin,
   );
 
+  const userName = (user as any)?.full_name || (user as any)?.name || (user as any)?.username || '';
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>School ERP</Text>
-        <Text style={styles.headerSub}>Manage your institution</Text>
+        <View>
+          <Text style={styles.headerTitle}>School ERP</Text>
+          {!!userName && <Text style={styles.headerSub}>Welcome, {userName}</Text>}
+        </View>
+
+        {/* Academic Year Selector */}
+        {academicYears.length > 0 && (
+          <TouchableOpacity
+            style={styles.yearSelector}
+            onPress={() => setShowYearPicker(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
+            <Text style={styles.yearSelectorText} numberOfLines={1}>
+              {selectedYear?.name ?? 'Select Year'}
+            </Text>
+            <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -84,6 +107,34 @@ export default function ERPMainScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Academic Year Picker Modal */}
+      <Modal visible={showYearPicker} animationType="fade" transparent onRequestClose={() => setShowYearPicker(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowYearPicker(false)}>
+          <View style={styles.yearPickerCard}>
+            <Text style={styles.yearPickerTitle}>Select Academic Year</Text>
+            <ScrollView style={{ maxHeight: 280 }}>
+              {academicYears.map((y) => (
+                <TouchableOpacity
+                  key={y.id}
+                  style={[styles.yearOption, y.id === selectedYearId && styles.yearOptionActive]}
+                  onPress={() => { setSelectedYearId(y.id); setShowYearPicker(false); }}
+                >
+                  <Text style={[styles.yearOptionText, y.id === selectedYearId && { color: COLORS.primary, fontWeight: '700' }]}>
+                    {y.name}
+                  </Text>
+                  {y.is_current && (
+                    <View style={styles.currentBadge}>
+                      <Text style={styles.currentBadgeText}>Current</Text>
+                    </View>
+                  )}
+                  {y.id === selectedYearId && <Ionicons name="checkmark" size={16} color={COLORS.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -91,14 +142,88 @@ export default function ERPMainScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.gray[50] },
   header: {
-    backgroundColor: COLORS.gray[50],
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray[200],
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.gray[800] },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.gray[800] },
   headerSub: { fontSize: 11, color: COLORS.gray[500], marginTop: 2 },
+  yearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primary + '12',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 140,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '30',
+  },
+  yearSelectorText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primary,
+    flexShrink: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  yearPickerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 340,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  yearPickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.gray[800],
+    marginBottom: 12,
+  },
+  yearOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    gap: 8,
+  },
+  yearOptionActive: {
+    backgroundColor: COLORS.primary + '10',
+  },
+  yearOptionText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.gray[700],
+    fontWeight: '500',
+  },
+  currentBadge: {
+    backgroundColor: '#10b981',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  currentBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
