@@ -47,6 +47,7 @@
 | Backend | `https://eduapi.eduvijna.com` (FastAPI inferred) |
 | Target Platforms | Android, iOS, Web |
 | Business Domain | K-12 / Higher Education EdTech + School ERP |
+| ERP Schools (Teacher UI) | `src/erp_schools/` — UI-only teacher module, mock data, isolated from `src/erp/` |
 
 ---
 
@@ -111,8 +112,8 @@ E:\Eduvijna\Eduvijna\
 ├── App.tsx                        ← Root component. Platform detection, provider nesting, deep links, push notification wiring.
 ├── app.json                       ← Expo manifest: app name, slug, icon, scheme, Android intent-filters, Firebase config paths, EAS project ID.
 ├── eas.json                       ← EAS Build profiles: development, preview, production.
-├── babel.config.js                ← babel-preset-expo + module-resolver for path aliases.
-├── metro.config.js                ← Custom resolver: forces axios browser build on web, zustand CJS redirect on web.
+├── babel.config.js                ← babel-preset-expo + module-resolver; exact `react-native` → vendor shim (app source only).
+├── metro.config.js                ← axios browser build, zustand CJS on web, `react-native-original` alias for font shim.
 ├── tsconfig.json                  ← Strict TypeScript. Path aliases: @core, @screens, @platforms, @mobile, @web, @context, @theme, @components.
 ├── .eslintrc.js                   ← Architecture enforcement rules (200 lines).
 ├── package.json                   ← Dependencies.
@@ -129,7 +130,7 @@ E:\Eduvijna\Eduvijna\
 └── src/
     ├── __tests__/                 ← Jest test files (5 files) + setup.ts.
     ├── components/                ← 18 shared UI components (QuizFormFields, ShareQuizModal, etc.).
-    ├── context/                   ← React Context providers (ThemeContext, DropdownContext).
+    ├── context/                   ← React Context providers (ThemeContext, DropdownContext, AppSideNavContext).
     ├── core/
     │   ├── api/                   ← Axios-based API modules (8 files).
     │   ├── components/            ← Core shared components (Header.tsx, WebDeepLinkHandler.tsx).
@@ -147,6 +148,14 @@ E:\Eduvijna\Eduvijna\
     │   ├── hooks/                 ← useErpRole.ts.
     │   ├── navigation/            ← ERPNavigator.tsx (22-screen stack).
     │   └── screens/               ← 22 ERP management screens.
+    ├── erp_schools/               ← NEW (June 2026): Teacher persona UI module — isolated sibling of erp/.
+    │   ├── navigation/            ← TeacherStack, TeacherTabs, SchoolsTabEntry, routes.ts.
+    │   ├── screens/teacher/       ← ~47 teacher screens (dashboard, classes, reports, …).
+    │   ├── components/            ← TeacherScreen, ClassContextBanner, QuickActionGrid, charts, …
+    │   ├── theme/                 ← tokens.ts, useTeacherTheme.ts, accents.ts.
+    │   ├── data/                  ← Mock fixtures only (no API yet).
+    │   ├── hooks/                 ← useTeacherData, useTeacherNavigation, useMainAppNavigation.
+    │   └── store/                 ← teacherUI.store.ts (Zustand).
     ├── examples/                  ← 6 example/demo files (not production code).
     ├── platforms/
     │   ├── mobile/
@@ -156,7 +165,9 @@ E:\Eduvijna\Eduvijna\
     │       ├── navigation/        ← WebNavigation.tsx (408 lines) – sidebar + state machine.
     │       └── screens/           ← Web-specific: Dashboard, Profile, Analytics, Login, ThemeSettings.
     ├── screens/                   ← 28 shared screens used by both platforms.
-    ├── theme/                     ← DESIGN_SYSTEM.ts, statCardColors.ts, theme.ts.
+    ├── theme/                     ← theme.ts, fonts.ts, useAppFonts.ts (Poppins global typography).
+    ├── vendor/                    ← react-native.ts shim — wraps Text/TextInput with Poppins.
+    ├── types/                     ← react-native-original.d.ts (Metro/Babel shim typing).
     └── utils/                     ← dateFilters.ts, quizFilters.ts.
 ```
 
@@ -167,6 +178,7 @@ E:\Eduvijna\Eduvijna\
 | `src/platforms/mobile/` vs `src/platforms/web/` | Platform-divergent screens (login, profile, analytics) live in platform folders. Shared screens stay in `src/screens/`. |
 | `src/core/` isolation | API, domain, store, and hooks are platform-agnostic. ESLint enforces screens cannot import them directly. |
 | `src/erp/` self-contained module | ERP is a large subfeature (22 screens, 925-line API) separated to prevent coupling with the quiz/assessment domain. |
+| `src/erp_schools/` sibling module | Teacher-facing Schools UI (mobile-first). Must **not** import `src/erp/`. Mock data until APIs land. See `ERP_SCHOOLS_ARCHITECTURE.md`, `SCREENS.md`. |
 | Zustand over Redux | Smaller bundle, no boilerplate, works with metro's CJS redirect on web. |
 | No Expo Router | The app predates Expo Router maturity for complex ERP navigation; the web uses a custom state machine (not URL-based routing). |
 
@@ -193,6 +205,8 @@ E:\Eduvijna\Eduvijna\
 | `expo-secure-store` | ~15.0.8 | Encrypted key-value storage | `tokenStorage.ts` – refresh token on mobile | |
 | `expo-notifications` | ~0.32.17 | Push notifications | `PushNotificationService.ts`, `App.tsx` | Firebase-backed |
 | `expo-constants` | ~18.0.13 | Expo config access | `src/core/api/config.ts` – reads `API_BASE_URL` | |
+| `expo-font` | ~14.0.11 | Custom font loading | `src/theme/useAppFonts.ts` | |
+| `@expo-google-fonts/poppins` | latest | Poppins font files | `useAppFonts.ts` | Global app typography |
 | `expo-document-picker` | ~14.0.8 | File picker | `CreateDocumentQuizScreen.tsx` | |
 | `expo-image-picker` | ~17.0.11 | Camera/gallery | `CreateImageQuizScreen.tsx`, `CreateHandwrittenQuizScreen.tsx` | |
 | `expo-file-system` | ~19.0.23 | File read/write | Document upload screens | |
@@ -481,6 +495,10 @@ NavigationContainer (ref=navigationRef)
               │     ├── Assessments tab → RoleAssessments → AssessmentsScreen
               │     ├── Analytics tab → ClassesList screen
               │     ├── ERP tab → ERPNavigator (nested Stack)
+              │     ├── Schools tab (instructor only) → SchoolsTabEntry → TeacherStack
+              │     │     └── TeacherTabs: Home · Classes · Dashboard† · Students · More
+              │     │           † Dashboard tab → navigateToAppMainTab('Dashboard') (escape hatch)
+              │     │     └── Stack detail screens (Reports, Timetable, Study Material, …)
               │     │     ├── ERPMain
               │     │     ├── ERPDashboard
               │     │     ├── ERPClassOverview
@@ -532,6 +550,53 @@ NavigationContainer (ref=navigationRef)
 ```
 
 Source: `src/platforms/mobile/navigation/BottomTabNavigator.tsx`
+
+### ERP Schools (Teacher) Navigation
+
+Isolated module at `src/erp_schools/`. Mounted from the host app's **Schools** tab (`ERPSchools`).
+
+```
+BottomTabNavigator → SchoolsTabEntry (unmounts when tab blurred)
+  └── TeacherStack (native-stack)
+        ├── TeacherTabs (bottom-tabs) — host tab bar hidden while inside Schools
+        │     ├── TeacherHome        → TeacherHomeScreen
+        │     ├── TeacherClasses     → MyClassesScreen
+        │     ├── TeacherDashboard   → placeholder; tabPress → main app Dashboard
+        │     ├── TeacherStudents    → StudentListScreen
+        │     └── TeacherMore        → MoreMenuScreen
+        └── Pushed screens: Profile, ReportsDashboard, Timetable, StudyMaterial,
+            ParentCommunication, NoticeBoard, MarkAttendance, … (see SCREENS.md)
+```
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `src/erp_schools/navigation/SchoolsTabEntry.tsx` | Renders `TeacherStack` only when Schools tab focused |
+| `src/erp_schools/navigation/TeacherTabs.tsx` | 5-item teacher tab bar; center Dashboard escapes to main app |
+| `src/platforms/mobile/navigation/navigateToAppMainTab.ts` | `navigationRef.dispatch` → `Main` → target tab |
+| `src/context/AppSideNavContext.tsx` | Left drawer: Dashboard, Assessments, Analytics, ERP, Schools |
+| `src/erp_schools/hooks/useMainAppNavigation.ts` | Thin hook wrapping `navigateToAppMainTab(Dashboard)` |
+
+**Reports access:** No longer a bottom tab. Reach via Home quick action or More → Academics → Reports (`ReportsDashboard` stack screen).
+
+**Role gate:** Schools tab visible only when `user?.role === 'instructor'` (`BottomTabNavigator.tsx`).
+
+### App Side Navigation (mobile)
+
+`AppSideNavProvider` wraps `NavigationContainer` in `App.tsx`. Hamburger in `CustomHeader` and `TeacherTopBar` opens a **left-aligned** slide drawer with the same five main destinations as the bottom tabs. Uses `navigateToAppMainTab()` so navigation works from nested stacks (ERP, Schools).
+
+### Global Typography (Poppins)
+
+| File | Purpose |
+|------|---------|
+| `src/theme/useAppFonts.ts` | Loads Poppins 400/500/600/700 via `@expo-google-fonts/poppins`; holds splash until ready |
+| `src/theme/fonts.ts` | `FONT_FAMILY` constants |
+| `src/vendor/react-native.ts` | Babel-shimmed `react-native` import: wraps `Text`/`TextInput`, maps `fontWeight` → Poppins file |
+| `babel.config.js` | `resolvePath` redirects exact `react-native` imports from app source only (not `react-native/Libraries/*`) |
+| `metro.config.js` | Resolves `react-native-original` → real `node_modules/react-native` for the shim |
+
+`App.tsx` renders `AppWithFonts` → loading spinner until fonts load → `AppContent`.
 
 ### Web Navigation Architecture
 
@@ -1184,6 +1249,8 @@ OR: Login → StudentDashboard (available quizzes, recent attempts)
 | Take Quiz (notification) | Notification tap → openQuizHandler → QuizTakingScreen | GET /api/v1/quiz-sessions/{id} |
 | View Class Analytics | ClassesList → StudentList → StudentAnalyticsScreen | GET /api/v1/classrooms/, /students/ |
 | School Administration | ERP tab → any 22 sub-modules | /api/v1/erp/{module}/ |
+| Teacher Schools (mobile) | Schools tab → Teacher Home / classes / students / more | Mock data in `erp_schools/data/` (API TBD) |
+| Exit Schools → main Dashboard | TeacherTabs center Dashboard · side nav Dashboard | `navigateToAppMainTab('Dashboard')` |
 
 ---
 
@@ -1236,7 +1303,7 @@ The following areas have less than 100% certainty. All are labeled with the evid
 
 ### Architecture in One Paragraph
 
-EduVijna is a cross-platform React Native Expo application using a **hybrid clean architecture**: a shared `src/core/` layer (API, domain, state, hooks) is kept framework-agnostic and isolated by ESLint rules, while platform-specific behavior lives in `src/platforms/mobile/` and `src/platforms/web/`. The mobile app uses React Navigation (stack + bottom tabs + nested ERP stack), while the web app uses a custom state-machine pattern in `App.tsx`. Authentication uses JWT with Zustand as the primary state layer and a secondary legacy `AuthContext` for the dropdown subsystem. Tokens are stored platform-appropriately (SecureStore for mobile refresh tokens, AsyncStorage for access tokens). All API traffic flows through a single Axios instance with automatic token refresh via a request queue. A 2-layer cache (in-memory Map + AsyncStorage) reduces API load with configurable TTLs. The ERP submodule is a self-contained feature domain with its own navigator, contexts, hooks, and API file.
+EduVijna is a cross-platform React Native Expo application using a **hybrid clean architecture**: a shared `src/core/` layer (API, domain, state, hooks) is kept framework-agnostic and isolated by ESLint rules, while platform-specific behavior lives in `src/platforms/mobile/` and `src/platforms/web/`. The mobile app uses React Navigation (stack + bottom tabs + nested ERP stack + **ERP Schools teacher stack**), while the web app uses a custom state-machine pattern in `App.tsx`. Authentication uses JWT with Zustand as the primary state layer and a secondary legacy `AuthContext` for the dropdown subsystem. Tokens are stored platform-appropriately (SecureStore for mobile refresh tokens, AsyncStorage for access tokens). All API traffic flows through a single Axios instance with automatic token refresh via a request queue. A 2-layer cache (in-memory Map + AsyncStorage) reduces API load with configurable TTLs. The ERP submodule is a self-contained feature domain with its own navigator, contexts, hooks, and API file. **`src/erp_schools/`** is a sibling module for the teacher Schools experience (UI-only, Poppins typography, mock data). Global font loading runs in `App.tsx` via `useAppFonts()`.
 
 ### Quick Reference for New Engineers
 
@@ -1258,7 +1325,14 @@ EduVijna is a cross-platform React Native Expo application using a **hybrid clea
 | How to add a new API module? | Create `src/core/api/yourmodule.api.ts`, use `get/post/put/del/patch` from `config.ts` |
 | How does ERP get school_id? | `useErpRole()` reads from `useUserStore.schoolId` (set at login time) |
 | How to make a cached API call? | Use `cachedApiCall(apiFunction, cacheKey, ttl)` from `cacheService.ts` |
+| Where is ERP Schools teacher UI? | `src/erp_schools/` — see `ERP_SCHOOLS_ARCHITECTURE.md`, `SCREENS.md` |
+| How is Schools mounted on mobile? | `BottomTabNavigator` → `SchoolsTabEntry` → `TeacherStack` |
+| How to leave Schools for main Dashboard? | `navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)` or center Dashboard tab |
+| Where are teacher screen specs? | `SCREENS.md` + `assets/teachers_screens/` reference PNGs |
+| Where is design guidance for Schools UI? | `DESIGN.md` (Poppins, ClassContextBanner, Teacher Home hero) |
+| How is Poppins applied globally? | `useAppFonts()` + `src/vendor/react-native.ts` Text shim |
+| Where is the class header banner? | `src/erp_schools/components/ClassContextBanner.tsx` |
 
 ---
 
-*This document was generated by analyzing 100% of the source files in `E:\Eduvijna\Eduvijna\src\` plus all configuration files. Every claim is directly traceable to the file and line number cited. Last analyzed: June 10, 2026.*
+*This document was generated by analyzing the source tree in `E:\Eduvijna\Eduvijna\src\` plus configuration files. Last updated: June 10, 2026 (ERP Schools teacher module, Poppins typography, navigation integration).*

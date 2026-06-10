@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@core/hooks/useAuth';
 import { get } from '@core/api/config';
 import { useTheme } from '@context/ThemeContext';
+import { AppSideNavMenuButton } from '@context/AppSideNavContext';
 import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
@@ -19,6 +20,7 @@ import PushNotificationService from '@core/services/PushNotificationService';
 
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
+import { SchoolsTabEntry } from '../../../erp_schools/navigation/SchoolsTabEntry';
 // import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
@@ -157,6 +159,7 @@ function CustomHeader() {
       <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border, paddingTop: insets.top, height: 60 + insets.top }]}>
         {/* Left Section: Logo + School Name */}
         <View style={styles.headerLeft}>
+          <AppSideNavMenuButton color={theme.colors.text} />
           <TouchableOpacity
             style={styles.logoTouch}
             onPress={() => {
@@ -648,6 +651,8 @@ function BottomTabNavigator() {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
           } else if (route.name === 'ERP') {
             iconName = focused ? 'business' : 'business-outline';
+          } else if (route.name === 'ERPSchools') {
+            iconName = focused ? 'school' : 'school-outline';
           } else if (route.name === 'Theme') {
             iconName = focused ? 'color-palette' : 'color-palette-outline';
           } else {
@@ -689,6 +694,17 @@ function BottomTabNavigator() {
         component={ERPNavigator}
         options={{ title: 'ERP' }}
       />
+      {user?.role === 'instructor' && (
+        <Tab.Screen
+          name="ERPSchools"
+          component={SchoolsTabEntry}
+          options={{
+            title: 'Schools',
+            headerShown: false,
+            tabBarStyle: { display: 'none' },
+          }}
+        />
+      )}
       {/* <Tab.Screen 
         name="Theme" 
         component={ThemeSettingsScreen}
