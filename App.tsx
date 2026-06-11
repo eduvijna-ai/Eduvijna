@@ -12,12 +12,12 @@ import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
 import { useNotificationPolling } from './src/core/hooks/useNotificationPolling';
 import { ThemeProvider } from './src/context/ThemeContext';
+import { AppSideNavProvider } from './src/context/AppSideNavContext';
 import { DropdownProvider } from './src/context/DropdownContext';
 import { AuthProvider } from './src/core/context/AuthContext';
 import { navigationRef } from './src/core/services/navigationService';
 import { setAuthErrorNavigationCallback } from './src/core/services/dashboardApi';
 import { initializeCache } from './src/core/services/cacheService';
-import LoadingSpinner from './src/components/LoadingSpinner';
 import {
   getInitialDeepLink,
   subscribeToDeepLinks,
@@ -52,6 +52,7 @@ import QuizLoadingScreen from './src/screens/QuizLoadingScreen';
 import ERPNavigator from './src/erp/navigation/ERPNavigator';
 import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
+import { useAppFonts } from './src/theme/useAppFonts';
 
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
@@ -75,8 +76,8 @@ function AppContent() {
       initialDeepLinkProcessed.current = false;
     }
   }, [isAuthenticated]);
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
   const processedNotifications = useRef<Set<string>>(new Set());
   const initialDeepLinkProcessed = useRef<boolean>(false);
 
@@ -137,9 +138,15 @@ function AppContent() {
         return;
       }
       
-      // Extract sessionId first
-      const sessionId = data?.sessionId || data?.session_id;
-      
+      // Extract sessionId first (notification payload is untyped)
+      const rawSessionId = data?.sessionId ?? data?.session_id;
+      const sessionId =
+        typeof rawSessionId === 'string'
+          ? rawSessionId
+          : typeof rawSessionId === 'number'
+            ? String(rawSessionId)
+            : null;
+
       // Debugging: Log entire notification data
       console.log('🔍 Full notification data:', data);
       console.log('🔍 Extracted sessionId:', sessionId);
@@ -448,7 +455,13 @@ function AppContent() {
 
     return (
       <NavigationContainer ref={navigationRef} linking={linking}>
-        {isAuthenticated ? <MobileNavigation /> : <MobileLoginScreen />}
+        {isAuthenticated ? (
+          <AppSideNavProvider>
+            <MobileNavigation />
+          </AppSideNavProvider>
+        ) : (
+          <MobileLoginScreen />
+        )}
       </NavigationContainer>
     );
   }
@@ -548,13 +561,27 @@ function AppContent() {
   return null;
 }
 
+function AppWithFonts() {
+  const { fontsLoaded, fontError } = useAppFonts();
+
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1B4F5C" />
+      </View>
+    );
+  }
+
+  return <AppContent />;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
           <DropdownProvider>
-            <AppContent />
+            <AppWithFonts />
           </DropdownProvider>
         </AuthProvider>
       </ThemeProvider>

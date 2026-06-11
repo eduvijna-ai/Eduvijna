@@ -29,7 +29,7 @@ import PushNotificationService from '@core/services/PushNotificationService';
 
 export default function Profile({ navigation }: any) {
   const { user: authUser, logout } = useAuth();
-  const { theme, isDark } = useTheme();
+  const { theme, isDark, toggleTheme } = useTheme();
   const colors = theme.colors;
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -631,6 +631,31 @@ export default function Profile({ navigation }: any) {
                   disabled={!PushNotificationService.isPushSupported()}
                 />
               )}
+            </View>
+
+            {/* Dark / Light mode */}
+            <View style={[styles.preferenceItem, { backgroundColor: colors.inputBackground }]}>
+              <View style={styles.preferenceLeft}>
+                <View style={[styles.preferenceIconCircle, { backgroundColor: isDark ? colors.primary + '20' : '#E8F4F8' }]}>
+                  <Ionicons
+                    name={isDark ? 'moon' : 'sunny-outline'}
+                    size={18}
+                    color={colors.primary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.preferenceLabel, { color: colors.text }]}>Dark Mode</Text>
+                  <Text style={[styles.preferenceSubtext, { color: colors.textSecondary }]}>
+                    {isDark ? 'On — dark appearance' : 'Off — light appearance'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={isDark}
+                onValueChange={toggleTheme}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#fff"
+              />
             </View>
 
             {/* Debug: Copy Push Tokens */}

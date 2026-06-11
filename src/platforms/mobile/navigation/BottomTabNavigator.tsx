@@ -9,9 +9,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { navigateToAppMainTab } from './navigateToAppMainTab';
+import { APP_MAIN_TABS } from './appRoutes';
 import { useAuth } from '@core/hooks/useAuth';
 import { get } from '@core/api/config';
 import { useTheme } from '@context/ThemeContext';
+import { AppSideNavMenuButton } from '@context/AppSideNavContext';
 import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
@@ -19,6 +22,7 @@ import PushNotificationService from '@core/services/PushNotificationService';
 
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
+import { SchoolsTabEntry } from '../../../erp_schools/navigation/SchoolsTabEntry';
 // import AnalyticsScreen from '../screens/Analytics';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
@@ -73,7 +77,7 @@ function RoleAssessments({ navigation, route }: any) {
 function CustomHeader() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [fetchedSchoolName, setFetchedSchoolName] = useState('');
   const insets = useSafeAreaInsets();
@@ -157,13 +161,12 @@ function CustomHeader() {
       <View style={[styles.header, { backgroundColor: theme.colors.cardBackground, borderBottomColor: theme.colors.border, paddingTop: insets.top, height: 60 + insets.top }]}>
         {/* Left Section: Logo + School Name */}
         <View style={styles.headerLeft}>
+          <AppSideNavMenuButton color={theme.colors.text} style={styles.menuButton} />
           <TouchableOpacity
             style={styles.logoTouch}
-            onPress={() => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              }
-            }}
+            onPress={() => navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)}
+            accessibilityRole="button"
+            accessibilityLabel="Go to main dashboard"
           >
             <Image
               source={
@@ -185,7 +188,7 @@ function CustomHeader() {
           )}
         </View>
 
-        {/* Right Section: Create Assessment, Theme Toggle, Notifications & Profile */}
+        {/* Right Section: Create Assessment, Notifications & Profile */}
         <View style={styles.headerRight}>
           {(user?.role === 'instructor' || user?.role === 'admin' || user?.role === 'student') && (
             <TouchableOpacity 
@@ -201,18 +204,6 @@ function CustomHeader() {
             onPress={() => navigation.navigate('Notifications')}
           >
             <Ionicons name="notifications-outline" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-
-          {/* Theme Toggle Icon */}
-          <TouchableOpacity 
-            style={styles.iconButton}
-            onPress={toggleTheme}
-          >
-            <Ionicons 
-              name={isDark ? 'sunny-outline' : 'moon-outline'} 
-              size={24} 
-              color={theme.colors.text} 
-            />
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -636,6 +627,8 @@ function BottomTabNavigator() {
     <NotificationHandler />
     
     <Tab.Navigator
+      initialRouteName="Dashboard"
+      backBehavior="initialRoute"
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
@@ -648,6 +641,8 @@ function BottomTabNavigator() {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
           } else if (route.name === 'ERP') {
             iconName = focused ? 'business' : 'business-outline';
+          } else if (route.name === 'ERPSchools') {
+            iconName = focused ? 'school' : 'school-outline';
           } else if (route.name === 'Theme') {
             iconName = focused ? 'color-palette' : 'color-palette-outline';
           } else {
@@ -669,26 +664,38 @@ function BottomTabNavigator() {
         },
       })}
     >
-      <Tab.Screen 
-        name="Dashboard" 
-        component={RoleDashboard}
-        options={{ title: 'Dashboard' }}
+      <Tab.Screen
+        name="Analytics"
+        component={ClassesList}
+        options={{ title: 'Analytics' }}
       />
-      <Tab.Screen 
-        name="Assessments" 
+      <Tab.Screen
+        name="Assessments"
         component={RoleAssessments}
         options={{ title: 'Assessments' }}
       />
-      <Tab.Screen 
-        name="Analytics" 
-        component={ClassesList}
-        options={{ title: 'Analytics' }}
+      <Tab.Screen
+        name="Dashboard"
+        component={RoleDashboard}
+        options={{ title: 'Home' }}
       />
       <Tab.Screen
         name="ERP"
         component={ERPNavigator}
         options={{ title: 'ERP' }}
       />
+      {(user?.role === 'instructor' ||
+        user?.role === 'student' ||
+        Number((user as any)?.role_id) === 4) && (
+        <Tab.Screen
+          name="ERPSchools"
+          component={SchoolsTabEntry}
+          options={{
+            title: 'Schools',
+            tabBarStyle: { display: 'none' },
+          }}
+        />
+      )}
       {/* <Tab.Screen 
         name="Theme" 
         component={ThemeSettingsScreen}
@@ -729,22 +736,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     height: 60,
-    paddingHorizontal: 16,
+    paddingLeft: 6,
+    paddingRight: 12,
     borderBottomWidth: 1,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginRight: 10,
+    marginRight: 8,
     minWidth: 0,
   },
+  menuButton: {
+    marginLeft: -2,
+    marginRight: 0,
+  },
   logoTouch: {
-    marginRight: 8,
+    marginRight: 6,
   },
   logo: {
-    width: 92,
-    height: 34,
+    width: 108,
+    height: 40,
   },
   schoolBadge: {
     maxWidth: 130,

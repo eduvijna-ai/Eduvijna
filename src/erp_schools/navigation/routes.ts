@@ -1,0 +1,54 @@
+/**
+ * Route-name constants. Importing these avoids magic strings at call sites and
+ * keeps route names collision-free with the existing ERP/app navigators.
+ */
+
+export const TEACHER_TABS = {
+  HOME: 'TeacherHome',
+  CLASSES: 'TeacherClasses',
+  DASHBOARD: 'TeacherDashboard',
+  STUDENTS: 'TeacherStudents',
+  MORE: 'TeacherMore',
+} as const;
+
+export const TEACHER_ROUTES = {
+  TABS: 'TeacherTabs',
+  PROFILE: 'Profile',
+  NOTIFICATIONS: 'Notifications',
+  SETTINGS: 'Settings',
+  MY_ATTENDANCE: 'MyAttendance',
+  ATTENDANCE_CALENDAR: 'AttendanceCalendar',
+  PAYROLL_DASHBOARD: 'PayrollDashboard',
+  PAYSLIP_DETAILS: 'PayslipDetails',
+  SALARY_HISTORY: 'SalaryHistory',
+  LEAVE_DASHBOARD: 'LeaveDashboard',
+  APPLY_LEAVE: 'ApplyLeave',
+  LEAVE_HISTORY: 'LeaveHistory',
+  CLASS_DETAILS: 'ClassDetails',
+  STUDENT_PROFILE: 'StudentProfile',
+  STUDENT_ATTENDANCE: 'StudentAttendance',
+  MARK_ATTENDANCE: 'MarkAttendance',
+  ATTENDANCE_REPORT: 'AttendanceReport',
+  GRADE_STUDENTS: 'GradeStudents',
+  ASSESSMENT_LIST: 'AssessmentList',
+  ASSESSMENT_DETAILS: 'AssessmentDetails',
+  ASSIGNMENT_DASHBOARD: 'AssignmentDashboard',
+  CREATE_ASSIGNMENT: 'CreateAssignment',
+  ASSIGNMENT_SUBMISSIONS: 'AssignmentSubmissions',
+  STUDY_MATERIAL: 'StudyMaterial',
+  UPLOAD_MATERIAL: 'UploadMaterial',
+  RESOURCE_LIBRARY: 'ResourceLibrary',
+  TIMETABLE: 'Timetable',
+  PARENT_COMMUNICATION: 'ParentCommunication',
+  PARENT_CHAT: 'ParentChat',
+  BROADCAST_MESSAGE: 'BroadcastMessage',
+  NOTICE_BOARD: 'NoticeBoard',
+  CREATE_NOTICE: 'CreateNotice',
+  SCHEDULED_NOTICE: 'ScheduledNotice',
+  ATTENDANCE_ANALYTICS: 'AttendanceAnalytics',
+  ASSIGNMENT_ANALYTICS: 'AssignmentAnalytics',
+  ASSESSMENT_ANALYTICS: 'AssessmentAnalytics',
+  STUDENT_PROGRESS_ANALYTICS: 'StudentProgressAnalytics',
+  REPORTS_DASHBOARD: 'ReportsDashboard',
+  AI_ASSISTANT: 'AITeacherAssistant',
+} as const;

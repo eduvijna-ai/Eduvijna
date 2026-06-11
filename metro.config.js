@@ -43,7 +43,17 @@ const zustandCjsMap = {
   'zustand/react': path.join(zustandRoot, 'react.js'),
 };
 
+const reactNativeRoot = path.join(__dirname, 'node_modules', 'react-native');
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Shim target imports the real package under a different name (avoids circular alias).
+  if (moduleName === 'react-native-original') {
+    return {
+      type: 'sourceFile',
+      filePath: path.join(reactNativeRoot, 'index.js'),
+    };
+  }
+
   if (moduleName === 'axios') {
     return context.resolveRequest(
       context,
