@@ -1,22 +1,31 @@
-# ERP Schools — Teacher Module Screen Inventory
+# ERP Schools — Screen Inventory (Teacher + Student)
 
 > **Module path:** `src/erp_schools/`  
-> **Status:** UI complete with mock data (no API integration yet)  
-> **Reference images:** `assets/teachers_screens/`  
-> **Architecture:** See `ERP_SCHOOLS_ARCHITECTURE.md`  
-> **Last updated:** June 10, 2026
+> **Status:** Teacher + Student UI complete with mock data (no API integration yet)  
+> **Reference images:** `assets/teachers_screens/` · `assets/student_screens/`  
+> **Architecture:** See `SKILLS.md` §8, `STUDENT_MODULE_ANALYSIS.md`  
+> **Last updated:** June 11, 2026
 
 ---
 
-## Bottom Tab Bar (persistent — 5 items)
+## Naming convention (June 2026)
 
-| Order | Tab label | Route name | Screen | Notes |
-|------|-----------|------------|--------|-------|
-| 1 | Home | `TeacherHome` | `dashboard/TeacherHomeScreen` | Schools teacher home (default on enter) |
-| 2 | Classes | `TeacherClasses` | `classes/MyClassesScreen` | |
-| 3 | **Dashboard** | `TeacherDashboard` | *(placeholder)* | **Escape hatch** — taps navigate to main app `Dashboard` tab via `navigateToAppMainTab()`; does not stay in Schools |
-| 4 | Students | `TeacherStudents` | `students/StudentListScreen` | |
-| 5 | More | `TeacherMore` | `settings/MoreMenuScreen` | Hub for secondary features |
+| UI label | Meaning | Route / screen |
+|----------|---------|----------------|
+| **Home** | Main app dashboard | Host tab `Dashboard` · side nav · persona center escape tab |
+| **Dashboard** | ERP Schools module home | `TeacherHome` / `StudentHome` in persona tab bars |
+
+---
+
+## Teacher — Bottom Tab Bar (persistent — 5 items)
+
+| Order | Tab label | Route name | Screen | Icon |
+|------|-----------|------------|--------|------|
+| 1 | **Dashboard** | `TeacherHome` | `dashboard/TeacherHomeScreen` | speedometer |
+| 2 | Classes | `TeacherClasses` | `classes/MyClassesScreen` | easel |
+| 3 | **Home** | `TeacherDashboard` | *(placeholder)* | home — **escape** to main app Home tab via `navigateToAppMainTab()` |
+| 4 | Students | `TeacherStudents` | `students/StudentListScreen` | people |
+| 5 | More | `TeacherMore` | `settings/MoreMenuScreen` | grid |
 
 **Removed from tabs (June 2026):** `TeacherReports` — Reports is now a **stack screen** and a **More menu** item (see below).
 
@@ -155,12 +164,14 @@ These screens show the teal **class header card** at the top when a class contex
 
 | Concern | Implementation |
 |---------|----------------|
-| Entry tab | Main app `ERPSchools` tab → `SchoolsTabEntry` → `TeacherStack` |
-| Who sees it | `user.role === 'instructor'` only |
-| Double bottom nav | Host tab bar hidden on Schools; only `TeacherTabs` visible inside |
-| Re-entry | `SchoolsTabEntry` unmounts on blur → fresh `TeacherHome` each visit |
-| Exit to main app | Center **Dashboard** tab · side nav · `useMainAppNavigation()` |
-| Side nav routes | Analytics · Assessments · Dashboard · ERP · Schools |
+| Entry tab | Main app `ERPSchools` tab → `SchoolsTabEntry` → persona stack |
+| Persona routing | `useTeacherSession().persona` — `student` → `StudentStack`, else → `TeacherStack` |
+| Who sees Schools tab | `role === 'instructor'` **or** `role === 'student'` **or** `role_id === 4` |
+| Main app Home tab | Label **Home**, icon home; route name remains `Dashboard` |
+| Double bottom nav | Host tab bar hidden on Schools; only persona tab bar visible inside |
+| Re-entry | `SchoolsTabEntry` unmounts on blur → fresh module home each visit |
+| Exit to main app | Persona center **Home** tab · side nav **Home** · `useMainAppNavigation()` |
+| Side nav routes | Analytics · Assessments · **Home** · ERP · Schools |
 
 ---
 
@@ -184,6 +195,129 @@ These screens show the teal **class header card** at the top when a class contex
 - [x] AI Teacher Assistant
 - [x] Notifications · Settings
 
+---
 
+## Student — Bottom Tab Bar (persistent — 5 items)
 
+| Order | Tab label | Route name | Screen | Icon |
+|------|-----------|------------|--------|------|
+| 1 | **Dashboard** | `StudentHome` | `dashboard/StudentHomeScreen` | speedometer |
+| 2 | Academics | `StudentAcademics` | `academics/AcademicsScreen` | school |
+| 3 | **Home** | `StudentDashboard` | *(placeholder)* | home — **escape** to main app Home tab |
+| 4 | AI Test | `StudentAITest` | `ai/AITutorScreen` | sparkles |
+| 5 | More | `StudentMore` | `settings/MoreMenuScreen` | grid |
 
+**Removed from tabs (June 2026):** `StudentUpdates` (Notices) — now stack screen `Notices`; Profile moved to stack + More menu.
+
+---
+
+## Student Home (`StudentHomeScreen`)
+
+**File:** `screens/student/dashboard/StudentHomeScreen.tsx`  
+**Reference:** `assets/student_screens/student or parent home screen.png`
+
+| Section | Content |
+|---------|---------|
+| Welcome hero | Solid teal strip, logo watermark, "Hello, {name} 👋" |
+| Identity card | Avatar, name, class, roll chip, View Profile → stack `StudentProfile` |
+| Stats row | Attendance % · Avg Marks % · Class Rank |
+| Progress banner | Full-width: star + "Good Progress · Keep it up!" (below stats, not inline) |
+| Quick Access | 8 tiles: Attendance, Assignments, Marks, Timetable, Fee Details, Notices, Events, Library |
+| Today's Schedule | Timeline with status pills |
+| Recent Announcements | List with NEW badges → View All → `Notices` |
+| AI Learning Assistant | Card → `AITutor` stack or AI Test tab |
+
+---
+
+## Student More Menu (`MoreMenuScreen`)
+
+**File:** `screens/student/settings/MoreMenuScreen.tsx`
+
+| Section | Links |
+|---------|-------|
+| Profile card | Tap → `StudentProfile` |
+| Academics | Marks Report · Progress Report · Exam Schedule · Exam Results · Timetable |
+| Activities | Library · Events · Fee Details |
+| Learning | AI Tutor · AI Practice Test |
+| Account | Notifications · Settings · Switch to App Home · Sign Out |
+
+---
+
+## Student Stack Screens (pushed on top of tabs)
+
+### Profile & system
+| Screen | File |
+|--------|------|
+| Student Profile | `profile/StudentProfileScreen.tsx` |
+| Notifications | `settings/NotificationsScreen.tsx` |
+| Settings | `settings/SettingsScreen.tsx` |
+
+### Attendance
+| Screen | File |
+|--------|------|
+| Attendance | `attendance/AttendanceScreen.tsx` |
+| Attendance Details | `attendance/AttendanceDetailsScreen.tsx` |
+
+### Academics
+| Screen | File |
+|--------|------|
+| Academics | `academics/AcademicsScreen.tsx` *(also a tab)* |
+| Subject Details | `academics/SubjectDetailsScreen.tsx` |
+| Marks Report | `academics/MarksReportScreen.tsx` |
+| Progress Report | `academics/ProgressReportScreen.tsx` |
+
+### Assignments
+| Screen | File |
+|--------|------|
+| Assignments | `assignments/AssignmentsScreen.tsx` |
+| Assignment Details | `assignments/AssignmentDetailsScreen.tsx` |
+| Assignment Submission | `assignments/AssignmentSubmissionScreen.tsx` |
+| Assignment Performance | `assignments/AssignmentPerformanceScreen.tsx` |
+
+### Timetable & exams
+| Screen | File |
+|--------|------|
+| Timetable | `timetable/TimetableScreen.tsx` |
+| Exam Schedule | `exams/ExamScheduleScreen.tsx` |
+| Exam Results | `exams/ExamResultsScreen.tsx` |
+
+### Fees, library, notices, events
+| Screen | File |
+|--------|------|
+| Fee Dashboard | `fees/FeeDashboardScreen.tsx` |
+| Library | `library/LibraryScreen.tsx` |
+| Notices | `notices/NoticesScreen.tsx` |
+| Events | `events/EventsScreen.tsx` |
+
+### AI
+| Screen | File |
+|--------|------|
+| AI Tutor | `ai/AITutorScreen.tsx` *(also AI Test tab)* |
+| AI Practice Test | `ai/AIPracticeTestScreen.tsx` |
+| AI Quiz | `ai/AIQuizScreen.tsx` |
+
+---
+
+## Student Screens Using `StudentIdentityHeader`
+
+Attendance · Academics · Subject Details · Marks Report · Progress Report · Assignments flows · Timetable · Exam Schedule · Exam Results · Fee Dashboard · Library · Notices · Events
+
+**Component:** `components/StudentIdentityHeader.tsx` — teal banner, back navigation, overlapping identity card, optional `AcademicYearPill`.
+
+---
+
+## Student Module Checklist (all implemented — June 2026)
+
+- [x] Student Home (hero · identity · stats · progress banner · quick access · schedule · announcements · AI card)
+- [x] Student Profile · Notifications · Settings · More Menu
+- [x] Attendance · Attendance Details
+- [x] Academics · Subject Details · Marks Report · Progress Report
+- [x] Assignments · Assignment Details · Submission · Performance
+- [x] Timetable · Exam Schedule · Exam Results
+- [x] Fee Dashboard · Library · Notices · Events
+- [x] AI Tutor · AI Practice Test · AI Quiz
+- [x] StudentStack + StudentTabs navigation
+- [x] Role-based Schools routing (student persona)
+- [x] Shared components: StudentIdentityHeader, IconTabs, AcademicYearPill
+
+**Pending (future):** API integration via `useStudentData` seam · Parent persona · live AI backend

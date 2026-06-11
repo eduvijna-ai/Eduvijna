@@ -634,7 +634,7 @@ function BottomTabNavigator() {
           let iconName: keyof typeof Ionicons.glyphMap;
 
           if (route.name === 'Dashboard') {
-            iconName = focused ? 'speedometer' : 'speedometer-outline';
+            iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Assessments') {
             iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === 'Analytics') {
@@ -677,14 +677,16 @@ function BottomTabNavigator() {
       <Tab.Screen
         name="Dashboard"
         component={RoleDashboard}
-        options={{ title: 'Dashboard' }}
+        options={{ title: 'Home' }}
       />
       <Tab.Screen
         name="ERP"
         component={ERPNavigator}
         options={{ title: 'ERP' }}
       />
-      {user?.role === 'instructor' && (
+      {(user?.role === 'instructor' ||
+        user?.role === 'student' ||
+        Number((user as any)?.role_id) === 4) && (
         <Tab.Screen
           name="ERPSchools"
           component={SchoolsTabEntry}

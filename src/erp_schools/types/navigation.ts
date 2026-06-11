@@ -85,3 +85,53 @@ export type TeacherStackParamList = {
   // ai
   AITeacherAssistant: undefined;
 };
+
+/** Student bottom-tab routes (the persistent 5-item bar). */
+export type StudentTabParamList = {
+  StudentHome: undefined;
+  StudentAcademics: undefined;
+  StudentDashboard: undefined;
+  StudentAITest: undefined;
+  StudentMore: undefined;
+};
+
+/** Student root stack: tabs + every detail/flow screen pushed on top. */
+export type StudentStackParamList = {
+  StudentTabs: NavigatorScreenParams<StudentTabParamList> | undefined;
+
+  // academics
+  SubjectDetails: { subjectId: string };
+  MarksReport: undefined;
+  ProgressReport: undefined;
+
+  // attendance
+  Attendance: undefined;
+  AttendanceDetails: { mode?: 'daily' | 'monthly' };
+
+  // assignments
+  Assignments: undefined;
+  AssignmentDetails: { assignmentId: string };
+  AssignmentSubmission: { assignmentId: string };
+  AssignmentPerformance: undefined;
+
+  // timetable & exams
+  Timetable: undefined;
+  ExamSchedule: undefined;
+  ExamResults: undefined;
+
+  // fees, library, notices, events
+  FeeDashboard: undefined;
+  Library: undefined;
+  Notices: undefined;
+  Events: undefined;
+
+  // ai
+  AITutor: undefined;
+  AIPracticeTest: undefined;
+  AIQuiz: { topic?: string };
+
+  // profile / system
+  StudentProfile: undefined;
+  StudentNotifications: undefined;
+  StudentSettings: undefined;
+};

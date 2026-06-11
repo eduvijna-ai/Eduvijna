@@ -49,7 +49,7 @@ interface NavItemConfig {
 const NAV_ITEMS: NavItemConfig[] = [
   { key: APP_MAIN_TABS.ANALYTICS, label: 'Analytics', icon: 'stats-chart-outline' },
   { key: APP_MAIN_TABS.ASSESSMENTS, label: 'Assessments', icon: 'document-text-outline' },
-  { key: APP_MAIN_TABS.DASHBOARD, label: 'Dashboard', icon: 'speedometer-outline' },
+  { key: APP_MAIN_TABS.DASHBOARD, label: 'Home', icon: 'home-outline' },
   { key: APP_MAIN_TABS.ERP, label: 'ERP', icon: 'business-outline' },
   { key: APP_MAIN_TABS.ERP_SCHOOLS, label: 'Schools', icon: 'school-outline', instructorOnly: true },
 ];
@@ -127,7 +127,7 @@ export function AppSideNavProvider({ children }: { children: React.ReactNode }) 
               style={styles.logoRow}
               onPress={() => navigateToTab(APP_MAIN_TABS.DASHBOARD)}
               accessibilityRole="button"
-              accessibilityLabel="Go to dashboard"
+              accessibilityLabel="Go to home"
             >
               <Image
                 source={

@@ -43,7 +43,12 @@ export function QuickActionGrid({ actions, columns = 4 }: QuickActionGridProps) 
             <View style={[styles.iconWrap, { backgroundColor: accent.bg }]}>
               <Ionicons name={action.icon} size={22} color={accent.fg} />
             </View>
-            <Text style={[styles.label, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+            <Text
+              style={[styles.label, { color: theme.colors.textPrimary }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+            >
               {action.label}
             </Text>
           </TouchableOpacity>
@@ -65,5 +70,5 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  label: { fontSize: 9, fontWeight: '600', textAlign: 'center' },
 });

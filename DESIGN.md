@@ -138,12 +138,13 @@ Global app header (CustomHeader) — single bar for entire mobile app
 File: src/platforms/mobile/navigation/BottomTabNavigator.tsx (CustomHeader)
 Used on main dashboard, all main tabs, ERP Schools module, and overlay tabs (Notifications, Profile).
 Left → right: Hamburger (side nav) · EduVijna logo · School name pill · Plus (create assessment) · Notifications · Profile avatar.
-Logo tap: always navigates to main Dashboard tab (center) via navigateToAppMainTab().
-Dashboard tab icon: speedometer (not home).
+Logo tap: always navigates to main app Home tab (center; route name `Dashboard`) via navigateToAppMainTab().
+Main app Home tab: label **Home**, icon home-outline / home (route `Dashboard` — do not rename route).
+Side nav drawer: third item label **Home**, icon home-outline (same destination as main Home tab).
 Dark/light theme toggle: removed from navbar — lives in Profile → Preferences → Dark Mode switch.
 Layout: reduced left padding; logo ~108×40px.
 TeacherTopBar (deprecated): do not use — Schools tab screens rely on CustomHeader from host tab navigator.
-ERP Schools stack detail screens: CustomHeader (host) + ScreenHeader (back + title in content) when pushed.
+ERP Schools stack detail screens: CustomHeader (host) + ScreenHeader or StudentIdentityHeader (back + title in content) when pushed.
 ________________________________________
 Hero Card
 Use on all dashboards.
@@ -160,6 +161,13 @@ Full-width solid primary teal (not gradient) for welcome strip.
 Rounded top-left / top-right 24px.
 Large logo watermark on right (~12% opacity).
 Overview metrics card overlaps hero bottom by ~72px (layered rich UI).
+
+Student Home hero (implemented variant)
+Same solid teal strip + watermark pattern as teacher.
+Greeting: "Hello, {name} 👋" with mixed Poppins Medium/Bold weights.
+Identity card overlaps hero (~64px): avatar, name, class, roll chip, View Profile.
+Stats row: 3 equal columns (Attendance · Avg Marks · Class Rank).
+Progress banner: full-width row below stats (star + "Good Progress · Keep it up!") — not a fourth stat column.
 ________________________________________
 Class Context Banner
 Used atop class-scoped screens (Study Material, Timetable, Reports, Parent Communication, Notice Board, Mark Attendance, etc.).
@@ -186,10 +194,12 @@ Bottom Navigation
 ________________________________________
 Quick Actions
 Teacher Home: 4-column grid (8 tiles, 2 rows).
+Student Home: 4-column grid (8 tiles, 2 rows).
 Other screens: 2 or 4 columns as needed.
+Component: src/erp_schools/components/QuickActionGrid.tsx
 120px Height (approx per tile)
 Icon (colored circle on soft tint)
-Label
+Label: 9px SemiBold, single line, adjustsFontSizeToFit (min 0.85) — fits "Assignments" on one line
 Action
 ________________________________________
 Cards
@@ -219,17 +229,42 @@ Navigation
 Bottom Navigation
 Maximum 5 Items
 Floating Action Button optional
+
+Naming convention (June 2026 — important)
+Home = main app dashboard (route `Dashboard`, home icon) — host bottom tab, side nav, persona escape hatch.
+Dashboard = ERP Schools module home (speedometer icon) — TeacherHome / StudentHome in persona tab bars.
+
 Main app (host) bottom tabs (left → right)
-Analytics · Assessments · Dashboard (center, initialRouteName) · ERP · Schools (instructor only)
-Dashboard tab icon: speedometer-outline / speedometer (active).
-Tab back behavior: backBehavior="initialRoute" — Android back from Notifications/Profile returns to Dashboard (not first tab).
+Analytics · Assessments · Home (center, initialRouteName; route `Dashboard`) · ERP · Schools (instructor + student)
+Home tab icon: home-outline / home (active).
+Schools tab: instructor, student, or role_id 4.
+Tab back behavior: backBehavior="initialRoute" — Android back from Notifications/Profile returns to Home tab (not first tab).
+
 App side nav (left drawer)
-Same five destinations; order matches tabs. Hamburger only in CustomHeader.
-ERP Schools teacher bottom tabs (nested inside Schools — host bottom bar hidden)
-Home · Classes · Dashboard (center) · Students · More
-Center Dashboard tab = escape to main app Dashboard (not an in-module screen).
+Analytics · Assessments · Home · ERP · Schools (Schools item instructor-only in drawer config).
+Home uses home-outline icon; maps to route `Dashboard`.
+
+ERP Schools teacher bottom tabs (nested — host bottom bar hidden)
+Dashboard · Classes · Home (center escape) · Students · More
+Dashboard tab = TeacherHomeScreen (module home, speedometer icon).
+Center Home tab = escape to main app Home (not an in-module screen).
+More tab icon: grid / grid-outline.
 Reports removed from tabs — reachable via More → Academics and Home quick action.
-Schools tab shows host CustomHeader above teacher content (no separate TeacherTopBar).
+
+ERP Schools student bottom tabs (nested — host bottom bar hidden)
+Dashboard · Academics · Home (center escape) · AI Test · More
+Dashboard tab = StudentHomeScreen (module home, speedometer icon).
+Center Home tab = escape to main app Home.
+AI Test tab = AITutorScreen (sparkles icon); practice/quiz pushed on stack.
+More tab icon: grid / grid-outline (matches teacher).
+Notices removed from tabs — stack screen `Notices`; reachable from Home quick action / announcements.
+
+Student detail header pattern
+Component: StudentIdentityHeader — solid teal banner, back arrow, title, overlapping white identity card (avatar, name, class, roll, optional AcademicYearPill).
+Used on: Attendance, Academics, Timetable, Fee, Assignments detail flows, etc.
+IconTabs: scrollable underline tabs with optional stacked icons (Academics sub-views, Notices categories).
+
+Schools tab shows host CustomHeader above persona content (no separate TeacherTopBar).
 ________________________________________
 Charts
 Allowed
@@ -275,9 +310,14 @@ AI Copilot
 ________________________________________
 Module Implementation Notes (ERP Schools)
 Path: src/erp_schools/
-Reference screenshots: assets/teachers_screens/
+Reference screenshots: assets/teachers_screens/ · assets/student_screens/
+Personas: Teacher (complete) · Student (UI complete, mock data) · Parent / Principal / Admin (planned)
 Isolation: must not import from src/erp/ — sibling module only.
-Data: mock fixtures in erp_schools/data/ until API layer is added.
+Data: mock fixtures in erp_schools/data/ (teacher) and data/student/ until API layer is added.
+Read seams: useTeacherData() · useStudentData() — screens never import fixtures directly.
+Session / routing: useTeacherSession().persona → SchoolsTabEntry branches TeacherStack vs StudentStack.
 Theme hook: useTeacherTheme() merges ThemeContext isDark with teacherPalettes from tokens.ts.
 Host integration: ERPSchools tab uses CustomHeader (headerShown not disabled); TeacherScreen has no duplicate top safe-area padding.
-Screen scaffold: TeacherScreen (content + optional ScreenHeader for stack flows only).
+Screen scaffold: TeacherScreen (content + optional ScreenHeader or StudentIdentityHeader for stack flows).
+Student UI store: studentUI.store.ts (academic year, term range selections).
+Analysis doc: STUDENT_MODULE_ANALYSIS.md (architecture review + screen mapping).

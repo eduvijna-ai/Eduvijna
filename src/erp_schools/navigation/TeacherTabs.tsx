@@ -24,9 +24,9 @@ import MoreMenuScreen from '../screens/teacher/settings/MoreMenuScreen';
 const Tab = createBottomTabNavigator<TeacherTabParamList>();
 
 const ICONS: Record<keyof TeacherTabParamList, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-  TeacherHome: { active: 'home', inactive: 'home-outline' },
+  TeacherHome: { active: 'speedometer', inactive: 'speedometer-outline' },
   TeacherClasses: { active: 'easel', inactive: 'easel-outline' },
-  TeacherDashboard: { active: 'speedometer', inactive: 'speedometer-outline' },
+  TeacherDashboard: { active: 'home', inactive: 'home-outline' },
   TeacherStudents: { active: 'people', inactive: 'people-outline' },
   TeacherMore: { active: 'grid', inactive: 'grid-outline' },
 };
@@ -53,12 +53,12 @@ export function TeacherTabs() {
         },
       })}
     >
-      <Tab.Screen name={TEACHER_TABS.HOME} component={TeacherHomeScreen} options={{ title: 'Home' }} />
+      <Tab.Screen name={TEACHER_TABS.HOME} component={TeacherHomeScreen} options={{ title: 'Dashboard' }} />
       <Tab.Screen name={TEACHER_TABS.CLASSES} component={MyClassesScreen} options={{ title: 'Classes' }} />
       <Tab.Screen
         name={TEACHER_TABS.DASHBOARD}
         component={MainDashboardTabPlaceholder}
-        options={{ title: 'Dashboard' }}
+        options={{ title: 'Home' }}
         listeners={{
           tabPress: (e) => {
             e.preventDefault();

@@ -36,7 +36,7 @@ function toPersona(role?: string, roleId?: number | null): ERPSchoolsPersona {
   if (roleId === 1 || role === 'super_admin') return 'admin';
   if (roleId === 2 || role === 'admin') return 'admin';
   if (role === 'instructor' || role === 'teacher') return 'teacher';
-  if (role === 'student') return 'student';
+  if (roleId === 4 || role === 'student') return 'student';
   if (role === 'parent') return 'parent';
   if (role === 'principal') return 'principal';
   return 'unknown';
