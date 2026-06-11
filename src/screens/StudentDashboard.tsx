@@ -272,14 +272,12 @@ export default function StudentDashboard({ navigation, route }: Props) {
     }
   }, [user, selectedClassroom, refreshing]);
 
-  // Fetch on mount and every time the screen comes back into focus
-  // (e.g. after completing a quiz). This ensures newly-assigned pending
-  // quizzes always appear without a manual pull-to-refresh.
-  useFocusEffect(
-    useCallback(() => {
+  // Fetch on mount. On mobile, tab/stack screens also refetch via NativeFocusRefetch below.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
       fetchDashboardData();
-    }, [fetchDashboardData])
-  );
+    }
+  }, [fetchDashboardData]);
 
   // Refresh handler
   const onRefresh = () => {
@@ -327,9 +325,14 @@ export default function StudentDashboard({ navigation, route }: Props) {
       return dateB - dateA;
     });
 
+  const focusRefetch =
+    Platform.OS !== 'web' ? <NativeFocusRefetch onFocus={fetchDashboardData} /> : null;
+
   // Authentication check - show message if not authenticated
   if (!isAuthenticated) {
     return (
+      <>
+        {focusRefetch}
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
           <Ionicons name="log-in-outline" size={48} color={colors.textSecondary} />
@@ -338,22 +341,28 @@ export default function StudentDashboard({ navigation, route }: Props) {
           </Text>
         </View>
       </View>
+      </>
     );
   }
 
   // Loading state
   if (loading && allQuizzes.length === 0) {
     return (
+      <>
+        {focusRefetch}
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.loadingContainer}>
           <LoadingSpinner size={60} fullScreen />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading dashboard...</Text>
         </View>
       </View>
+      </>
     );
   }
 
   return (
+    <>
+      {focusRefetch}
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={[
@@ -617,7 +626,18 @@ export default function StudentDashboard({ navigation, route }: Props) {
         
       </View>
     </ScrollView>
+    </>
   );
+}
+
+/** Refetch when screen regains focus — only used inside NavigationContainer (mobile). */
+function NativeFocusRefetch({ onFocus }: { onFocus: () => void }) {
+  useFocusEffect(
+    useCallback(() => {
+      onFocus();
+    }, [onFocus]),
+  );
+  return null;
 }
 
 const styles = StyleSheet.create({
