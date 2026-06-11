@@ -134,9 +134,16 @@ Page Title
 Notification Icon
 Profile Avatar
 Optional Search
-Teacher module top bar (TeacherTopBar)
-Hamburger (opens app side nav) · EduVijna logo image · notification bell with badge · profile avatar.
-Used on Teacher Home and More; stack screens use ScreenHeader (back + title).
+Global app header (CustomHeader) — single bar for entire mobile app
+File: src/platforms/mobile/navigation/BottomTabNavigator.tsx (CustomHeader)
+Used on main dashboard, all main tabs, ERP Schools module, and overlay tabs (Notifications, Profile).
+Left → right: Hamburger (side nav) · EduVijna logo · School name pill · Plus (create assessment) · Notifications · Profile avatar.
+Logo tap: always navigates to main Dashboard tab (center) via navigateToAppMainTab().
+Dashboard tab icon: speedometer (not home).
+Dark/light theme toggle: removed from navbar — lives in Profile → Preferences → Dark Mode switch.
+Layout: reduced left padding; logo ~108×40px.
+TeacherTopBar (deprecated): do not use — Schools tab screens rely on CustomHeader from host tab navigator.
+ERP Schools stack detail screens: CustomHeader (host) + ScreenHeader (back + title in content) when pushed.
 ________________________________________
 Hero Card
 Use on all dashboards.
@@ -212,14 +219,17 @@ Navigation
 Bottom Navigation
 Maximum 5 Items
 Floating Action Button optional
-Main app (host) bottom tabs
-Dashboard · Assessments · Analytics · ERP · Schools (instructor only)
+Main app (host) bottom tabs (left → right)
+Analytics · Assessments · Dashboard (center, initialRouteName) · ERP · Schools (instructor only)
+Dashboard tab icon: speedometer-outline / speedometer (active).
+Tab back behavior: backBehavior="initialRoute" — Android back from Notifications/Profile returns to Dashboard (not first tab).
 App side nav (left drawer)
-Same five destinations + hamburger in TeacherTopBar and main CustomHeader.
-ERP Schools teacher bottom tabs
+Same five destinations; order matches tabs. Hamburger only in CustomHeader.
+ERP Schools teacher bottom tabs (nested inside Schools — host bottom bar hidden)
 Home · Classes · Dashboard (center) · Students · More
 Center Dashboard tab = escape to main app Dashboard (not an in-module screen).
 Reports removed from tabs — reachable via More → Academics and Home quick action.
+Schools tab shows host CustomHeader above teacher content (no separate TeacherTopBar).
 ________________________________________
 Charts
 Allowed
@@ -269,3 +279,5 @@ Reference screenshots: assets/teachers_screens/
 Isolation: must not import from src/erp/ — sibling module only.
 Data: mock fixtures in erp_schools/data/ until API layer is added.
 Theme hook: useTeacherTheme() merges ThemeContext isDark with teacherPalettes from tokens.ts.
+Host integration: ERPSchools tab uses CustomHeader (headerShown not disabled); TeacherScreen has no duplicate top safe-area padding.
+Screen scaffold: TeacherScreen (content + optional ScreenHeader for stack flows only).

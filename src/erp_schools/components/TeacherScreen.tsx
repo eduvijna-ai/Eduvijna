@@ -69,12 +69,7 @@ export function TeacherScreen({
   );
 
   return (
-    <View
-      style={[
-        styles.flex,
-        { backgroundColor: theme.colors.background, paddingTop: insets.top },
-      ]}
-    >
+    <View style={[styles.flex, { backgroundColor: theme.colors.background }]}>
       {header}
       {body}
       {footer ? (

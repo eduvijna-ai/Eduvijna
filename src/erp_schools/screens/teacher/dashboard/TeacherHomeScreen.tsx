@@ -8,7 +8,6 @@ import { View, Text, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  TeacherTopBar,
   SurfaceCard,
   SectionHeader,
   QuickActionGrid,
@@ -20,7 +19,7 @@ import { useTeacherSession } from '../../../hooks/useTeacherSession';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
 import { useTeacherUIStore } from '../../../store/teacherUI.store';
 import { useTeacherData } from '../../../hooks/useTeacherData';
-import { notifications, teacherProfile } from '../../../data';
+import { teacherProfile } from '../../../data';
 import { FONT_FAMILY } from '../../../../theme/fonts';
 
 interface OverviewMetric {
@@ -42,14 +41,13 @@ export default function TeacherHomeScreen() {
   const overviewRange = useTeacherUIStore((s) => s.overviewRange);
   const firstClassId = classes[0]?.id;
 
-  const unread = notifications.filter((n) => !n.read).length;
   const welcomeName = teacherProfile.name || displayName;
 
   const metrics: OverviewMetric[] = [
     { key: 'students', icon: 'people-outline', value: String(overview.students), label: 'My Students' },
     { key: 'classes', icon: 'book-outline', value: String(overview.classes), label: 'My Classes' },
     { key: 'assignments', icon: 'clipboard-outline', value: String(overview.assignments), label: 'Assignments' },
-    { key: 'attendance', icon: 'calendar-outline', value: `${overview.avgAttendance}%`, label: 'Avg Attendance' },
+    { key: 'attendance', icon: 'calendar-outline', value: `${overview.avgAttendance}%`, label: 'Avg Attd' },
   ];
 
   const actions: QuickAction[] = [
@@ -64,18 +62,7 @@ export default function TeacherHomeScreen() {
   ];
 
   return (
-    <TeacherScreen
-      header={
-        <TeacherTopBar
-          userName={teacherProfile.name}
-          avatarUrl={teacherProfile.avatarUrl}
-          notificationCount={unread}
-          onPressNotifications={() => navigation.navigate('Notifications')}
-          onPressProfile={() => navigation.navigate('Profile')}
-        />
-      }
-      contentStyle={styles.scrollContent}
-    >
+    <TeacherScreen contentStyle={styles.scrollContent}>
       {/* Full-width welcome hero — solid teal, rounded top corners */}
       <View
         style={[

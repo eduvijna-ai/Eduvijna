@@ -1,4 +1,7 @@
-/** TeacherTopBar — side menu · EduVijna logo · notifications · profile avatar. */
+/**
+ * @deprecated Use the host app CustomHeader (BottomTabNavigator) instead.
+ * Kept for reference; no longer mounted on teacher tab screens.
+ */
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';

@@ -489,11 +489,15 @@ NavigationContainer (ref=navigationRef)
   └── MobileNavigation = BottomTabNavigator.tsx
         └── Stack.Navigator (Root Stack)
               ├── Main (screen) → Tab.Navigator
-              │     ├── Dashboard tab → RoleDashboard
+              │     ├── Main tabs (left→right): Analytics · Assessments · Dashboard · ERP · Schools‡
+              │     ├── initialRouteName="Dashboard" · backBehavior="initialRoute"
+              │     ├── CustomHeader on all visible tabs (incl. ERPSchools, Notifications, Profile)
+              │     ├── Analytics tab → ClassesList screen
+              │     ├── Assessments tab → RoleAssessments → AssessmentsScreen
+              │     ├── Dashboard tab → RoleDashboard (center; speedometer icon; app home)
               │     │     ├── TeacherDashboard (role=instructor|admin)
               │     │     └── StudentDashboard (role=student)
-              │     ├── Assessments tab → RoleAssessments → AssessmentsScreen
-              │     ├── Analytics tab → ClassesList screen
+              │     ‡ Schools instructor-only; host tab bar hidden inside Schools
               │     ├── ERP tab → ERPNavigator (nested Stack)
               │     ├── Schools tab (instructor only) → SchoolsTabEntry → TeacherStack
               │     │     └── TeacherTabs: Home · Classes · Dashboard† · Students · More
@@ -556,35 +560,57 @@ Source: `src/platforms/mobile/navigation/BottomTabNavigator.tsx`
 Isolated module at `src/erp_schools/`. Mounted from the host app's **Schools** tab (`ERPSchools`).
 
 ```
-BottomTabNavigator → SchoolsTabEntry (unmounts when tab blurred)
-  └── TeacherStack (native-stack)
-        ├── TeacherTabs (bottom-tabs) — host tab bar hidden while inside Schools
-        │     ├── TeacherHome        → TeacherHomeScreen
-        │     ├── TeacherClasses     → MyClassesScreen
-        │     ├── TeacherDashboard   → placeholder; tabPress → main app Dashboard
-        │     ├── TeacherStudents    → StudentListScreen
-        │     └── TeacherMore        → MoreMenuScreen
-        └── Pushed screens: Profile, ReportsDashboard, Timetable, StudyMaterial,
-            ParentCommunication, NoticeBoard, MarkAttendance, … (see SCREENS.md)
+BottomTabNavigator (CustomHeader visible on ERPSchools tab)
+  └── SchoolsTabEntry (unmounts when tab blurred)
+        └── TeacherStack (native-stack, headerShown: false)
+              ├── TeacherTabs (bottom-tabs) — host main tab bar hidden; teacher tab bar shown
+              │     ├── TeacherHome        → TeacherHomeScreen
+              │     ├── TeacherClasses     → MyClassesScreen
+              │     ├── TeacherDashboard   → placeholder; tabPress → main app Dashboard
+              │     ├── TeacherStudents    → StudentListScreen
+              │     └── TeacherMore        → MoreMenuScreen
+              └── Pushed screens: ReportsDashboard, Timetable, StudyMaterial,
+                  ParentCommunication, NoticeBoard, MarkAttendance, … (see SCREENS.md)
 ```
+
+**Unified header:** Schools module does **not** mount `TeacherTopBar` (deprecated). All teacher tab roots use the host `CustomHeader` from `BottomTabNavigator`. `TeacherScreen` renders content only (no duplicate top inset). Stack flows may add `ScreenHeader` below the global bar.
 
 **Key files:**
 
 | File | Role |
 |------|------|
+| `src/platforms/mobile/navigation/BottomTabNavigator.tsx` | `CustomHeader` — global navbar; logo → `navigateToAppMainTab(Dashboard)` |
 | `src/erp_schools/navigation/SchoolsTabEntry.tsx` | Renders `TeacherStack` only when Schools tab focused |
 | `src/erp_schools/navigation/TeacherTabs.tsx` | 5-item teacher tab bar; center Dashboard escapes to main app |
+| `src/erp_schools/components/TeacherScreen.tsx` | Content scaffold (no built-in top bar) |
 | `src/platforms/mobile/navigation/navigateToAppMainTab.ts` | `navigationRef.dispatch` → `Main` → target tab |
-| `src/context/AppSideNavContext.tsx` | Left drawer: Dashboard, Assessments, Analytics, ERP, Schools |
+| `src/context/AppSideNavContext.tsx` | Left drawer: Analytics, Assessments, Dashboard, ERP, Schools |
 | `src/erp_schools/hooks/useMainAppNavigation.ts` | Thin hook wrapping `navigateToAppMainTab(Dashboard)` |
+| `src/platforms/mobile/screens/Profile.tsx` | Dark Mode toggle in Preferences (theme moved out of navbar) |
 
 **Reports access:** No longer a bottom tab. Reach via Home quick action or More → Academics → Reports (`ReportsDashboard` stack screen).
 
 **Role gate:** Schools tab visible only when `user?.role === 'instructor'` (`BottomTabNavigator.tsx`).
 
+### CustomHeader (mobile global navbar)
+
+Defined in `BottomTabNavigator.tsx`. Rendered via `Tab.Navigator` `screenOptions.header` for Main tabs, Schools, Notifications, and Profile.
+
+| Item | Behavior |
+|------|----------|
+| Hamburger | Opens `AppSideNavContext` drawer |
+| Logo | `navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)` — always returns to center Dashboard |
+| School pill | Fetched from `/api/v1/school-management/my-school` when applicable |
+| Plus | Opens create-assessment modal (instructor/student/admin) |
+| Notifications | Navigates to `Notifications` tab |
+| Profile | Navigates to `Profile` tab |
+| Theme | **Not in navbar** — toggle in `Profile.tsx` Preferences |
+
+Main tab navigator: `initialRouteName="Dashboard"`, `backBehavior="initialRoute"` (back from overlay tabs lands on Dashboard, not Analytics).
+
 ### App Side Navigation (mobile)
 
-`AppSideNavProvider` wraps `NavigationContainer` in `App.tsx`. Hamburger in `CustomHeader` and `TeacherTopBar` opens a **left-aligned** slide drawer with the same five main destinations as the bottom tabs. Uses `navigateToAppMainTab()` so navigation works from nested stacks (ERP, Schools).
+`AppSideNavProvider` wraps `NavigationContainer` in `App.tsx`. Hamburger in `CustomHeader` opens a **left-aligned** slide drawer (Analytics · Assessments · Dashboard · ERP · Schools). Uses `navigateToAppMainTab()` so navigation works from nested stacks (ERP, Schools).
 
 ### Global Typography (Poppins)
 
@@ -1328,11 +1354,16 @@ EduVijna is a cross-platform React Native Expo application using a **hybrid clea
 | Where is ERP Schools teacher UI? | `src/erp_schools/` — see `ERP_SCHOOLS_ARCHITECTURE.md`, `SCREENS.md` |
 | How is Schools mounted on mobile? | `BottomTabNavigator` → `SchoolsTabEntry` → `TeacherStack` |
 | How to leave Schools for main Dashboard? | `navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)` or center Dashboard tab |
+| Where is the global mobile navbar? | `CustomHeader` in `BottomTabNavigator.tsx` (used app-wide incl. Schools) |
+| Where is dark/light theme toggled? | `src/platforms/mobile/screens/Profile.tsx` → Preferences → Dark Mode |
+| What happened to TeacherTopBar? | Deprecated — do not mount; use host `CustomHeader` |
 | Where are teacher screen specs? | `SCREENS.md` + `assets/teachers_screens/` reference PNGs |
-| Where is design guidance for Schools UI? | `DESIGN.md` (Poppins, ClassContextBanner, Teacher Home hero) |
+| Where is design guidance for Schools UI? | `DESIGN.md` (Poppins, ClassContextBanner, Teacher Home hero, CustomHeader) |
 | How is Poppins applied globally? | `useAppFonts()` + `src/vendor/react-native.ts` Text shim |
 | Where is the class header banner? | `src/erp_schools/components/ClassContextBanner.tsx` |
+| Main tab order? | Analytics · Assessments · Dashboard (center) · ERP · Schools |
+| Dashboard tab icon? | `speedometer` / `speedometer-outline` (Ionicons) |
 
 ---
 
-*This document was generated by analyzing the source tree in `E:\Eduvijna\Eduvijna\src\` plus configuration files. Last updated: June 10, 2026 (ERP Schools teacher module, Poppins typography, navigation integration).*
+*This document was generated by analyzing the source tree in `E:\Eduvijna\Eduvijna\src\` plus configuration files. Last updated: June 10, 2026 (unified CustomHeader, tab order/icons, theme in Profile, Schools integration).*

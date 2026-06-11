@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@core/hooks/useAuth';
 import {
   TeacherScreen,
-  TeacherTopBar,
   SurfaceCard,
   SectionHeader,
   ListItem,
@@ -15,7 +14,7 @@ import {
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
 import type { TeacherStackParamList } from '../../../types/navigation';
-import { teacherProfile, notifications } from '../../../data';
+import { teacherProfile } from '../../../data';
 
 interface MenuLink {
   label: string;
@@ -68,8 +67,6 @@ export default function MoreMenuScreen() {
   const theme = useTeacherTheme();
   const navigation = useTeacherNavigation();
   const auth = useAuth();
-  const unread = notifications.filter((n) => !n.read).length;
-
   const go = (link: MenuLink) => {
     switch (link.route) {
       case 'StudyMaterial':
@@ -93,17 +90,7 @@ export default function MoreMenuScreen() {
   };
 
   return (
-    <TeacherScreen
-      header={
-        <TeacherTopBar
-          userName={teacherProfile.name}
-          notificationCount={unread}
-          onPressNotifications={() => navigation.navigate('Notifications')}
-          onPressProfile={() => navigation.navigate('Profile')}
-        />
-      }
-      contentStyle={styles.content}
-    >
+    <TeacherScreen contentStyle={styles.content}>
       <SurfaceCard onPress={() => navigation.navigate('Profile')}>
         <View style={styles.profileRow}>
           <Avatar name={teacherProfile.name} uri={teacherProfile.avatarUrl} size={56} />

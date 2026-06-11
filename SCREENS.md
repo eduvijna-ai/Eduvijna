@@ -160,7 +160,7 @@ These screens show the teal **class header card** at the top when a class contex
 | Double bottom nav | Host tab bar hidden on Schools; only `TeacherTabs` visible inside |
 | Re-entry | `SchoolsTabEntry` unmounts on blur → fresh `TeacherHome` each visit |
 | Exit to main app | Center **Dashboard** tab · side nav · `useMainAppNavigation()` |
-| Side nav routes | Dashboard · Assessments · Analytics · ERP · Schools |
+| Side nav routes | Analytics · Assessments · Dashboard · ERP · Schools |
 
 ---
 
@@ -183,3 +183,7 @@ These screens show the teal **class header card** at the top when a class contex
 - [x] Reports Dashboard · Attendance/Assignment/Assessment/Student Progress Analytics
 - [x] AI Teacher Assistant
 - [x] Notifications · Settings
+
+
+
+

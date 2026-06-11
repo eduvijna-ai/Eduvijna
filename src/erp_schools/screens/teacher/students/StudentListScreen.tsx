@@ -4,7 +4,6 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import {
   TeacherScreen,
-  TeacherTopBar,
   SurfaceCard,
   SearchBar,
   FilterChips,
@@ -16,7 +15,6 @@ import {
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
 import { useTeacherData } from '../../../hooks/useTeacherData';
-import { teacherProfile, notifications } from '../../../data';
 import type { AttendanceStatus } from '../../../types/domain';
 
 export default function StudentListScreen() {
@@ -25,8 +23,6 @@ export default function StudentListScreen() {
   const { classes, students } = useTeacherData();
   const [query, setQuery] = useState('');
   const [classFilter, setClassFilter] = useState('all');
-
-  const unread = notifications.filter((n) => !n.read).length;
 
   const filters: ChipOption[] = [
     { key: 'all', label: 'All Classes' },
@@ -44,17 +40,7 @@ export default function StudentListScreen() {
   const pillStatus = (status?: AttendanceStatus) => (status === 'half_day' ? 'leave' : (status ?? 'present'));
 
   return (
-    <TeacherScreen
-      header={
-        <TeacherTopBar
-          userName={teacherProfile.name}
-          notificationCount={unread}
-          onPressNotifications={() => navigation.navigate('Notifications')}
-          onPressProfile={() => navigation.navigate('Profile')}
-        />
-      }
-      contentStyle={styles.content}
-    >
+    <TeacherScreen contentStyle={styles.content}>
       <View>
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Students</Text>
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>{filtered.length} students across your classes</Text>

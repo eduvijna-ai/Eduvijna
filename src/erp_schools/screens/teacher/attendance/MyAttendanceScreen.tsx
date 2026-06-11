@@ -8,7 +8,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  TeacherTopBar,
   HeroCard,
   SurfaceCard,
   SectionHeader,
@@ -17,7 +16,7 @@ import {
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
-import { teacherProfile, selfMonthOverview, notifications } from '../../../data';
+import { teacherProfile, selfMonthOverview } from '../../../data';
 
 type Mode = 'in' | 'out';
 
@@ -25,8 +24,6 @@ export default function MyAttendanceScreen() {
   const theme = useTeacherTheme();
   const navigation = useTeacherNavigation();
   const [mode, setMode] = useState<Mode>('in');
-  const unread = notifications.filter((n) => !n.read).length;
-
   const overview = [
     { key: 'present', label: 'Present', value: selfMonthOverview.present, icon: 'checkmark-circle' as const, color: theme.colors.success },
     { key: 'absent', label: 'Absent', value: selfMonthOverview.absent, icon: 'close-circle' as const, color: theme.colors.danger },
@@ -36,14 +33,6 @@ export default function MyAttendanceScreen() {
 
   return (
     <TeacherScreen
-      header={
-        <TeacherTopBar
-          userName={teacherProfile.name}
-          notificationCount={unread}
-          onPressNotifications={() => navigation.navigate('Notifications')}
-          onPressProfile={() => navigation.navigate('Profile')}
-        />
-      }
       contentStyle={styles.content}
       footer={
         <View style={styles.footerWrap}>

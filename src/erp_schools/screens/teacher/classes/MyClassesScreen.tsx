@@ -8,7 +8,6 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  TeacherTopBar,
   SurfaceCard,
   StatGrid,
   SearchBar,
@@ -20,7 +19,6 @@ import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { accentColors } from '../../../theme/accents';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
 import { useTeacherData } from '../../../hooks/useTeacherData';
-import { teacherProfile, notifications } from '../../../data';
 import type { ClassInfo } from '../../../types/domain';
 
 export default function MyClassesScreen() {
@@ -28,8 +26,6 @@ export default function MyClassesScreen() {
   const navigation = useTeacherNavigation();
   const { classes, classesSummary } = useTeacherData();
   const [query, setQuery] = useState('');
-
-  const unread = notifications.filter((n) => !n.read).length;
 
   const summary: StatItem[] = [
     { key: 'assigned', icon: 'people-outline', value: classesSummary.classesAssigned, label: 'Classes Assigned', accent: 'green' },
@@ -44,17 +40,7 @@ export default function MyClassesScreen() {
   );
 
   return (
-    <TeacherScreen
-      header={
-        <TeacherTopBar
-          userName={teacherProfile.name}
-          notificationCount={unread}
-          onPressNotifications={() => navigation.navigate('Notifications')}
-          onPressProfile={() => navigation.navigate('Profile')}
-        />
-      }
-      contentStyle={styles.content}
-    >
+    <TeacherScreen contentStyle={styles.content}>
       <View style={styles.titleRow}>
         <View style={styles.titleLeft}>
           <Text style={[styles.title, { color: theme.colors.textPrimary }]}>My Classes</Text>
