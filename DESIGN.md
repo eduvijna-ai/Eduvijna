@@ -162,12 +162,34 @@ Rounded top-left / top-right 24px.
 Large logo watermark on right (~12% opacity).
 Overview metrics card overlaps hero bottom by ~72px (layered rich UI).
 
+Admin Home hero (implemented variant — June 2026)
+Same solid teal strip + logo watermark pattern as teacher/student.
+Greeting: "Welcome," (medium) + admin name (bold) + 👋.
+School overview card overlaps hero (~72px): 4 KPI metrics with dividers.
+Today's Alerts: 2×2 tinted stat grid (tap → relevant stack screen).
+Quick Actions: 4×2 grid (Students · Teachers · Classes · Exams · Fees · Announcements · Reports · Settings).
+Live row: Attendance pulses (mini donuts) + Fee Collection donut with legend.
+Sections: AI Insights · Pending Approvals · Upcoming Events · AI Assistant CTA.
+Reference: assets/admin_screens/admin home screen.png
+Mobile UX note: desktop reference tables converted to StatGrid + ListItem cards; dense KPI walls grouped with "View All" links.
+
 Student Home hero (implemented variant)
 Same solid teal strip + watermark pattern as teacher.
 Greeting: "Hello, {name} 👋" with mixed Poppins Medium/Bold weights.
 Identity card overlaps hero (~64px): avatar, name, class, roll chip, View Profile.
 Stats row: 3 equal columns (Attendance · Avg Marks · Class Rank).
 Progress banner: full-width row below stats (star + "Good Progress · Keep it up!") — not a fourth stat column.
+________________________________________
+Admin list / directory pattern (implemented)
+Desktop reference tables → searchable ListItem directories with FilterChips.
+People screens: StatGrid KPIs + donut/bar charts + at-risk or performance sections.
+Operations screens: StatGrid + OpsList (icon · title/subtitle · trailing badge).
+Finance: fee records as ListItem cards with status badges (not data tables).
+Permissions: grouped Switch toggles inside SurfaceCard sections.
+Announcements: category IconTabs + pinned card layout (not table rows).
+Admin-local composites: src/erp_schools/screens/admin/components.tsx
+(DistributionList · DonutLegend · CriteriaList · RankedList · OpsList · PersonStatusBadge)
+Do not add these to the shared component barrel — keep admin-specific layouts module-local.
 ________________________________________
 Class Context Banner
 Used atop class-scoped screens (Study Material, Timetable, Reports, Parent Communication, Notice Board, Mark Attendance, etc.).
@@ -195,6 +217,7 @@ ________________________________________
 Quick Actions
 Teacher Home: 4-column grid (8 tiles, 2 rows).
 Student Home: 4-column grid (8 tiles, 2 rows).
+Admin Home: 4-column grid (8 tiles, 2 rows).
 Other screens: 2 or 4 columns as needed.
 Component: src/erp_schools/components/QuickActionGrid.tsx
 120px Height (approx per tile)
@@ -232,12 +255,12 @@ Floating Action Button optional
 
 Naming convention (June 2026 — important)
 Home = main app dashboard (route `Dashboard`, home icon) — host bottom tab, side nav, persona escape hatch.
-Dashboard = ERP Schools module home (speedometer icon) — TeacherHome / StudentHome in persona tab bars.
+Dashboard = ERP Schools module home (speedometer icon) — TeacherHome / StudentHome / AdminHome in persona tab bars.
 
 Main app (host) bottom tabs (left → right)
-Analytics · Assessments · Home (center, initialRouteName; route `Dashboard`) · ERP · Schools (instructor + student)
+Analytics · Assessments · Home (center, initialRouteName; route `Dashboard`) · ERP · Schools (instructor + student + admin)
 Home tab icon: home-outline / home (active).
-Schools tab: instructor, student, or role_id 4.
+Schools tab: instructor, student, admin, super_admin, or role_id 1, 2, or 4.
 Tab back behavior: backBehavior="initialRoute" — Android back from Notifications/Profile returns to Home tab (not first tab).
 
 App side nav (left drawer)
@@ -259,6 +282,15 @@ AI Test tab = AITutorScreen (sparkles icon); practice/quiz pushed on stack.
 More tab icon: grid / grid-outline (matches teacher).
 Notices removed from tabs — stack screen `Notices`; reachable from Home quick action / announcements.
 
+ERP Schools admin bottom tabs (nested — host bottom bar hidden)
+Dashboard · People · Home (center escape) · Finance · More
+Dashboard tab = AdminHomeScreen (module home, speedometer icon).
+People tab = PeopleHubScreen (hub to student/teacher/parent/staff/roles).
+Center Home tab = escape to main app Home (not an in-module screen).
+Finance tab = FinanceDashboardScreen (wallet icon).
+More tab icon: grid / grid-outline.
+Operations (attendance, library, transport, hostel, inventory) and academics reachable via More menu or Home quick actions — not bottom tabs.
+
 Student detail header pattern
 Component: StudentIdentityHeader — solid teal banner, back arrow, title, overlapping white identity card (avatar, name, class, roll, optional AcademicYearPill).
 Used on: Attendance, Academics, Timetable, Fee, Assignments detail flows, etc.
@@ -275,6 +307,12 @@ Progress Chart
 Avoid
 Pie Charts
 3D Charts
+
+DonutChart center labels (implemented)
+Component: src/erp_schools/components/DonutChart.tsx
+Center value/label constrained to inner hole diameter (size − strokeWidth × 2 − inset).
+Long values (e.g. ₹15.15L) use adjustsFontSizeToFit + minimumFontScale 0.6 so text never touches the ring.
+Used in: Admin Home fee collection, attendance distributions, finance analytics, admin DonutLegend composite.
 ________________________________________
 Forms
 Single Column
@@ -310,14 +348,17 @@ AI Copilot
 ________________________________________
 Module Implementation Notes (ERP Schools)
 Path: src/erp_schools/
-Reference screenshots: assets/teachers_screens/ · assets/student_screens/
-Personas: Teacher (complete) · Student (UI complete, mock data) · Parent / Principal / Admin (planned)
+Reference screenshots: assets/teachers_screens/ · assets/student_screens/ · assets/admin_screens/
+Personas: Teacher (complete) · Student (UI complete, mock data) · Admin (UI complete, mock data) · Parent / Principal (planned)
 Isolation: must not import from src/erp/ — sibling module only.
-Data: mock fixtures in erp_schools/data/ (teacher) and data/student/ until API layer is added.
-Read seams: useTeacherData() · useStudentData() — screens never import fixtures directly.
-Session / routing: useTeacherSession().persona → SchoolsTabEntry branches TeacherStack vs StudentStack.
-Theme hook: useTeacherTheme() merges ThemeContext isDark with teacherPalettes from tokens.ts.
+Data: mock fixtures in erp_schools/data/ (teacher), data/student/, data/admin/ until API layer is added.
+Read seams: useTeacherData() · useStudentData() · useAdminData() — screens never import fixtures directly.
+Session / routing: useTeacherSession().persona → SchoolsTabEntry branches AdminStack / StudentStack / TeacherStack.
+Theme hook: useTeacherTheme() merges ThemeContext isDark with teacherPalettes from tokens.ts (shared across all personas).
 Host integration: ERPSchools tab uses CustomHeader (headerShown not disabled); TeacherScreen has no duplicate top safe-area padding.
-Screen scaffold: TeacherScreen (content + optional ScreenHeader or StudentIdentityHeader for stack flows).
-Student UI store: studentUI.store.ts (academic year, term range selections).
-Analysis doc: STUDENT_MODULE_ANALYSIS.md (architecture review + screen mapping).
+School pill in CustomHeader: fetched via /my-school for school-level admin (role admin / role_id 2); only platform super-admin skips.
+Screen scaffold: TeacherScreen (content + optional ScreenHeader for stack flows).
+Student detail header: StudentIdentityHeader (teal banner + identity card).
+Admin detail screens: ScreenHeader (back + title) — no StudentIdentityHeader.
+UI stores: teacherUI.store.ts · studentUI.store.ts · adminUI.store.ts (ephemeral selections only).
+Analysis docs: STUDENT_MODULE_ANALYSIS.md · ADMIN_MODULE_ANALYSIS.md · ADMIN_UX_REVIEW.md · ADMIN_INFORMATION_ARCHITECTURE.md

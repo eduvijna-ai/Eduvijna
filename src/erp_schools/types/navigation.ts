@@ -135,3 +135,63 @@ export type StudentStackParamList = {
   StudentNotifications: undefined;
   StudentSettings: undefined;
 };
+
+/** Admin bottom-tab routes (the persistent 5-item bar). */
+export type AdminTabParamList = {
+  AdminHome: undefined;
+  AdminPeople: undefined;
+  AdminMainDashboard: undefined;
+  AdminFinance: undefined;
+  AdminMore: undefined;
+};
+
+/** Admin root stack: tabs + every detail/flow screen pushed on top. */
+export type AdminStackParamList = {
+  AdminTabs: NavigatorScreenParams<AdminTabParamList> | undefined;
+
+  // insights / overview
+  SchoolOverview: undefined;
+  ReportsDashboard: undefined;
+  AcademicReports: undefined;
+
+  // people
+  StudentManagement: undefined;
+  TeacherManagement: undefined;
+  ParentManagement: undefined;
+  StaffManagement: undefined;
+  UserRoles: undefined;
+  Permissions: undefined;
+
+  // academics
+  AcademicOverview: undefined;
+  Classes: undefined;
+  Exams: undefined;
+
+  // admissions
+  AdmissionsDashboard: undefined;
+  AdmissionApplications: undefined;
+  ApprovalWorkflow: undefined;
+
+  // operations
+  AttendanceDashboard: undefined;
+  LibraryDashboard: undefined;
+  BookManagement: undefined;
+  TransportDashboard: undefined;
+  VehicleManagement: undefined;
+  RouteManagement: undefined;
+  HostelDashboard: undefined;
+  InventoryDashboard: undefined;
+
+  // finance
+  FeeCollection: undefined;
+  RevenueAnalytics: undefined;
+  ExpenseAnalytics: undefined;
+
+  // communication
+  Announcements: undefined;
+
+  // profile / system
+  AdminProfile: undefined;
+  AdminNotifications: undefined;
+  AdminSettings: undefined;
+};

@@ -47,7 +47,11 @@ const reactNativeRoot = path.join(__dirname, 'node_modules', 'react-native');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Shim target imports the real package under a different name (avoids circular alias).
+  // On web, must use react-native-web — native react-native pulls in Fabric internals.
   if (moduleName === 'react-native-original') {
+    if (platform === 'web') {
+      return context.resolveRequest(context, 'react-native-web', platform);
+    }
     return {
       type: 'sourceFile',
       filePath: path.join(reactNativeRoot, 'index.js'),
