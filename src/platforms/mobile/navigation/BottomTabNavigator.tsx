@@ -101,29 +101,14 @@ function CustomHeader() {
     );
   })();
 
-  const resolvedSchoolId = (() => {
-    const toNum = (v: any): number | undefined => {
-      if (v === null || v === undefined || v === '') return undefined;
-      const n = Number(v);
-      return Number.isFinite(n) && n > 0 ? n : undefined;
-    };
-    return (
-      toNum((user as any)?.school_id) ??
-      toNum((user as any)?.schoolId) ??
-      toNum((user as any)?.school?.id) ??
-      toNum((user as any)?.school?.school_id) ??
-      toNum((user as any)?.profile?.school?.id) ??
-      toNum((user as any)?.profile?.school_id) ??
-      toNum((user as any)?.profile?.schoolId) ??
-      undefined
-    );
-  })();
-
+  // Only platform-wide super admins (role_id 1 / super_admin) are school-less.
+  // A school-level admin (role 'admin', role_id 2) belongs to one school, so we
+  // must still resolve its name via the /my-school API even when the user
+  // payload doesn't directly carry a school_id.
   const isSuperAdmin =
     (user as any)?.role_id === 1 ||
     (user as any)?.role_name === 'super_admin' ||
-    ((user as any)?.role === 'super_admin') ||
-    ((user as any)?.role === 'admin' && !resolvedSchoolId);
+    ((user as any)?.role === 'super_admin');
 
   useEffect(() => {
     let isActive = true;
@@ -686,6 +671,10 @@ function BottomTabNavigator() {
       />
       {(user?.role === 'instructor' ||
         user?.role === 'student' ||
+        user?.role === 'admin' ||
+        user?.role === 'super_admin' ||
+        Number((user as any)?.role_id) === 1 ||
+        Number((user as any)?.role_id) === 2 ||
         Number((user as any)?.role_id) === 4) && (
         <Tab.Screen
           name="ERPSchools"

@@ -30,6 +30,11 @@ export function DonutChart({
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
 
+  // Keep the center label fully inside the donut hole so long values
+  // (e.g. "₹15.15L") never touch the ring. The text auto-shrinks to fit.
+  // The small inset accounts for the circular shape narrowing off-center.
+  const holeDiameter = Math.max(0, size - strokeWidth * 2 - 8);
+
   let offsetAccum = 0;
 
   return (
@@ -68,12 +73,23 @@ export function DonutChart({
       </Svg>
       {(centerValue || centerLabel) && (
         <View style={styles.center} pointerEvents="none">
-          {centerValue ? (
-            <Text style={[styles.value, { color: theme.colors.textPrimary }]}>{centerValue}</Text>
-          ) : null}
-          {centerLabel ? (
-            <Text style={[styles.label, { color: theme.colors.textSecondary }]}>{centerLabel}</Text>
-          ) : null}
+          <View style={{ width: holeDiameter, alignItems: 'center' }}>
+            {centerValue ? (
+              <Text
+                style={[styles.value, { color: theme.colors.textPrimary }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {centerValue}
+              </Text>
+            ) : null}
+            {centerLabel ? (
+              <Text style={[styles.label, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                {centerLabel}
+              </Text>
+            ) : null}
+          </View>
         </View>
       )}
     </View>

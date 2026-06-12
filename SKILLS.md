@@ -47,7 +47,7 @@
 | Backend | `https://eduapi.eduvijna.com` (FastAPI inferred) |
 | Target Platforms | Android, iOS, Web |
 | Business Domain | K-12 / Higher Education EdTech + School ERP |
-| ERP Schools (Teacher + Student UI) | `src/erp_schools/` — persona-based Schools module (Teacher + Student), mock data, isolated from `src/erp/` |
+| ERP Schools (Teacher + Student + Admin UI) | `src/erp_schools/` — persona-based Schools module (Teacher + Student + Admin), mock data, isolated from `src/erp/` |
 
 ---
 
@@ -148,17 +148,19 @@ E:\Eduvijna\Eduvijna\
     │   ├── hooks/                 ← useErpRole.ts.
     │   ├── navigation/            ← ERPNavigator.tsx (22-screen stack).
     │   └── screens/               ← 22 ERP management screens.
-    ├── erp_schools/               ← ERP Schools module (June 2026): Teacher + Student personas — isolated sibling of erp/.
-    │   ├── navigation/            ← SchoolsTabEntry, TeacherStack/Tabs, StudentStack/Tabs, routes.ts, studentRoutes.ts.
+    ├── erp_schools/               ← ERP Schools module (June 2026): Teacher + Student + Admin personas — isolated sibling of erp/.
+    │   ├── navigation/            ← SchoolsTabEntry, TeacherStack/Tabs, StudentStack/Tabs, AdminStack/Tabs, routes.ts, studentRoutes.ts, adminRoutes.ts.
     │   ├── screens/teacher/       ← ~47 teacher screens (dashboard, classes, reports, …).
     │   ├── screens/student/       ← 25 student screens (dashboard, academics, attendance, assignments, …).
-    │   ├── components/            ← TeacherScreen, StudentIdentityHeader, IconTabs, QuickActionGrid, charts, …
+    │   ├── screens/admin/         ← 33 admin screens (dashboard, people, academics, admissions, operations, finance, …).
+    │   ├── components/            ← TeacherScreen, StudentIdentityHeader, IconTabs, QuickActionGrid, DonutChart, charts, …
     │   ├── theme/                 ← tokens.ts, useTeacherTheme.ts, accents.ts.
     │   ├── data/                  ← Teacher mock fixtures (root files).
     │   ├── data/student/          ← Student mock fixtures.
-    │   ├── hooks/                 ← useTeacherSession, useTeacherData, useStudentData, useMainAppNavigation, …
-    │   ├── store/                 ← teacherUI.store.ts, studentUI.store.ts (Zustand, ephemeral UI only).
-    │   └── types/                 ← navigation.ts, domain.ts, student.ts.
+    │   ├── data/admin/            ← Admin mock fixtures (dashboard, people, academics, finance, operations, …).
+    │   ├── hooks/                 ← useTeacherSession, useTeacherData, useStudentData, useAdminData, useAdminNavigation, useMainAppNavigation, …
+    │   ├── store/                 ← teacherUI.store.ts, studentUI.store.ts, adminUI.store.ts (Zustand, ephemeral UI only).
+    │   └── types/                 ← navigation.ts, domain.ts, student.ts, admin.ts.
     ├── examples/                  ← 6 example/demo files (not production code).
     ├── platforms/
     │   ├── mobile/
@@ -181,7 +183,7 @@ E:\Eduvijna\Eduvijna\
 | `src/platforms/mobile/` vs `src/platforms/web/` | Platform-divergent screens (login, profile, analytics) live in platform folders. Shared screens stay in `src/screens/`. |
 | `src/core/` isolation | API, domain, store, and hooks are platform-agnostic. ESLint enforces screens cannot import them directly. |
 | `src/erp/` self-contained module | ERP is a large subfeature (22 screens, 925-line API) separated to prevent coupling with the quiz/assessment domain. |
-| `src/erp_schools/` sibling module | Teacher + Student Schools UI (mobile-first). Must **not** import `src/erp/`. Mock data until APIs land. Persona routing via `SchoolsTabEntry` + `useTeacherSession().persona`. See `STUDENT_MODULE_ANALYSIS.md`, `SCREENS.md`. |
+| `src/erp_schools/` sibling module | Teacher + Student + Admin Schools UI (mobile-first). Must **not** import `src/erp/`. Mock data until APIs land. Persona routing via `SchoolsTabEntry` + `useTeacherSession().persona`. See `ADMIN_MODULE_ANALYSIS.md`, `STUDENT_MODULE_ANALYSIS.md`, `SCREENS.md`. |
 | Zustand over Redux | Smaller bundle, no boilerplate, works with metro's CJS redirect on web. |
 | No Expo Router | The app predates Expo Router maturity for complex ERP navigation; the web uses a custom state machine (not URL-based routing). |
 
@@ -500,14 +502,14 @@ NavigationContainer (ref=navigationRef)
               │     ├── Dashboard tab → RoleDashboard (center; **tab label "Home"**, home icon; route name still `Dashboard`)
               │     │     ├── TeacherDashboard (role=instructor|admin)
               │     │     └── StudentDashboard (role=student)
-              │     ‡ Schools visible for instructor + student (+ role_id 4); host tab bar hidden inside Schools
+              │     ‡ Schools visible for instructor + student + admin (+ role_id 1, 2, 4); host tab bar hidden inside Schools
               │     ├── ERP tab → ERPNavigator (nested Stack)
               │     ├── Schools tab → SchoolsTabEntry (persona branch)
+              │     │     ├── persona=admin → AdminStack → AdminTabs: Dashboard† · People · Home‡ · Finance · More
               │     │     ├── persona=teacher → TeacherStack → TeacherTabs: Dashboard† · Classes · Home‡ · Students · More
-              │     │     │     † module home (TeacherHomeScreen) · ‡ escape → main app Home tab
-              │     │     └── persona=student → StudentStack → StudentTabs: Dashboard† · Academics · Home‡ · AI Test · More
-              │     │           † module home (StudentHomeScreen) · ‡ escape → main app Home tab
-              │     │     └── Stack detail screens (Reports, Timetable, Study Material, …)
+              │     │     ├── persona=student → StudentStack → StudentTabs: Dashboard† · Academics · Home‡ · AI Test · More
+              │     │     │     † module home · ‡ escape → main app Home tab
+              │     │     └── Stack detail screens (Reports, Timetable, People management, …)
               │     │     ├── ERPMain
               │     │     ├── ERPDashboard
               │     │     ├── ERPClassOverview
@@ -560,24 +562,34 @@ NavigationContainer (ref=navigationRef)
 
 Source: `src/platforms/mobile/navigation/BottomTabNavigator.tsx`
 
-### ERP Schools Navigation (Teacher + Student)
+### ERP Schools Navigation (Teacher + Student + Admin)
 
 Isolated module at `src/erp_schools/`. Mounted from the host app's **Schools** tab (`ERPSchools`). `SchoolsTabEntry` branches on `useTeacherSession().persona`:
 
 | `persona` | Stack mounted | Entry screen |
 |-----------|---------------|--------------|
+| `admin` | `AdminStack` | `AdminHomeScreen` (tab label **Dashboard**) |
 | `student` | `StudentStack` | `StudentHomeScreen` (tab label **Dashboard**) |
 | `teacher` | `TeacherStack` | `TeacherHomeScreen` (tab label **Dashboard**) |
 | other | `TeacherStack` | (fallback — preserves legacy behaviour) |
 
 **Persona detection** (`src/erp_schools/hooks/useTeacherSession.ts` → `toPersona()`):
+- Admin: `role_id === 1` or `role_id === 2` or `role === 'super_admin'` or `role === 'admin'`
 - Teacher: `role === 'instructor'` or `role === 'teacher'`
 - Student: `role === 'student'` **or** `role_id === 4`
-- Admin: `role_id` 1/2 or `super_admin`/`admin`
 
 ```
 BottomTabNavigator (CustomHeader visible on ERPSchools tab)
   └── SchoolsTabEntry (unmounts when tab blurred; persona branch)
+        ├── AdminStack (native-stack, headerShown: false)
+        │     ├── AdminTabs — host main tab bar hidden; admin tab bar shown
+        │     │     ├── AdminHome (label Dashboard)     → AdminHomeScreen
+        │     │     ├── AdminPeople                       → PeopleHubScreen
+        │     │     ├── AdminMainDashboard (label Home)   → placeholder; tabPress → main app Home tab
+        │     │     ├── AdminFinance                      → FinanceDashboardScreen
+        │     │     └── AdminMore (grid icon)             → MoreMenuScreen
+        │     └── Stack: SchoolOverview, ReportsDashboard, StudentManagement, … (see SCREENS.md)
+        │
         ├── TeacherStack (native-stack, headerShown: false)
         │     ├── TeacherTabs — host main tab bar hidden; teacher tab bar shown
         │     │     ├── TeacherHome (label Dashboard)  → TeacherHomeScreen
@@ -608,13 +620,19 @@ BottomTabNavigator (CustomHeader visible on ERPSchools tab)
 | File | Role |
 |------|------|
 | `src/platforms/mobile/navigation/BottomTabNavigator.tsx` | `CustomHeader`; Schools tab gate; main **Home** tab (route `Dashboard`) |
-| `src/erp_schools/navigation/SchoolsTabEntry.tsx` | Persona branch: `StudentStack` or `TeacherStack` when Schools tab focused |
+| `src/erp_schools/navigation/SchoolsTabEntry.tsx` | Persona branch: `AdminStack` / `StudentStack` / `TeacherStack` when Schools tab focused |
+| `src/erp_schools/navigation/AdminStack.tsx` | Admin native-stack: AdminTabs + all admin detail screens |
+| `src/erp_schools/navigation/AdminTabs.tsx` | 5-item admin tab bar; center **Home** escapes to main app |
+| `src/erp_schools/navigation/adminRoutes.ts` | `ADMIN_TABS` + `ADMIN_ROUTES` constants (Admin*-prefixed, collision-free) |
 | `src/erp_schools/navigation/TeacherTabs.tsx` | 5-item teacher tab bar; center **Home** escapes to main app |
 | `src/erp_schools/navigation/StudentTabs.tsx` | 5-item student tab bar; center **Home** escapes to main app |
 | `src/erp_schools/hooks/useTeacherSession.ts` | Reads `useUserStore`; derives `persona` for Schools routing |
 | `src/erp_schools/hooks/useStudentData.ts` | Single read seam over `data/student/` mock fixtures |
+| `src/erp_schools/hooks/useAdminData.ts` | Single read seam over `data/admin/` mock fixtures |
+| `src/erp_schools/hooks/useAdminNavigation.ts` | Typed navigation hook for Admin stack |
 | `src/erp_schools/components/TeacherScreen.tsx` | Content scaffold (no built-in top bar) |
 | `src/erp_schools/components/StudentIdentityHeader.tsx` | Teal banner + overlapping identity card (student detail screens) |
+| `src/erp_schools/screens/admin/components.tsx` | Admin-local composites: DistributionList, DonutLegend, OpsList, RankedList, … |
 | `src/platforms/mobile/navigation/navigateToAppMainTab.ts` | `navigationRef.dispatch` → `Main` → target tab |
 | `src/context/AppSideNavContext.tsx` | Left drawer: Analytics · Assessments · **Home** · ERP · Schools |
 | `src/erp_schools/hooks/useMainAppNavigation.ts` | Thin hook wrapping `navigateToAppMainTab(Dashboard)` |
@@ -623,7 +641,7 @@ BottomTabNavigator (CustomHeader visible on ERPSchools tab)
 
 **Notices access (student):** Removed from bottom tabs (June 2026). Reach via Home quick action, announcements "View All", or More menu → stack screen `Notices`.
 
-**Role gate:** Schools tab visible when `user?.role === 'instructor'` **or** `user?.role === 'student'` **or** `role_id === 4` (`BottomTabNavigator.tsx`).
+**Role gate:** Schools tab visible when `user?.role === 'instructor'` **or** `user?.role === 'student'` **or** `user?.role === 'admin'` **or** `user?.role === 'super_admin'` **or** `role_id === 1` **or** `role_id === 2` **or** `role_id === 4` (`BottomTabNavigator.tsx`).
 
 ### CustomHeader (mobile global navbar)
 
@@ -633,7 +651,7 @@ Defined in `BottomTabNavigator.tsx`. Rendered via `Tab.Navigator` `screenOptions
 |------|----------|
 | Hamburger | Opens `AppSideNavContext` drawer |
 | Logo | `navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)` — always returns to center **Home** tab (route `Dashboard`) |
-| School pill | Fetched from `/api/v1/school-management/my-school` when applicable |
+| School pill | Fetched from `/api/v1/school-management/my-school` for all non–super-admin users (incl. school-level admin). Only platform super-admins (`role_id === 1` / `super_admin`) skip the API call. |
 | Plus | Opens create-assessment modal (instructor/student/admin) |
 | Notifications | Navigates to `Notifications` tab |
 | Profile | Navigates to `Profile` tab |
@@ -1310,6 +1328,7 @@ OR: Login → StudentDashboard (available quizzes, recent attempts)
 | School Administration | ERP tab → any 22 sub-modules | /api/v1/erp/{module}/ |
 | Teacher Schools (mobile) | Schools tab → Teacher module Dashboard / classes / students / more | Mock data in `erp_schools/data/` (API TBD) |
 | Student Schools (mobile) | Schools tab → Student module Dashboard / academics / AI test / more | Mock data in `erp_schools/data/student/` (API TBD) |
+| Admin Schools (mobile) | Schools tab → Admin module Dashboard / people / finance / more | Mock data in `erp_schools/data/admin/` (API TBD) |
 | Exit Schools → main app Home | Persona tab center **Home** · side nav **Home** | `navigateToAppMainTab('Dashboard')` — route name unchanged |
 
 ---
@@ -1363,7 +1382,7 @@ The following areas have less than 100% certainty. All are labeled with the evid
 
 ### Architecture in One Paragraph
 
-EduVijna is a cross-platform React Native Expo application using a **hybrid clean architecture**: a shared `src/core/` layer (API, domain, state, hooks) is kept framework-agnostic and isolated by ESLint rules, while platform-specific behavior lives in `src/platforms/mobile/` and `src/platforms/web/`. The mobile app uses React Navigation (stack + bottom tabs + nested ERP stack + **ERP Schools persona stacks** — Teacher + Student), while the web app uses a custom state-machine pattern in `App.tsx`. Authentication uses JWT with Zustand as the primary state layer and a secondary legacy `AuthContext` for the dropdown subsystem. Tokens are stored platform-appropriately (SecureStore for mobile refresh tokens, AsyncStorage for access tokens). All API traffic flows through a single Axios instance with automatic token refresh via a request queue. A 2-layer cache (in-memory Map + AsyncStorage) reduces API load with configurable TTLs. The ERP submodule is a self-contained feature domain with its own navigator, contexts, hooks, and API file. **`src/erp_schools/`** is a sibling module for the teacher Schools experience (UI-only, Poppins typography, mock data). Global font loading runs in `App.tsx` via `useAppFonts()`.
+EduVijna is a cross-platform React Native Expo application using a **hybrid clean architecture**: a shared `src/core/` layer (API, domain, state, hooks) is kept framework-agnostic and isolated by ESLint rules, while platform-specific behavior lives in `src/platforms/mobile/` and `src/platforms/web/`. The mobile app uses React Navigation (stack + bottom tabs + nested ERP stack + **ERP Schools persona stacks** — Teacher + Student + Admin), while the web app uses a custom state-machine pattern in `App.tsx`. Authentication uses JWT with Zustand as the primary state layer and a secondary legacy `AuthContext` for the dropdown subsystem. Tokens are stored platform-appropriately (SecureStore for mobile refresh tokens, AsyncStorage for access tokens). All API traffic flows through a single Axios instance with automatic token refresh via a request queue. A 2-layer cache (in-memory Map + AsyncStorage) reduces API load with configurable TTLs. The ERP submodule is a self-contained feature domain with its own navigator, contexts, hooks, and API file. **`src/erp_schools/`** is a sibling module for Teacher, Student, and Admin Schools experiences (UI-only, Poppins typography, mock data). Global font loading runs in `App.tsx` via `useAppFonts()`.
 
 ### Quick Reference for New Engineers
 
@@ -1385,8 +1404,12 @@ EduVijna is a cross-platform React Native Expo application using a **hybrid clea
 | How to add a new API module? | Create `src/core/api/yourmodule.api.ts`, use `get/post/put/del/patch` from `config.ts` |
 | How does ERP get school_id? | `useErpRole()` reads from `useUserStore.schoolId` (set at login time) |
 | How to make a cached API call? | Use `cachedApiCall(apiFunction, cacheKey, ttl)` from `cacheService.ts` |
-| Where is ERP Schools UI? | `src/erp_schools/` — Teacher + Student personas; see `STUDENT_MODULE_ANALYSIS.md`, `SCREENS.md` |
-| How is Schools mounted on mobile? | `BottomTabNavigator` → `SchoolsTabEntry` → `TeacherStack` |
+| Where is ERP Schools UI? | `src/erp_schools/` — Teacher + Student + Admin personas; see `ADMIN_MODULE_ANALYSIS.md`, `STUDENT_MODULE_ANALYSIS.md`, `SCREENS.md` |
+| How is Schools mounted on mobile? | `BottomTabNavigator` → `SchoolsTabEntry` → persona stack (`AdminStack` / `StudentStack` / `TeacherStack`) |
+| How does admin reach Schools? | `role === 'admin'` or `role_id === 2` → `persona === 'admin'` → `AdminStack` |
+| Where is admin mock data? | `src/erp_schools/data/admin/` via `useAdminData()` |
+| Where are admin screen specs? | `SCREENS.md` + `assets/admin_screens/` reference PNGs |
+| Where is admin UX review? | `ADMIN_UX_REVIEW.md` · IA: `ADMIN_INFORMATION_ARCHITECTURE.md` |
 | How to leave Schools for main Dashboard? | `navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)` or center Dashboard tab |
 | Where is the global mobile navbar? | `CustomHeader` in `BottomTabNavigator.tsx` (used app-wide incl. Schools) |
 | Where is dark/light theme toggled? | `src/platforms/mobile/screens/Profile.tsx` → Preferences → Dark Mode |
@@ -1400,4 +1423,4 @@ EduVijna is a cross-platform React Native Expo application using a **hybrid clea
 
 ---
 
-*This document was generated by analyzing the source tree in `E:\Eduvijna\Eduvijna\src\` plus configuration files. Last updated: June 10, 2026 (unified CustomHeader, tab order/icons, theme in Profile, Schools integration).*
+*This document was generated by analyzing the source tree in `E:\Eduvijna\Eduvijna\src\` plus configuration files. Last updated: June 12, 2026 (ERP Schools Admin module, school pill fix for admin users, DonutChart center-label fix).*
