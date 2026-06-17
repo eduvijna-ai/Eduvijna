@@ -24,6 +24,7 @@ import {
   SCREEN_DEFAULTS,
   type ResolvedNavItem,
 } from '@core/hooks/useQuizNavItems';
+import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
 
 /** Hard-coded fallback order – shown when the API returns no items */
 const FALLBACK_SCREENS = [
@@ -72,6 +73,16 @@ export default function QuizGenerationGrid({
   }, [navItems]);
 
   const handlePress = (screen: string) => {
+    // Tab-level destinations — use the root nav ref to switch tabs reliably
+    if (screen === 'ERPSchools') {
+      navigateToAppMainTab(APP_MAIN_TABS.ERP_SCHOOLS);
+      return;
+    }
+    if (screen === 'Analytics') {
+      navigateToAppMainTab(APP_MAIN_TABS.ANALYTICS);
+      return;
+    }
+
     const useWorkspaceRedirect = Platform.OS !== 'web';
     const resolvedScreen =
       useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')

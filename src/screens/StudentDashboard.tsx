@@ -9,19 +9,19 @@ import {
   Dimensions,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
+import { FONT_FAMILY } from '../theme/fonts';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
-  QuizAttempt,
   ParsedQuiz,
   DashboardStats,
-  parseQuizAttempt,
 } from '@core/types/dashboard.types';
 import { isStudentQuizActive } from '../utils/quizFilters';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
@@ -33,9 +33,11 @@ interface Props {
   };
 }
 
+const HERO_OVERLAP = 64;
+const HERO_TOP_RADIUS = 24;
+
 export default function StudentDashboard({ navigation, route }: Props) {
-  const { theme } = useTheme();
-  const { colors } = theme;
+  const theme = useTeacherTheme();
   const { user, isAuthenticated, isLoading } = useAuth();
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
 
@@ -333,14 +335,16 @@ export default function StudentDashboard({ navigation, route }: Props) {
     return (
       <>
         {focusRefetch}
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Ionicons name="log-in-outline" size={48} color={colors.textSecondary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Please log in to view your dashboard
-          </Text>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.loadingContainer}>
+            <View style={[styles.stateIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+              <Ionicons name="log-in-outline" size={32} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+              Please log in to view your dashboard
+            </Text>
+          </View>
         </View>
-      </View>
       </>
     );
   }
@@ -350,12 +354,12 @@ export default function StudentDashboard({ navigation, route }: Props) {
     return (
       <>
         {focusRefetch}
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <LoadingSpinner size={60} fullScreen />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading dashboard...</Text>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner size={60} fullScreen />
+            <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading dashboard…</Text>
+          </View>
         </View>
-      </View>
       </>
     );
   }
@@ -363,269 +367,241 @@ export default function StudentDashboard({ navigation, route }: Props) {
   return (
     <>
       {focusRefetch}
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={[
-        styles.scrollContent,
-        isWeb && styles.scrollContentWeb,
-      ]}
-      refreshControl={
-        <RefreshControl 
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={[colors.primary]}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      {/* Pending Quiz Banner */}
-      {pendingQuizzes.length > 0 && (
-        <View style={styles.bannerContainer}>
-          <View style={[styles.banner, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
-            <View style={styles.bannerContent}>
-              <View style={[styles.bannerIcon, { backgroundColor: theme.colors.primary }]}>
-                <Ionicons name="time" size={24} color="#FFFFFF" />
-              </View>
-              <View style={styles.bannerText}>
-                <Text style={[styles.bannerTitle, { color: colors.primary }]}>
-                  {pendingQuizzes.length} Pending Quiz{pendingQuizzes.length > 1 ? 'zes' : ''}!
-                </Text>
-                <Text style={[styles.bannerSubtitle, { color: colors.text }]}>
-                  Available to take now
-                </Text>
-              </View>
+      <ScrollView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        contentContainerStyle={[styles.scrollContent, isWeb && styles.scrollContentWeb]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
+      >
+        {/* Hero strip */}
+        <View
+          style={[
+            styles.heroClip,
+            { borderTopLeftRadius: HERO_TOP_RADIUS, borderTopRightRadius: HERO_TOP_RADIUS, backgroundColor: theme.colors.primary },
+          ]}
+        >
+          <View style={[styles.hero, { backgroundColor: theme.colors.primary }]}>
+            <Image
+              source={require('../../assets/eduvijna_logo_sidebar_white.png')}
+              style={styles.heroWatermark}
+              resizeMode="contain"
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+            <View style={styles.heroTextWrap}>
+              <Text style={styles.heroGreeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                <Text style={styles.heroLead}>Hello, </Text>
+                <Text style={styles.heroBold}>{user?.username || 'Student'}</Text>
+                <Text style={styles.heroLead}> 👋</Text>
+              </Text>
+              <Text style={styles.heroSub}>Here&apos;s your learning overview for today.</Text>
             </View>
-            <TouchableOpacity 
-              style={[styles.bannerButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => {
-                // Find the first pending quiz to start
-                // const firstPendingQuiz = pendingQuizzes[0];
-                // if (firstPendingQuiz) {
-                //   navigation?.navigate('QuizTaking', { 
-                //     quizId: firstPendingQuiz.quiz_id,
-                //     quizName: firstPendingQuiz.quiz_name,
-                //     sessionId: firstPendingQuiz.session_id 
-                //   });
-                // } else {
-                  //navigation?.navigate('Assessments', { filterStatus: 'ongoing' });
-                  navigation?.navigate('Notifications');
-                //}
-              }}
-            >
-              <Text style={styles.bannerButtonText}>Start</Text>
-              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-            </TouchableOpacity>
           </View>
         </View>
-      )}
 
-      {/* Stats Overview - 4 Tiles in One Row */}
-      <View style={styles.quizStatusSection}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Overview</Text>
-        <View style={styles.statsRowContainer}>
-          <TouchableOpacity
-            style={[styles.statTile, { backgroundColor: colors.card }]}
-            onPress={() => navigation?.navigate('ClassesList')}
-            activeOpacity={0.7}
+        {/* Stat tiles — overlapping hero */}
+        <View style={[styles.statsWrap, { zIndex: 2, elevation: 4 }]}>
+          <View
+            style={[
+              styles.statsCard,
+              theme.shadow.medium,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+            ]}
           >
-            <View style={[styles.tileIcon, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="school" size={20} color="#F59E0B" />
-            </View>
-            <Text style={[styles.tileTitle, { color: colors.text }]}>Classes</Text>
-            <Text style={[styles.tileDescription, { color: colors.textSecondary }]}>
-              {stats.total_classes || 0}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.statTile, { backgroundColor: colors.card }]}
-            onPress={() => navigation?.navigate('Assessments', { filterStatus: 'all' })}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.tileIcon, { backgroundColor: '#DBEAFE' }]}>
-              <Ionicons name="document-text" size={20} color={theme.colors.primary} />
-            </View>
-            <Text style={[styles.tileTitle, { color: colors.text }]}>Quizzes</Text>
-            <Text style={[styles.tileDescription, { color: colors.textSecondary }]}>
-              {stats.total_quizzes}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.statTile, { backgroundColor: colors.card }]}
-            onPress={() => navigation?.navigate('Assessments', { filterStatus: 'completed' })}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.tileIcon, { backgroundColor: '#D1FAE5' }]}>
-              <Ionicons name="checkmark-done" size={20} color="#059669" />
-            </View>
-            <Text style={[styles.tileTitle, { color: colors.text }]}>Completed</Text>
-            <Text style={[styles.tileDescription, { color: colors.textSecondary }]}>
-              {stats.completed_count}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.statTile, { backgroundColor: colors.card }]}
-            onPress={() => navigation?.navigate('Assessments', { filterStatus: 'completed' })}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.tileIcon, { backgroundColor: '#F3E8FF' }]}>
-              <Ionicons name="trophy" size={20} color="#A855F7" />
-            </View>
-            <Text style={[styles.tileTitle, { color: colors.text }]}>Avg Score</Text>
-            <Text style={[styles.tileDescription, { color: colors.textSecondary }]}>
-              {stats.average_score}%
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Generate Assessments Section */}
-      <QuizGenerationGrid
-        navigation={navigation}
-        theme={theme}
-        showTitle={true}
-      />
-
-      {/* Two Column Layout for Web/Tablet */}
-      <View style={[
-        styles.bottomSection,
-        (isWeb || isTablet) && styles.bottomSectionRow,
-      ]}>
-
-      {/* Upcoming Assessments */}
-        {upcomingQuizzes.length > 0 && (
-          <View style={[
-            styles.section,
-            (isWeb || isTablet) && styles.sectionHalf,
-          ]}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Upcoming Assessments
-            </Text>
-            <View style={[styles.card, { backgroundColor: colors.card }]}>
-              {upcomingQuizzes.slice(0, 5).map((quiz, index) => {
-                return (
-                  <View
-                    key={`${quiz.quiz_id}-${index}`}
-                    style={[
-                      styles.topicItem,
-                      index < upcomingQuizzes.length - 1 && { 
-                        borderBottomWidth: 1, 
-                        borderBottomColor: colors.border 
-                      },
-                    ]}
-                  >
-                    <View style={styles.topicInfo}>
-                      <View style={styles.activityHeader}>
-                        <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
-                        <Text style={[styles.topicName, { color: colors.text }]}>
-                          {quiz.quiz_name || `Quiz #${quiz.quiz_id}`}
-                        </Text>
-                      </View>
-                      <Text style={[styles.topicScore, { color: colors.textSecondary }]}>
-                        {quiz.classroom_name} • {quiz.question_count} Questions
-                      </Text>
-                    </View>
-                    <View style={[styles.upcomingBadge, { backgroundColor: colors.primary + '15' }]}>
-                      <Text style={[styles.upcomingText, { color: colors.primary }]}>Coming Soon</Text>
-                    </View>
+            {[
+              { label: 'Classes', value: stats.total_classes || 0, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
+              { label: 'Quizzes', value: stats.total_quizzes, icon: 'document-text-outline' as const, accent: theme.colors.tintBlue, fg: theme.colors.onTintBlue, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'all' }) },
+              { label: 'Completed', value: stats.completed_count, icon: 'checkmark-done-outline' as const, accent: theme.colors.tintGreen, fg: theme.colors.onTintGreen, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
+              { label: 'Avg Score', value: `${stats.average_score}%`, icon: 'trophy-outline' as const, accent: theme.colors.tintPurple, fg: theme.colors.onTintPurple, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
+            ].map((item, idx, arr) => (
+              <React.Fragment key={item.label}>
+                <TouchableOpacity
+                  style={styles.statTileNew}
+                  onPress={item.onPress}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.label}: ${item.value}`}
+                >
+                  <View style={[styles.statIconNew, { backgroundColor: item.accent }]}>
+                    <Ionicons name={item.icon} size={20} color={item.fg} />
                   </View>
-                );
-              })}
+                  <Text style={[styles.statValueNew, { color: theme.colors.textPrimary }]}>{item.value}</Text>
+                  <Text style={[styles.statLabelNew, { color: theme.colors.textSecondary }]}>{item.label}</Text>
+                </TouchableOpacity>
+                {idx < arr.length - 1 && <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />}
+              </React.Fragment>
+            ))}
+          </View>
+        </View>
+
+        {/* Pending Quiz Banner */}
+        {pendingQuizzes.length > 0 && (
+          <View style={styles.bannerContainer}>
+            <View style={[styles.banner, { backgroundColor: theme.colors.tintOrange, borderColor: theme.colors.warning }]}>
+              <View style={styles.bannerContent}>
+                <View style={[styles.bannerIcon, { backgroundColor: theme.colors.warning }]}>
+                  <Ionicons name="time-outline" size={22} color={theme.colors.textInverse} />
+                </View>
+                <View style={styles.bannerText}>
+                  <Text style={[styles.bannerTitle, { color: theme.colors.onTintOrange }]}>
+                    {pendingQuizzes.length} Pending Quiz{pendingQuizzes.length > 1 ? 'zes' : ''}
+                  </Text>
+                  <Text style={[styles.bannerSubtitle, { color: theme.colors.textSecondary }]}>
+                    Available to take now
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.bannerButton, { backgroundColor: theme.colors.warning }]}
+                onPress={() => navigation?.navigate('Notifications')}
+                accessibilityRole="button"
+                accessibilityLabel="View pending quizzes"
+              >
+                <Text style={[styles.bannerButtonText, { color: theme.colors.textInverse }]}>View</Text>
+                <Ionicons name="arrow-forward" size={16} color={theme.colors.textInverse} />
+              </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Recent Completions */}
-        <View style={[
-          styles.section,
-          (isWeb || isTablet) && styles.sectionHalf,
-        ]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Recent Completions
-          </Text>
-          <View style={[styles.card, { backgroundColor: colors.card }]}>
-            {completedQuizzes.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="document-text-outline" size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                  No completed quizzes yet
-                </Text>
+        {/* Generate Assessments Section */}
+        <View style={{ marginTop: 4 }}>
+          <QuizGenerationGrid
+            navigation={navigation}
+            theme={{ colors: { primary: theme.colors.primary, text: theme.colors.textPrimary, textSecondary: theme.colors.textSecondary, card: theme.colors.surface, border: theme.colors.border, background: theme.colors.background, error: theme.colors.danger, success: theme.colors.success } }}
+            showTitle
+          />
+        </View>
+
+        {/* Two-column bottom area */}
+        <View style={[(isWeb || isTablet) ? styles.bottomSectionRow : styles.bottomSection]}>
+
+          {/* Upcoming Assessments */}
+          {upcomingQuizzes.length > 0 && (
+            <View style={[(isWeb || isTablet) ? styles.sectionHalf : styles.section]}>
+              <View style={styles.sectionHeaderRow}>
+                <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
+                <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Upcoming</Text>
               </View>
-            ) : (
-              completedQuizzes.slice(0, 5).map((quiz, index) => {
-                const scoreColor = quiz.score && quiz.score >= 70 ? '#4CAF50' : quiz.score && quiz.score >= 50 ? '#FF9800' : '#F44336';
-                const scoreText = quiz.score !== null ? `${quiz.score}%` : 'N/A';
-                const correctText = quiz.correct_answers !== undefined ? `${quiz.correct_answers}/${quiz.question_count}` : '';
-                
-                return (
-                  <TouchableOpacity 
+              <View
+                style={[
+                  styles.card,
+                  theme.shadow.light,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+                ]}
+              >
+                {upcomingQuizzes.slice(0, 5).map((quiz, index) => (
+                  <View
                     key={`${quiz.quiz_id}-${index}`}
                     style={[
-                      styles.activityItem,
-                      index < completedQuizzes.length - 1 && { 
-                        borderBottomWidth: 1, 
-                        borderBottomColor: colors.border 
+                      styles.listRow,
+                      index < upcomingQuizzes.length - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: theme.colors.border,
                       },
                     ]}
-                    onPress={() => {
-                      // Navigate to QuizResultsScreen in student view mode
-                      // QuizResultsScreen will fetch the full quiz data including questions and answers
-                      navigation?.navigate('QuizResultsScreen', { 
+                  >
+                    <View style={[styles.listIconWrap, { backgroundColor: theme.colors.tintBlue }]}>
+                      <Ionicons name="calendar-outline" size={18} color={theme.colors.onTintBlue} />
+                    </View>
+                    <View style={styles.listInfo}>
+                      <Text style={[styles.listTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                        {quiz.quiz_name || `Quiz #${quiz.quiz_id}`}
+                      </Text>
+                      <Text style={[styles.listMeta, { color: theme.colors.textSecondary }]}>
+                        {quiz.classroom_name} · {quiz.question_count} Qs
+                      </Text>
+                    </View>
+                    <View style={[styles.upcomingPill, { backgroundColor: theme.colors.tintBlue }]}>
+                      <Text style={[styles.upcomingPillText, { color: theme.colors.onTintBlue }]}>Soon</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Recent Completions */}
+          <View style={[(isWeb || isTablet) ? styles.sectionHalf : styles.section]}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons name="checkmark-done-outline" size={18} color={theme.colors.success} />
+              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Recent Completions</Text>
+            </View>
+            <View
+              style={[
+                styles.card,
+                theme.shadow.light,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+              ]}
+            >
+              {completedQuizzes.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+                    <Ionicons name="document-text-outline" size={32} color={theme.colors.primary} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No completions yet</Text>
+                  <Text style={[styles.emptyMsg, { color: theme.colors.textSecondary }]}>Complete your first quiz to see results here.</Text>
+                </View>
+              ) : (
+                completedQuizzes.slice(0, 5).map((quiz, index) => {
+                  const sc = quiz.score ?? 0;
+                  const scoreColor = sc >= 75 ? theme.colors.success : sc >= 50 ? theme.colors.warning : theme.colors.danger;
+                  const scoreText = quiz.score !== null ? `${quiz.score}%` : 'N/A';
+                  const correctText = quiz.correct_answers !== undefined ? `${quiz.correct_answers}/${quiz.question_count}` : '';
+
+                  return (
+                    <TouchableOpacity
+                      key={`${quiz.quiz_id}-${index}`}
+                      style={[
+                        styles.listRow,
+                        index < completedQuizzes.length - 1 && {
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => navigation?.navigate('QuizResultsScreen', {
                         quizId: quiz.quiz_id,
                         quizName: quiz.quiz_name,
-                        isTeacherView: true, // Use teacher view mode to fetch full data
-                        // attemptId will be fetched from quiz attempts in QuizResultsScreen
-                      });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.activityInfo}>
-                      <View style={styles.activityHeader}>
-                        <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
-                        <Text style={[styles.activityTitle, { color: colors.text }]}>
+                        isTeacherView: true,
+                      })}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${quiz.quiz_name}, score ${scoreText}`}
+                    >
+                      <View style={[styles.listIconWrap, { backgroundColor: theme.colors.tintGreen }]}>
+                        <Ionicons name="checkmark-done-outline" size={18} color={theme.colors.onTintGreen} />
+                      </View>
+                      <View style={styles.listInfo}>
+                        <Text style={[styles.listTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                           {quiz.quiz_name || `Quiz #${quiz.quiz_id}`}
                         </Text>
+                        <Text style={[styles.listMeta, { color: theme.colors.textSecondary }]}>
+                          {quiz.question_count} Qs{correctText ? ` · ${correctText} correct` : ''}{quiz.time_spent_seconds && quiz.time_spent_seconds > 0 ? ` · ${formatTimeSpent(quiz.time_spent_seconds)}` : ''}
+                        </Text>
+                        <Text style={[styles.listDate, { color: theme.colors.textSecondary }]}>
+                          {quiz.classroom_name} · {quiz.completed_at ? formatTimeAgo(quiz.completed_at) : 'Recently'}
+                        </Text>
                       </View>
-                      <View style={styles.quizDetailsRow}>
-                        <View style={styles.detailItem}>
-                          <Ionicons name="document-text" size={12} color={colors.textSecondary} />
-                          <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                            {quiz.question_count} Questions {correctText && `(${correctText} correct)`}
-                          </Text>
-                        </View>
-                        {quiz.time_spent_seconds && quiz.time_spent_seconds > 0 && (
-                          <View style={styles.detailItem}>
-                            <Ionicons name="timer" size={12} color={colors.textSecondary} />
-                            <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                              {formatTimeSpent(quiz.time_spent_seconds)}
-                            </Text>
-                          </View>
-                        )}
+                      <View style={[styles.scorePill, { backgroundColor: `${scoreColor}18`, borderColor: scoreColor }]}>
+                        <Text style={[styles.scorePillText, { color: scoreColor }]}>{scoreText}</Text>
                       </View>
-                      <Text style={[styles.activityTime, { color: colors.textSecondary }]}>
-                        {quiz.classroom_name} • {quiz.completed_at ? formatTimeAgo(quiz.completed_at) : 'Recently'}
-                      </Text>
-                    </View>
-                    <View style={[
-                      styles.scoreCircle,
-                      { backgroundColor: `${scoreColor}20`, borderColor: scoreColor }
-                    ]}>
-                      <Text style={[styles.scoreText, { color: scoreColor }]}>
-                        {scoreText}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
           </View>
         </View>
 
-        
-      </View>
-    </ScrollView>
+        <View style={{ height: 24 }} />
+      </ScrollView>
     </>
   );
 }
@@ -643,421 +619,79 @@ function NativeFocusRefetch({ onFocus }: { onFocus: () => void }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    ...Platform.select({
-      web: {
-        maxWidth: 1400,
-        width: '100%',
-        alignSelf: 'center',
-      },
-    }),
+    ...Platform.select({ web: { maxWidth: 1400, width: '100%', alignSelf: 'center' } }),
   },
-  scrollContent: {
-    paddingBottom: 8,
+  scrollContent: { paddingBottom: 8 },
+  scrollContentWeb: { maxWidth: 1200, width: '100%', alignSelf: 'center' },
+
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, padding: 24 },
+  stateIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 14, fontWeight: '500' },
+
+  heroClip: { width: '100%', overflow: 'hidden' },
+  hero: { width: '100%', minHeight: 112, paddingBottom: HERO_OVERLAP + 16, position: 'relative' },
+  heroWatermark: { position: 'absolute', right: -28, top: -12, width: 200, height: 200, opacity: 0.12 },
+  heroTextWrap: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4, paddingRight: 100 },
+  heroGreeting: { color: '#FFFFFF', fontSize: 22, lineHeight: 28 },
+  heroLead: { fontFamily: FONT_FAMILY.medium, fontWeight: '500' },
+  heroBold: { fontFamily: FONT_FAMILY.bold, fontWeight: '700' },
+  heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 12, marginTop: 6, lineHeight: 17 },
+
+  statsWrap: { marginTop: -HERO_OVERLAP, paddingHorizontal: 16, marginBottom: 4 },
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 14,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  scrollContentWeb: {
-    maxWidth: 1200,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  loadingText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  errorText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  retryButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  bannerContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
+  statTileNew: { flex: 1, alignItems: 'center', gap: 5, paddingHorizontal: 4 },
+  statIconNew: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  statValueNew: { fontSize: 20, fontWeight: '800' },
+  statLabelNew: { fontSize: 10, textAlign: 'center', lineHeight: 13 },
+  statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 8 },
+
+  bannerContainer: { paddingHorizontal: 16, paddingTop: 8 },
   banner: {
-    borderRadius: 10,
-    padding: 10,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bannerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  bannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 6,
-  },
-  bannerText: {
-    flex: 1,
-  },
-  bannerTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  bannerSubtitle: {
-    fontSize: 12,
-  },
-  bannerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-  },
-  bannerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  summarySection: {
-    padding: 16,
-    gap: 12,
-  },
-  summarySectionWeb: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  summaryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 14,
     padding: 12,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  summaryCardWeb: {
-    flex: 1,
-    minWidth: 180,
-    margin: 6,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  summaryCardLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  summaryCardValue: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  quizStatusSection: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  tilesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  statsRowContainer: {
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 4,
-  },
-  statTile: {
-    flex: 1,
-    borderRadius: 8,
-    padding: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    minHeight: 65,
-  },
-  section: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  sectionHalf: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  tilesContainerWeb: {
-    gap: 12,
-  },
-  tile: {
-    width: '30%',
-    minWidth: 80,
-    borderRadius: 8,
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tileWeb: {
-    width: 'auto',
-    flex: 1,
-    minWidth: 100,
-    maxWidth: 120,
-  },
-  tileIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 3,
-  },
-  tileTitle: {
-    fontSize: 10,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 1,
-  },
-  tileDescription: {
-    fontSize: 9,
-    textAlign: 'center',
-  },
-  bottomSection: {
-    gap: 0,
-  },
-  bottomSectionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-  },
-  card: {
-    borderRadius: 10,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  emptyText: {
-    fontSize: 13,
-    marginTop: 8,
-  },
-  quizItem: {
-    borderRadius: 10,
-    padding: 12,
-  },
-  quizHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  quizDate: {
-    fontSize: 11,
-  },
-  quizTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  quizFooter: {
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  quizMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  quizTopic: {
-    fontSize: 12,
-  },
-  quizDetailsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  detailText: {
-    fontSize: 10,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    paddingHorizontal: 2,
-  },
-  activityInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  activityTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  activityTime: {
-    fontSize: 11,
-  },
-  scoreCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scoreText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  topicItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  topicInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  topicName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  topicScore: {
-    fontSize: 12,
-  },
-  missedBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  missedText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  upcomingBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  upcomingText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  quizCard: {
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-    marginRight: 8,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  cardDetail: {
-    fontSize: 14,
-  },
-  cardButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 6,
-  },
-  cardButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  bannerContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  bannerIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  bannerText: { flex: 1 },
+  bannerTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  bannerSubtitle: { fontSize: 12 },
+  bannerButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 4 },
+  bannerButtonText: { fontSize: 13, fontWeight: '600' },
+
+  section: { paddingHorizontal: 16, paddingTop: 12 },
+  sectionHalf: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '700' },
+
+  bottomSection: {},
+  bottomSectionRow: { flexDirection: 'row', alignItems: 'flex-start' },
+
+  card: { borderWidth: StyleSheet.hairlineWidth, padding: 12 },
+
+  listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 10 },
+  listIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  listInfo: { flex: 1, gap: 2 },
+  listTitle: { fontSize: 13, fontWeight: '700' },
+  listMeta: { fontSize: 11, lineHeight: 15 },
+  listDate: { fontSize: 11 },
+
+  upcomingPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  upcomingPillText: { fontSize: 11, fontWeight: '600' },
+
+  scorePill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', minWidth: 48 },
+  scorePillText: { fontSize: 13, fontWeight: '800' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 24, gap: 6 },
+  emptyIconWrap: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 14, fontWeight: '700' },
+  emptyMsg: { fontSize: 12, textAlign: 'center', lineHeight: 17 },
 });

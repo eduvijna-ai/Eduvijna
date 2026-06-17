@@ -4,12 +4,30 @@
  */
 
 import React, { Fragment, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions, RefreshControl, TouchableOpacity } from 'react-native';
-import { useAnalytics, useWeakTopics, useStudentPerformance, useAssessmentStatistics, useCurrentUser, usePercentageColor } from '@core/hooks/useAnalytics';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Dimensions,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  useAnalytics,
+  useWeakTopics,
+  useStudentPerformance,
+  useAssessmentStatistics,
+  useCurrentUser,
+  usePercentageColor,
+} from '@core/hooks/useAnalytics';
+import { useTeacherTheme } from '../../../erp_schools/theme/useTeacherTheme';
 
 const { width } = Dimensions.get('window');
 
 export default function AnalyticsScreen() {
+  const theme = useTeacherTheme();
   const user = useCurrentUser();
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'year'>('month');
 
@@ -26,43 +44,75 @@ export default function AnalyticsScreen() {
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
+      <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.centered}>
+          <View style={[styles.errorIconWrap, { backgroundColor: theme.colors.tintRed }]}>
+            <Ionicons name="alert-circle-outline" size={36} color={theme.colors.danger} />
+          </View>
+          <Text style={[styles.errorTitle, { color: theme.colors.textPrimary }]}>Unable to Load</Text>
+          <Text style={[styles.errorMsg, { color: theme.colors.textSecondary }]}>{error}</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
+            onPress={handleRefresh}
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+          >
+            <Ionicons name="refresh-outline" size={16} color={theme.colors.textInverse} />
+            <Text style={[styles.retryBtnText, { color: theme.colors.textInverse }]}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.fill, { backgroundColor: theme.colors.background }]}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />
+        <RefreshControl
+          refreshing={isLoading}
+          onRefresh={handleRefresh}
+          colors={[theme.colors.primary]}
+          tintColor={theme.colors.primary}
+        />
       }
     >
       {/* Date Range Filter */}
-      <View style={styles.filterContainer}>
-        {(['week', 'month', 'year'] as const).map((range) => (
-          <TouchableOpacity
-            key={range}
-            style={[
-              styles.filterButton,
-              dateRange === range && styles.filterButtonActive,
-            ]}
-            onPress={() => setDateRange(range)}
-          >
-            <Text
+      <View
+        style={[
+          styles.filterBar,
+          { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+        ]}
+      >
+        {(['week', 'month', 'year'] as const).map((range) => {
+          const active = dateRange === range;
+          return (
+            <TouchableOpacity
+              key={range}
               style={[
-                styles.filterButtonText,
-                dateRange === range && styles.filterButtonTextActive,
+                styles.filterChip,
+                {
+                  backgroundColor: active ? theme.colors.primary : theme.colors.surfaceAlt,
+                  borderColor: active ? theme.colors.primary : theme.colors.border,
+                },
               ]}
+              onPress={() => setDateRange(range)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={range}
             >
-              {range.charAt(0).toUpperCase() + range.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: active ? theme.colors.textInverse : theme.colors.textSecondary },
+                ]}
+              >
+                {range.charAt(0).toUpperCase() + range.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {user?.role === 'instructor' ? (
@@ -70,113 +120,182 @@ export default function AnalyticsScreen() {
       ) : (
         <StudentAnalytics filters={filters} />
       )}
+
+      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
 function TeacherAnalytics({ filters }: { filters: { dateFrom: string; dateTo: string } }) {
+  const theme = useTeacherTheme();
   const percentageColor = usePercentageColor();
   const { topPerformers, needsAttention, isLoading } = useStudentPerformance(filters);
   const { statistics, summary } = useAssessmentStatistics(filters);
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading analytics...</Text>
+      <View style={[styles.loadingWrap, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.loadingIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+          <Ionicons name="analytics-outline" size={32} color={theme.colors.primary} />
+        </View>
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading analytics…</Text>
       </View>
     );
   }
 
   return (
     <>
-      {/* Summary Cards */}
+      {/* Overview Summary */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Overview</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="bar-chart-outline" size={18} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Overview</Text>
+        </View>
         <View style={styles.summaryGrid}>
-          <SummaryCard title="Assessments" value={summary.totalAssessments.toString()} />
-          <SummaryCard title="Total Attempts" value={summary.totalAttempts.toString()} />
-          <SummaryCard
-            title="Avg Score"
-            value={`${summary.overallAverageScore.toFixed(1)}%`}
-            color={percentageColor(summary.overallAverageScore)}
-          />
-          <SummaryCard
-            title="Pass Rate"
-            value={`${summary.overallPassRate.toFixed(1)}%`}
-            color={percentageColor(summary.overallPassRate)}
-          />
+          {[
+            { label: 'Assessments', value: summary.totalAssessments.toString(), accent: 'teal' as const },
+            { label: 'Total Attempts', value: summary.totalAttempts.toString(), accent: 'blue' as const },
+            { label: 'Avg Score', value: `${summary.overallAverageScore.toFixed(1)}%`, accent: 'green' as const },
+            { label: 'Pass Rate', value: `${summary.overallPassRate.toFixed(1)}%`, accent: 'orange' as const },
+          ].map((item) => (
+            <SummaryCard
+              key={item.label}
+              title={item.label}
+              value={item.value}
+              color={percentageColor(parseFloat(item.value))}
+            />
+          ))}
         </View>
       </View>
 
       {/* Top Performers */}
       {topPerformers.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Top Performers</Text>
-          {topPerformers.map((student) => (
-            <Fragment key={student.studentId}>
-              <View style={styles.performanceCard}>
-                <View style={styles.performanceHeader}>
-                  <Text style={styles.studentName}>{student.studentName}</Text>
-                  <Text style={[styles.scoreText, { color: percentageColor(student.averageScore) }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="trophy-outline" size={18} color={theme.colors.warning} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Top Performers</Text>
+          </View>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            ]}
+          >
+            {topPerformers.map((student, index) => (
+              <Fragment key={student.studentId}>
+                <View
+                  style={[
+                    styles.performanceRow,
+                    index < topPerformers.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <View style={[styles.rankBadge, { backgroundColor: theme.colors.tintOrange }]}>
+                    <Text style={[styles.rankText, { color: theme.colors.onTintOrange }]}>#{index + 1}</Text>
+                  </View>
+                  <View style={styles.performanceInfo}>
+                    <Text style={[styles.performanceName, { color: theme.colors.textPrimary }]}>
+                      {student.studentName}
+                    </Text>
+                    <Text style={[styles.performanceMeta, { color: theme.colors.textSecondary }]}>
+                      {student.totalAssessments} assessments · {student.trend}
+                    </Text>
+                  </View>
+                  <Text style={[styles.performanceScore, { color: percentageColor(student.averageScore) }]}>
                     {student.averageScore.toFixed(1)}%
                   </Text>
                 </View>
-                <Text style={styles.performanceMeta}>
-                  {student.totalAssessments} assessments • Trend: {student.trend}
-                </Text>
-              </View>
-            </Fragment>
-          ))}
+              </Fragment>
+            ))}
+          </View>
         </View>
       )}
 
-      {/* Students Needing Attention */}
+      {/* Needs Attention */}
       {needsAttention.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Needs Attention</Text>
-          {needsAttention.map((student) => (
-            <Fragment key={student.studentId}>
-              <View style={styles.performanceCard}>
-                <View style={styles.performanceHeader}>
-                  <Text style={styles.studentName}>{student.studentName}</Text>
-                  <Text style={[styles.scoreText, { color: '#EF4444' }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="warning-outline" size={18} color={theme.colors.danger} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Needs Attention</Text>
+          </View>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            ]}
+          >
+            {needsAttention.map((student, index) => (
+              <Fragment key={student.studentId}>
+                <View
+                  style={[
+                    styles.performanceRow,
+                    index < needsAttention.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <View style={[styles.rankBadge, { backgroundColor: theme.colors.tintRed }]}>
+                    <Ionicons name="alert-outline" size={14} color={theme.colors.danger} />
+                  </View>
+                  <View style={styles.performanceInfo}>
+                    <Text style={[styles.performanceName, { color: theme.colors.textPrimary }]}>
+                      {student.studentName}
+                    </Text>
+                    <Text style={[styles.performanceMeta, { color: theme.colors.textSecondary }]}>
+                      {student.totalAssessments} assessments · {student.trend}
+                    </Text>
+                  </View>
+                  <Text style={[styles.performanceScore, { color: theme.colors.danger }]}>
                     {student.averageScore.toFixed(1)}%
                   </Text>
                 </View>
-                <Text style={styles.performanceMeta}>
-                  {student.totalAssessments} assessments • Trend: {student.trend}
-                </Text>
-              </View>
-            </Fragment>
-          ))}
+              </Fragment>
+            ))}
+          </View>
         </View>
       )}
 
       {/* Assessment Statistics */}
       {statistics.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Assessment Statistics</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="document-text-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Assessment Stats</Text>
+          </View>
           {statistics.slice(0, 5).map((stat) => (
             <Fragment key={stat.assessmentId}>
-              <View style={styles.statCard}>
-                <Text style={styles.statTitle}>{stat.assessmentTitle}</Text>
-                <View style={styles.statGrid}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Attempts</Text>
-                    <Text style={styles.statValue}>{stat.totalAttempts}</Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Avg Score</Text>
-                    <Text style={[styles.statValue, { color: percentageColor(stat.averageScore) }]}>
-                      {stat.averageScore.toFixed(1)}%
-                    </Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Pass Rate</Text>
-                    <Text style={[styles.statValue, { color: percentageColor(stat.passPercentage) }]}>
-                      {stat.passPercentage.toFixed(1)}%
-                    </Text>
-                  </View>
+              <View
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.statCardTitle, { color: theme.colors.textPrimary }]}>
+                  {stat.assessmentTitle}
+                </Text>
+                <View style={styles.statRow}>
+                  {[
+                    { label: 'Attempts', value: stat.totalAttempts.toString(), color: undefined },
+                    { label: 'Avg Score', value: `${stat.averageScore.toFixed(1)}%`, color: percentageColor(stat.averageScore) },
+                    { label: 'Pass Rate', value: `${stat.passPercentage.toFixed(1)}%`, color: percentageColor(stat.passPercentage) },
+                  ].map((metric) => (
+                    <View key={metric.label} style={styles.statMetric}>
+                      <Text style={[styles.statMetricLabel, { color: theme.colors.textSecondary }]}>
+                        {metric.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.statMetricValue,
+                          { color: metric.color ?? theme.colors.textPrimary },
+                        ]}
+                      >
+                        {metric.value}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             </Fragment>
@@ -188,6 +307,7 @@ function TeacherAnalytics({ filters }: { filters: { dateFrom: string; dateTo: st
 }
 
 function StudentAnalytics({ filters }: { filters: { dateFrom: string; dateTo: string } }) {
+  const theme = useTeacherTheme();
   const percentageColor = usePercentageColor();
   const { weakTopics, isLoading: weakLoading } = useWeakTopics();
   const { data, isLoading: analyticsLoading } = useAnalytics(filters);
@@ -196,35 +316,50 @@ function StudentAnalytics({ filters }: { filters: { dateFrom: string; dateTo: st
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading analytics...</Text>
+      <View style={[styles.loadingWrap, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.loadingIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+          <Ionicons name="analytics-outline" size={32} color={theme.colors.primary} />
+        </View>
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading analytics…</Text>
       </View>
     );
   }
 
   return (
     <>
-      {/* Performance Summary */}
+      {/* Topic Performance */}
       {data && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Performance Summary</Text>
-          <View style={styles.performanceChart}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="podium-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Topic Performance</Text>
+          </View>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            ]}
+          >
             {data.topicAnalysis.slice(0, 5).map((topic) => (
               <Fragment key={topic.topic}>
                 <View style={styles.topicRow}>
-                  <Text style={styles.topicName}>{topic.topic}</Text>
-                  <View style={styles.topicBarContainer}>
+                  <Text style={[styles.topicName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                    {topic.topic}
+                  </Text>
+                  <View style={[styles.topicBarTrack, { backgroundColor: theme.colors.surfaceAlt }]}>
                     <View
                       style={[
-                        styles.topicBar,
+                        styles.topicBarFill,
                         {
-                          width: `${topic.averageScore}%`,
+                          width: `${topic.averageScore}%` as `${number}%`,
                           backgroundColor: percentageColor(topic.averageScore),
                         },
                       ]}
                     />
                   </View>
-                  <Text style={styles.topicScore}>{topic.averageScore.toFixed(0)}%</Text>
+                  <Text style={[styles.topicScore, { color: percentageColor(topic.averageScore) }]}>
+                    {topic.averageScore.toFixed(0)}%
+                  </Text>
                 </View>
               </Fragment>
             ))}
@@ -235,21 +370,40 @@ function StudentAnalytics({ filters }: { filters: { dateFrom: string; dateTo: st
       {/* Weak Topics */}
       {weakTopics.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Topics to Improve</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="trending-down-outline" size={18} color={theme.colors.danger} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Topics to Improve</Text>
+          </View>
           {weakTopics.map((topic, index) => (
             <Fragment key={index}>
-              <View style={styles.weakTopicCard}>
+              <View
+                style={[
+                  styles.weakTopicCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
                 <View style={styles.weakTopicHeader}>
-                  <Text style={styles.weakTopicName}>{topic.topic}</Text>
-                  <Text style={styles.weakTopicScore}>{topic.averageScore}%</Text>
+                  <Text style={[styles.weakTopicName, { color: theme.colors.textPrimary }]}>{topic.topic}</Text>
+                  <View style={[styles.weakScorePill, { backgroundColor: theme.colors.tintRed }]}>
+                    <Text style={[styles.weakScorePillText, { color: theme.colors.danger }]}>
+                      {topic.averageScore}%
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${topic.averageScore}%` }]} />
+                <View style={[styles.progressTrack, { backgroundColor: theme.colors.tintRed }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${topic.averageScore}%` as `${number}%`, backgroundColor: theme.colors.danger },
+                    ]}
+                  />
                 </View>
                 <View style={styles.weakTopicFooter}>
-                  <Text style={styles.weakTopicAttempts}>{topic.totalAttempts} attempts</Text>
-                  <Text style={styles.weakTopicImprovement}>
-                    Improve by {topic.improvementPercentage}%
+                  <Text style={[styles.weakTopicMeta, { color: theme.colors.textSecondary }]}>
+                    {topic.totalAttempts} attempts
+                  </Text>
+                  <Text style={[styles.weakTopicImprove, { color: theme.colors.warning }]}>
+                    +{topic.improvementPercentage}% to improve
                   </Text>
                 </View>
               </View>
@@ -261,24 +415,40 @@ function StudentAnalytics({ filters }: { filters: { dateFrom: string; dateTo: st
       {/* Recent Performance */}
       {data && data.studentPerformance.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Performance</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="analytics-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Recent Performance</Text>
+          </View>
           {data.studentPerformance.slice(0, 5).map((performance) => (
             <Fragment key={performance.studentId}>
-              <View style={styles.performanceHistoryCard}>
-                <Text style={styles.performanceText}>
+              <View
+                style={[
+                  styles.perfHistCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.perfHistText, { color: theme.colors.textSecondary }]}>
                   {performance.totalAssessments} assessments completed
                 </Text>
-                <View style={styles.scoreRow}>
-                  <Text style={styles.scoreLabel}>Average:</Text>
-                  <Text style={[styles.scoreValue, { color: percentageColor(performance.averageScore) }]}>
-                    {performance.averageScore.toFixed(1)}%
+                {[
+                  { label: 'Average', value: `${performance.averageScore.toFixed(1)}%`, color: percentageColor(performance.averageScore) },
+                  { label: 'Highest', value: `${performance.highestScore}%`, color: undefined },
+                ].map((row) => (
+                  <View key={row.label} style={styles.perfHistRow}>
+                    <Text style={[styles.perfHistLabel, { color: theme.colors.textSecondary }]}>{row.label}</Text>
+                    <Text style={[styles.perfHistValue, { color: row.color ?? theme.colors.textPrimary }]}>{row.value}</Text>
+                  </View>
+                ))}
+                <View style={[styles.trendPill, { backgroundColor: theme.colors.surfaceAlt }]}>
+                  <Ionicons
+                    name={performance.trend === 'up' ? 'trending-up-outline' : performance.trend === 'down' ? 'trending-down-outline' : 'remove-outline'}
+                    size={13}
+                    color={theme.colors.textSecondary}
+                  />
+                  <Text style={[styles.trendPillText, { color: theme.colors.textSecondary }]}>
+                    Trend: {performance.trend}
                   </Text>
                 </View>
-                <View style={styles.scoreRow}>
-                  <Text style={styles.scoreLabel}>Highest:</Text>
-                  <Text style={styles.scoreValue}>{performance.highestScore}%</Text>
-                </View>
-                <Text style={styles.trendText}>Trend: {performance.trend}</Text>
               </View>
             </Fragment>
           ))}
@@ -289,12 +459,16 @@ function StudentAnalytics({ filters }: { filters: { dateFrom: string; dateTo: st
 }
 
 function SummaryCard({ title, value, color }: { title: string; value: string; color?: string }) {
+  const theme = useTeacherTheme();
   return (
-    <View style={styles.summaryCard}>
-      <Text style={styles.summaryValue} {...(color && { style: { color } })}>
-        {value}
-      </Text>
-      <Text style={styles.summaryTitle}>{title}</Text>
+    <View
+      style={[
+        styles.summaryCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+      ]}
+    >
+      <Text style={[styles.summaryValue, { color: color ?? theme.colors.primary }]}>{value}</Text>
+      <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{title}</Text>
     </View>
   );
 }
@@ -312,259 +486,140 @@ function getDateFrom(range: 'week' | 'month' | 'year'): string {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  filterContainer: {
+  fill: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  errorIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
+  errorMsg: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+  retryBtnText: { fontSize: 15, fontWeight: '600' },
+
+  filterBar: {
     flexDirection: 'row',
     padding: 16,
-    backgroundColor: '#FFFFFF',
     gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  filterButton: {
+  filterChip: {
     flex: 1,
     paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    borderRadius: 999,
     alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  filterButtonActive: {
-    backgroundColor: '#3B82F6',
+  filterChipText: { fontSize: 13, fontWeight: '600' },
+
+  section: { paddingHorizontal: 16, paddingTop: 16 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+
+  card: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
-  filterButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  section: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
-  },
+
   summaryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   summaryCard: {
-    width: (width - 48) / 2,
-    backgroundColor: '#FFFFFF',
+    width: (width - 42) / 2,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
-    borderRadius: 12,
     alignItems: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  summaryTitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  performanceCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  performanceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  studentName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  scoreText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  performanceMeta: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
+  summaryValue: { fontSize: 24, fontWeight: '800', marginBottom: 4 },
+  summaryLabel: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
+
+  performanceRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  rankBadge: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  rankText: { fontSize: 12, fontWeight: '700' },
+  performanceInfo: { flex: 1 },
+  performanceName: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  performanceMeta: { fontSize: 12, lineHeight: 16 },
+  performanceScore: { fontSize: 16, fontWeight: '800' },
+
   statCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  statTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  statGrid: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  statItem: {
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  performanceChart: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-  },
+  statCardTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  statRow: { flexDirection: 'row', gap: 16 },
+  statMetric: { flex: 1 },
+  statMetricLabel: { fontSize: 11, marginBottom: 3 },
+  statMetricValue: { fontSize: 15, fontWeight: '700' },
+
   topicRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingVertical: 8,
+    gap: 8,
   },
-  topicName: {
-    width: 100,
-    fontSize: 13,
-    color: '#111827',
-  },
-  topicBarContainer: {
-    flex: 1,
-    height: 24,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    marginHorizontal: 8,
-    overflow: 'hidden',
-  },
-  topicBar: {
-    height: '100%',
-  },
-  topicScore: {
-    width: 45,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-    textAlign: 'right',
-  },
+  topicName: { width: 100, fontSize: 13, fontWeight: '500' },
+  topicBarTrack: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden' },
+  topicBarFill: { height: '100%', borderRadius: 4 },
+  topicScore: { width: 40, fontSize: 13, fontWeight: '700', textAlign: 'right' },
+
   weakTopicCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  weakTopicHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  weakTopicHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  weakTopicName: { fontSize: 14, fontWeight: '700', flex: 1 },
+  weakScorePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  weakScorePillText: { fontSize: 12, fontWeight: '700' },
+  progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  weakTopicFooter: { flexDirection: 'row', justifyContent: 'space-between' },
+  weakTopicMeta: { fontSize: 12 },
+  weakTopicImprove: { fontSize: 12, fontWeight: '600' },
+
+  perfHistCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  weakTopicName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  weakTopicScore: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#EF4444',
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#EF4444',
-  },
-  weakTopicFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  weakTopicAttempts: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  weakTopicImprovement: {
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '500',
-  },
-  performanceHistoryCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  performanceText: {
-    fontSize: 14,
-    color: '#111827',
-    marginBottom: 8,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  scoreLabel: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  scoreValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  trendText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 4,
-    textTransform: 'capitalize',
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#EF4444',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  perfHistText: { fontSize: 13, marginBottom: 8 },
+  perfHistRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  perfHistLabel: { fontSize: 13 },
+  perfHistValue: { fontSize: 13, fontWeight: '700' },
+  trendPill: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
+  trendPillText: { fontSize: 12, fontWeight: '500', textTransform: 'capitalize' },
+
+  loadingWrap: { padding: 48, alignItems: 'center', gap: 12 },
+  loadingIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 14, fontWeight: '500' },
 });

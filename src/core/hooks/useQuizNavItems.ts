@@ -44,7 +44,7 @@ export const QUIZ_NAV_TO_SCREEN: Record<string, string> = {
   '/website':                'CreateWebsiteQuizScreen',
   '/website-assessment':     'CreateWebsiteQuizScreen',
   '/analytics':              'Analytics',
-  '/erp':                    'ERP',
+  '/erp':                    'ERPSchools',
 };
 
 export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
@@ -61,7 +61,8 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
   'CreateYouTubeQuizScreen':     'CreateYouTubeQuizScreen',
   'CreateWebsiteQuizScreen':     'CreateWebsiteQuizScreen',
   'TeacherAnalytics':            'Analytics',
-  'ERP':                         'ERP',
+  'ERP':                         'ERPSchools',
+  'ERPSchools':                  'ERPSchools',
 };
 
 /** Default tile appearance per RN screen name */
@@ -73,8 +74,9 @@ export const SCREEN_DEFAULTS: Record<string, { color: string; bg: string; icon: 
   CreateImageQuizScreen:       { color: '#D97706', bg: '#FFF3E0', icon: 'image',        label: 'Image',          subtitle: 'Photo/PDF' },
   CreateYouTubeQuizScreen:     { color: '#059669', bg: '#E8F5E9', icon: 'logo-youtube', label: 'YouTube',        subtitle: 'Video-based' },
   CreateWebsiteQuizScreen:     { color: '#9C27B0', bg: '#F3E5F5', icon: 'globe',        label: 'Website',        subtitle: 'URL-based' },
-  Analytics:                   { color: '#0EA5E9', bg: '#E0F2FE', icon: 'stats-chart',  label: 'Teacher Analytics', subtitle: 'Performance insights' },
-  ERP:                         { color: '#14B8A6', bg: '#E6FFFA', icon: 'business',     label: 'School ERP', subtitle: 'ERP modules' },
+  Analytics:                   { color: '#0EA5E9', bg: '#E0F2FE', icon: 'stats-chart',  label: 'Teacher Analytics',  subtitle: 'Performance insights' },
+  ERP:                         { color: '#14B8A6', bg: '#E6FFFA', icon: 'business',     label: 'School ERP',         subtitle: 'ERP modules' },
+  ERPSchools:                  { color: '#0B5563', bg: '#E6F3F5', icon: 'school',       label: 'School ERP',         subtitle: 'Classes & students' },
 };
 
 const EMOJI_ICON_TO_IONICON: Record<string, string> = {

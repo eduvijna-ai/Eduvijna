@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { 
   findOrCreateAttempt,
   updateQuizAttempt, 
@@ -63,9 +63,22 @@ type QuizAvailability = {
 };
 
 export default function QuizTakingScreen({ route, navigation }: any) {
-  const { theme } = useTheme();
+  const t = useTeacherTheme();
   const { user } = useAuth();
-  const colors = theme.colors;
+  // Compat shim so all existing `colors.*` references keep working
+  const colors = {
+    background: t.colors.background,
+    card: t.colors.surface,
+    text: t.colors.textPrimary,
+    textSecondary: t.colors.textSecondary,
+    primary: t.colors.primary,
+    border: t.colors.border,
+    error: t.colors.danger,
+    success: t.colors.success,
+    inputBackground: t.colors.surfaceAlt,
+    white: '#FFFFFF',
+  };
+  const theme = { colors };
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web' && width > 768;
   const insets = useSafeAreaInsets();
