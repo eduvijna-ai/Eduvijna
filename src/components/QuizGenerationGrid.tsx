@@ -32,8 +32,35 @@ const FALLBACK_SCREENS = [
   'CreateDocumentQuizScreen',
   'CreateImageQuizScreen',
   'CreateYouTubeQuizScreen',
-  'CreateHandwrittenQuizScreen',
 ];
+
+/**
+ * The web "AI Assessment Platform" is a single nav item whose workspace contains
+ * tabs (AI Assessment / Document & Handwritten / Image / Exam Paper). On mobile
+ * we don't render an in-page tab workspace, so when a user is granted the
+ * platform we expand it into the equivalent standalone tiles below.
+ */
+const isPlatformTile = (tile: ResolvedNavItem): boolean => {
+  const label = tile.label.trim().toLowerCase();
+  return (
+    label === 'ai assessment platform' ||
+    label.includes('assessment platform') ||
+    tile.screen === 'CreateHandwrittenQuizScreen'
+  );
+};
+
+/** Screens the AI Assessment Platform expands into on mobile. */
+const PLATFORM_EXPANSION_SCREENS = [
+  'CreateAIQuizScreen',
+  'CreateDocumentQuizScreen',
+  'CreateImageQuizScreen',
+];
+
+/** Tiles hidden from the home Generate Assessment grid (still reachable via header menu). */
+const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
+  // The platform itself is never shown as a tile; it is expanded into its parts.
+  return isPlatformTile(tile);
+};
 
 interface QuizGenerationGridProps {
   navigation?: any;
@@ -56,20 +83,54 @@ export default function QuizGenerationGrid({
 
   /** Tiles to render — API items when available, defaults otherwise */
   const tiles: ResolvedNavItem[] = useMemo(() => {
-    if (navItems.length > 0) return navItems;
-    // Fallback: show all defaults
-    return FALLBACK_SCREENS.map((screen, i) => {
-      const d = SCREEN_DEFAULTS[screen]!;
-      return {
-        screen,
-        label: d.label,
-        subtitle: d.subtitle,
-        iconName: d.icon,
-        iconColor: d.color,
-        bgColor: d.bg,
-        display_order: i,
-      };
-    });
+    const source =
+      navItems.length > 0
+        ? navItems
+        : FALLBACK_SCREENS.map((screen, i) => {
+            const d = SCREEN_DEFAULTS[screen]!;
+            return {
+              screen,
+              label: d.label,
+              subtitle: d.subtitle,
+              iconName: d.icon,
+              iconColor: d.color,
+              bgColor: d.bg,
+              display_order: i,
+            };
+          });
+
+    // Whether the user is granted the AI Assessment Platform (its workspace
+    // includes AI Assessment / Document & Handwritten / Image on web).
+    const hasPlatform = source.some(isPlatformTile);
+
+    const visible = source.filter((tile) => !isHiddenGenerationTile(tile));
+
+    if (!hasPlatform) {
+      return visible;
+    }
+
+    // Expand the platform into standalone Document / Image / AI Assessment tiles,
+    // skipping any the backend already granted directly (to avoid duplicates).
+    const present = new Set(visible.map((t) => t.screen));
+    const baseOrder = Math.max(0, ...visible.map((t) => t.display_order ?? 0)) + 1;
+    const expanded = PLATFORM_EXPANSION_SCREENS.filter((screen) => !present.has(screen)).map(
+      (screen, i) => {
+        const d = SCREEN_DEFAULTS[screen]!;
+        return {
+          screen,
+          label: d.label,
+          subtitle: d.subtitle,
+          iconName: d.icon,
+          iconColor: d.color,
+          bgColor: d.bg,
+          display_order: baseOrder + i,
+        };
+      },
+    );
+
+    return [...visible, ...expanded].sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
+    );
   }, [navItems]);
 
   const handlePress = (screen: string) => {
@@ -87,7 +148,9 @@ export default function QuizGenerationGrid({
     const resolvedScreen =
       useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')
         ? 'AssessmentWorkspaceScreen'
-        : screen;
+        : useWorkspaceRedirect && screen === 'CreateImageQuizScreen'
+          ? 'ImageAssessmentScreen'
+          : screen;
 
     const resolvedParams =
       useWorkspaceRedirect && screen === 'CreateDocumentQuizScreen'

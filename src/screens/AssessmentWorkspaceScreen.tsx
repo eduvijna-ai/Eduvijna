@@ -47,10 +47,22 @@ interface Props {
 const COUNT_OPTIONS = [5, 10, 15, 20] as const;
 const WS_LEVELS = ['easy', 'medium', 'hard', 'advanced'] as const;
 
-const SOURCE_OPTIONS = [
+const DOCUMENT_SOURCE_OPTIONS = [
   { key: 'file', icon: 'document-attach-outline', label: 'Upload File' },
-  { key: 'url', icon: 'link-outline', label: 'Website URL' },
+  { key: 'library', icon: 'library-outline', label: 'Document Library' },
   { key: 'camera', icon: 'camera-outline', label: 'Camera / OCR' },
+] as const;
+
+const HANDWRITTEN_FLOW_STEPS = [
+  'Capture or upload handwritten page photos (max 5)',
+  'OCR extracts text from your images',
+  'Set class, subject, and quiz options, then generate',
+] as const;
+
+const DOCUMENT_FLOW_STEPS = [
+  'Upload, pick from library, or capture your document',
+  'Preview pages and select up to 5 to include',
+  'Set quiz options and generate assessment or worksheet',
 ] as const;
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -122,20 +134,16 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
     if (tab === 'preview') return;
     setTabLoading(true);
     try {
-      if (tab === 'quiz') {
-        const data = await listUserAssessments('quiz');
-        setQuizList(Array.isArray(data) ? data : []);
-      } else if (tab === 'worksheet') {
-        const data = await listUserAssessments(undefined, 'Worksheet');
-        setWorksheetList(Array.isArray(data) ? data : []);
-      } else if (tab === 'history') {
-        const [q, w] = await Promise.all([
-          listUserAssessments('quiz'),
-          listUserAssessments(undefined, 'Worksheet'),
-        ]);
-        setQuizList(Array.isArray(q) ? q : []);
-        setWorksheetList(Array.isArray(w) ? w : []);
-      }
+      // Fetch all assessments once and split by type so every quiz flavour
+      // (web-quiz / youtube-quiz / image-quiz / quiz) shows up consistently.
+      const all = await listUserAssessments();
+      const list = Array.isArray(all) ? all : [];
+      const isWorksheet = (i: AssessmentListItem) =>
+        i.assessment_type === 'worksheet' || i.source === 'Worksheet';
+      const sortByDate = (a: AssessmentListItem, b: AssessmentListItem) =>
+        (b.created_at || '').localeCompare(a.created_at || '');
+      setQuizList(list.filter((i) => !isWorksheet(i)).sort(sortByDate));
+      setWorksheetList(list.filter(isWorksheet).sort(sortByDate));
     } catch (e) {
       console.error('fetchTabData:', e);
     } finally {
@@ -181,22 +189,41 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
       if (!detail) { Alert.alert('Error', 'Could not load quiz.'); return; }
       const questions = decodeQuizQuestions(detail.questions || []);
       if (questions.length === 0) { Alert.alert('Empty', 'This quiz has no questions.'); return; }
-      navigation.navigate('QuizTakingScreen', {
-        quiz: {
-          id: detail.id,
-          title: detail.title,
-          class: detail.class_name,
-          subject: detail.subject,
-          difficulty: detail.level,
-          lesson: detail.lesson,
-          questions,
-          duration: 30,
-          has_time_limit: false,
-        },
-        showActionButtons: true,
-        showShareButton: false,
-        source: 'history',
-      });
+
+      const launch = (initialResponses?: Record<string, string>) => {
+        navigation.navigate('QuizTakingScreen', {
+          quiz: {
+            id: detail.id,
+            title: detail.title,
+            class: detail.class_name,
+            subject: detail.subject,
+            difficulty: detail.level,
+            lesson: detail.lesson,
+            questions,
+            duration: 30,
+            has_time_limit: false,
+          },
+          assessmentId: detail.id,
+          initialResponses,
+          showActionButtons: true,
+          showShareButton: false,
+          source: 'history',
+        });
+      };
+
+      const savedResponses = (detail as any).responses as Record<string, string> | undefined;
+      if (savedResponses && Object.keys(savedResponses).length > 0) {
+        Alert.alert(
+          'Resume Assessment',
+          'You have answers saved from a previous attempt. Would you like to restore them?',
+          [
+            { text: 'Start Fresh', style: 'cancel', onPress: () => launch(undefined) },
+            { text: 'Restore', onPress: () => launch(savedResponses) },
+          ],
+        );
+      } else {
+        launch(undefined);
+      }
     } catch {
       Alert.alert('Error', 'Failed to open quiz.');
     }
@@ -304,8 +331,8 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
   const modeTitle = mode === 'document' ? 'Document Assessment' : 'Handwritten Assessment';
   const modeSub =
     mode === 'document'
-      ? 'Search/upload document, preview, and generate quizzes/worksheets.'
-      : 'Capture handwritten pages, run OCR, and generate strict MCQs.';
+      ? 'Start by uploading a document — quiz settings come after you pick pages.'
+      : 'Start handwritten flow — OCR and quiz settings come on the next screen.';
 
   // ── render ───────────────────────────────────────────────────────────────
   return (
@@ -383,147 +410,112 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
   // ─────────────────────────────────────────────────────────────────────────
   // SETUP (PREVIEW) TAB
   // ─────────────────────────────────────────────────────────────────────────
-  function renderPreviewTab() {
+  function handleDocumentSourcePress(key: typeof DOCUMENT_SOURCE_OPTIONS[number]['key']) {
+    if (key === 'library') {
+      navigation.navigate('DocumentLibraryScreen');
+      return;
+    }
+    navigation.navigate('DocumentUploadHomeScreen', {
+      autoAction: key === 'file' ? 'upload' : 'camera',
+    });
+  }
+
+  function renderDocumentPreviewTab() {
     return (
       <>
-        {/* Source / capture card */}
-        {mode === 'document' ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Input Source</Text>
-            <Text style={styles.cardSubtitle}>Choose how you will provide the document content</Text>
-            <View style={styles.sourceRow}>
-              {SOURCE_OPTIONS.map((src) => (
-                <TouchableOpacity
-                  key={src.key}
-                  style={styles.sourceCard}
-                  onPress={() => {
-                    navigation.navigate('DocumentUploadHomeScreen', {
-                      autoAction:
-                        src.key === 'file'
-                          ? 'upload'
-                          : src.key === 'camera'
-                            ? 'camera'
-                            : 'search',
-                    });
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.sourceIconBg, { backgroundColor: theme.colors.primary + '18' }]}>
-                    <Ionicons name={src.icon as any} size={22} color={theme.colors.primary} />
-                  </View>
-                  <Text style={styles.sourceLabel}>{src.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Handwritten Capture</Text>
-            <Text style={styles.cardSubtitle}>
-              Photograph handwritten pages — OCR extracts text to generate MCQs automatically.
-            </Text>
-            <TouchableOpacity
-              style={[styles.primaryAction, { marginTop: 12 }]}
-              onPress={openCurrentFlow}
-            >
-              <Ionicons name="camera-outline" size={18} color="#fff" />
-              <Text style={styles.primaryActionText}>Open Camera Capture</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* AI Settings */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>AI Settings</Text>
-
-          <Text style={styles.label}>Class / Grade</Text>
-          <TextInput
-            value={aiSettings.classValue}
-            onChangeText={(text) => updateAiSettings({ classValue: text })}
-            placeholder="e.g., Class 10"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
-
-          <Text style={styles.label}>Subject</Text>
-          <TextInput
-            value={aiSettings.subject}
-            onChangeText={(text) => updateAiSettings({ subject: text })}
-            placeholder="e.g., Physics"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
-
-          <Text style={styles.label}>Lesson / Topic</Text>
-          <TextInput
-            value={aiSettings.lesson}
-            onChangeText={(text) => updateAiSettings({ lesson: text })}
-            placeholder="e.g., Reflection of Light"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
-
-          <Text style={styles.label}>Difficulty</Text>
-          <View style={styles.pillsRow}>
-            {(['easy', 'medium', 'hard'] as const).map((d) => {
-              const selected = aiSettings.difficulty === d;
-              return (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.pill, selected && styles.pillSelected]}
-                  onPress={() => updateAiSettings({ difficulty: d })}
-                >
-                  <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
-                    {d.charAt(0).toUpperCase() + d.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <Text style={styles.cardTitle}>Step 1 · Choose Document</Text>
+          <Text style={styles.cardSubtitle}>Pick how you want to add your document</Text>
+          <View style={styles.sourceRow}>
+            {DOCUMENT_SOURCE_OPTIONS.map((src) => (
+              <TouchableOpacity
+                key={src.key}
+                style={styles.sourceCard}
+                onPress={() => handleDocumentSourcePress(src.key)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.sourceIconBg, { backgroundColor: theme.colors.primary + '18' }]}>
+                  <Ionicons name={src.icon as any} size={22} color={theme.colors.primary} />
+                </View>
+                <Text style={styles.sourceLabel}>{src.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-
-          <Text style={styles.label}>Number of Questions</Text>
-          <View style={styles.pillsRow}>
-            {COUNT_OPTIONS.map((c) => {
-              const selected = aiSettings.questionCount === c;
-              return (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.countPill, selected && styles.pillSelected]}
-                  onPress={() => updateAiSettings({ questionCount: c })}
-                >
-                  <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{c}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text style={styles.label}>Additional Instructions</Text>
-          <TextInput
-            value={aiSettings.additionalInstructions}
-            onChangeText={(text) => updateAiSettings({ additionalInstructions: text })}
-            placeholder="Optional instructions for question generation"
-            style={[styles.input, styles.inputMultiline]}
-            placeholderTextColor={theme.colors.placeholder}
-            multiline
-            numberOfLines={3}
-          />
         </View>
 
-        {/* Actions */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>How it works</Text>
+          {DOCUMENT_FLOW_STEPS.map((step, index) => (
+            <View key={step} style={styles.flowStepRow}>
+              <View style={styles.flowStepBadge}>
+                <Text style={styles.flowStepBadgeText}>{index + 1}</Text>
+              </View>
+              <Text style={styles.flowStepText}>{step}</Text>
+            </View>
+          ))}
+          <Text style={styles.flowNote}>
+            Class, subject, difficulty, and question count are configured on the page preview screen — after your document is uploaded.
+          </Text>
+        </View>
+
         <View style={styles.actionsCard}>
-          <Text style={styles.cardTitle}>Actions</Text>
+          <Text style={styles.cardTitle}>Shortcuts</Text>
+          <View style={styles.secondaryActions}>
+            <TouchableOpacity
+              style={styles.secondaryAction}
+              onPress={() => navigation.navigate('DocumentUploadHistoryScreen')}
+            >
+              <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.secondaryActionText}>Upload History</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity style={styles.primaryAction} onPress={openCurrentFlow}>
-            <Ionicons
-              name={mode === 'document' ? 'document-text-outline' : 'create-outline'}
-              size={18}
-              color="#fff"
-            />
-            <Text style={styles.primaryActionText}>
-              Continue in {mode === 'document' ? 'Document' : 'Handwritten'} Flow
-            </Text>
+            <TouchableOpacity
+              style={styles.secondaryAction}
+              onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+            >
+              <Ionicons name="clipboard-outline" size={16} color={theme.colors.primary} />
+              <Text style={styles.secondaryActionText}>Recent Assessments</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  function renderHandwrittenPreviewTab() {
+    return (
+      <>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Step 1 · Start Handwritten Flow</Text>
+          <Text style={styles.cardSubtitle}>
+            Capture notes or exam papers — OCR and quiz settings come on the next screen.
+          </Text>
+          <TouchableOpacity
+            style={[styles.primaryAction, { marginTop: 12 }]}
+            onPress={openCurrentFlow}
+          >
+            <Ionicons name="create-outline" size={18} color="#fff" />
+            <Text style={styles.primaryActionText}>Start Handwritten Assessment</Text>
           </TouchableOpacity>
+        </View>
 
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>How it works</Text>
+          {HANDWRITTEN_FLOW_STEPS.map((step, index) => (
+            <View key={step} style={styles.flowStepRow}>
+              <View style={styles.flowStepBadge}>
+                <Text style={styles.flowStepBadgeText}>{index + 1}</Text>
+              </View>
+              <Text style={styles.flowStepText}>{step}</Text>
+            </View>
+          ))}
+          <Text style={styles.flowNote}>
+            Class, subject, difficulty, and question count are configured after OCR — not on this screen.
+          </Text>
+        </View>
+
+        <View style={styles.actionsCard}>
+          <Text style={styles.cardTitle}>Shortcuts</Text>
           <View style={styles.secondaryActions}>
             <TouchableOpacity
               style={styles.secondaryAction}
@@ -544,6 +536,10 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
         </View>
       </>
     );
+  }
+
+  function renderPreviewTab() {
+    return mode === 'document' ? renderDocumentPreviewTab() : renderHandwrittenPreviewTab();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1050,6 +1046,39 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 10,
     marginTop: 2,
+  },
+  flowStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 10,
+  },
+  flowStepBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  flowStepBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  flowStepText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  flowNote: {
+    marginTop: 12,
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 17,
+    fontStyle: 'italic',
   },
   cardHeader: {
     flexDirection: 'row',

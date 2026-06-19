@@ -1,14 +1,14 @@
 /**
  * CreateHandwrittenQuizScreen
  *
- * Handwritten Assessment Generator
- * - Pick handwritten paper/notes images (gallery or camera)
- * - Extract text via Batch OCR API  (/api/v1/batch-ocr-upload)
- * - Auto-generate quiz via  /api/v1/quiz/generate-strict
- * - Navigate directly to QuizTakingScreen — no config step
+ * Handwritten Assessment Generator (web DocImageExtraction parity)
+ * 1. Pick handwritten images (gallery or camera, max 5)
+ * 2. OCR via /api/v1/batch-ocr-upload
+ * 3. Configure class / subject / lesson / difficulty / question count
+ * 4. Generate quiz via /api/v1/quiz/generate-strict → QuizTakingScreen
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   Image,
   FlatList,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,16 +27,23 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { apiClient } from '../core/api/config';
+import { saveUserAssessment } from '../core/services/sharedApi';
+import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 interface PickedImage {
   uri: string;
   name: string;
   type: string;
+}
+
+interface WorkspacePreset {
+  classValue?: string;
+  subject?: string;
+  lesson?: string;
+  difficulty?: 'easy' | 'medium' | 'hard' | '';
+  questionCount?: number;
+  additionalInstructions?: string;
 }
 
 interface BatchOCRPageResult {
@@ -76,11 +84,23 @@ interface StrictQuizResponse {
   count: number;
 }
 
-// ============================================================================
-// HELPERS
-// ============================================================================
+type FlowPhase = 'capture' | 'configure';
+type ProcessingStep = 'ocr' | 'generate';
 
-// Resize + compress image to avoid 413 errors from large phone camera photos
+const COUNT_OPTIONS = [5, 10, 15, 20] as const;
+const DIFFICULTY_OPTIONS = [
+  { key: 'easy', label: 'Easy' },
+  { key: 'medium', label: 'Medium' },
+  { key: 'hard', label: 'Hard' },
+] as const;
+
+const FLOW_STEPS = [
+  'Upload clear photos of handwritten notes (max 5 images)',
+  'Extract text with OCR',
+  'Set class, subject, and quiz options',
+  'Generate assessment and start the quiz',
+] as const;
+
 async function compressImage(uri: string): Promise<string> {
   try {
     const context = ImageManipulator.manipulate(uri);
@@ -91,7 +111,7 @@ async function compressImage(uri: string): Promise<string> {
     image.release();
     return result.uri;
   } catch {
-    return uri; // Fall back to original if compression fails
+    return uri;
   }
 }
 
@@ -112,38 +132,83 @@ function aggregateOcrText(files: BatchOCRFileResult[]): string {
   return parts.join('\n\n');
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
+/** Web parity (DocImageExtraction): prepend metadata to OCR text for generate-strict. */
+export function buildStrictQuizContent(params: {
+  classValue?: string;
+  subject?: string;
+  lesson?: string;
+  difficulty?: string;
+  questionCount?: number;
+  additionalInstructions?: string;
+  ocrText: string;
+}): string {
+  const parts: string[] = [];
+  const cls = (params.classValue || '').trim();
+  const sub = (params.subject || '').trim();
+  const lesson = (params.lesson || '').trim();
+  const difficulty = (params.difficulty || '').trim();
+  const instructions = (params.additionalInstructions || '').trim();
 
-export default function CreateHandwrittenQuizScreen({ navigation }: any) {
+  if (cls) parts.push(`Class: ${cls}`);
+  if (sub) parts.push(`Subject: ${sub}`);
+  if (lesson) parts.push(`Lesson: ${lesson}`);
+  if (difficulty) parts.push(`Difficulty: ${difficulty}`);
+  if (params.questionCount) parts.push(`Number of questions: ${params.questionCount}`);
+  if (instructions) parts.push(`Instructions: ${instructions}`);
+  parts.push(params.ocrText.trim());
+  return parts.join('\n\n');
+}
+
+export default function CreateHandwrittenQuizScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const { colors } = theme;
   const { refreshAfterQuizGenerated } = useNotifications();
   const insets = useSafeAreaInsets();
-  const styles = React.useMemo(() => createStyles(), []);
+  const schoolId = useUserStore((s) => s.schoolId);
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const workspacePreset = route?.params?.workspacePreset as WorkspacePreset | undefined;
 
   const [pickedImages, setPickedImages] = useState<PickedImage[]>([]);
+  const [flowPhase, setFlowPhase] = useState<FlowPhase>('capture');
+  const [extractedOcrText, setExtractedOcrText] = useState('');
+  const [classValue, setClassValue] = useState('');
+  const [subject, setSubject] = useState('');
+  const [lesson, setLesson] = useState('');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState<'ocr' | 'generate' | null>(null);
+  const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
   const [error, setError] = useState('');
-
-  // ============================================================================
-  // LIFECYCLE
-  // ============================================================================
 
   useEffect(() => {
     requestPermissions();
   }, []);
 
+  useEffect(() => {
+    if (!workspacePreset) return;
+    setClassValue(workspacePreset.classValue ?? '');
+    setSubject(workspacePreset.subject ?? '');
+    setLesson(workspacePreset.lesson ?? '');
+    if (workspacePreset.difficulty === 'easy' || workspacePreset.difficulty === 'hard') {
+      setDifficulty(workspacePreset.difficulty);
+    } else if (workspacePreset.difficulty === 'medium') {
+      setDifficulty('medium');
+    }
+    if (workspacePreset.questionCount) setQuestionCount(workspacePreset.questionCount);
+    setAdditionalInstructions(workspacePreset.additionalInstructions ?? '');
+  }, [workspacePreset]);
+
+  useEffect(() => {
+    setExtractedOcrText('');
+    setFlowPhase('capture');
+  }, [pickedImages]);
+
   const requestPermissions = async () => {
     await ImagePicker.requestCameraPermissionsAsync();
     await ImagePicker.requestMediaLibraryPermissionsAsync();
   };
-
-  // ============================================================================
-  // IMAGE PICKING
-  // ============================================================================
 
   const handlePickFromGallery = async () => {
     try {
@@ -189,7 +254,7 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
       if (!result.canceled && result.assets.length > 0) {
         const asset = result.assets[0];
         const compressedUri = await compressImage(asset.uri);
-        setPickedImages(prev => [
+        setPickedImages((prev) => [
           ...prev,
           { uri: compressedUri, name: `hw_${Date.now()}.jpg`, type: 'image/jpeg' },
         ]);
@@ -201,38 +266,29 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
   };
 
   const handleRemoveImage = (index: number) => {
-    setPickedImages(prev => prev.filter((_, i) => i !== index));
+    setPickedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // ============================================================================
-  // EXTRACT + GENERATE (combined)
-  // ============================================================================
-
-  const handleExtractAndGenerate = async () => {
+  const handleRunOcr = async () => {
     if (pickedImages.length === 0) {
       setError('Please select at least one handwritten image first.');
       return;
     }
 
     setIsProcessing(true);
+    setProcessingStep('ocr');
     setError('');
 
     try {
-      // ── Step 1: OCR ──────────────────────────────────────────────────────
-      setProcessingStep('ocr');
       const formData = new FormData();
-      pickedImages.forEach(img => {
+      pickedImages.forEach((img) => {
         formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
       });
 
-      // React Native XHR automatically appends the boundary to multipart/form-data,
-      // so the explicit header is safe and required to override the Axios instance
-      // default (application/json). Without it the server receives the wrong
-      // Content-Type and returns 422 "Field required".
       const ocrResponse = await apiClient.post<BatchOCRResponse>(
         '/api/v1/batch-ocr-upload',
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
       );
 
       const ocrData = ocrResponse.data;
@@ -243,16 +299,49 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
       const ocrText = aggregateOcrText(ocrData.files);
       if (!ocrText || ocrText.trim().length < 10) {
         throw new Error(
-          'Could not extract readable text. Please ensure the handwriting is clear and try again.'
+          'Could not extract readable text. Please ensure the handwriting is clear and try again.',
         );
       }
 
-      // ── Step 2: Generate quiz ─────────────────────────────────────────────
-      setProcessingStep('generate');
+      setExtractedOcrText(ocrText);
+      setFlowPhase('configure');
+    } catch (err: any) {
+      setError(formatError(err));
+    } finally {
+      setIsProcessing(false);
+      setProcessingStep(null);
+    }
+  };
+
+  const handleGenerateQuiz = async () => {
+    if (!extractedOcrText.trim()) {
+      setError('Please extract text from your images before generating.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingStep('generate');
+    setError('');
+
+    const resolvedClass = classValue.trim() || 'General';
+    const resolvedSubject = subject.trim() || 'Handwritten';
+    const resolvedLesson = lesson.trim() || 'Handwritten Notes';
+    const quizTitle = resolvedLesson || 'Handwritten Assessment';
+    const content = buildStrictQuizContent({
+      classValue: resolvedClass,
+      subject: resolvedSubject,
+      lesson: resolvedLesson,
+      difficulty,
+      questionCount,
+      additionalInstructions,
+      ocrText: extractedOcrText,
+    });
+
+    try {
       const quizResponse = await apiClient.post<StrictQuizResponse>(
         '/api/v1/quiz/generate-strict',
-        { content: ocrText },
-        { timeout: 90000 }
+        { content },
+        { timeout: 90000 },
       );
 
       const quizData = quizResponse.data;
@@ -260,22 +349,50 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         throw new Error('Assessment generation returned no questions. Please try again.');
       }
 
-      await refreshAfterQuizGenerated();
-
-      const questions = quizData.quiz.map((item) => ({
+      const questions = quizData.quiz.map((item, idx) => ({
+        id: `hw-q-${idx}`,
         question: item.question,
         options: item.options,
         correctAnswer: item.correctAnswer,
         answer: item.correctAnswer,
       }));
 
+      try {
+        await saveUserAssessment({
+          title: quizTitle,
+          subject: resolvedSubject,
+          class_name: resolvedClass,
+          level: difficulty,
+          lesson: resolvedLesson,
+          assessment_type: 'web-quiz',
+          source: 'Handwritten',
+          school_id: schoolId ?? null,
+          questions: questions.map((q) => ({
+            quiz: {
+              question: q.question,
+              options: q.options,
+              answer: q.correctAnswer,
+            },
+            answer: q.correctAnswer,
+          })),
+        });
+      } catch {
+        // non-blocking
+      }
+
+      await refreshAfterQuizGenerated();
+
       navigation.replace('QuizTakingScreen', {
         quizData: {
-          title: 'Handwritten Assessment',
+          title: quizTitle,
+          class: resolvedClass,
+          subject: resolvedSubject,
+          difficulty,
+          lesson: resolvedLesson,
           questions,
           regenerationParams: {
             type: 'handwritten',
-            itext: ocrText,
+            itext: content,
           },
         },
         source: 'handwritten',
@@ -283,26 +400,24 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         showActionButtons: true,
       });
     } catch (err: any) {
-      let message: string;
-      if (err?.response?.status === 413) {
-        message = 'Images are too large to upload. Please try with fewer or smaller images.';
-      } else {
-        message =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          'Failed to process your images. Please try again.';
-      }
-      setError(message);
+      setError(formatError(err));
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
     }
   };
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  const formatError = (err: any): string => {
+    if (err?.response?.status === 413) {
+      return 'Images are too large to upload. Please try with fewer or smaller images.';
+    }
+    return (
+      err?.response?.data?.detail ||
+      err?.response?.data?.message ||
+      err?.message ||
+      'Failed to process your images. Please try again.'
+    );
+  };
 
   const processingLabel =
     processingStep === 'ocr' ? 'Extracting text from images…' : 'Generating assessment…';
@@ -323,35 +438,36 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
     </View>
   );
 
+  const footerLabel =
+    flowPhase === 'capture'
+      ? pickedImages.length === 0
+        ? 'Select Images First'
+        : `Extract Text from ${pickedImages.length} Image${pickedImages.length > 1 ? 's' : ''}`
+      : 'Generate Assessment';
+
+  const footerDisabled =
+    isProcessing ||
+    (flowPhase === 'capture' ? pickedImages.length === 0 : !extractedOcrText.trim());
+
+  const footerAction = flowPhase === 'capture' ? handleRunOcr : handleGenerateQuiz;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Hero Card */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={[styles.heroCard, { backgroundColor: colors.cardBackground }]}>
           <View style={[styles.heroIconContainer, { backgroundColor: colors.primaryLight + '22' }]}>
             <Ionicons name="create" size={40} color={colors.primary} />
           </View>
-          <Text style={[styles.heroTitle, { color: colors.text }]}>
-            Handwritten Assessment
-          </Text>
+          <Text style={[styles.heroTitle, { color: colors.text }]}>Handwritten Assessment</Text>
           <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
-            Capture your handwritten notes or exam papers. Our AI will extract the text and
-            generate an MCQ assessment instantly.
+            Capture notes or exam papers, extract text with OCR, then configure and generate MCQs.
           </Text>
         </View>
 
-        {/* How it works */}
         <View style={[styles.instructionCard, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.instructionTitle, { color: colors.text }]}>📋 How it works</Text>
-          {[
-            'Upload clear photos of your handwritten notes (max 5 images)',
-            'AI extracts text using advanced OCR technology',
-            'Questions are generated and assessment opens immediately',
-          ].map((step, i) => (
-            <View key={i} style={styles.stepRow}>
+          <Text style={[styles.instructionTitle, { color: colors.text }]}>How it works</Text>
+          {FLOW_STEPS.map((step, i) => (
+            <View key={step} style={styles.stepRow}>
               <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
                 <Text style={styles.stepBadgeText}>{i + 1}</Text>
               </View>
@@ -360,10 +476,9 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
           ))}
         </View>
 
-        {/* Upload Section */}
         <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            📸 Upload Images ({pickedImages.length}/5)
+            Step 1 · Upload Images ({pickedImages.length}/5)
           </Text>
 
           <View style={styles.uploadButtonRow}>
@@ -410,14 +525,127 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                 No images selected yet
               </Text>
-              <Text style={[styles.emptyHint, { color: colors.textSecondary }]}>
-                Supports JPG, PNG · Max 20 MB per image
-              </Text>
             </View>
           )}
         </View>
 
-        {/* Error Banner */}
+        {flowPhase === 'configure' && (
+          <>
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Step 2 · OCR Complete</Text>
+              <View style={styles.ocrSuccessRow}>
+                <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                <Text style={[styles.ocrSuccessText, { color: colors.text }]}>
+                  Text extracted ({extractedOcrText.length} characters)
+                </Text>
+              </View>
+              <Text style={[styles.ocrPreview, { color: colors.textSecondary }]} numberOfLines={4}>
+                {extractedOcrText}
+              </Text>
+              <TouchableOpacity
+                style={styles.reExtractBtn}
+                onPress={() => {
+                  setFlowPhase('capture');
+                  setExtractedOcrText('');
+                }}
+                disabled={isProcessing}
+              >
+                <Ionicons name="refresh-outline" size={14} color={colors.primary} />
+                <Text style={[styles.reExtractText, { color: colors.primary }]}>Re-run OCR</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Step 3 · Quiz Options</Text>
+              <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+                These settings are included in the quiz generation request.
+              </Text>
+
+              <Text style={[styles.label, { color: colors.text }]}>Class / Grade</Text>
+              <TextInput
+                value={classValue}
+                onChangeText={setClassValue}
+                placeholder="e.g., Class 10"
+                style={[styles.metaInput, { color: colors.text, borderColor: colors.border }]}
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Subject</Text>
+              <TextInput
+                value={subject}
+                onChangeText={setSubject}
+                placeholder="e.g., Physics"
+                style={[styles.metaInput, { color: colors.text, borderColor: colors.border }]}
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Lesson / Topic</Text>
+              <TextInput
+                value={lesson}
+                onChangeText={setLesson}
+                placeholder="e.g., Newton's Laws"
+                style={[styles.metaInput, { color: colors.text, borderColor: colors.border }]}
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Difficulty</Text>
+              <View style={styles.pillRow}>
+                {DIFFICULTY_OPTIONS.map((option) => {
+                  const active = difficulty === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[
+                        styles.pillBtn,
+                        { borderColor: colors.border },
+                        active && { borderColor: colors.primary, backgroundColor: colors.primary + '14' },
+                      ]}
+                      onPress={() => setDifficulty(option.key)}
+                    >
+                      <Text style={[styles.pillText, { color: colors.textSecondary }, active && { color: colors.primary, fontWeight: '700' }]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.label, { color: colors.text }]}>Number of Questions</Text>
+              <View style={styles.pillRow}>
+                {COUNT_OPTIONS.map((count) => {
+                  const active = questionCount === count;
+                  return (
+                    <TouchableOpacity
+                      key={count}
+                      style={[
+                        styles.pillBtn,
+                        { borderColor: colors.border },
+                        active && { borderColor: colors.primary, backgroundColor: colors.primary + '14' },
+                      ]}
+                      onPress={() => setQuestionCount(count)}
+                    >
+                      <Text style={[styles.pillText, { color: colors.textSecondary }, active && { color: colors.primary, fontWeight: '700' }]}>
+                        {count}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.label, { color: colors.text }]}>Additional Instructions</Text>
+              <TextInput
+                value={additionalInstructions}
+                onChangeText={setAdditionalInstructions}
+                placeholder="Optional instructions for question generation"
+                style={[styles.metaInput, styles.metaInputMultiline, { color: colors.text, borderColor: colors.border }]}
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </>
+        )}
+
         {!!error && (
           <View style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={18} color="#EF4444" />
@@ -426,7 +654,6 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         )}
       </ScrollView>
 
-      {/* Footer CTA */}
       <View
         style={[
           styles.footer,
@@ -440,13 +667,10 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
         <TouchableOpacity
           style={[
             styles.ctaButton,
-            {
-              backgroundColor:
-                pickedImages.length === 0 || isProcessing ? colors.border : colors.primary,
-            },
+            { backgroundColor: footerDisabled ? colors.border : colors.primary },
           ]}
-          onPress={handleExtractAndGenerate}
-          disabled={pickedImages.length === 0 || isProcessing}
+          onPress={footerAction}
+          disabled={footerDisabled}
           activeOpacity={0.8}
         >
           {isProcessing ? (
@@ -456,12 +680,8 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
             </View>
           ) : (
             <View style={styles.buttonInner}>
-              <Ionicons name="flash" size={20} color="#FFF" />
-              <Text style={styles.ctaButtonText}>
-                {pickedImages.length === 0
-                  ? 'Select Images First'
-                  : `Generate Assessment from ${pickedImages.length} Image${pickedImages.length > 1 ? 's' : ''}`}
-              </Text>
+              <Ionicons name={flowPhase === 'capture' ? 'scan-outline' : 'flash'} size={20} color="#FFF" />
+              <Text style={styles.ctaButtonText}>{footerLabel}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -470,20 +690,10 @@ export default function CreateHandwrittenQuizScreen({ navigation }: any) {
   );
 }
 
-// ============================================================================
-// STYLES
-// ============================================================================
-
-function createStyles() {
+function createStyles(colors: any) {
   return StyleSheet.create({
     container: { flex: 1 },
-
-    scrollContent: {
-      padding: 16,
-      gap: 12,
-    },
-
-    // Hero
+    scrollContent: { padding: 16, gap: 12, paddingBottom: 24 },
     heroCard: {
       borderRadius: 16,
       padding: 24,
@@ -502,19 +712,8 @@ function createStyles() {
       justifyContent: 'center',
       marginBottom: 14,
     },
-    heroTitle: {
-      fontSize: 20,
-      fontWeight: '800',
-      marginBottom: 8,
-      textAlign: 'center',
-    },
-    heroSubtitle: {
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: 'center',
-    },
-
-    // Instructions
+    heroTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+    heroSubtitle: { fontSize: 13, lineHeight: 20, textAlign: 'center' },
     instructionCard: {
       borderRadius: 12,
       padding: 16,
@@ -525,16 +724,8 @@ function createStyles() {
       shadowRadius: 2,
       gap: 10,
     },
-    instructionTitle: {
-      fontSize: 13,
-      fontWeight: '700',
-      marginBottom: 4,
-    },
-    stepRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 10,
-    },
+    instructionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 4 },
+    stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     stepBadge: {
       width: 22,
       height: 22,
@@ -543,18 +734,8 @@ function createStyles() {
       justifyContent: 'center',
       marginTop: 1,
     },
-    stepBadgeText: {
-      color: '#FFF',
-      fontSize: 11,
-      fontWeight: '700',
-    },
-    stepText: {
-      flex: 1,
-      fontSize: 12,
-      lineHeight: 18,
-    },
-
-    // Upload section
+    stepBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+    stepText: { flex: 1, fontSize: 12, lineHeight: 18 },
     sectionCard: {
       borderRadius: 12,
       padding: 16,
@@ -564,16 +745,9 @@ function createStyles() {
       shadowOpacity: 0.04,
       shadowRadius: 2,
     },
-    sectionTitle: {
-      fontSize: 14,
-      fontWeight: '700',
-      marginBottom: 14,
-    },
-    uploadButtonRow: {
-      flexDirection: 'row',
-      gap: 12,
-      marginBottom: 16,
-    },
+    sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+    sectionSub: { fontSize: 12, marginBottom: 8, marginTop: -4 },
+    uploadButtonRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
     uploadButton: {
       flex: 1,
       height: 52,
@@ -584,19 +758,9 @@ function createStyles() {
       flexDirection: 'row',
       gap: 8,
     },
-    uploadButtonDisabled: {
-      opacity: 0.45,
-    },
-    uploadButtonText: {
-      fontSize: 14,
-      fontWeight: '600',
-    },
-
-    // Thumbnails
-    thumbnailList: {
-      gap: 10,
-      paddingVertical: 4,
-    },
+    uploadButtonDisabled: { opacity: 0.45 },
+    uploadButtonText: { fontSize: 14, fontWeight: '600' },
+    thumbnailList: { gap: 10, paddingVertical: 4 },
     thumbnailContainer: {
       position: 'relative',
       width: 90,
@@ -628,28 +792,32 @@ function createStyles() {
       paddingHorizontal: 5,
       paddingVertical: 1,
     },
-    imageIndexText: {
-      color: '#FFF',
-      fontSize: 10,
-      fontWeight: '700',
-    },
-
-    // Empty placeholder
-    emptyPlaceholder: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 28,
-      gap: 6,
-    },
-    emptyText: {
+    imageIndexText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+    emptyPlaceholder: { alignItems: 'center', justifyContent: 'center', paddingVertical: 28, gap: 6 },
+    emptyText: { fontSize: 14, fontWeight: '500' },
+    ocrSuccessRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    ocrSuccessText: { fontSize: 13, fontWeight: '600' },
+    ocrPreview: { fontSize: 12, lineHeight: 18, marginBottom: 10 },
+    reExtractBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start' },
+    reExtractText: { fontSize: 12, fontWeight: '600' },
+    label: { fontSize: 13, fontWeight: '600', marginTop: 8, marginBottom: 6 },
+    metaInput: {
+      borderWidth: 1,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
       fontSize: 14,
-      fontWeight: '500',
+      backgroundColor: colors.inputBackground || colors.cardBackground,
     },
-    emptyHint: {
-      fontSize: 11,
+    metaInputMultiline: { minHeight: 72, textAlignVertical: 'top' },
+    pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    pillBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
     },
-
-    // Error
+    pillText: { fontSize: 13, fontWeight: '500' },
     errorBanner: {
       flexDirection: 'row',
       alignItems: 'flex-start',
@@ -658,34 +826,10 @@ function createStyles() {
       padding: 12,
       backgroundColor: '#FEF2F2',
     },
-    errorBannerText: {
-      flex: 1,
-      fontSize: 13,
-      lineHeight: 18,
-      color: '#DC2626',
-    },
-
-    // Footer
-    footer: {
-      padding: 16,
-      borderTopWidth: StyleSheet.hairlineWidth,
-    },
-    ctaButton: {
-      height: 54,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    buttonInner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    ctaButtonText: {
-      color: '#FFF',
-      fontSize: 15,
-      fontWeight: '700',
-    },
+    errorBannerText: { flex: 1, fontSize: 13, lineHeight: 18, color: '#DC2626' },
+    footer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
+    ctaButton: { height: 54, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    buttonInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    ctaButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   });
 }
-

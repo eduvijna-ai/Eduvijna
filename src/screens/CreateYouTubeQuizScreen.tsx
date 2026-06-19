@@ -14,7 +14,8 @@ import * as Yup from 'yup';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { generateAIQuiz } from '../core/services/sharedApi';
+import { generateAIQuiz, saveUserAssessment } from '../core/services/sharedApi';
+import { useUserStore } from '../core/store/user.store';
 import QuizFormFields from '../components/QuizFormFields';
 import { useDropdowns } from '../context/DropdownContext';
 import { apiClient } from '../core/api/config';
@@ -26,6 +27,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
   const { refreshAfterQuizGenerated } = useNotifications();
   const insets = useSafeAreaInsets();
   const { classes, subjects } = useDropdowns();
+  const schoolId = useUserStore((s) => s.schoolId);
   const styles = React.useMemo(() => createStyles(theme.colors), [theme.colors]);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [videoTitle, setVideoTitle] = useState('');
@@ -66,7 +68,8 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
     subject: Yup.string().required('Subject is required'),
     lesson: Yup.string().required('Lesson/Topic is required'),
     level: Yup.string().required('Difficulty level is required'),
-    itext: Yup.string().trim().required('Additional instructions are required'),
+    // Additional instructions are optional — matches the web YouTube workspace.
+    itext: Yup.string().trim(),
   });
 
   const isYoutubeUrlValid = React.useMemo(
@@ -360,7 +363,32 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
 
       const classLabel = classes.find((c) => c.id === values.class)?.name || values.class;
       const subjectLabel = subjects.find((s) => s.id === values.subject)?.name || values.subject;
-      
+
+      // Persist to history — mirrors the web YouTube workspace (youtube-quiz / YouTube).
+      try {
+        await saveUserAssessment({
+          title: [subjectLabel, values.lesson].filter(Boolean).join(' - ') || `YouTube: ${videoTitle || 'Video'}`,
+          subject: subjectLabel,
+          class_name: classLabel,
+          level: values.level,
+          lesson: values.lesson,
+          questions: (result.quiz || []).map((q: any) => ({
+            quiz: {
+              question: q.question,
+              options: q.options,
+              answer: q.answer || q.correctAnswer || 'A',
+              explanation: q.explanation || '',
+            },
+            answer: q.answer || q.correctAnswer || 'A',
+          })),
+          assessment_type: 'youtube-quiz',
+          source: 'YouTube',
+          school_id: schoolId ?? null,
+        });
+      } catch {
+        // Save failure is non-critical
+      }
+
       navigation.navigate('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,

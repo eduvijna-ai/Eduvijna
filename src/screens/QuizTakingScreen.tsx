@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,12 +17,17 @@ import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { 
   findOrCreateAttempt,
   updateQuizAttempt, 
-  generateAIQuiz
+  generateAIQuiz,
+  updateAssessmentResponses,
+  generateWorksheet,
+  saveUserAssessment
 } from '../core/services/sharedApi';
+import { useUserStore } from '../core/store/user.store';
 import { clearCacheEntry } from '../core/services/cacheService';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
+import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MathRenderer from '../components/MathRenderer';
 
@@ -99,6 +104,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   } = routeParams;
   const source = routeParams?.source;
 
+  // ── Saved-assessment response persistence (mirrors web restore flow) ──────
+  // When a quiz is opened from history we know its user-assessment id, which
+  // lets us auto-save the learner's answers and restore them on re-open.
+  const savedAssessmentId: number | undefined = (() => {
+    const explicit = routeParams?.assessmentId;
+    if (explicit !== undefined && explicit !== null && !Number.isNaN(Number(explicit))) {
+      return Number(explicit);
+    }
+    if (source === 'history') {
+      const candidate = normalizedQuiz?.id ?? quizData?.id;
+      const num = Number(candidate);
+      return Number.isFinite(num) && num > 0 ? num : undefined;
+    }
+    return undefined;
+  })();
+  const initialResponses: Record<string, string> | undefined = routeParams?.initialResponses;
+  const responsesPrefilledRef = useRef(false);
+  const responseSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleCreateNewQuiz = () => {
     if (source === 'image' || source === 'youtube' || source === 'document' || source === 'handwritten') {
       navigation.goBack();
@@ -164,6 +188,44 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
   const [showResults, setShowResults] = useState(false);
+
+  // Pre-fill previously saved answers exactly once when restoring from history.
+  useEffect(() => {
+    if (responsesPrefilledRef.current) return;
+    if (!initialResponses || Object.keys(initialResponses).length === 0) return;
+    const restored: { [key: number]: string } = {};
+    Object.entries(initialResponses).forEach(([k, v]) => {
+      const idx = Number(k);
+      if (Number.isInteger(idx) && typeof v === 'string' && v.length > 0) {
+        restored[idx] = v;
+      }
+    });
+    if (Object.keys(restored).length > 0) {
+      setSelectedAnswers(restored);
+    }
+    responsesPrefilledRef.current = true;
+  }, [initialResponses]);
+
+  // Debounced, non-blocking save of in-quiz answers for history-loaded quizzes.
+  useEffect(() => {
+    if (!savedAssessmentId) return;
+    if (showResults) return; // don't persist after submission
+    if (Object.keys(selectedAnswers).length === 0) return;
+
+    if (responseSaveTimerRef.current) clearTimeout(responseSaveTimerRef.current);
+    responseSaveTimerRef.current = setTimeout(() => {
+      const payload: Record<string, string> = {};
+      Object.entries(selectedAnswers).forEach(([k, v]) => {
+        payload[String(k)] = v;
+      });
+      void updateAssessmentResponses(savedAssessmentId, payload);
+    }, 1500);
+
+    return () => {
+      if (responseSaveTimerRef.current) clearTimeout(responseSaveTimerRef.current);
+    };
+  }, [selectedAnswers, savedAssessmentId, showResults]);
+
   const [questionResults, setQuestionResults] = useState<{ [key: number]: boolean }>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
@@ -173,6 +235,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [showWorksheetModal, setShowWorksheetModal] = useState(false);
+  const [worksheetGenerating, setWorksheetGenerating] = useState(false);
+  const [worksheetError, setWorksheetError] = useState('');
+  const schoolId = useUserStore((s) => s.schoolId);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   // Flag to show a loading state while we navigate away for the empty-questions case
@@ -612,6 +678,85 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setShowShareOptionsModal(true);
   };
 
+  // Generate a worksheet from the current assessment's metadata, then open it.
+  const handleGenerateWorksheet = async (counts: {
+    mcq: number;
+    fitb: number;
+    tf: number;
+    shortQ: number;
+    matching: number;
+  }) => {
+    const meta = currentQuizData || ({} as any);
+    const classValue = String(meta.class || '').trim();
+    const subjectValue = String(meta.subject || '').trim();
+    const lessonValue = String(meta.lesson || meta.title || '').trim();
+    const levelValue = String(meta.difficulty || 'Intermediate').trim();
+
+    if (!classValue || !subjectValue || !lessonValue) {
+      setWorksheetError('Missing class, subject or lesson on this assessment.');
+      return;
+    }
+
+    const totalCount = counts.mcq + counts.fitb + counts.tf + counts.shortQ + counts.matching;
+    if (totalCount <= 0) {
+      setWorksheetError('Please add at least one question.');
+      return;
+    }
+
+    setWorksheetGenerating(true);
+    setWorksheetError('');
+    try {
+      const result = await generateWorksheet({
+        class: classValue,
+        subject: subjectValue,
+        lesson: lessonValue,
+        level: levelValue,
+        count: totalCount,
+        mcq_count: counts.mcq,
+        fitb_count: counts.fitb,
+        tf_count: counts.tf,
+        short_q_count: counts.shortQ,
+        matching_count: counts.matching,
+        type: 'worksheet',
+      });
+
+      // Persist to history (non-blocking) so it appears under Worksheets.
+      const wsData = result?.WorksheetData;
+      if (wsData) {
+        try {
+          await saveUserAssessment({
+            title: [subjectValue, lessonValue].filter(Boolean).join(' - ') || 'Worksheet',
+            subject: subjectValue,
+            class_name: classValue,
+            level: levelValue,
+            lesson: lessonValue,
+            assessment_type: 'worksheet',
+            source: 'Worksheet',
+            school_id: schoolId ?? null,
+            questions: [
+              {
+                quiz: { question: '__WS_DATA__' + JSON.stringify(wsData), options: [], answer: 'A' },
+                answer: 'A',
+              },
+            ],
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
+      setShowWorksheetModal(false);
+      navigation.navigate('WorksheetScreen', {
+        worksheetData: result,
+        title: [subjectValue, lessonValue].filter(Boolean).join(' - ') || 'Worksheet',
+      });
+    } catch (err: any) {
+      setWorksheetError(err?.message || 'Failed to generate worksheet. Please try again.');
+    } finally {
+      setWorksheetGenerating(false);
+    }
+  };
+
   const totalQuestions = quiz.questions.length;
   const progress = ((currentQuestionIndex + 1) / totalQuestions) * 100;
 
@@ -965,6 +1110,17 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             </TouchableOpacity>
           )}
 
+          {showActionButtons && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: colors.primary }]}
+              onPress={() => { setWorksheetError(''); setShowWorksheetModal(true); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="document-text-outline" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>Worksheet</Text>
+            </TouchableOpacity>
+          )}
+
           {showShareButton && (
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary }]}
@@ -1269,6 +1425,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           shareUrl={shareUrl}
         />
       )}
+
+      {/* Generate Worksheet Modal */}
+      <GenerateWorksheetModal
+        visible={showWorksheetModal}
+        onClose={() => setShowWorksheetModal(false)}
+        loading={worksheetGenerating}
+        error={worksheetError}
+        presetClass={currentQuizData?.class}
+        presetSubject={currentQuizData?.subject}
+        presetLesson={currentQuizData?.lesson || currentQuizData?.title}
+        onGenerate={handleGenerateWorksheet}
+      />
 
       {/* Regeneration Loading Overlay */}
       {isRegenerating && (

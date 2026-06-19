@@ -33,6 +33,7 @@ import ClassesList from '@screens/ClassesList';
 import CreateAIQuizScreen from '../../../screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from '@screens/CreateDocumentQuizScreen';
 import CreateImageQuizScreen from '@screens/CreateImageQuizScreen';
+import ImageAssessmentScreen from '@screens/ImageAssessmentScreen';
 import CreateYouTubeQuizScreen from '@screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from '@screens/CreateWebsiteQuizScreen';
 import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
@@ -41,6 +42,8 @@ import DocumentUploadHomeScreen from '@screens/document-upload/DocumentUploadHom
 import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUploadPreviewScreen';
 import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
+import DocumentLibraryScreen from '@screens/document-upload/DocumentLibraryScreen';
+import BookPageViewerScreen from '@screens/document-upload/BookPageViewerScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
 import QuizPreviewScreen from '@screens/QuizPreviewScreen';
@@ -327,6 +330,19 @@ export default function MobileNavigation() {
           ),
         }}
       />
+      <Stack.Screen
+        name="ImageAssessmentScreen"
+        component={ImageAssessmentScreen as any}
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Image Assessment',
+          headerBackTitle: 'Back',
+          headerRight: () => (
+            <Ionicons name="image" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+          ),
+        }}
+      />
       <Stack.Screen 
         name="CreateYouTubeQuizScreen" 
         component={CreateYouTubeQuizScreen}
@@ -527,6 +543,24 @@ export default function MobileNavigation() {
         component={DocumentUploadQuizScreen as any}
         options={{
           headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="DocumentLibraryScreen"
+        component={DocumentLibraryScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Document Library',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="BookPageViewerScreen"
+        component={BookPageViewerScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Generate from Book',
+          headerBackTitle: 'Back',
         }}
       />
     </Stack.Navigator>

@@ -10,27 +10,29 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
+  fetchBookPageImage,
+  isPdfAsset,
+  uploadBookWithMetadata,
   uploadDocumentToRag,
+  resolveBookPageCount,
+  resolveServerBook,
 } from '@core/services/documentUploadApi';
 import {
   getDocumentUploadBooks,
   upsertDocumentUploadBook,
+  consumeDocumentUploadHomeReset,
 } from '@core/services/documentUploadStorage';
 
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
 
 type ActiveTab = 'upload' | 'search';
-
-const createPageList = (totalPages: number): number[] => {
-  const safe = Math.max(1, Math.min(12, totalPages || 1));
-  return Array.from({ length: safe }).map((_, i) => i + 1);
-};
 
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
@@ -75,16 +77,33 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     setLoadingBooks(true);
     const loaded = await getDocumentUploadBooks();
     setBooks(loaded);
-    if (!selectedBook && loaded.length > 0) {
-      setSelectedBook(loaded[0]);
-      setBookName(loaded[0].title || loaded[0].originalName);
-    }
     setLoadingBooks(false);
-  }, [selectedBook]);
+  }, []);
 
-  useEffect(() => {
-    void loadBooks();
-  }, [loadBooks]);
+  // Reload on focus; clear upload UI after a successful assessment generation.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setLoadingBooks(true);
+      (async () => {
+        const pendingReset = await consumeDocumentUploadHomeReset();
+        const loaded = await getDocumentUploadBooks();
+        if (!active) return;
+        setBooks(loaded);
+        if (pendingReset) {
+          setSelectedBook(null);
+          setBookName('');
+          setError('');
+          setSuccess('');
+          setActiveTab('upload');
+        }
+        setLoadingBooks(false);
+      })();
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   useEffect(() => {
     const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'search' | undefined;
@@ -147,27 +166,75 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     mimeType?: string;
     size?: number;
   }, fromCamera: boolean) => {
-    const rag = await uploadDocumentToRag({
-      fileUri: asset.uri,
-      fileName: asset.name || `document-${Date.now()}`,
-      mimeType: asset.mimeType || 'application/octet-stream',
-      forceOcr: fromCamera,
-    });
-
+    const fileName = asset.name || (fromCamera ? `camera-${Date.now()}.jpg` : `document-${Date.now()}`);
+    const mimeType = asset.mimeType || 'application/octet-stream';
+    const title = (bookName || fileName.replace(/\.[^/.]+$/, '') || 'Uploaded Book').trim();
     const now = new Date().toISOString();
-    const next: DocumentUploadBook = {
-      id: String(rag.docId || `${Date.now()}`),
-      title: (bookName || asset.name || 'Uploaded Book').trim(),
-      originalName: asset.name || (fromCamera ? 'Captured Document' : 'Document'),
-      uploadedFileName: rag.uploadedFileName,
-      docId: rag.docId,
-      totalPages: rag.totalPages || 5,
-      fileSize: asset.size || rag.fileSize,
-      fileUri: asset.uri,
-      mimeType: asset.mimeType || 'application/octet-stream',
-      thumbnailUri: asset.mimeType?.startsWith('image/') || fromCamera ? asset.uri : undefined,
-      createdAt: now,
-    };
+
+    // Web parity (HandwrittenWorkspace instant upload): PDFs go through study-materials/books/upload
+    // so total_pages and page images use the same doc_id as the document library.
+    let next: DocumentUploadBook;
+
+    if (!fromCamera && isPdfAsset(fileName, mimeType)) {
+      const uploaded = await uploadBookWithMetadata({
+        fileUri: asset.uri,
+        fileName,
+        mimeType,
+        title,
+        lessonTitle: title,
+      });
+
+      let thumbnailUri: string | undefined;
+      if (uploaded.docId) {
+        const serverBook = await resolveServerBook(uploaded.docId, fileName);
+        const alternateIds = serverBook?.docId && serverBook.docId !== uploaded.docId
+          ? [serverBook.docId]
+          : [];
+        thumbnailUri =
+          (await fetchBookPageImage(uploaded.docId, 1, 'mini', alternateIds)) ?? undefined;
+      }
+
+      next = {
+        id: uploaded.docId || `${Date.now()}`,
+        title,
+        originalName: fileName,
+        uploadedFileName: uploaded.filename || fileName,
+        docId: uploaded.docId,
+        totalPages: uploaded.totalPages,
+        fileSize: asset.size,
+        fileUri: asset.uri,
+        mimeType,
+        thumbnailUri,
+        createdAt: now,
+      };
+    } else {
+      const rag = await uploadDocumentToRag({
+        fileUri: asset.uri,
+        fileName,
+        mimeType,
+        forceOcr: fromCamera,
+      });
+
+      let totalPages = Math.max(1, rag.totalPages || 1);
+      if (rag.docId) {
+        const resolved = await resolveBookPageCount(rag.docId, fileName);
+        if (resolved && resolved > 0) totalPages = resolved;
+      }
+
+      next = {
+        id: String(rag.docId || `${Date.now()}`),
+        title,
+        originalName: fileName,
+        uploadedFileName: rag.uploadedFileName,
+        docId: rag.docId,
+        totalPages,
+        fileSize: asset.size || rag.fileSize,
+        fileUri: asset.uri,
+        mimeType,
+        thumbnailUri: mimeType.startsWith('image/') || fromCamera ? asset.uri : undefined,
+        createdAt: now,
+      };
+    }
 
     await upsertDocumentUploadBook(next);
     setSelectedBook(next);
@@ -261,8 +328,6 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       );
     }
 
-    const pages = createPageList(selectedBook.totalPages);
-
     return (
       <View style={styles.bookCard}>
         <View style={styles.bookCardHeader}>
@@ -279,22 +344,19 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
             resizeMode="cover"
           />
           <View style={styles.heroMeta}>
-            <Text style={styles.pageText}>Page 1 of {selectedBook.totalPages || 1}</Text>
+            <Text style={styles.heroName} numberOfLines={2}>{selectedBook.title || selectedBook.originalName}</Text>
+            <View style={styles.pageBadge}>
+              <Ionicons name="documents-outline" size={13} color={colors.primary} />
+              <Text style={styles.pageBadgeText}>{selectedBook.totalPages || 1} pages</Text>
+            </View>
             <TouchableOpacity style={styles.changeBtn} onPress={() => setActiveTab('search')}>
               <Ionicons name="refresh-circle-outline" size={16} color={colors.primary} />
-              <Text style={styles.changeBtnText}>Change</Text>
+              <Text style={styles.changeBtnText}>Change book</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
-          {pages.map((page) => (
-            <View key={page} style={[styles.thumbItem, page === 1 && styles.thumbItemActive]}>
-              <Image source={{ uri: selectedBook.thumbnailUri || FALLBACK_THUMB }} style={styles.thumbImage} />
-              <Text style={[styles.thumbLabel, page === 1 && styles.thumbLabelActive]}>{page}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <Text style={styles.previewHint}>Tap “Continue to Pages” below to choose pages and generate.</Text>
       </View>
     );
   };
@@ -320,6 +382,21 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity
+          style={styles.libraryBanner}
+          onPress={() => navigation.navigate('DocumentLibraryScreen')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.libraryBannerIcon}>
+            <Ionicons name="library-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.libraryBannerTitle}>Browse Document Library</Text>
+            <Text style={styles.libraryBannerSub}>Generate quizzes from books saved on the server</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+
         {loadingBooks ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -363,16 +440,18 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           renderBookPreview()
         )}
 
-        <View>
-          <Text style={styles.label}>Book Name</Text>
-          <TextInput
-            value={bookName}
-            onChangeText={setBookName}
-            placeholder="Enter book name"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-          />
-        </View>
+        {!!selectedBook && (
+          <View>
+            <Text style={styles.label}>Book Name</Text>
+            <TextInput
+              value={bookName}
+              onChangeText={setBookName}
+              placeholder="Enter book name"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
+          </View>
+        )}
 
         {!!success && (
           <View style={styles.successBox}>
@@ -400,11 +479,11 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
 
           <TouchableOpacity
             style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
-            onPress={() => setActiveTab('search')}
+            onPress={() => navigation.navigate('DocumentLibraryScreen')}
             disabled={uploading || capturing}
           >
-            <Ionicons name="link-outline" size={18} color={colors.primary} />
-            <Text style={styles.sourceTileText}>Website URL</Text>
+            <Ionicons name="library-outline" size={18} color={colors.primary} />
+            <Text style={styles.sourceTileText}>Library</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -419,17 +498,21 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
 
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={[styles.secondaryBtn, uploading && styles.disabledBtn]}
-            onPress={handleUploadTilePress}
+            style={[styles.secondaryBtn, (uploading || capturing) && styles.disabledBtn]}
+            onPress={goToHistory}
             disabled={uploading || capturing}
           >
-            {uploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />}
-            <Text style={styles.secondaryBtnText}>{uploading ? 'Uploading...' : 'Upload Book'}</Text>
+            <Ionicons name="time-outline" size={18} color={colors.primary} />
+            <Text style={styles.secondaryBtnText}>View History</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={goToPreview}>
-            <Ionicons name="search-outline" size={18} color="#fff" />
-            <Text style={styles.primaryBtnText}>Search</Text>
+          <TouchableOpacity
+            style={[styles.primaryBtn, !selectedBook && styles.disabledBtn]}
+            onPress={goToPreview}
+            disabled={!selectedBook}
+          >
+            <Ionicons name="arrow-forward-circle-outline" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>Continue to Pages</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -454,6 +537,27 @@ const makeStyles = (colors: any) =>
     loadingWrap: { alignItems: 'center', paddingVertical: 20, gap: 8 },
     loadingText: { color: colors.textSecondary, fontSize: 12 },
 
+    libraryBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.primary + '40',
+      borderRadius: 14,
+      padding: 14,
+    },
+    libraryBannerIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary + '15',
+    },
+    libraryBannerTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+    libraryBannerSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+
     bookCard: {
       borderWidth: 1,
       borderColor: colors.border,
@@ -465,9 +569,22 @@ const makeStyles = (colors: any) =>
     bookCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     bookCardTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
     linkText: { fontSize: 13, color: colors.primary, fontWeight: '700' },
-    heroRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-    heroImage: { width: 170, height: 88, borderRadius: 8, backgroundColor: colors.inputBackground },
+    heroRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    heroImage: { width: 96, height: 110, borderRadius: 10, backgroundColor: colors.inputBackground },
     heroMeta: { flex: 1, gap: 8 },
+    heroName: { fontSize: 15, fontWeight: '700', color: colors.text },
+    pageBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.primary + '14',
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    pageBadgeText: { color: colors.primary, fontWeight: '700', fontSize: 12 },
+    previewHint: { fontSize: 12, color: colors.textSecondary, fontStyle: 'italic' },
     pageText: { fontSize: 15, fontWeight: '700', color: colors.text },
     changeBtn: {
       flexDirection: 'row',

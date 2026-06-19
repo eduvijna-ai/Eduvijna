@@ -5,12 +5,15 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@core/hooks/useAuth';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import { updateQuestionExplanation } from '@core/services/sharedApi';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 
@@ -35,11 +38,36 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     attemptData: passedAttemptData,
     questions: passedQuestions,
     submission: passedSubmission,
+    assessmentId,
   } = route.params || {};
 
   const theme = useTeacherTheme();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // Explanation editing is only available when we have a saved user-assessment
+  // id to PATCH against, and only for teachers / admins.
+  const canEditExplanations =
+    !!assessmentId &&
+    (user?.role === 'instructor' || user?.role === 'admin');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [explanationDrafts, setExplanationDrafts] = useState<{ [key: number]: string }>({});
+  const [savedExplanations, setSavedExplanations] = useState<{ [key: number]: string }>({});
+  const [savingExplanationIdx, setSavingExplanationIdx] = useState<number | null>(null);
+
+  const handleSaveExplanation = async (index: number) => {
+    const draft = (explanationDrafts[index] ?? '').trim();
+    setSavingExplanationIdx(index);
+    try {
+      await updateQuestionExplanation(Number(assessmentId), index, draft);
+      setSavedExplanations((prev) => ({ ...prev, [index]: draft }));
+      setEditingIdx(null);
+    } catch {
+      // Surface a lightweight inline failure by keeping the editor open.
+    } finally {
+      setSavingExplanationIdx(null);
+    }
+  };
 
   const [loading, setLoading] = useState(!initialQuizData && (!passedQuestions || !passedSubmission));
   const [quizData, setQuizData] = useState<any>(initialQuizData);
@@ -382,6 +410,76 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             success: theme.colors.success,
           }}
         />
+
+        {canEditExplanations && (
+          <View style={[styles.explanationEditor, { borderTopColor: theme.colors.border }]}>
+            {editingIdx === index ? (
+              <>
+                <TextInput
+                  style={[
+                    styles.explanationInput,
+                    {
+                      backgroundColor: theme.colors.surfaceAlt,
+                      borderColor: theme.colors.border,
+                      color: theme.colors.textPrimary,
+                    },
+                  ]}
+                  value={explanationDrafts[index] ?? savedExplanations[index] ?? question.explanation ?? ''}
+                  onChangeText={(text) =>
+                    setExplanationDrafts((prev) => ({ ...prev, [index]: text }))
+                  }
+                  placeholder="Write a teacher explanation for this question…"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <View style={styles.explanationActions}>
+                  <TouchableOpacity
+                    style={[styles.explanationBtn, { backgroundColor: theme.colors.surfaceAlt }]}
+                    onPress={() => setEditingIdx(null)}
+                    disabled={savingExplanationIdx === index}
+                  >
+                    <Text style={[styles.explanationBtnText, { color: theme.colors.textSecondary }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.explanationBtn, { backgroundColor: theme.colors.primary }]}
+                    onPress={() => handleSaveExplanation(index)}
+                    disabled={savingExplanationIdx === index}
+                  >
+                    {savingExplanationIdx === index ? (
+                      <ActivityIndicator size="small" color={theme.colors.textInverse} />
+                    ) : (
+                      <Text style={[styles.explanationBtnText, { color: theme.colors.textInverse }]}>
+                        Save
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.explanationEditTrigger}
+                onPress={() => {
+                  setExplanationDrafts((prev) => ({
+                    ...prev,
+                    [index]: savedExplanations[index] ?? question.explanation ?? '',
+                  }));
+                  setEditingIdx(index);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={15} color={theme.colors.primary} />
+                <Text style={[styles.explanationEditTriggerText, { color: theme.colors.primary }]}>
+                  {savedExplanations[index] || question.explanation
+                    ? 'Edit explanation'
+                    : 'Add explanation'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -562,4 +660,41 @@ const styles = StyleSheet.create({
   },
   optionLetterText: { fontSize: 12, fontWeight: '700' },
   optionText: { fontSize: 13, lineHeight: 18 },
+
+  explanationEditor: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  explanationEditTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  explanationEditTriggerText: { fontSize: 13, fontWeight: '600' },
+  explanationInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  explanationActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
+  },
+  explanationBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  explanationBtnText: { fontSize: 13, fontWeight: '700' },
 });

@@ -37,6 +37,53 @@ const LEVELS = [
 
 const COUNT_OPTIONS = ['5', '10', '15', '20'];
 
+const WS_DATA_MARKER = '__WS_DATA__';
+
+/**
+ * Normalise worksheet payload from either:
+ *  - a fresh generateWorksheet API response ({ WorksheetData: ... })
+ *  - a saved user-assessment record (worksheet JSON embedded in questions[0])
+ */
+function normalizeWorksheetResult(raw: any): any | null {
+  if (!raw) return null;
+
+  if (raw.WorksheetData?.Worksheet || raw.WorksheetData?.Metadata) {
+    return raw;
+  }
+
+  if (raw.Worksheet || raw.Metadata) {
+    return { WorksheetData: raw };
+  }
+
+  let questions = Array.isArray(raw.questions) ? raw.questions : [];
+  if (typeof raw.questions === 'string') {
+    try {
+      const parsed = JSON.parse(raw.questions);
+      if (Array.isArray(parsed)) questions = parsed;
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const entry of questions) {
+    const quiz = entry?.quiz ?? entry;
+    const qText =
+      (typeof quiz === 'object' && quiz !== null ? quiz.question : undefined) ??
+      entry?.question ??
+      '';
+    if (typeof qText === 'string' && qText.startsWith(WS_DATA_MARKER)) {
+      try {
+        const parsed = JSON.parse(qText.slice(WS_DATA_MARKER.length));
+        return { WorksheetData: parsed };
+      } catch {
+        // try next entry
+      }
+    }
+  }
+
+  return null;
+}
+
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
   if (typeof detail === 'string' && detail.trim()) return detail;
@@ -130,8 +177,10 @@ ${matchPairs.length ? `<h3>Section E – Match the Following</h3><div class="mat
 }
 
 export default function WorksheetScreen({ route, navigation: _navigation }: any) {
-  const initialMode: ScreenMode = route?.params?.worksheetData ? 'view' : 'create';
-  const initialData = route?.params?.worksheetData || null;
+  const rawParam = route?.params?.worksheetData;
+  const decodedInitial = normalizeWorksheetResult(rawParam);
+  const initialMode: ScreenMode = decodedInitial || rawParam ? 'view' : 'create';
+  const initialData = decodedInitial;
 
   const { theme } = useTheme();
   const { colors } = theme;
@@ -256,7 +305,30 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
   // ──────────────────────────────────────────────────────
   // VIEW MODE – display the generated worksheet
   // ──────────────────────────────────────────────────────
-  if (mode === 'view' && worksheetResult) {
+  if (mode === 'view') {
+    const savedTitle = String(route?.params?.title || '').trim();
+
+    if (!worksheetResult) {
+      return (
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={[styles.viewHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.viewTitle, { color: colors.text }]}>
+                {savedTitle || 'Worksheet'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.emptyView}>
+            <Ionicons name="document-text-outline" size={48} color={colors.textSecondary} />
+            <Text style={[styles.emptyViewTitle, { color: colors.text }]}>Could not load worksheet</Text>
+            <Text style={[styles.emptyViewText, { color: colors.textSecondary }]}>
+              The saved worksheet data could not be read. Try generating a new one.
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
     const wsData = worksheetResult?.WorksheetData || worksheetResult;
     const meta = wsData?.Metadata || {};
     const worksheet = wsData?.Worksheet || {};
@@ -271,6 +343,8 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
 
     const mcqAnswers: any[] = answerKey?.Section_A_MCQ || [];
     const shortAnswers: any[] = answerKey?.Section_D_Short_Questions || [];
+    const hasContent =
+      secA.length + secB.length + secC.length + secD.length + matchPairs.length > 0;
 
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -278,7 +352,7 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
         <View style={[styles.viewHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.viewTitle, { color: colors.text }]}>
-              {meta.Subject || 'Worksheet'}
+              {meta.Subject || savedTitle || 'Worksheet'}
             </Text>
             <Text style={[styles.viewMeta, { color: colors.textSecondary }]}>
               {[meta.Class, meta.Lesson, meta.Difficulty].filter(Boolean).join(' · ')}
@@ -299,6 +373,15 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
         </View>
 
         <ScrollView contentContainerStyle={[styles.viewContent, { paddingBottom: Math.max(16, insets.bottom) }]}>
+          {!hasContent && (
+            <View style={styles.emptyView}>
+              <Ionicons name="document-outline" size={40} color={colors.textSecondary} />
+              <Text style={[styles.emptyViewText, { color: colors.textSecondary }]}>
+                This worksheet has no displayable sections.
+              </Text>
+            </View>
+          )}
+
           {/* MCQ section */}
           {secA.length > 0 && (
             <Section label="Section A – Multiple Choice Questions">
@@ -567,6 +650,15 @@ const styles = StyleSheet.create({
   answerLine: { height: 28, borderBottomWidth: 1, marginTop: 4 },
   answerText: { fontSize: 13, fontStyle: 'italic' },
   matchGrid: { flexDirection: 'row', gap: 16 },
+  emptyView: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  emptyViewTitle: { fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  emptyViewText: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
 
   // create mode
   formScroll: { paddingBottom: 140 },

@@ -29,23 +29,45 @@ interface AssessmentCardProps {
 
 const TYPE_ICON: Record<string, string> = {
   general: 'bulb',
+  aiquiz: 'bulb',
+  'web-quiz': 'bulb',
   competitive: 'trophy',
   worksheet: 'document-text',
   document: 'document-attach',
+  documentupload: 'document-attach',
   image: 'image',
+  'image-quiz': 'image',
   youtube: 'logo-youtube',
+  'youtube-quiz': 'logo-youtube',
   default: 'clipboard',
 };
 
 const TYPE_COLOR: Record<string, string> = {
   general: '#0891B2',
+  aiquiz: '#0891B2',
+  'web-quiz': '#0891B2',
   competitive: '#7C3AED',
   worksheet: '#059669',
   document: '#D97706',
+  documentupload: '#0F766E',
   image: '#DC2626',
+  'image-quiz': '#DC2626',
   youtube: '#FF0000',
+  'youtube-quiz': '#FF0000',
   default: '#64748B',
 };
+
+function resolveTypeKey(item: AssessmentCardItem): string {
+  const source = (item.source || '').toLowerCase().replace(/\s+/g, '');
+  const type = (item.assessment_type || '').toLowerCase();
+  if (source && TYPE_ICON[source]) return source;
+  if (type && TYPE_ICON[type]) return type;
+  if (source.includes('youtube')) return 'youtube';
+  if (source.includes('worksheet')) return 'worksheet';
+  if (source.includes('document') || source.includes('upload')) return 'documentupload';
+  if (source.includes('ai') || type.includes('web-quiz')) return 'aiquiz';
+  return 'default';
+}
 
 function formatDate(iso?: string): string {
   if (!iso) return '';
@@ -66,13 +88,20 @@ export default function AssessmentCard({
   const { theme } = useTheme();
   const { colors } = theme;
 
-  const src = (item.source || item.assessment_type || 'default').toLowerCase();
-  const iconName = (TYPE_ICON[src] || TYPE_ICON.default) as any;
-  const accent = accentColor || TYPE_COLOR[src] || TYPE_COLOR.default;
+  const typeKey = resolveTypeKey(item);
+  const iconName = (TYPE_ICON[typeKey] || TYPE_ICON.default) as any;
+  const accent = accentColor || TYPE_COLOR[typeKey] || TYPE_COLOR.default;
 
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.card, borderLeftColor: accent }]}
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.card,
+          borderLeftColor: accent,
+          borderColor: colors.border,
+        },
+      ]}
       onPress={() => onPress(item)}
       activeOpacity={0.75}
     >
@@ -135,16 +164,17 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 12,
     borderLeftWidth: 4,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
     marginBottom: 10,
     gap: 12,
-    elevation: 1,
-    shadowColor: '#000',
+    elevation: 2,
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   iconBadge: {
     width: 38,
