@@ -540,6 +540,39 @@ export async function deleteUserAssessment(id: number): Promise<void> {
   }
 }
 
+/**
+ * Persist the user's in-quiz answers so they can be restored later.
+ * PUT /api/v1/user-assessments/:id/responses
+ * Mirrors the web's userAssessmentService.updateResponses().
+ * Non-blocking: failures are swallowed so quiz-taking is never interrupted.
+ */
+export async function updateAssessmentResponses(
+  id: number,
+  responses: Record<string, string>,
+): Promise<void> {
+  try {
+    await apiClient.put(`/api/v1/user-assessments/${id}/responses`, { responses });
+  } catch (err: any) {
+    console.warn('updateAssessmentResponses failed:', err?.message);
+  }
+}
+
+/**
+ * Update the explanation text for a single question of a saved assessment.
+ * PATCH /api/v1/user-assessments/:id/questions/:idx/explanation
+ * Mirrors the web's userAssessmentService.updateExplanation().
+ */
+export async function updateQuestionExplanation(
+  assessmentId: number,
+  questionIdx: number,
+  explanation: string,
+): Promise<void> {
+  await apiClient.patch(
+    `/api/v1/user-assessments/${assessmentId}/questions/${questionIdx}/explanation`,
+    { explanation },
+  );
+}
+
 // ============================================================================
 // WORKSHEET GENERATION
 // ============================================================================
@@ -563,5 +596,36 @@ export async function generateWorksheet(data: {
   type?: string;
 }): Promise<any> {
   const response = await apiClient.post('/api/v1/worksheet/generate', data);
+  return response.data;
+}
+
+// ============================================================================
+// TOPIC SUMMARY
+// ============================================================================
+
+export interface TopicSummaryResponse {
+  content: string;
+  format_type: string;
+  title?: string;
+  subject?: string;
+  keywords?: string[];
+}
+
+/**
+ * Generate an AI topic summary (web parity: POST /api/v1/topicSummary).
+ */
+export async function generateTopicSummary(userPrompt: string): Promise<TopicSummaryResponse> {
+  const formData = new URLSearchParams();
+  formData.append('userPrompt', userPrompt.trim());
+
+  const response = await apiClient.post<TopicSummaryResponse>('/api/v1/topicSummary', formData, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: 120000,
+  });
+
+  if (!response.data?.content || !response.data?.format_type) {
+    throw new Error('Invalid topic summary response');
+  }
+
   return response.data;
 }

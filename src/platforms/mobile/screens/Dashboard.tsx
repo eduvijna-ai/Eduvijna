@@ -4,11 +4,21 @@
  */
 
 import React, { Fragment } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useDashboard, useCurrentUser } from '@core/hooks/useDashboard';
 import type { TeacherDashboardStats, StudentDashboardStats } from '@core/types';
+import { useTeacherTheme } from '../../../erp_schools/theme/useTeacherTheme';
 
 export default function DashboardScreen() {
+  const theme = useTeacherTheme();
   const user = useCurrentUser();
   const { data, isLoading, error, refresh } = useDashboard();
 
@@ -18,10 +28,18 @@ export default function DashboardScreen() {
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-          <Text style={styles.retryButtonText}>Retry</Text>
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.errorIconWrap, { backgroundColor: theme.colors.tintRed }]}>
+          <Ionicons name="alert-circle-outline" size={32} color={theme.colors.danger} />
+        </View>
+        <Text style={[styles.errorText, { color: theme.colors.danger }]}>{error}</Text>
+        <TouchableOpacity
+          style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
+          onPress={handleRefresh}
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
+          <Text style={[styles.retryBtnText, { color: theme.colors.textInverse }]}>Try Again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -29,22 +47,32 @@ export default function DashboardScreen() {
 
   if (!data) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.loadingIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+          <Ionicons name="analytics-outline" size={32} color={theme.colors.primary} />
+        </View>
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading dashboard…</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />
+        <RefreshControl
+          refreshing={isLoading}
+          onRefresh={handleRefresh}
+          colors={[theme.colors.primary]}
+          tintColor={theme.colors.primary}
+        />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Welcome back,</Text>
-        <Text style={styles.userName}>{user?.name}</Text>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <Text style={[styles.greeting, { color: 'rgba(255,255,255,0.80)' }]}>Welcome back,</Text>
+        <Text style={[styles.userName, { color: theme.colors.textInverse }]}>{user?.name} 👋</Text>
       </View>
 
       {user?.role === 'instructor' ? (
@@ -52,52 +80,67 @@ export default function DashboardScreen() {
       ) : (
         <StudentDashboard data={data as StudentDashboardStats} />
       )}
+
+      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
 function TeacherDashboard({ data }: { data: TeacherDashboardStats }) {
+  const theme = useTeacherTheme();
   return (
     <>
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <StatCard title="Total Students" value={data.totalStudents.toString()} color="#3B82F6" />
-        <StatCard title="Total Classes" value={data.totalClasses.toString()} color="#10B981" />
-      </View>
-      
-      <View style={styles.statsContainer}>
-        <StatCard title="Total Assessments" value={data.totalAssessments.toString()} color="#F59E0B" />
-        <StatCard title="Active Now" value={data.activeAssessments.toString()} color="#EF4444" />
+      <View style={styles.statsGrid}>
+        {[
+          { title: 'Students', value: data.totalStudents.toString(), icon: 'people-outline' as const, accent: 'teal' as const },
+          { title: 'Classes', value: data.totalClasses.toString(), icon: 'book-outline' as const, accent: 'blue' as const },
+          { title: 'Assessments', value: data.totalAssessments.toString(), icon: 'document-text-outline' as const, accent: 'orange' as const },
+          { title: 'Active Now', value: data.activeAssessments.toString(), icon: 'checkmark-done-outline' as const, accent: 'green' as const },
+        ].map((item) => (
+          <StatCard
+            key={item.title}
+            title={item.title}
+            value={item.value}
+            icon={item.icon}
+            accent={item.accent}
+          />
+        ))}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Average Score</Text>
-        <View style={styles.averageScoreCard}>
-          <Text style={styles.averageScore}>{data.averageScore.toFixed(1)}%</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="podium-outline" size={18} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Average Score</Text>
+        </View>
+        <View
+          style={[
+            styles.bigScoreCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <Text style={[styles.bigScore, { color: theme.colors.primary }]}>{data.averageScore.toFixed(1)}%</Text>
+          <Text style={[styles.bigScoreLabel, { color: theme.colors.textSecondary }]}>Class Average</Text>
         </View>
       </View>
 
-      {/* Create Assessment Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Create Assessment</Text>
-        <View style={styles.createGrid}>
-          {['Quiz', 'Exam', 'Assignment', 'Practice', 'Test', 'Survey'].map((type) => (
-            <TouchableOpacity key={type} style={styles.createTile}>
-              <Text style={styles.createTileText}>{type}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Recent Activity */}
       {data.recentActivity && data.recentActivity.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="time-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Recent Activity</Text>
+          </View>
           {data.recentActivity.map((activity) => (
             <Fragment key={activity.id}>
-              <View style={styles.activityItem}>
-                <Text style={styles.activityMessage}>{activity.message}</Text>
-                <Text style={styles.activityTime}>
+              <View
+                style={[
+                  styles.activityItem,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.activityMessage, { color: theme.colors.textPrimary }]}>
+                  {activity.message}
+                </Text>
+                <Text style={[styles.activityTime, { color: theme.colors.textSecondary }]}>
                   {new Date(activity.timestamp).toLocaleString()}
                 </Text>
               </View>
@@ -110,38 +153,63 @@ function TeacherDashboard({ data }: { data: TeacherDashboardStats }) {
 }
 
 function StudentDashboard({ data }: { data: StudentDashboardStats }) {
+  const theme = useTeacherTheme();
   return (
     <>
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <StatCard title="Upcoming" value={data.scheduledAssessments.toString()} color="#3B82F6" />
-        <StatCard title="Completed" value={data.completedAssessments.toString()} color="#10B981" />
+      <View style={styles.statsGrid}>
+        {[
+          { title: 'Upcoming', value: data.scheduledAssessments.toString(), icon: 'calendar-outline' as const, accent: 'blue' as const },
+          { title: 'Completed', value: data.completedAssessments.toString(), icon: 'checkmark-circle-outline' as const, accent: 'green' as const },
+        ].map((item) => (
+          <StatCard key={item.title} title={item.title} value={item.value} icon={item.icon} accent={item.accent} />
+        ))}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Average Score</Text>
-        <View style={styles.averageScoreCard}>
-          <Text style={styles.averageScore}>{data.averageScore.toFixed(1)}%</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Ionicons name="podium-outline" size={18} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Average Score</Text>
+        </View>
+        <View
+          style={[
+            styles.bigScoreCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <Text style={[styles.bigScore, { color: theme.colors.primary }]}>{data.averageScore.toFixed(1)}%</Text>
+          <Text style={[styles.bigScoreLabel, { color: theme.colors.textSecondary }]}>Your Average</Text>
         </View>
       </View>
 
-      {/* Weak Topics */}
       {data.weakTopics && data.weakTopics.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Topics to Improve</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="trending-down-outline" size={18} color={theme.colors.danger} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Topics to Improve</Text>
+          </View>
           {data.weakTopics.map((topic, index) => (
             <Fragment key={index}>
-              <View style={styles.weakTopicCard}>
-                <View style={styles.weakTopicHeader}>
-                  <Text style={styles.weakTopicName}>{topic.topic}</Text>
-                  <Text style={styles.weakTopicScore}>{topic.averageScore}%</Text>
+              <View
+                style={[
+                  styles.weakCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <View style={styles.weakHeader}>
+                  <Text style={[styles.weakName, { color: theme.colors.textPrimary }]}>{topic.topic}</Text>
+                  <View style={[styles.weakScorePill, { backgroundColor: theme.colors.tintRed }]}>
+                    <Text style={[styles.weakScoreText, { color: theme.colors.danger }]}>{topic.averageScore}%</Text>
+                  </View>
                 </View>
-                <View style={styles.progressBar}>
-                  <View 
-                    style={[styles.progressFill, { width: `${topic.averageScore}%` }]} 
+                <View style={[styles.progressTrack, { backgroundColor: theme.colors.tintRed }]}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${topic.averageScore}%` as `${number}%`, backgroundColor: theme.colors.danger },
+                    ]}
                   />
                 </View>
-                <Text style={styles.weakTopicImprovement}>
+                <Text style={[styles.weakHint, { color: theme.colors.textSecondary }]}>
                   Focus here to improve by {topic.improvementPercentage}%
                 </Text>
               </View>
@@ -150,19 +218,28 @@ function StudentDashboard({ data }: { data: StudentDashboardStats }) {
         </View>
       )}
 
-      {/* Upcoming Assessments */}
       {data.upcomingAssessments && data.upcomingAssessments.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upcoming Assessments</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="calendar-outline" size={18} color={theme.colors.primary} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Upcoming Assessments</Text>
+          </View>
           {data.upcomingAssessments.map((assessment) => (
             <Fragment key={assessment.id}>
-              <View style={styles.assessmentCard}>
-                <Text style={styles.assessmentTitle}>{assessment.title}</Text>
-                <Text style={styles.assessmentMeta}>
-                  {assessment.duration} min • {assessment.totalMarks} marks
+              <View
+                style={[
+                  styles.assessmentCard,
+                  { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={[styles.assessmentTitle, { color: theme.colors.textPrimary }]}>
+                  {assessment.title}
+                </Text>
+                <Text style={[styles.assessmentMeta, { color: theme.colors.textSecondary }]}>
+                  {assessment.duration} min · {assessment.totalMarks} marks
                 </Text>
                 {assessment.scheduledAt && (
-                  <Text style={styles.assessmentDate}>
+                  <Text style={[styles.assessmentDate, { color: theme.colors.textSecondary }]}>
                     Starts: {new Date(assessment.scheduledAt).toLocaleString()}
                   </Text>
                 )}
@@ -175,208 +252,134 @@ function StudentDashboard({ data }: { data: StudentDashboardStats }) {
   );
 }
 
-function StatCard({ title, value, color }: { title: string; value: string; color: string }) {
+function StatCard({
+  title,
+  value,
+  icon,
+  accent,
+}: {
+  title: string;
+  value: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  accent: 'teal' | 'blue' | 'green' | 'orange' | 'purple' | 'red';
+}) {
+  const theme = useTeacherTheme();
+  const accentMap = {
+    teal: { bg: theme.colors.tintTeal, fg: theme.colors.onTintTeal },
+    blue: { bg: theme.colors.tintBlue, fg: theme.colors.onTintBlue },
+    green: { bg: theme.colors.tintGreen, fg: theme.colors.onTintGreen },
+    orange: { bg: theme.colors.tintOrange, fg: theme.colors.onTintOrange },
+    purple: { bg: theme.colors.tintPurple, fg: theme.colors.onTintPurple },
+    red: { bg: theme.colors.tintRed, fg: theme.colors.onTintRed },
+  };
+  const { bg, fg } = accentMap[accent];
   return (
-    <View style={[styles.statCard, { borderLeftColor: color }]}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statTitle}>{title}</Text>
+    <View
+      style={[
+        styles.statCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+      ]}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: bg }]}>
+        <Ionicons name={icon} size={22} color={fg} />
+      </View>
+      <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{value}</Text>
+      <Text style={[styles.statTitle, { color: theme.colors.textSecondary }]}>{title}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
+  container: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
+  errorIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  errorText: { fontSize: 15, textAlign: 'center' },
+  retryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  retryBtnText: { fontSize: 15, fontWeight: '600' },
+  loadingIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 14, fontWeight: '500' },
+
   header: {
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 32,
   },
-  greeting: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginTop: 4,
-  },
-  statsContainer: {
+  greeting: { fontSize: 14, marginBottom: 4 },
+  userName: { fontSize: 24, fontWeight: '700' },
+
+  statsGrid: {
     flexDirection: 'row',
-    padding: 10,
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingTop: 16,
     gap: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  statTitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  section: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
-  },
-  averageScoreCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 24,
-    borderRadius: 12,
+    minWidth: '44%',
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
     alignItems: 'center',
-    shadowColor: '#000',
+    gap: 6,
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  averageScore: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#3B82F6',
-  },
-  createGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  createTile: {
-    width: '30%',
-    aspectRatio: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowRadius: 8,
     elevation: 2,
   },
-  createTileText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+  statIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 26, fontWeight: '800' },
+  statTitle: { fontSize: 12, fontWeight: '500', textAlign: 'center' },
+
+  section: { paddingHorizontal: 16, paddingTop: 16 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+
+  bigScoreCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
+  bigScore: { fontSize: 52, fontWeight: '800' },
+  bigScoreLabel: { fontSize: 13, marginTop: 4 },
+
   activityItem: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
     marginBottom: 8,
   },
-  activityMessage: {
-    fontSize: 14,
-    color: '#111827',
-    marginBottom: 4,
+  activityMessage: { fontSize: 14, marginBottom: 4 },
+  activityTime: { fontSize: 12 },
+
+  weakCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
   },
-  activityTime: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  weakTopicCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  weakTopicHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  weakTopicName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  weakTopicScore: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#EF4444',
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#EF4444',
-  },
-  weakTopicImprovement: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
+  weakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  weakName: { fontSize: 14, fontWeight: '700', flex: 1 },
+  weakScorePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  weakScoreText: { fontSize: 12, fontWeight: '700' },
+  progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  weakHint: { fontSize: 12 },
+
   assessmentCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 10,
   },
-  assessmentTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  assessmentMeta: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  assessmentDate: {
-    fontSize: 12,
-    color: '#3B82F6',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#EF4444',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: '#3B82F6',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
+  assessmentTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  assessmentMeta: { fontSize: 12, marginBottom: 2 },
+  assessmentDate: { fontSize: 12 },
 });

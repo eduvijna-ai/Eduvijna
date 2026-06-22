@@ -19,7 +19,7 @@ import { render, fireEvent, waitFor, act, Alert } from '@testing-library/react-n
 import { Alert as RNAlert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../core/api/config';
-import CreateHandwrittenQuizScreen from '../screens/CreateHandwrittenQuizScreen';
+import CreateHandwrittenQuizScreen, { buildStrictQuizContent } from '../screens/CreateHandwrittenQuizScreen';
 
 // ── Typed mocks ───────────────────────────────────────────────────────────
 const mockPost = apiClient.post as jest.MockedFunction<typeof apiClient.post>;
@@ -128,7 +128,7 @@ describe('CreateHandwrittenQuizScreen – initial UI', () => {
 
   it('shows 0/5 image count initially', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
-    expect(getByText(/📸 Upload Images \(0\/5\)/)).toBeTruthy();
+    expect(getByText(/Step 1 · Upload Images \(0\/5\)/)).toBeTruthy();
   });
 
   it('shows empty-state placeholder when no images are selected', () => {
@@ -141,12 +141,12 @@ describe('CreateHandwrittenQuizScreen – initial UI', () => {
     expect(getByText('Select Images First')).toBeTruthy();
   });
 
-  it('renders the 3-step how-it-works guide', () => {
+  it('renders the 4-step how-it-works guide', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
-    expect(getByText('📋 How it works')).toBeTruthy();
+    expect(getByText('How it works')).toBeTruthy();
     expect(getByText(/Upload clear photos/)).toBeTruthy();
-    expect(getByText(/AI extracts text/)).toBeTruthy();
-    expect(getByText(/Questions are generated/)).toBeTruthy();
+    expect(getByText(/Extract text with OCR/)).toBeTruthy();
+    expect(getByText(/Set class, subject/)).toBeTruthy();
   });
 });
 
@@ -162,7 +162,7 @@ describe('CreateHandwrittenQuizScreen – image picking from gallery', () => {
     fireEvent.press(getByText('Gallery'));
 
     await waitFor(() => {
-      expect(getByText(/📸 Upload Images \(2\/5\)/)).toBeTruthy();
+      expect(getByText(/Step 1 · Upload Images \(2\/5\)/)).toBeTruthy();
     });
   });
 
@@ -173,7 +173,7 @@ describe('CreateHandwrittenQuizScreen – image picking from gallery', () => {
     fireEvent.press(getByText('Gallery'));
 
     await waitFor(() => {
-      expect(getByText(/📸 Upload Images \(0\/5\)/)).toBeTruthy();
+      expect(getByText(/Step 1 · Upload Images \(0\/5\)/)).toBeTruthy();
     });
   });
 
@@ -190,7 +190,7 @@ describe('CreateHandwrittenQuizScreen – image picking from gallery', () => {
 
     await waitFor(() => {
       // State should contain at most 5 images
-      expect(getByText(/📸 Upload Images \([0-5]\/5\)/)).toBeTruthy();
+      expect(getByText(/Step 1 · Upload Images \([0-5]\/5\)/)).toBeTruthy();
     });
     spy.mockRestore();
   });
@@ -229,7 +229,7 @@ describe('CreateHandwrittenQuizScreen – camera capture', () => {
     fireEvent.press(getByText('Camera'));
 
     await waitFor(() => {
-      expect(getByText(/📸 Upload Images \(1\/5\)/)).toBeTruthy();
+      expect(getByText(/Step 1 · Upload Images \(1\/5\)/)).toBeTruthy();
     });
   });
 
@@ -286,7 +286,7 @@ describe('CreateHandwrittenQuizScreen – image removal', () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 describe('CreateHandwrittenQuizScreen – CTA label updates', () => {
-  it('shows singular "1 Image" label when 1 image selected', async () => {
+  it('shows singular extract label when 1 image selected', async () => {
     mockLaunchLibrary.mockResolvedValueOnce({
       canceled: false,
       assets: [mockImage(0)],
@@ -294,11 +294,11 @@ describe('CreateHandwrittenQuizScreen – CTA label updates', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
     fireEvent.press(getByText('Gallery'));
     await waitFor(() =>
-      expect(getByText('Generate Assessment from 1 Image')).toBeTruthy(),
+      expect(getByText('Extract Text from 1 Image')).toBeTruthy(),
     );
   });
 
-  it('shows plural "Images" label when multiple images selected', async () => {
+  it('shows plural extract label when multiple images selected', async () => {
     mockLaunchLibrary.mockResolvedValueOnce({
       canceled: false,
       assets: [mockImage(0), mockImage(1)],
@@ -306,7 +306,7 @@ describe('CreateHandwrittenQuizScreen – CTA label updates', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
     fireEvent.press(getByText('Gallery'));
     await waitFor(() =>
-      expect(getByText('Generate Assessment from 2 Images')).toBeTruthy(),
+      expect(getByText('Extract Text from 2 Images')).toBeTruthy(),
     );
   });
 });
@@ -328,8 +328,11 @@ describe('CreateHandwrittenQuizScreen – Extract + Generate flow', () => {
     fireEvent.press(utils.getByText('Gallery'));
     await waitFor(() => expect(utils.getByText(new RegExp(`\\(${imageCount}\\/5\\)`))).toBeTruthy());
 
-    const ctaLabel = imageCount === 1 ? 'Generate Assessment from 1 Image' : `Generate Assessment from ${imageCount} Images`;
-    fireEvent.press(utils.getByText(ctaLabel));
+    const extractLabel =
+      imageCount === 1 ? 'Extract Text from 1 Image' : `Extract Text from ${imageCount} Images`;
+    fireEvent.press(utils.getByText(extractLabel));
+    await waitFor(() => expect(utils.getByText('Step 2 · OCR Complete')).toBeTruthy());
+    fireEvent.press(utils.getByText('Generate Assessment'));
     return { nav, ...utils };
   }
 
@@ -382,7 +385,9 @@ describe('CreateHandwrittenQuizScreen – Extract + Generate flow', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={nav} />);
     fireEvent.press(getByText('Gallery'));
     await waitFor(() => expect(getByText(/\(1\/5\)/)).toBeTruthy());
-    fireEvent.press(getByText('Generate Assessment from 1 Image'));
+    fireEvent.press(getByText('Extract Text from 1 Image'));
+    await waitFor(() => expect(getByText('Step 2 · OCR Complete')).toBeTruthy());
+    fireEvent.press(getByText('Generate Assessment'));
 
     await waitFor(() => {
       const call = nav.replace.mock.calls[0];
@@ -412,7 +417,7 @@ describe('CreateHandwrittenQuizScreen – Extract + Generate flow', () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 describe('CreateHandwrittenQuizScreen – error handling', () => {
-  async function pickOneAndPress() {
+  async function pickOneAndExtract() {
     mockLaunchLibrary.mockResolvedValueOnce({
       canceled: false,
       assets: [mockImage(0)],
@@ -421,8 +426,15 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
     const utils = render(<CreateHandwrittenQuizScreen navigation={nav} />);
     fireEvent.press(utils.getByText('Gallery'));
     await waitFor(() => expect(utils.getByText(/\(1\/5\)/)).toBeTruthy());
-    fireEvent.press(utils.getByText('Generate Assessment from 1 Image'));
+    fireEvent.press(utils.getByText('Extract Text from 1 Image'));
     return { nav, ...utils };
+  }
+
+  async function pickExtractAndGenerate() {
+    const ctx = await pickOneAndExtract();
+    await waitFor(() => expect(ctx.getByText('Step 2 · OCR Complete')).toBeTruthy());
+    fireEvent.press(ctx.getByText('Generate Assessment'));
+    return ctx;
   }
 
   it('shows 413 error message when server returns payload too large', async () => {
@@ -430,7 +442,7 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
     err.response = { status: 413 };
     mockPost.mockRejectedValueOnce(err);
 
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickOneAndExtract();
     expect(
       await findByText(/Images are too large to upload/),
     ).toBeTruthy();
@@ -452,7 +464,7 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
       },
     });
 
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickOneAndExtract();
     expect(await findByText(/Could not extract readable text/)).toBeTruthy();
   });
 
@@ -460,7 +472,7 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
     mockPost.mockResolvedValueOnce({
       data: { success: false, message: 'OCR service unavailable', files: [] },
     });
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickOneAndExtract();
     expect(await findByText(/OCR service unavailable/)).toBeTruthy();
   });
 
@@ -470,13 +482,13 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
       .mockResolvedValueOnce({
         data: { success: true, message: 'ok', quiz: [], count: 0 },
       });
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickExtractAndGenerate();
     expect(await findByText(/Assessment generation returned no questions/)).toBeTruthy();
   });
 
   it('shows generic error for network failure during OCR', async () => {
     mockPost.mockRejectedValueOnce(new Error('Network timeout'));
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickOneAndExtract();
     expect(await findByText(/Network timeout/)).toBeTruthy();
   });
 
@@ -484,7 +496,7 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
     const err: any = new Error('OCR Error');
     err.response = { status: 400, data: { detail: 'Invalid image format' } };
     mockPost.mockRejectedValueOnce(err);
-    const { findByText } = await pickOneAndPress();
+    const { findByText } = await pickOneAndExtract();
     expect(await findByText(/Invalid image format/)).toBeTruthy();
   });
 
@@ -492,7 +504,7 @@ describe('CreateHandwrittenQuizScreen – error handling', () => {
     const err: any = new Error('Generic error');
     err.response = { status: 500, data: {} };
     mockPost.mockRejectedValueOnce(err);
-    const { nav } = await pickOneAndPress();
+    const { nav } = await pickOneAndExtract();
     await waitFor(() => {
       expect(nav.replace).not.toHaveBeenCalled();
     });
@@ -518,7 +530,7 @@ describe('CreateHandwrittenQuizScreen – processing state', () => {
     );
     fireEvent.press(getByText('Gallery'));
     await waitFor(() => expect(getByText(/\(1\/5\)/)).toBeTruthy());
-    fireEvent.press(getByText('Generate Assessment from 1 Image'));
+    fireEvent.press(getByText('Extract Text from 1 Image'));
 
     await waitFor(() =>
       expect(queryByText('Extracting text from images…')).toBeTruthy(),
@@ -526,5 +538,23 @@ describe('CreateHandwrittenQuizScreen – processing state', () => {
 
     // Resolve to avoid state updates after test
     act(() => resolveOcr({ data: { success: false, files: [] } }));
+  });
+});
+
+describe('CreateHandwrittenQuizScreen – buildStrictQuizContent', () => {
+  it('prepends metadata before OCR text (web parity)', () => {
+    const content = buildStrictQuizContent({
+      classValue: 'Class 10',
+      subject: 'Physics',
+      lesson: 'Motion',
+      difficulty: 'medium',
+      questionCount: 10,
+      additionalInstructions: 'Focus on formulas',
+      ocrText: 'Body text from OCR',
+    });
+    expect(content).toContain('Class: Class 10');
+    expect(content).toContain('Subject: Physics');
+    expect(content).toContain('Body text from OCR');
+    expect(content.indexOf('Class: Class 10')).toBeLessThan(content.indexOf('Body text from OCR'));
   });
 });

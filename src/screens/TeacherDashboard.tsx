@@ -7,12 +7,16 @@ import {
   TouchableOpacity,
   RefreshControl,
   useWindowDimensions,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
+import { useAuth } from '@core/hooks/useAuth';
 import LoadingSpinner from '@components/LoadingSpinner';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
+import { FONT_FAMILY } from '../theme/fonts';
+import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
 
 interface Props {
   navigation?: any;
@@ -22,9 +26,13 @@ interface Props {
   };
 }
 
-export default function TeacherDashboard({ navigation, onNavigate, route }: Props) {
-  const { theme } = useTheme();
+const HERO_OVERLAP = 64;
+const HERO_TOP_RADIUS = 24;
+
+export default function TeacherDashboard({ navigation, onNavigate, route: _route }: Props) {
+  const theme = useTeacherTheme();
   const { width } = useWindowDimensions();
+  const { user } = useAuth();
   const {
     stats,
     weakStudents,
@@ -34,29 +42,44 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
     refresh,
   } = useTeacherDashboard();
 
+  // Build a friendly display name: first name from full_name, or name, or username
+  const displayName = (() => {
+    const fullName = (user as any)?.full_name || (user as any)?.name || '';
+    if (fullName.trim()) {
+      return fullName.trim().split(' ')[0]; // first name only
+    }
+    return (user as any)?.username || 'there';
+  })();
+
+  // Role label and subtitle
+  const isAdmin = user?.role === 'admin' || (user as any)?.role_name === 'super_admin';
+  const heroSubtitle = isAdmin
+    ? "Here's your school overview for today."
+    : "Here's your classroom overview for today.";
+
   const isWeb = width > 768;
   const isTablet = width > 600 && width <= 1024;
 
-  const handleViewStudent = (studentId: number, studentName?: string) => {
+  const navigate = (screen: string, params?: any) => {
     if (navigation) {
-      navigation.navigate('StudentAnalytics', { studentId, studentName });
+      navigation.navigate(screen, params);
     } else if (onNavigate) {
-      onNavigate('StudentAnalytics', { studentId, studentName });
+      onNavigate(screen, params);
     }
   };
 
+  const handleViewStudent = (studentId: number, studentName?: string) => {
+    navigate('StudentAnalytics', { studentId, studentName });
+  };
+
   const handleViewQuiz = (quizId: number) => {
-    if (navigation) {
-      navigation.navigate('StudentList', { quizId });
-    } else if (onNavigate) {
-      onNavigate('StudentList', { quizId });
-    }
+    navigate('StudentList', { quizId });
   };
 
   if (loading && !stats) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.loadingContainer}>
+      <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.centered}>
           <LoadingSpinner size={60} fullScreen />
         </View>
       </View>
@@ -65,411 +88,384 @@ export default function TeacherDashboard({ navigation, onNavigate, route }: Prop
 
   if (error) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={64} color={theme.colors.error} />
-          <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
+      <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.centered}>
+          <View style={[styles.errorIconWrap, { backgroundColor: theme.colors.tintRed }]}>
+            <Ionicons name="alert-circle-outline" size={40} color={theme.colors.danger} />
+          </View>
+          <Text style={[styles.errorTitle, { color: theme.colors.textPrimary }]}>Something went wrong</Text>
+          <Text style={[styles.errorMsg, { color: theme.colors.textSecondary }]}>{error}</Text>
           <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: theme.colors.primary }]}
+            style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
             onPress={refresh}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading dashboard"
           >
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Ionicons name="refresh-outline" size={16} color={theme.colors.textInverse} />
+            <Text style={[styles.retryBtnText, { color: theme.colors.textInverse }]}>Try Again</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
+  const getStatusMeta = (status: string) => {
+    if (status === 'active') return { label: 'Active', color: theme.colors.success, bg: theme.colors.tintGreen };
+    if (status === 'expired') return { label: 'Expired', color: theme.colors.danger, bg: theme.colors.tintRed };
+    return { label: 'Upcoming', color: theme.colors.warning, bg: theme.colors.tintOrange };
+  };
+
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      style={[styles.fill, { backgroundColor: theme.colors.background }]}
       scrollEventThrottle={400}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl 
-          refreshing={loading} 
+        <RefreshControl
+          refreshing={loading}
           onRefresh={refresh}
           colors={[theme.colors.primary]}
           tintColor={theme.colors.primary}
         />
       }
     >
-      {/* Summary Cards - 3 Tiles in One Row */}
-      <View style={styles.summarySection}>
-        <TouchableOpacity 
-          style={[
-            styles.summaryCard, 
-            { backgroundColor: theme.colors.card },
-          ]}
-          onPress={() => {
-            if (navigation) {
-              navigation.navigate('ClassesList');
-            } else if (onNavigate) {
-              onNavigate('ClassesList');
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="school" size={24} color="#F59E0B" />
-          <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
-            {stats.total_classes}
-          </Text>
-          <Text style={[styles.summaryCardLabel, { color: theme.colors.textSecondary }]}>
-            Total Classes
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[
-            styles.summaryCard, 
-            { backgroundColor: theme.colors.card },
-          ]}
-          onPress={() => {
-            if (navigation) {
-              navigation.navigate('Assessments', { filter: 'all' });
-            } else if (onNavigate) {
-              onNavigate('Assessments', { filter: 'all' });
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="document-text" size={24} color="#3B82F6" />
-          <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
-            {stats.total_assessments}
-          </Text>
-          <Text style={[styles.summaryCardLabel, { color: theme.colors.textSecondary }]}>
-            Total Assessments
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[
-            styles.summaryCard, 
-            { backgroundColor: theme.colors.card },
-          ]}
-          onPress={() => {
-            if (navigation) {
-              navigation.navigate('Assessments', { filter: 'active' });
-            } else if (onNavigate) {
-              onNavigate('Assessments', { filter: 'active' });
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="checkmark-done" size={24} color="#10B981" />
-          <Text style={[styles.summaryCardValue, { color: theme.colors.text }]}>
-            {stats.active_assessments}
-          </Text>
-          <Text style={[styles.summaryCardLabel, { color: theme.colors.textSecondary }]}>
-            Ongoing Tests
-          </Text>
-        </TouchableOpacity>
+      {/* Hero strip */}
+      <View
+        style={[
+          styles.heroClip,
+          { borderTopLeftRadius: HERO_TOP_RADIUS, borderTopRightRadius: HERO_TOP_RADIUS, backgroundColor: theme.colors.primary },
+        ]}
+      >
+        <View style={[styles.hero, { backgroundColor: theme.colors.primary }]}>
+          <Image
+            source={require('../../assets/eduvijna_logo_sidebar_white.png')}
+            style={styles.heroWatermark}
+            resizeMode="contain"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroGreeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              <Text style={styles.heroLead}>Hello, </Text>
+              <Text style={styles.heroBold}>{displayName}</Text>
+              <Text style={styles.heroLead}> 👋</Text>
+            </Text>
+            <Text style={styles.heroSub}>{heroSubtitle}</Text>
+          </View>
+        </View>
       </View>
 
-      {/* Generate Assessments Section */}
-      <QuizGenerationGrid
-        navigation={navigation}
-        onNavigate={onNavigate}
-        theme={theme}
-        showTitle={true}
-      />
+      {/* Stat tiles — overlap hero */}
+      <View style={[styles.statsWrap, { zIndex: 2, elevation: 4 }]}>
+        <View
+          style={[
+            styles.statsCard,
+            theme.shadow.medium,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.statTile}
+            onPress={() => navigate('ClassesList')}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.total_classes} total classes`}
+          >
+            <View style={[styles.statIcon, { backgroundColor: theme.colors.tintOrange }]}>
+              <Ionicons name="school-outline" size={22} color={theme.colors.onTintOrange} />
+            </View>
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{stats.total_classes}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Classes</Text>
+          </TouchableOpacity>
 
-      {/* Two Column Layout for Web/Tablet */}
-      <View style={[
-        styles.bottomSection,
-        (isWeb || isTablet) && styles.bottomSectionRow,
-      ]}>
-        {/* Weak Students */}
-        <View style={[
-          styles.section,
-          (isWeb || isTablet) && styles.sectionHalf,
-        ]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Weak Students
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
+
+          <TouchableOpacity
+            style={styles.statTile}
+            onPress={() => navigate('Assessments', { filter: 'all' })}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.total_assessments} total assessments`}
+          >
+            <View style={[styles.statIcon, { backgroundColor: theme.colors.tintBlue }]}>
+              <Ionicons name="document-text-outline" size={22} color={theme.colors.onTintBlue} />
+            </View>
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{stats.total_assessments}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Assessments</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
+
+          <TouchableOpacity
+            style={styles.statTile}
+            onPress={() => navigate('Assessments', { filter: 'active' })}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={`${stats.active_assessments} active assessments`}
+          >
+            <View style={[styles.statIcon, { backgroundColor: theme.colors.tintGreen }]}>
+              <Ionicons name="checkmark-done-outline" size={22} color={theme.colors.onTintGreen} />
+            </View>
+            <Text style={[styles.statValue, { color: theme.colors.textPrimary }]}>{stats.active_assessments}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Active</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* School ERP Quick-Link Banner */}
+      <TouchableOpacity
+        style={[styles.erpBanner, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+        onPress={() => navigateToAppMainTab(APP_MAIN_TABS.ERP_SCHOOLS)}
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel="Open School ERP"
+      >
+        <View style={[styles.erpBannerIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+          <Ionicons name="school" size={24} color={theme.colors.primary} />
+        </View>
+        <View style={styles.erpBannerText}>
+          <Text style={[styles.erpBannerTitle, { color: theme.colors.textPrimary }]}>School ERP</Text>
+          <Text style={[styles.erpBannerSub, { color: theme.colors.textSecondary }]}>
+            Manage classes, students & school data
           </Text>
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            {weakStudents.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
-                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                  No struggling students
-                </Text>
-              </View>
-            ) : (
-              weakStudents.slice(0, 5).map((student, index) => (
-                <TouchableOpacity
-                  key={student.student_id}
-                  style={[
-                    styles.listItem,
-                    index < Math.min(weakStudents.length, 5) - 1 && { 
-                      borderBottomWidth: 1, 
-                      borderBottomColor: theme.colors.border 
-                    },
-                  ]}
-                  onPress={() => handleViewStudent(student.student_id, student.student_fullname)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.studentInfo}>
-                    <View style={[styles.avatar, { backgroundColor: theme.colors.primary + '20' }]}>
-                      {student.avatar_url ? (
-                        <Text style={[styles.avatarText, { color: theme.colors.primary }]}>
-                          {student.student_fullname.charAt(0)}
-                        </Text>
-                      ) : (
-                        <Text style={[styles.avatarText, { color: theme.colors.primary }]}>
-                          {student.student_fullname.charAt(0)}
-                        </Text>
-                      )}
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={theme.colors.primary} />
+      </TouchableOpacity>
+
+      {/* Generate Assessments */}
+      <View style={[styles.section, { marginTop: 8 }]}>
+        <QuizGenerationGrid
+          navigation={navigation}
+          onNavigate={onNavigate}
+          theme={{ colors: { primary: theme.colors.primary, text: theme.colors.textPrimary, textSecondary: theme.colors.textSecondary, card: theme.colors.surface, border: theme.colors.border, background: theme.colors.background, error: theme.colors.danger, success: theme.colors.success } }}
+          showTitle
+        />
+      </View>
+
+      {/* Weak Students + Recent Assessments */}
+      <View
+        style={[
+          styles.twoCol,
+          (isWeb || isTablet) && styles.twoColRow,
+        ]}
+      >
+        {/* Weak Students */}
+        <View style={[(isWeb || isTablet) ? styles.colHalf : styles.colFull]}>
+          <View style={[styles.section]}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons name="trending-down-outline" size={18} color={theme.colors.danger} />
+              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Needs Attention</Text>
+            </View>
+            <View
+              style={[
+                styles.card,
+                theme.shadow.light,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+              ]}
+            >
+              {weakStudents.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintGreen }]}>
+                    <Ionicons name="checkmark-circle-outline" size={32} color={theme.colors.success} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>All Caught Up!</Text>
+                  <Text style={[styles.emptyMsg, { color: theme.colors.textSecondary }]}>No struggling students right now.</Text>
+                </View>
+              ) : (
+                weakStudents.slice(0, 5).map((student, index) => (
+                  <TouchableOpacity
+                    key={student.student_id}
+                    style={[
+                      styles.listRow,
+                      index < Math.min(weakStudents.length, 5) - 1 && {
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderBottomColor: theme.colors.border,
+                      },
+                    ]}
+                    onPress={() => handleViewStudent(student.student_id, student.student_fullname)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View ${student.student_fullname}, score ${student.average_score}%`}
+                  >
+                    <View style={[styles.avatarCircle, { backgroundColor: theme.colors.tintTeal }]}>
+                      <Text style={[styles.avatarLetter, { color: theme.colors.primary }]}>
+                        {student.student_fullname.charAt(0).toUpperCase()}
+                      </Text>
                     </View>
-                    <Text style={[styles.studentName, { color: theme.colors.text }]}>
+                    <Text style={[styles.listName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                       {student.student_fullname}
                     </Text>
-                  </View>
-                  <View style={styles.scoreContainer}>
-                    <Text style={[styles.scoreText, { color: theme.colors.error }]}>
-                      {student.average_score}%
-                    </Text>
-                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
+                    <View style={[styles.scorePill, { backgroundColor: theme.colors.tintRed }]}>
+                      <Text style={[styles.scorePillText, { color: theme.colors.danger }]}>
+                        {student.average_score}%
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
           </View>
         </View>
 
         {/* Recent Assessments */}
-        <View style={[
-          styles.section,
-          (isWeb || isTablet) && styles.sectionHalf,
-        ]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Recent Assessments
-          </Text>
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            {recentAssessments.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="document-text-outline" size={48} color={theme.colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-                  No assessments yet
-                </Text>
-              </View>
-            ) : (
-              recentAssessments.slice(0, 5).map((quiz, index) => {
-                const getStatusColor = () => {
-                  if (quiz.availability_status === 'active') return '#10B981';
-                  if (quiz.availability_status === 'expired') return '#EF4444';
-                  return '#F59E0B';
-                };
-                
-                const getStatusLabel = () => {
-                  if (quiz.availability_status === 'active') return 'Active';
-                  if (quiz.availability_status === 'expired') return 'Expired';
-                  return 'Coming up';
-                };
-                
-                return (
-                  <TouchableOpacity
-                    key={quiz.quiz_id}
-                    style={[
-                      styles.assessmentItem,
-                      index < Math.min(recentAssessments.length, 5) - 1 && { 
-                        borderBottomWidth: 1, 
-                        borderBottomColor: theme.colors.border 
-                      },
-                    ]}
-                    onPress={() => handleViewQuiz(quiz.quiz_id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.assessmentInfo}>
-                      <View style={[styles.assessmentIcon, { backgroundColor: getStatusColor() + '20' }]}>
-                        <Ionicons name="document-text" size={20} color={getStatusColor()} />
+        <View style={[(isWeb || isTablet) ? styles.colHalf : styles.colFull]}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons name="document-text-outline" size={18} color={theme.colors.primary} />
+              <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Recent Assessments</Text>
+            </View>
+            <View
+              style={[
+                styles.card,
+                theme.shadow.light,
+                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.card },
+              ]}
+            >
+              {recentAssessments.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+                    <Ionicons name="document-text-outline" size={32} color={theme.colors.primary} />
+                  </View>
+                  <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No Assessments Yet</Text>
+                  <Text style={[styles.emptyMsg, { color: theme.colors.textSecondary }]}>Create your first assessment to get started.</Text>
+                </View>
+              ) : (
+                recentAssessments.slice(0, 5).map((quiz, index) => {
+                  const meta = getStatusMeta(quiz.availability_status);
+                  return (
+                    <TouchableOpacity
+                      key={quiz.quiz_id}
+                      style={[
+                        styles.listRow,
+                        index < Math.min(recentAssessments.length, 5) - 1 && {
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderBottomColor: theme.colors.border,
+                        },
+                      ]}
+                      onPress={() => handleViewQuiz(quiz.quiz_id)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${quiz.quiz_name}, status ${meta.label}`}
+                    >
+                      <View style={[styles.assessmentIcon, { backgroundColor: meta.bg }]}>
+                        <Ionicons name="document-text-outline" size={18} color={meta.color} />
                       </View>
-                      <Text style={[styles.assessmentName, { color: theme.colors.text }]} numberOfLines={1}>
+                      <Text style={[styles.listName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                         {quiz.quiz_name}
                       </Text>
-                    </View>
-                    <View style={[
-                      styles.statusBadge,
-                      { backgroundColor: getStatusColor() + '20' }
-                    ]}>
-                      <Text style={[styles.statusText, { color: getStatusColor() }]}>
-                        {getStatusLabel()}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
+                      <View style={[styles.statusPill, { backgroundColor: meta.bg }]}>
+                        <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </View>
           </View>
         </View>
       </View>
+
+      <View style={{ height: 24 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  errorText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  summarySection: {
+  fill: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+
+  errorIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
+  errorMsg: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
+  retryBtnText: { fontSize: 15, fontWeight: '600' },
+
+  heroClip: { width: '100%', overflow: 'hidden' },
+  hero: { width: '100%', minHeight: 120, paddingBottom: HERO_OVERLAP + 16, position: 'relative' },
+  heroWatermark: { position: 'absolute', right: -28, top: -12, width: 220, height: 220, opacity: 0.12 },
+  heroTextWrap: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4, paddingRight: 100 },
+  heroGreeting: { color: '#FFFFFF', fontSize: 24, lineHeight: 30 },
+  heroLead: { fontFamily: FONT_FAMILY.medium, fontWeight: '500' },
+  heroBold: { fontFamily: FONT_FAMILY.bold, fontWeight: '700' },
+  heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 13, marginTop: 6, lineHeight: 18 },
+
+  statsWrap: { marginTop: -HERO_OVERLAP, paddingHorizontal: 16, marginBottom: 4 },
+  statsCard: {
     flexDirection: 'row',
-    padding: 8,
-    gap: 6,
+    alignItems: 'stretch',
+    paddingVertical: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  summaryCard: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    minHeight: 70,
-  },
-  summaryCardLabel: {
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  summaryCardValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  section: {
-    padding: 10,
-  },
-  sectionHalf: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  bottomSection: {
-    gap: 0,
-  },
-  bottomSectionRow: {
+  statTile: { flex: 1, alignItems: 'center', gap: 6, paddingHorizontal: 4 },
+  statIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 22, fontWeight: '800' },
+  statLabel: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
+  statDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 8 },
+
+  section: { paddingHorizontal: 16, paddingTop: 12 },
+  erpBanner: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  card: {
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    shadowColor: '#0B5563',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
     elevation: 2,
   },
-  emptyState: {
+  erpBannerIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
   },
-  emptyText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-  },
-  studentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  erpBannerText: {
     flex: 1,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarText: {
-    fontSize: 16,
+  erpBannerTitle: {
+    fontSize: 15,
     fontWeight: '700',
+    marginBottom: 2,
   },
-  studentName: {
-    fontSize: 15,
-    fontWeight: '600',
+  erpBannerSub: {
+    fontSize: 12,
   },
-  scoreContainer: {
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+
+  card: { borderWidth: StyleSheet.hairlineWidth, padding: 12 },
+
+  twoCol: {},
+  twoColRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  colFull: { flex: 1 },
+  colHalf: { flex: 1 },
+
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingVertical: 10,
+    gap: 10,
   },
-  scoreText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  assessmentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  assessmentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  assessmentIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  assessmentName: {
-    fontSize: 15,
-    fontWeight: '500',
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  avatarCircle: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  avatarLetter: { fontSize: 15, fontWeight: '700' },
+  listName: { flex: 1, fontSize: 14, fontWeight: '600' },
+  scorePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  scorePillText: { fontSize: 12, fontWeight: '700' },
+
+  assessmentIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  statusPillText: { fontSize: 12, fontWeight: '600' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 28, gap: 6 },
+  emptyIconWrap: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: '700' },
+  emptyMsg: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
 });

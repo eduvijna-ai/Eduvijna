@@ -5,14 +5,17 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import { updateQuestionExplanation } from '@core/services/sharedApi';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 
 interface QuizResultsScreenProps {
   route: any;
@@ -20,80 +23,87 @@ interface QuizResultsScreenProps {
 }
 
 export default function QuizResultsScreen({ route, navigation }: QuizResultsScreenProps) {
-  const { 
-    quizData: initialQuizData, 
-    userAnswers: initialUserAnswers, 
-    score, 
-    correctCount, 
+  const {
+    quizData: initialQuizData,
+    userAnswers: initialUserAnswers,
+    score,
+    correctCount,
     totalQuestions,
-    // Teacher view params
     isTeacherView,
     quizId,
     attemptId,
     studentId,
     studentName,
     quizName,
-    // Direct attempt data (fallback if attemptId is not available)
     attemptData: passedAttemptData,
     questions: passedQuestions,
     submission: passedSubmission,
+    assessmentId,
   } = route.params || {};
-  
-  const { theme } = useTheme();
+
+  const theme = useTeacherTheme();
   const { user } = useAuth();
-  const colors = theme.colors;
   const insets = useSafeAreaInsets();
-  
-  // Set loading if we need to fetch data (when we don't have initialQuizData or questions/submission)
+
+  // Explanation editing is only available when we have a saved user-assessment
+  // id to PATCH against, and only for teachers / admins.
+  const canEditExplanations =
+    !!assessmentId &&
+    (user?.role === 'instructor' || user?.role === 'admin');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [explanationDrafts, setExplanationDrafts] = useState<{ [key: number]: string }>({});
+  const [savedExplanations, setSavedExplanations] = useState<{ [key: number]: string }>({});
+  const [savingExplanationIdx, setSavingExplanationIdx] = useState<number | null>(null);
+
+  const handleSaveExplanation = async (index: number) => {
+    const draft = (explanationDrafts[index] ?? '').trim();
+    setSavingExplanationIdx(index);
+    try {
+      await updateQuestionExplanation(Number(assessmentId), index, draft);
+      setSavedExplanations((prev) => ({ ...prev, [index]: draft }));
+      setEditingIdx(null);
+    } catch {
+      // Surface a lightweight inline failure by keeping the editor open.
+    } finally {
+      setSavingExplanationIdx(null);
+    }
+  };
+
   const [loading, setLoading] = useState(!initialQuizData && (!passedQuestions || !passedSubmission));
   const [quizData, setQuizData] = useState<any>(initialQuizData);
   const [userAnswers, setUserAnswers] = useState<any>(initialUserAnswers);
   const [attemptData, setAttemptData] = useState<any>(null);
-  
 
-  // Use current user's ID if studentId is not provided (student viewing their own results)
   const effectiveStudentId = studentId || user?.id;
 
-  // Fetch attempt data if we have quizId but missing quiz data
   useEffect(() => {
     if (quizId && (!quizData || !userAnswers)) {
-      // If we have direct attempt data passed, use it
       if (passedAttemptData || passedSubmission || passedQuestions) {
         handlePassedAttemptData();
       } else {
-        // Fetch quiz data and find the student's attempt
         fetchAttemptData();
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizId, passedAttemptData]);
 
   const handlePassedAttemptData = () => {
     try {
       setLoading(true);
-
-      // If we don't have questions or submission, we need to fetch from API
       if (!passedQuestions || !passedSubmission) {
         fetchAttemptData();
         return;
       }
-
-      // If we have submission data (log_data)
       if (passedSubmission) {
         const logData = typeof passedSubmission === 'string'
           ? JSON.parse(passedSubmission)
           : passedSubmission;
-        
         setAttemptData(logData);
-        
-        // If we have questions, set them up
         if (passedQuestions) {
           let questions = typeof passedQuestions === 'string'
             ? JSON.parse(passedQuestions)
             : passedQuestions;
-          
-          // Handle different question formats
           if (questions.quizzes && Array.isArray(questions.quizzes)) {
-            // Format from subject field: {quizzes: [{quiz: {...}, answer: "A"}]}
             questions = questions.quizzes.map((q: any) => ({
               question: q.quiz?.question || q.question || '',
               options: q.quiz?.options || q.options || [],
@@ -102,23 +112,17 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
               explanation: q.explanation || null,
             }));
           } else if (!Array.isArray(questions)) {
-            // If not an array, try to extract array from object
             questions = [];
           }
-          
           setQuizData({ questions });
-          
-          // Extract user answers from log_data
           if (logData?.answers) {
             let answers: string[];
             if (Array.isArray(logData.answers)) {
-              // Format: [{questionNumber: 1, userAnswer: "A", isCorrect: true, ...}, ...]
               answers = logData.answers.map((a: any) => a.userAnswer);
             } else if (typeof logData.answers === 'object') {
-              // Format: {"0": "A", "1": "B", "2": "C", ...}
               answers = Object.keys(logData.answers)
                 .sort((a, b) => parseInt(a) - parseInt(b))
-                .map(key => logData.answers[key]);
+                .map((key: string) => logData.answers[key]);
             } else {
               answers = [];
             }
@@ -126,10 +130,9 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           }
         }
       }
-      
       setLoading(false);
-    } catch (error) {
-      console.error('❌ Error processing passed attempt data:', error);
+    } catch (err) {
+      console.error('❌ Error processing passed attempt data:', err);
       setLoading(false);
     }
   };
@@ -137,63 +140,38 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const fetchAttemptData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch quiz with attempts
-      const response = await fetchTeacherQuizzes({
-        view_type: 'all',
-        quiz_id: quizId,
-      });
-      
+      const response = await fetchTeacherQuizzes({ view_type: 'all', quiz_id: quizId });
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
         const quiz = response.data[0];
-        
-        // Parse attempts
         const attempts = typeof quiz.attempts === 'string'
           ? JSON.parse(quiz.attempts)
           : quiz.attempts;
-        
-        // Find the specific attempt
         let attempt;
-        
-        // Priority 1: Find by attemptId if provided
         if (attemptId) {
           attempt = attempts.find((a: any) => a.attempt_id === attemptId);
         }
-        
-        // Priority 2: Find by studentId (for teacher viewing student's result)
         if (!attempt && effectiveStudentId) {
-          // Find the most recent completed attempt by this student
           const studentAttempts = attempts.filter(
             (a: any) => String(a.student_id) === String(effectiveStudentId)
           );
-          
-          // Prefer completed attempts, fallback to any attempt
           attempt = studentAttempts.find((a: any) => a.status === 'completed') || studentAttempts[0];
         }
-        
         if (attempt) {
-          // Check if we have submission data
           const hasSubmission = attempt.submission?.log_data || attempt.log_data;
-          
           if (hasSubmission) {
-            const logData = attempt.submission?.log_data 
+            const logData = attempt.submission?.log_data
               ? (typeof attempt.submission.log_data === 'string'
                 ? JSON.parse(attempt.submission.log_data)
                 : attempt.submission.log_data)
               : (typeof attempt.log_data === 'string'
                 ? JSON.parse(attempt.log_data)
                 : attempt.log_data);
-            
             setAttemptData(logData);
-            
-            // Parse quiz questions from subject field
             if (quiz.subject) {
               const subjectData = typeof quiz.subject === 'string'
                 ? JSON.parse(quiz.subject)
                 : quiz.subject;
-              
               if (subjectData.quizzes && Array.isArray(subjectData.quizzes)) {
-                // Convert to expected format
                 const questions = subjectData.quizzes.map((q: any) => ({
                   question: q.quiz?.question || q.question || '',
                   options: q.quiz?.options || q.options || [],
@@ -201,20 +179,15 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                   correctAnswer: q.quiz?.answer || q.answer || '',
                   explanation: q.explanation || null,
                 }));
-                
                 setQuizData({ questions });
-                
-                // Extract user answers from log_data
                 if (logData.answers) {
                   let answers: string[];
                   if (Array.isArray(logData.answers)) {
-                    // Format: [{questionNumber: 1, userAnswer: "A", isCorrect: true, ...}, ...]
                     answers = logData.answers.map((a: any) => a.userAnswer);
                   } else if (typeof logData.answers === 'object') {
-                    // Format: {"0": "A", "1": "B", "2": "C", ...}
                     answers = Object.keys(logData.answers)
                       .sort((a, b) => parseInt(a) - parseInt(b))
-                      .map(key => logData.answers[key]);
+                      .map((key: string) => logData.answers[key]);
                   } else {
                     answers = [];
                   }
@@ -229,8 +202,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           console.warn('⚠️ Attempt not found for quizId:', quizId);
         }
       }
-    } catch (error) {
-      console.error('❌ Error fetching attempt data:', error);
+    } catch (err) {
+      console.error('❌ Error fetching attempt data:', err);
     } finally {
       setLoading(false);
     }
@@ -238,10 +211,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <LoadingSpinner size={60} />
-          <Text style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>Loading attempt data...</Text>
+      <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.centered}>
+          <LoadingSpinner size={48} />
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary, marginTop: 12 }]}>
+            Loading results…
+          </Text>
         </View>
       </View>
     );
@@ -249,14 +224,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
 
   if (!quizData || !userAnswers) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: colors.text }]}>No quiz results available</Text>
+      <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.centered}>
+          <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+            <Ionicons name="document-text-outline" size={32} color={theme.colors.primary} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No Results Available</Text>
           <TouchableOpacity
-            style={[styles.closeBtn, { backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }]}
+            style={[styles.goBackBtn, { backgroundColor: theme.colors.primary }]}
             onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Go Back</Text>
+            <Text style={[styles.goBackBtnText, { color: theme.colors.textInverse }]}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -266,19 +246,15 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const calculateResults = () => {
     const questions = Array.isArray(quizData?.questions) ? quizData.questions : [];
     let correct = 0;
-    
     questions.forEach((q: any, index: number) => {
       const correctAnswer = q.correctAnswer || q.answer;
       const userAnswer = userAnswers?.[index];
-      if (correctAnswer === userAnswer) {
-        correct++;
-      }
+      if (correctAnswer === userAnswer) correct++;
     });
-    
     return {
       correct,
       total: questions.length,
-      percentage: questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0
+      percentage: questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0,
     };
   };
 
@@ -286,24 +262,21 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const finalScore = score !== undefined ? score : results.percentage;
   const finalCorrect = correctCount !== undefined ? correctCount : results.correct;
   const finalTotal = totalQuestions !== undefined ? totalQuestions : results.total;
-  
-  const getPerformanceMessage = (percentage: number) => {
-    if (percentage >= 90) return { message: 'Excellent! 🎉', color: '#4CAF50' };
-    if (percentage >= 75) return { message: 'Great Job! 👏', color: '#8BC34A' };
-    if (percentage >= 60) return { message: 'Good Work! 👍', color: '#FFC107' };
-    if (percentage >= 40) return { message: 'Keep Practicing! 💪', color: '#FF9800' };
-    return { message: 'Need Improvement! 📚', color: '#F44336' };
+
+  const getPerformanceMeta = (percentage: number): { message: string; color: string; bg: string } => {
+    if (percentage >= 90) return { message: 'Excellent! 🎉', color: theme.colors.success, bg: theme.colors.tintGreen };
+    if (percentage >= 75) return { message: 'Great Job! 👏', color: theme.colors.onTintGreen, bg: theme.colors.tintGreen };
+    if (percentage >= 60) return { message: 'Good Work! 👍', color: theme.colors.warning, bg: theme.colors.tintOrange };
+    if (percentage >= 40) return { message: 'Keep Practicing! 💪', color: theme.colors.onTintOrange, bg: theme.colors.tintOrange };
+    return { message: 'Need Improvement! 📚', color: theme.colors.danger, bg: theme.colors.tintRed };
   };
 
-  const performance = getPerformanceMessage(finalScore);
+  const perf = getPerformanceMeta(finalScore);
 
   const renderQuestion = (question: any, index: number) => {
-    const questionData = question;
-    const questionText = questionData.question || '';
-    const options = questionData.options || [];
-    const correctAnswer = questionData.correctAnswer || questionData.answer || '';
-    
-    // userAnswers stores the letter (A, B, C, D)
+    const questionText = question.question || '';
+    const options = question.options || [];
+    const correctAnswer = question.correctAnswer || question.answer || '';
     const userAnswer = userAnswers[index] || '';
     const isCorrect = correctAnswer === userAnswer;
 
@@ -312,21 +285,41 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         key={index}
         style={[
           styles.questionCard,
-          { backgroundColor: colors.card },
-          isCorrect ? styles.questionCardCorrect : styles.questionCardIncorrect,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: isCorrect ? theme.colors.success : theme.colors.danger,
+            borderWidth: 1.5,
+          },
         ]}
       >
+        {/* Question header */}
         <View style={styles.questionHeader}>
-          <Text style={[styles.questionNumber, { color: colors.textSecondary }]}>Q{index + 1}</Text>
-          <View style={[
-            styles.resultBadge,
-            { backgroundColor: isCorrect ? '#4CAF50' : '#F44336' }
-          ]}>
-            <Ionicons name={isCorrect ? 'checkmark' : 'close'} size={12} color="#fff" />
+          <View style={[styles.qNumBadge, { backgroundColor: theme.colors.surfaceAlt }]}>
+            <Text style={[styles.qNumText, { color: theme.colors.textSecondary }]}>Q{index + 1}</Text>
+          </View>
+          <View
+            style={[
+              styles.resultBadge,
+              { backgroundColor: isCorrect ? theme.colors.tintGreen : theme.colors.tintRed },
+            ]}
+          >
+            <Ionicons
+              name={isCorrect ? 'checkmark' : 'close'}
+              size={13}
+              color={isCorrect ? theme.colors.success : theme.colors.danger}
+            />
+            <Text
+              style={[
+                styles.resultBadgeText,
+                { color: isCorrect ? theme.colors.success : theme.colors.danger },
+              ]}
+            >
+              {isCorrect ? 'Correct' : 'Incorrect'}
+            </Text>
           </View>
         </View>
 
-        <Text style={[styles.questionText, { color: colors.text }]}>{questionText}</Text>
+        <Text style={[styles.questionText, { color: theme.colors.textPrimary }]}>{questionText}</Text>
 
         <View style={styles.optionsList}>
           {options.map((option: string, optIndex: number) => {
@@ -334,101 +327,231 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             const isUserAnswer = userAnswer === optionLabel;
             const isCorrectAnswer = correctAnswer === optionLabel;
 
+            let optBg = theme.colors.surfaceAlt;
+            let optBorder = theme.colors.border;
+            if (isCorrectAnswer) { optBg = theme.colors.tintGreen; optBorder = theme.colors.success; }
+            else if (isUserAnswer) { optBg = theme.colors.tintRed; optBorder = theme.colors.danger; }
+
             return (
               <View
                 key={optIndex}
                 style={[
                   styles.optionItem,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                  isCorrectAnswer && styles.optionCorrect,
-                  isUserAnswer && !isCorrectAnswer && styles.optionIncorrect,
+                  { backgroundColor: optBg, borderColor: optBorder },
                 ]}
               >
-                <View style={styles.optionContent}>
-                  <View style={[
-                    styles.optionBadge,
-                    { borderColor: colors.border },
-                    isCorrectAnswer && styles.badgeSuccess,
-                    isUserAnswer && !isCorrectAnswer && styles.badgeError,
-                    !isCorrectAnswer && !isUserAnswer && [styles.badgeLight, { backgroundColor: colors.inputBackground, borderColor: colors.border }],
-                  ]}>
-                    <Text style={[
-                      styles.optionBadgeText,
-                      { color: colors.textSecondary },
-                      isCorrectAnswer && { color: '#4CAF50', fontWeight: 'bold' },
-                      isUserAnswer && !isCorrectAnswer && { color: '#F44336', fontWeight: 'bold' },
-                    ]}>
-                      {optionLabel}
-                    </Text>
-                  </View>
-                  <Text style={[
-                    styles.optionText, 
-                    { color: colors.text },
-                    isCorrectAnswer && { color: '#1B5E20', fontWeight: '600' },
-                    isUserAnswer && !isCorrectAnswer && { color: '#B71C1C', fontWeight: '500' },
-                  ]}>{option}</Text>
+                <View
+                  style={[
+                    styles.optionLetter,
+                    {
+                      backgroundColor: isCorrectAnswer
+                        ? theme.colors.success
+                        : isUserAnswer
+                          ? theme.colors.danger
+                          : theme.colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionLetterText,
+                      {
+                        color: isCorrectAnswer || isUserAnswer
+                          ? theme.colors.textInverse
+                          : theme.colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {optionLabel}
+                  </Text>
                 </View>
-                {isUserAnswer && (
-                  <Ionicons
-                    name="person"
-                    size={16}
-                    color={isCorrectAnswer ? '#4CAF50' : '#F44336'}
-                    style={{ marginLeft: 4 }}
-                  />
-                )}
+                <Text
+                  style={[
+                    styles.optionText,
+                    {
+                      color: isCorrectAnswer
+                        ? theme.colors.onTintGreen
+                        : isUserAnswer
+                          ? theme.colors.danger
+                          : theme.colors.textPrimary,
+                      fontWeight: isCorrectAnswer || isUserAnswer ? '600' : '400',
+                      flex: 1,
+                    },
+                  ]}
+                >
+                  {option}
+                </Text>
                 {isCorrectAnswer && (
-                  <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                  <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
+                )}
+                {isUserAnswer && !isCorrectAnswer && (
+                  <Ionicons name="person" size={16} color={theme.colors.danger} />
                 )}
               </View>
             );
           })}
         </View>
+
         <QuizExplanationAccordion
           questionId={question.id || `q-${index}-${question.question.substring(0, 20)}`}
           questionText={question.question}
           options={question.options}
           selectedAnswer={userAnswers[index] || ''}
-          clearTrigger={false} // Assuming no reset trigger is needed
-          colors={colors}
+          clearTrigger={false}
+          colors={{
+            text: theme.colors.textPrimary,
+            textSecondary: theme.colors.textSecondary,
+            card: theme.colors.surface,
+            border: theme.colors.border,
+            primary: theme.colors.primary,
+            background: theme.colors.background,
+            inputBackground: theme.colors.surfaceAlt,
+            error: theme.colors.danger,
+            success: theme.colors.success,
+          }}
         />
+
+        {canEditExplanations && (
+          <View style={[styles.explanationEditor, { borderTopColor: theme.colors.border }]}>
+            {editingIdx === index ? (
+              <>
+                <TextInput
+                  style={[
+                    styles.explanationInput,
+                    {
+                      backgroundColor: theme.colors.surfaceAlt,
+                      borderColor: theme.colors.border,
+                      color: theme.colors.textPrimary,
+                    },
+                  ]}
+                  value={explanationDrafts[index] ?? savedExplanations[index] ?? question.explanation ?? ''}
+                  onChangeText={(text) =>
+                    setExplanationDrafts((prev) => ({ ...prev, [index]: text }))
+                  }
+                  placeholder="Write a teacher explanation for this question…"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <View style={styles.explanationActions}>
+                  <TouchableOpacity
+                    style={[styles.explanationBtn, { backgroundColor: theme.colors.surfaceAlt }]}
+                    onPress={() => setEditingIdx(null)}
+                    disabled={savingExplanationIdx === index}
+                  >
+                    <Text style={[styles.explanationBtnText, { color: theme.colors.textSecondary }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.explanationBtn, { backgroundColor: theme.colors.primary }]}
+                    onPress={() => handleSaveExplanation(index)}
+                    disabled={savingExplanationIdx === index}
+                  >
+                    {savingExplanationIdx === index ? (
+                      <ActivityIndicator size="small" color={theme.colors.textInverse} />
+                    ) : (
+                      <Text style={[styles.explanationBtnText, { color: theme.colors.textInverse }]}>
+                        Save
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={styles.explanationEditTrigger}
+                onPress={() => {
+                  setExplanationDrafts((prev) => ({
+                    ...prev,
+                    [index]: savedExplanations[index] ?? question.explanation ?? '',
+                  }));
+                  setEditingIdx(index);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={15} color={theme.colors.primary} />
+                <Text style={[styles.explanationEditTriggerText, { color: theme.colors.primary }]}>
+                  {savedExplanations[index] || question.explanation
+                    ? 'Edit explanation'
+                    : 'Add explanation'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Simple Header with Close Button */}
-      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={{ flex: 1 }}>
-          {isTeacherView && studentName && (
-            <Text style={[styles.headerTitle, { color: colors.text }]}>{studentName}</Text>
-          )}
-          {quizName && (
-            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>{quizName}</Text>
-          )}
-        </View>
-        <TouchableOpacity style={styles.closeBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={28} color={colors.text} />
+    <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: theme.colors.primary, paddingTop: insets.top > 0 ? insets.top : 12 },
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.textInverse} />
         </TouchableOpacity>
+        <View style={styles.headerInfo}>
+          {isTeacherView && studentName ? (
+            <Text style={[styles.headerTitle, { color: theme.colors.textInverse }]} numberOfLines={1}>
+              {studentName}
+            </Text>
+          ) : (
+            <Text style={[styles.headerTitle, { color: theme.colors.textInverse }]}>Quiz Results</Text>
+          )}
+          {quizName ? (
+            <Text style={[styles.headerSub, { color: 'rgba(255,255,255,0.80)' }]} numberOfLines={1}>
+              {quizName}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Math.max(16, insets.bottom) }}>
-        {/* Compact Score Card */}
-        <View style={[styles.scoreCard, { backgroundColor: colors.card }]}>
+      <ScrollView
+        style={styles.fill}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Math.max(16, insets.bottom) }}
+      >
+        {/* Score banner */}
+        <View style={[styles.scoreBanner, { backgroundColor: perf.bg }]}>
+          <Text style={[styles.scoreBannerMessage, { color: perf.color }]}>{perf.message}</Text>
+        </View>
+
+        {/* Score card */}
+        <View style={[styles.scoreCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.scoreRow}>
             <View style={styles.scoreItem}>
-              <Text style={[styles.scoreValue, { color: performance.color }]}>{finalScore}%</Text>
-              <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Score</Text>
+              <Text style={[styles.scoreValue, { color: perf.color }]}>{finalScore}%</Text>
+              <Text style={[styles.scoreLabel, { color: theme.colors.textSecondary }]}>Score</Text>
             </View>
+            <View style={[styles.scoreDivider, { backgroundColor: theme.colors.border }]} />
             <View style={styles.scoreItem}>
-              <Text style={[styles.scoreValue, { color: colors.text }]}>{finalCorrect}/{finalTotal}</Text>
-              <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Correct</Text>
+              <Text style={[styles.scoreValue, { color: theme.colors.textPrimary }]}>
+                {finalCorrect}/{finalTotal}
+              </Text>
+              <Text style={[styles.scoreLabel, { color: theme.colors.textSecondary }]}>Correct</Text>
             </View>
-            {attemptData?.time_spent_seconds && (
-              <View style={styles.scoreItem}>
-                <Text style={[styles.scoreValue, { color: colors.text }]}>{attemptData.time_spent_seconds}s</Text>
-                <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Time</Text>
-              </View>
+            {attemptData?.time_spent_seconds != null && (
+              <>
+                <View style={[styles.scoreDivider, { backgroundColor: theme.colors.border }]} />
+                <View style={styles.scoreItem}>
+                  <Text style={[styles.scoreValue, { color: theme.colors.textPrimary }]}>
+                    {attemptData.time_spent_seconds}s
+                  </Text>
+                  <Text style={[styles.scoreLabel, { color: theme.colors.textSecondary }]}>Time</Text>
+                </View>
+              </>
             )}
           </View>
         </View>
@@ -436,179 +559,142 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         {/* Questions */}
         <View style={styles.questionsSection}>
           {quizData.questions.map((question: any, index: number) => (
-            <View key={index}>
-              {renderQuestion(question, index)}
-              
-            </View>
+            <View key={index}>{renderQuestion(question, index)}</View>
           ))}
         </View>
-
-        <View style={{ height: 8 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 12,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
+  fill: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  loadingText: { fontSize: 14 },
+  emptyIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', marginBottom: 20 },
+  goBackBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  goBackBtnText: { fontSize: 15, fontWeight: '600' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 12,
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    marginTop: 1,
-  },
-  closeBtn: {
-    padding: 4,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scoreCard: {
-    margin: 6,
-    padding: 10,
-    borderRadius: 8,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  scoreItem: {
+  backBtn: { padding: 4 },
+  headerInfo: { flex: 1 },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
+  headerSub: { fontSize: 13, marginTop: 2 },
+
+  scoreBanner: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
-  scoreValue: {
-    fontSize: 22,
-    fontWeight: '700',
+  scoreBannerMessage: { fontSize: 18, fontWeight: '700' },
+
+  scoreCard: {
+    margin: 16,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  scoreLabel: {
-    fontSize: 10,
-    marginTop: 2,
-  },
-  questionsSection: {
-    paddingHorizontal: 6,
-  },
+  scoreRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  scoreItem: { alignItems: 'center', flex: 1 },
+  scoreDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch' },
+  scoreValue: { fontSize: 26, fontWeight: '800', marginBottom: 2 },
+  scoreLabel: { fontSize: 12, fontWeight: '500' },
+
+  questionsSection: { paddingHorizontal: 16, gap: 12 },
+
   questionCard: {
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 2,
-  },
-  questionCardCorrect: {
-    borderColor: '#4CAF50',
-  },
-  questionCardIncorrect: {
-    borderColor: '#F44336',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   questionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 10,
   },
-  questionNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  qNumBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  qNumText: { fontSize: 12, fontWeight: '600' },
   resultBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
-  questionText: {
-    fontSize: 14,
-    lineHeight: 19,
-    marginBottom: 8,
-  },
-  optionsList: {
-    gap: 5,
-  },
+  resultBadgeText: { fontSize: 12, fontWeight: '700' },
+  questionText: { fontSize: 14, lineHeight: 20, marginBottom: 12 },
+
+  optionsList: { gap: 6 },
   optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    gap: 5,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    gap: 8,
   },
-  optionCorrect: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
-    borderWidth: 2,
+  optionLetter: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  optionIncorrect: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#F44336',
-    borderWidth: 2,
+  optionLetterText: { fontSize: 12, fontWeight: '700' },
+  optionText: { fontSize: 13, lineHeight: 18 },
+
+  explanationEditor: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  optionContent: {
-    flex: 1,
+  explanationEditTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-  },
-  optionBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  badgeSuccess: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
-    borderWidth: 2,
-  },
-  badgeError: {
-    backgroundColor: '#FFEBEE',
-    borderColor: '#F44336',
-    borderWidth: 2,
-  },
-  badgeLight: {
-  },
-  optionBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  optionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    width: 24,
-  },
-  optionText: {
-    fontSize: 13,
-    flex: 1,
-  },
-  answerBadge: {
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    paddingHorizontal: 8,
+    gap: 6,
+    alignSelf: 'flex-start',
     paddingVertical: 4,
-    borderRadius: 4,
   },
-  answerBadgeText: {
-    fontSize: 10,
-    color: '#fff',
-    fontWeight: '600',
+  explanationEditTriggerText: { fontSize: 13, fontWeight: '600' },
+  explanationInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    fontSize: 13,
+    lineHeight: 18,
   },
+  explanationActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 8,
+  },
+  explanationBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  explanationBtnText: { fontSize: 13, fontWeight: '700' },
 });

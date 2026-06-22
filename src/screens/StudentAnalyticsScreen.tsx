@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherDashboardSummary, fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { DateRangeFilter, FilterSection, ClassroomFilter } from '../components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
 
@@ -63,8 +63,18 @@ interface StudentSummary {
 export default function StudentAnalyticsScreen({ route, navigation, onNavigate }: Props) {
   const { studentId, studentName, classroomId, classroomName } = route.params || {};
   
-  const { theme } = useTheme();
-  const colors = theme.colors;
+  const theme = useTeacherTheme();
+  const colors = {
+    background: theme.colors.background,
+    card: theme.colors.surface,
+    text: theme.colors.textPrimary,
+    textSecondary: theme.colors.textSecondary,
+    primary: theme.colors.primary,
+    border: theme.colors.border,
+    error: theme.colors.danger,
+    success: theme.colors.success,
+    inputBackground: theme.colors.surfaceAlt,
+  };
   
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -522,11 +532,13 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
 
   if (loading && !refreshing) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <LoadingSpinner size={60} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading analytics...
+          <View style={[styles.loadingIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+            <LoadingSpinner size={36} />
+          </View>
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+            Loading analytics…
           </Text>
         </View>
       </View>
@@ -535,38 +547,37 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          colors={[colors.primary]}
-          tintColor={colors.primary}
+          colors={[theme.colors.primary]}
+          tintColor={theme.colors.primary}
         />
       }
     >
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.card }]}>
-        <View style={styles.headerContent}>
-          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '20' }]}>
-            <Ionicons name="person" size={32} color={colors.primary} />
-          </View>
-          <View style={styles.headerText}>
-            <Text style={[styles.studentName, { color: colors.text }]}>
-              {studentName || 'Student'}
-            </Text>
-            <Text style={[styles.studentId, { color: colors.textSecondary }]}>
-              ID: {studentId}
-            </Text>
-            {classroomName && (
-              <View style={styles.classroomBadge}>
-                <Ionicons name="school" size={14} color={colors.primary} />
-                <Text style={[styles.classroomText, { color: colors.primary }]}>
-                  {classroomName}
-                </Text>
-              </View>
-            )}
-          </View>
+      {/* Student identity header */}
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <View style={[styles.avatarCircle, { backgroundColor: 'rgba(255,255,255,0.20)' }]}>
+          <Ionicons name="person" size={32} color={theme.colors.textInverse} />
+        </View>
+        <View style={styles.headerText}>
+          <Text style={[styles.studentNameText, { color: theme.colors.textInverse }]}>
+            {studentName || 'Student'}
+          </Text>
+          <Text style={[styles.studentIdText, { color: 'rgba(255,255,255,0.75)' }]}>
+            ID: {studentId}
+          </Text>
+          {classroomName && (
+            <View style={[styles.classroomBadge, { backgroundColor: 'rgba(255,255,255,0.20)' }]}>
+              <Ionicons name="school-outline" size={13} color={theme.colors.textInverse} />
+              <Text style={[styles.classroomText, { color: theme.colors.textInverse }]}>
+                {classroomName}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -587,81 +598,72 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         </View>
       </FilterSection>
 
-      {/* Student Summary Card */}
-      <View style={[styles.section, { backgroundColor: colors.card }]}>
+      {/* Performance Summary */}
+      <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="stats-chart" size={24} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Performance Summary</Text>
+          <Ionicons name="stats-chart-outline" size={20} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Performance Summary</Text>
         </View>
 
         <View style={styles.summaryGrid}>
-          <TouchableOpacity 
-            style={[styles.summaryItem, statusFilter === 'All' && styles.summaryItemActive]}
-            onPress={() => handleStatusFilterChange('All')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{filterCounts.total}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total{selectedQuiz ? ' in Quiz' : ' Assigned'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.summaryItem, statusFilter === 'Completed' && styles.summaryItemActive]}
-            onPress={() => handleStatusFilterChange('Completed')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.summaryValue, { color: '#10B981' }]}>{filterCounts.completed}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Completed</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.summaryItem, statusFilter === 'In Progress' && styles.summaryItemActive]}
-            onPress={() => handleStatusFilterChange('In Progress')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>{filterCounts.inProgress}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>In Progress</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.summaryItem, statusFilter === 'Absent' && styles.summaryItemActive]}
-            onPress={() => handleStatusFilterChange('Absent')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.summaryValue, { color: '#EF4444' }]}>{filterCounts.missed}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Missed/Absent</Text>
-          </TouchableOpacity>
+          {[
+            { label: `Total${selectedQuiz ? ' in Quiz' : ' Assigned'}`, value: filterCounts.total, filterKey: 'All' as const, color: theme.colors.textPrimary },
+            { label: 'Completed', value: filterCounts.completed, filterKey: 'Completed' as const, color: theme.colors.success },
+            { label: 'In Progress', value: filterCounts.inProgress, filterKey: 'In Progress' as const, color: theme.colors.warning },
+            { label: 'Missed', value: filterCounts.missed, filterKey: 'Absent' as const, color: theme.colors.danger },
+          ].map(({ label, value, filterKey, color }) => (
+            <TouchableOpacity
+              key={filterKey}
+              style={[
+                styles.summaryItem,
+                { borderColor: theme.colors.border },
+                statusFilter === filterKey && { borderColor: theme.colors.primary, backgroundColor: theme.colors.tintTeal },
+              ]}
+              onPress={() => handleStatusFilterChange(filterKey)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusFilter === filterKey }}
+            >
+              <Text style={[styles.summaryValue, { color }]}>{value}</Text>
+              <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        <View style={[styles.scoreRow, { borderTopColor: colors.border }]}>
-          <View style={styles.scoreItem}>
-            <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Average</Text>
-            <Text style={[styles.scoreValue, { color: colors.text }]}>{filterCounts.averageScore.toFixed(1)}%</Text>
-          </View>
-          <View style={styles.scoreItem}>
-            <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Highest</Text>
-            <Text style={[styles.scoreValue, { color: '#10B981' }]}>{filterCounts.highestScore.toFixed(0)}%</Text>
-          </View>
-          <View style={styles.scoreItem}>
-            <Text style={[styles.scoreLabel, { color: colors.textSecondary }]}>Lowest</Text>
-            <Text style={[styles.scoreValue, { color: '#EF4444' }]}>{filterCounts.lowestScore.toFixed(0)}%</Text>
-          </View>
+        <View style={[styles.scoreRow, { borderTopColor: theme.colors.border }]}>
+          {[
+            { label: 'Average', value: `${filterCounts.averageScore.toFixed(1)}%`, color: theme.colors.primary },
+            { label: 'Highest', value: `${filterCounts.highestScore.toFixed(0)}%`, color: theme.colors.success },
+            { label: 'Lowest', value: `${filterCounts.lowestScore.toFixed(0)}%`, color: theme.colors.danger },
+          ].map(({ label, value, color }) => (
+            <View key={label} style={styles.scoreItem}>
+              <Text style={[styles.scoreLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
+              <Text style={[styles.scoreValue, { color }]}>{value}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
       {/* Strong Topics */}
       {strongTopics.length > 0 && (
-        <View style={[styles.section, { backgroundColor: colors.card }]}>
+        <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="trophy" size={24} color="#10B981" />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Where Student is Good</Text>
+            <Ionicons name="trophy-outline" size={20} color={theme.colors.success} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Strong Topics</Text>
           </View>
           {strongTopics.map((topic, index) => (
-            <View key={index} style={[styles.topicCard, { borderColor: colors.border }]}>
+            <View
+              key={index}
+              style={[styles.topicCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}
+            >
               <View style={styles.topicInfo}>
-                <Text style={[styles.topicName, { color: colors.text }]}>{topic.topic}</Text>
-                <Text style={[styles.topicStats, { color: colors.textSecondary }]}>
+                <Text style={[styles.topicName, { color: theme.colors.textPrimary }]}>{topic.topic}</Text>
+                <Text style={[styles.topicStats, { color: theme.colors.textSecondary }]}>
                   {topic.completedCount}/{topic.quizCount} quizzes
                 </Text>
               </View>
-              <View style={[styles.topicScoreBadge, { backgroundColor: '#10B981' + '15' }]}>
-                <Text style={[styles.topicScore, { color: '#10B981' }]}>
+              <View style={[styles.topicScoreBadge, { backgroundColor: theme.colors.tintGreen }]}>
+                <Text style={[styles.topicScore, { color: theme.colors.success }]}>
                   {topic.averageScore.toFixed(1)}%
                 </Text>
               </View>
@@ -672,21 +674,24 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
 
       {/* Weak Topics */}
       {weakTopics.length > 0 && (
-        <View style={[styles.section, { backgroundColor: colors.card }]}>
+        <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <View style={styles.sectionHeader}>
-            <Ionicons name="alert-circle" size={24} color="#F59E0B" />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Where to Improve</Text>
+            <Ionicons name="alert-circle-outline" size={20} color={theme.colors.warning} />
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Topics to Improve</Text>
           </View>
           {weakTopics.map((topic, index) => (
-            <View key={index} style={[styles.topicCard, { borderColor: colors.border }]}>
+            <View
+              key={index}
+              style={[styles.topicCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}
+            >
               <View style={styles.topicInfo}>
-                <Text style={[styles.topicName, { color: colors.text }]}>{topic.topic}</Text>
-                <Text style={[styles.topicStats, { color: colors.textSecondary }]}>
+                <Text style={[styles.topicName, { color: theme.colors.textPrimary }]}>{topic.topic}</Text>
+                <Text style={[styles.topicStats, { color: theme.colors.textSecondary }]}>
                   {topic.completedCount}/{topic.quizCount} quizzes
                 </Text>
               </View>
-              <View style={[styles.topicScoreBadge, { backgroundColor: '#F59E0B' + '15' }]}>
-                <Text style={[styles.topicScore, { color: '#F59E0B' }]}>
+              <View style={[styles.topicScoreBadge, { backgroundColor: theme.colors.tintOrange }]}>
+                <Text style={[styles.topicScore, { color: theme.colors.warning }]}>
                   {topic.averageScore.toFixed(1)}%
                 </Text>
               </View>
@@ -696,221 +701,200 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       )}
 
       {/* Teacher Suggestions */}
-      <View style={[styles.section, { backgroundColor: colors.card }]}>
+      <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="bulb" size={24} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Teacher Suggestions</Text>
+          <Ionicons name="bulb-outline" size={20} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>AI Suggestions</Text>
         </View>
         {getSuggestions().map((suggestion, index) => (
-          <View key={index} style={styles.suggestionItem}>
-            <Text style={[styles.suggestionText, { color: colors.text }]}>{suggestion}</Text>
+          <View
+            key={index}
+            style={[styles.suggestionItem, { borderLeftColor: theme.colors.primary }]}
+          >
+            <Text style={[styles.suggestionText, { color: theme.colors.textPrimary }]}>{suggestion}</Text>
           </View>
         ))}
       </View>
 
-      {/* Quiz Filters */}
-      <View style={[styles.section, { backgroundColor: colors.card }]}>
+      {/* Quiz List */}
+      <View style={[styles.section, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="list" size={24} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Submitted Quizzes</Text>
+          <Ionicons name="list-outline" size={20} color={theme.colors.primary} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Submitted Quizzes</Text>
         </View>
 
-        {/* Quiz Filter Chips */}
-        {availableQuizzes.length > 1 && (
-          <View style={styles.quizFilterSection}>
-            <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Filter by Quiz:</Text>
-            {/* <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterChipsScroll}>
-              <TouchableOpacity
+        {/* Sort Options */}
+        <View style={[styles.sortRow, { borderColor: theme.colors.border }]}>
+          <Text style={[styles.sortLabel, { color: theme.colors.textSecondary }]}>Sort by:</Text>
+          {(['date', 'score'] as const).map((sort) => (
+            <TouchableOpacity
+              key={sort}
+              style={[
+                styles.sortButton,
+                { borderColor: sortBy === sort ? theme.colors.primary : theme.colors.border },
+                sortBy === sort && { backgroundColor: theme.colors.tintTeal },
+              ]}
+              onPress={() => handleSortChange(sort)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: sortBy === sort }}
+            >
+              <Text
                 style={[
-                  styles.quizFilterChip,
-                  { borderColor: colors.border },
-                  selectedQuiz === null && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  styles.sortButtonText,
+                  { color: sortBy === sort ? theme.colors.primary : theme.colors.textSecondary },
                 ]}
-                onPress={() => handleQuizFilterChange(null)}
               >
-                <Text style={[
-                  styles.quizFilterChipText,
-                  { color: selectedQuiz === null ? '#fff' : colors.text },
-                ]}>All Quizzes</Text>
-              </TouchableOpacity>
-              {availableQuizzes.map((quiz) => (
-                <TouchableOpacity
-                  key={quiz.quiz_id}
-                  style={[
-                    styles.quizFilterChip,
-                    { borderColor: colors.border },
-                    selectedQuiz === quiz.quiz_id && { backgroundColor: colors.primary, borderColor: colors.primary },
-                  ]}
-                  onPress={() => handleQuizFilterChange(quiz.quiz_id)}
-                >
-                  <Text style={[
-                    styles.quizFilterChipText,
-                    { color: selectedQuiz === quiz.quiz_id ? '#fff' : colors.text },
-                  ]} numberOfLines={1}>{quiz.quiz_name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView> */}
+                {sort.charAt(0).toUpperCase() + sort.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Filter by available quiz (kept as state, no UI change needed) */}
+        {availableQuizzes.length > 1 && selectedQuiz !== null && (
+          <View style={styles.quizFilterSection}>
+            <TouchableOpacity
+              style={[styles.clearFilterBtn, { backgroundColor: theme.colors.tintRed }]}
+              onPress={() => handleQuizFilterChange(null)}
+            >
+              <Ionicons name="close-circle" size={14} color={theme.colors.danger} />
+              <Text style={[styles.clearFilterText, { color: theme.colors.danger }]}>Clear quiz filter</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Sort Options */}
-        <View style={styles.sortRow}>
-          <Text style={[styles.sortLabel, { color: colors.textSecondary }]}>Sort by:</Text>
-          <TouchableOpacity
-            style={[
-              styles.sortButton,
-              { borderColor: colors.border },
-              sortBy === 'date' && { backgroundColor: colors.primary + '15', borderColor: colors.primary },
-            ]}
-            onPress={() => handleSortChange('date')}
-          >
-            <Text style={[styles.sortButtonText, { color: sortBy === 'date' ? colors.primary : colors.text }]}>
-              Date
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.sortButton,
-              { borderColor: colors.border },
-              sortBy === 'score' && { backgroundColor: colors.primary + '15', borderColor: colors.primary },
-            ]}
-            onPress={() => handleSortChange('score')}
-          >
-            <Text style={[styles.sortButtonText, { color: sortBy === 'score' ? colors.primary : colors.text }]}>
-              Score
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Quiz List */}
+        {/* Quiz items */}
         {filteredAttempts.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={48} color={colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              No quizzes found for selected filter
-            </Text>
+            <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
+              <Ionicons name="document-text-outline" size={32} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.emptyText, { color: theme.colors.textPrimary }]}>No quizzes found</Text>
+            <Text style={[styles.emptySubText, { color: theme.colors.textSecondary }]}>Try adjusting the selected filter.</Text>
           </View>
         ) : (
           <>
-          {filteredAttempts.slice(0, displayCount).map((attempt, index) => {
-            const scorePercentage = attempt.score ?? 0;
-            const scoreColor = scorePercentage >= 60 ? '#F59E0B' : scorePercentage > 0 ? '#EF4444' : '#9CA3AF';
-            const progressBarColor = scorePercentage >= 60 ? '#F59E0B' : '#EF4444';
-            
-            // Calculate time spent in minutes
-            let timeText = 'Not started';
-            if (attempt.completed_at && attempt.started_at) {
-              const start = new Date(attempt.started_at);
-              const end = new Date(attempt.completed_at);
-              const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
-              timeText = `Avg ${minutes} min`;
-            }
-            
-            const handleQuizPress = () => {
-              // Only navigate if quiz has been attempted (has attempt_id or completed_at)
-              if (!attempt.attempt_id && !attempt.completed_at) {
-                return;
+            {filteredAttempts.slice(0, displayCount).map((attempt, index) => {
+              const scorePercentage = attempt.score ?? 0;
+              const scoreColor = scorePercentage >= 75
+                ? theme.colors.success
+                : scorePercentage >= 40
+                  ? theme.colors.warning
+                  : scorePercentage > 0
+                    ? theme.colors.danger
+                    : theme.colors.textSecondary;
+              const barColor = scorePercentage >= 75
+                ? theme.colors.success
+                : scorePercentage >= 40
+                  ? theme.colors.warning
+                  : theme.colors.danger;
+
+              let timeText = 'Not started';
+              if (attempt.completed_at && attempt.started_at) {
+                const start = new Date(attempt.started_at);
+                const end = new Date(attempt.completed_at);
+                const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+                timeText = `${minutes} min`;
               }
 
-              // If no attempt_id, we need to fetch it from the API
-              // For now, show a warning if attempt_id is missing for completed quizzes
-              if (!attempt.attempt_id && attempt.completed_at) {
-                console.warn('⚠️ Missing attempt_id for completed quiz. This may cause issues loading the results.');
-              }
-
-              const params = {
-                quizId: attempt.quiz_id,
-                attemptId: attempt.attempt_id,
-                studentId: studentId,
-                studentName: studentName,
-                quizName: attempt.quiz_name,
-                attemptData: attempt,
-                questions: attempt.questions,
-                submission: attempt.log_data,
-                score: attempt.score,
-                timeSpent: attempt.time_spent_seconds,
-                completedAt: attempt.completed_at,
-                isTeacherView: true,
+              const handleQuizPress = () => {
+                if (!attempt.attempt_id && !attempt.completed_at) return;
+                if (!attempt.attempt_id && attempt.completed_at) {
+                  console.warn('⚠️ Missing attempt_id for completed quiz.');
+                }
+                const params = {
+                  quizId: attempt.quiz_id,
+                  attemptId: attempt.attempt_id,
+                  studentId: studentId,
+                  studentName: studentName,
+                  quizName: attempt.quiz_name,
+                  attemptData: attempt,
+                  questions: attempt.questions,
+                  submission: attempt.log_data,
+                  score: attempt.score,
+                  timeSpent: attempt.time_spent_seconds,
+                  completedAt: attempt.completed_at,
+                  isTeacherView: true,
+                };
+                if (navigation) {
+                  navigation.navigate('QuizResultsScreen', params);
+                } else if (onNavigate) {
+                  onNavigate('QuizResultsScreen', params);
+                }
               };
 
-              if (navigation) {
-                navigation.navigate('QuizResultsScreen', params);
-              } else if (onNavigate) {
-                onNavigate('QuizResultsScreen', params);
-              }
-            };
-            
-            return (
-              <TouchableOpacity 
-                key={index} 
-                style={[styles.quizListItem, { backgroundColor: colors.background }]}
-                onPress={handleQuizPress}
-                activeOpacity={0.7}
-                disabled={!attempt.attempt_id && !attempt.completed_at}
-              >
-                <View style={styles.quizListContent}>
-                  <View style={styles.quizListLeft}>
-                    <Text style={[styles.quizListTitle, { color: colors.text }]} numberOfLines={1}>
-                      {attempt.topic}
-                    </Text>
-                    <Text style={[styles.quizListSubtitle, { color: colors.textSecondary }]}>
-                      {attempt.quiz_name.match(/\((\d+)\s*Qs?\)/)?.[0] || '1 quiz'} • {timeText}
-                    </Text>
-                    {attempt.completed_at && (
-                      <Text style={[styles.quizCompletedDate, { color: colors.textSecondary }]}>
-                        Completed: {new Date(attempt.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              const isTappable = !!(attempt.attempt_id || attempt.completed_at);
+
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.quizListItem,
+                    { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+                  ]}
+                  onPress={handleQuizPress}
+                  activeOpacity={isTappable ? 0.7 : 1}
+                  disabled={!isTappable}
+                  accessibilityRole={isTappable ? 'button' : 'none'}
+                  accessibilityLabel={`${attempt.topic}, ${scorePercentage.toFixed(0)}%`}
+                >
+                  <View style={styles.quizListContent}>
+                    <View style={styles.quizListLeft}>
+                      <Text style={[styles.quizListTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                        {attempt.topic}
                       </Text>
-                    )}
+                      <Text style={[styles.quizListSubtitle, { color: theme.colors.textSecondary }]}>
+                        {attempt.quiz_name.match(/\((\d+)\s*Qs?\)/)?.[0] ?? '—'} · {timeText}
+                      </Text>
+                      {attempt.completed_at && (
+                        <Text style={[styles.quizCompletedDate, { color: theme.colors.textSecondary }]}>
+                          {new Date(attempt.completed_at).toLocaleDateString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric',
+                          })}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.quizListRight}>
+                      <Text style={[styles.quizListScore, { color: scoreColor }]}>
+                        {scorePercentage.toFixed(0)}%
+                      </Text>
+                      {attempt.status?.toLowerCase() === 'missed' && (
+                        <View style={[styles.missedBadge, { backgroundColor: theme.colors.tintRed }]}>
+                          <Text style={[styles.missedBadgeText, { color: theme.colors.danger }]}>Missed</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                  
-                  <View style={styles.quizListRight}>
-                    <Text style={[styles.quizListScore, { color: scoreColor }]}>
-                      {scorePercentage.toFixed(0)}%
-                    </Text>
+                  <View style={[styles.progressBarContainer, { backgroundColor: theme.colors.border }]}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { backgroundColor: barColor, width: `${Math.min(scorePercentage, 100)}%` as `${number}%` },
+                      ]}
+                    />
                   </View>
-                </View>
-                
-                {/* Progress Bar */}
-                <View style={[styles.progressBarContainer, { backgroundColor: colors.border }]}>
-                  <View 
-                    style={[
-                      styles.progressBarFill, 
-                      { 
-                        backgroundColor: progressBarColor,
-                        width: `${Math.min(scorePercentage, 100)}%`
-                      }
-                    ]} 
-                  />
-                </View>
-                
-                {/* Status indicator */}
-                {attempt.status?.toLowerCase() === 'missed' && (
-                  <View style={styles.quizStatusBadge}>
-                    <Ionicons name="close-circle" size={12} color="#EF4444" />
-                    <Text style={[styles.quizStatusText, { color: '#EF4444' }]}>Missed</Text>
-                  </View>
-                )}
-                
-                {/* Click indicator for completed quizzes */}
-                {(attempt.attempt_id || attempt.completed_at) && (
-                  <View style={styles.clickIndicator}>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                  </View>
-                )}
+                  {isTappable && (
+                    <View style={styles.clickIndicator}>
+                      <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+
+            {displayCount < filteredAttempts.length && (
+              <TouchableOpacity
+                style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
+                onPress={loadMoreQuizzes}
+                accessibilityRole="button"
+                accessibilityLabel={`Load ${filteredAttempts.length - displayCount} more quizzes`}
+              >
+                <Text style={[styles.loadMoreText, { color: theme.colors.textInverse }]}>
+                  Load More ({filteredAttempts.length - displayCount} remaining)
+                </Text>
+                <Ionicons name="chevron-down" size={20} color={theme.colors.textInverse} />
               </TouchableOpacity>
-            );
-          })}
-          
-          {/* Load More Button */}
-          {displayCount < filteredAttempts.length && (
-            <TouchableOpacity
-              style={[styles.loadMoreButton, { backgroundColor: colors.primary }]}
-              onPress={loadMoreQuizzes}
-            >
-              <Text style={styles.loadMoreText}>Load More ({filteredAttempts.length - displayCount} remaining)</Text>
-              <Ionicons name="chevron-down" size={20} color="#fff" />
-            </TouchableOpacity>
-          )}
+            )}
           </>
         )}
       </View>
@@ -919,222 +903,133 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 12,
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 14,
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, padding: 24 },
+  loadingIconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 14, fontWeight: '500' },
+
   header: {
-    padding: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
+    gap: 12,
   },
-  avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  headerText: {
-    flex: 1,
-  },
-  studentName: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  studentId: {
-    fontSize: 14,
-  },
+  avatarCircle: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
+  headerText: { flex: 1 },
+  studentNameText: { fontSize: 20, fontWeight: '700', marginBottom: 2 },
+  studentIdText: { fontSize: 13 },
   classroomBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: 'rgba(91, 33, 182, 0.1)',
     borderRadius: 8,
     alignSelf: 'flex-start',
   },
-  classroomText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  filtersRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filterHalf: {
-    flex: 1,
-  },
+  classroomText: { fontSize: 12, fontWeight: '600' },
+
+  filtersRow: { flexDirection: 'row', gap: 8 },
+  filterHalf: { flex: 1 },
+
   section: {
-    marginHorizontal: 8,
-    marginBottom: 8,
-    padding: 10,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 2,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginLeft: 6,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 10,
-  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   summaryItem: {
-    width: '50%',
+    width: '47%',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
-  summaryItemActive: {
-    backgroundColor: 'rgba(91, 33, 182, 0.08)',
-    transform: [{ scale: 1.02 }],
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
+  summaryValue: { fontSize: 26, fontWeight: '800', marginBottom: 4 },
+  summaryLabel: { fontSize: 12, textAlign: 'center' },
+
   scoreRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    borderTopWidth: 1,
-    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
   },
-  scoreItem: {
-    alignItems: 'center',
-  },
-  scoreLabel: {
-    fontSize: 12,
-    marginBottom: 2,
-  },
-  scoreValue: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
+  scoreItem: { alignItems: 'center' },
+  scoreLabel: { fontSize: 12, marginBottom: 3 },
+  scoreValue: { fontSize: 18, fontWeight: '700' },
+
   topicCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 6,
-  },
-  topicInfo: {
-    flex: 1,
-  },
-  topicName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  topicStats: {
-    fontSize: 12,
-  },
-  topicScoreBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
   },
-  topicScore: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  topicInfo: { flex: 1 },
+  topicName: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  topicStats: { fontSize: 12 },
+  topicScoreBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  topicScore: { fontSize: 14, fontWeight: '700' },
+
   suggestionItem: {
-    marginBottom: 8,
+    borderLeftWidth: 3,
+    paddingLeft: 10,
+    marginBottom: 10,
   },
-  suggestionText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  filterChips: {
-    marginBottom: 8,
-  },
-  filterChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginRight: 6,
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  suggestionText: { fontSize: 13, lineHeight: 20 },
+
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  sortLabel: {
-    fontSize: 14,
-    marginRight: 6,
-  },
+  sortLabel: { fontSize: 13 },
   sortButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
     borderWidth: 1,
-    marginRight: 6,
   },
-  sortButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptyState: {
+  sortButtonText: { fontSize: 13, fontWeight: '600' },
+
+  quizFilterSection: { marginBottom: 8 },
+  clearFilterBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  emptyText: {
-    fontSize: 14,
-    marginTop: 8,
-  },
+  clearFilterText: { fontSize: 12, fontWeight: '600' },
+
+  emptyState: { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontSize: 16, fontWeight: '700' },
+  emptySubText: { fontSize: 13, textAlign: 'center' },
+
   quizListItem: {
     marginBottom: 8,
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
   },
   quizListContent: {
     flexDirection: 'row',
@@ -1142,89 +1037,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  quizListLeft: {
-    flex: 1,
-    marginRight: 10,
-  },
-  quizListTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  quizListSubtitle: {
-    fontSize: 13,
-  },
-  quizCompletedDate: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  quizFilterSection: {
-    marginBottom: 12,
-  },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  filterChipsScroll: {
-    flexGrow: 0,
-  },
-  quizFilterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginRight: 8,
-  },
-  quizFilterChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  quizListRight: {
-    alignItems: 'flex-end',
-  },
-  quizListScore: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  progressBarContainer: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  quizStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  quizStatusText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
+  quizListLeft: { flex: 1, marginRight: 10 },
+  quizListTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  quizListSubtitle: { fontSize: 12, lineHeight: 16 },
+  quizCompletedDate: { fontSize: 11, marginTop: 2 },
+  quizListRight: { alignItems: 'flex-end', gap: 4 },
+  quizListScore: { fontSize: 20, fontWeight: '800' },
+  missedBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 },
+  missedBadgeText: { fontSize: 10, fontWeight: '700' },
+
+  progressBarContainer: { height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
+  progressBarFill: { height: '100%', borderRadius: 3 },
+
   clickIndicator: {
     position: 'absolute',
     right: 12,
     top: '50%',
     transform: [{ translateY: -8 }],
   },
+
   loadMoreButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 4,
     gap: 6,
   },
-  loadMoreText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  loadMoreText: { fontSize: 14, fontWeight: '600' },
 });

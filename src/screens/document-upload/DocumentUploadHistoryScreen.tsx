@@ -61,13 +61,28 @@ export default function DocumentUploadHistoryScreen({ navigation }: any) {
   const load = useCallback(async () => {
     try {
       setError('');
-      const [booksRaw, quizRaw, worksheetRaw] = await Promise.all([
+      // Web parity taxonomy: document quizzes are saved as web-quiz/Document and
+      // document worksheets as worksheet/Doc-Worksheet (HandwrittenWorkspace).
+      const [booksRaw, quizRaw, quizLegacyRaw, worksheetRaw] = await Promise.all([
         getDocumentUploadBooks(),
+        listUserAssessments('web-quiz', 'Document'),
         listUserAssessments('quiz', 'DocumentUpload'),
-        listUserAssessments('worksheet', 'DocumentUpload'),
+        listUserAssessments('worksheet', 'Doc-Worksheet'),
       ]);
       setBooks(booksRaw);
-      setQuizzes(Array.isArray(quizRaw) ? quizRaw : []);
+      // Merge new + legacy quizzes, de-duped by id, so older saved items still show.
+      const mergedQuizzes = [
+        ...(Array.isArray(quizRaw) ? quizRaw : []),
+        ...(Array.isArray(quizLegacyRaw) ? quizLegacyRaw : []),
+      ];
+      const seen = new Set<string | number>();
+      setQuizzes(
+        mergedQuizzes.filter((q) => {
+          if (seen.has(q.id)) return false;
+          seen.add(q.id);
+          return true;
+        }),
+      );
       setWorksheets(Array.isArray(worksheetRaw) ? worksheetRaw : []);
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to load history'));
@@ -222,7 +237,7 @@ export default function DocumentUploadHistoryScreen({ navigation }: any) {
                   <Text style={styles.cardMeta}>Created on {new Date(item.createdAt).toLocaleDateString()}</Text>
                 </View>
 
-                <Ionicons name="ellipsis-vertical" size={18} color={colors.textSecondary} />
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             );
           }}

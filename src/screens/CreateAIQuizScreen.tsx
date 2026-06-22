@@ -15,8 +15,11 @@ import useNotifications from '@core/hooks/useNotifications';
 import {
   generateAIQuiz,
   generateCompetitiveAIQuiz,
+  generateWorksheet,
   saveUserAssessment,
 } from '../core/services/sharedApi';
+import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
+import TopicSummaryModal from '../components/TopicSummaryModal';
 import {
   getSubjectsByClass,
   getStreams,
@@ -56,6 +59,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
   const [mode, setMode] = useState<Mode>('general');
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [worksheetModalOpen, setWorksheetModalOpen] = useState(false);
+  const [worksheetLoading, setWorksheetLoading] = useState(false);
+  const [worksheetError, setWorksheetError] = useState('');
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
 
   const [general, setGeneral] = useState({
     classId: '',
@@ -208,7 +215,6 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     if (!general.subjectId) return 'Please select subject';
     if (!general.lesson.trim()) return 'Please enter lesson/topic';
     if (!general.levelId) return 'Please select difficulty level';
-    if (!general.itext.trim()) return 'Please add additional instructions';
     return '';
   };
 
@@ -219,8 +225,157 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     if (!competitive.subjectId) return 'Please select subject';
     if (!competitive.topic.trim()) return 'Please enter topic';
     if (!competitive.levelId) return 'Please select difficulty level';
-    if (!competitive.itext.trim()) return 'Please add additional instructions';
     return '';
+  };
+
+  const isFormEnabled =
+    mode === 'general'
+      ? !!(general.classId && general.subjectId && general.levelId && general.lesson.trim())
+      : !!(
+          competitive.streamId &&
+          competitive.examId &&
+          competitive.categoryId &&
+          competitive.subjectId &&
+          competitive.levelId &&
+          competitive.topic.trim()
+        );
+
+  const isSummaryEnabled = mode === 'general' ? !!general.lesson.trim() : !!competitive.topic.trim();
+
+  const getWorksheetContext = () => {
+    if (mode === 'general') {
+      const selectedClass = findById(classes as any, general.classId);
+      const selectedSubject = findById(generalSubjects as any, general.subjectId);
+      const selectedLevel = findById(difficultyLevels as any, general.levelId);
+      return {
+        className: selectedClass?.name || selectedClass?.label || '',
+        subject: selectedSubject?.name || selectedSubject?.label || '',
+        lesson: general.lesson.trim(),
+        levelSlug: selectedLevel?.slug || selectedLevel?.name || 'beginner',
+        levelLabel: selectedLevel?.name || general.levelId,
+        itext: general.itext.trim(),
+      };
+    }
+
+    const selectedStream = findById(streams as any, competitive.streamId);
+    const selectedExam = findById(exams as any, competitive.examId);
+    const selectedSubject = findById(examSubjects as any, competitive.subjectId);
+    const selectedLevel = findById(difficultyLevels as any, competitive.levelId);
+    return {
+      className: selectedExam?.name || selectedExam?.label || selectedStream?.name || '',
+      subject: selectedSubject?.name || selectedSubject?.label || '',
+      lesson: competitive.topic.trim(),
+      levelSlug: selectedLevel?.slug || selectedLevel?.name || 'beginner',
+      levelLabel: selectedLevel?.name || competitive.levelId,
+      itext: competitive.itext.trim(),
+    };
+  };
+
+  const getSummaryContext = () => {
+    if (mode === 'general') {
+      const selectedClass = findById(classes as any, general.classId);
+      const selectedSubject = findById(generalSubjects as any, general.subjectId);
+      const selectedLevel = findById(difficultyLevels as any, general.levelId);
+      return {
+        className: selectedClass?.name || selectedClass?.label,
+        subject: selectedSubject?.name || selectedSubject?.label,
+        lesson: general.lesson.trim(),
+        difficulty: selectedLevel?.name || selectedLevel?.label,
+        additionalInstructions: general.itext.trim(),
+      };
+    }
+
+    const selectedStream = findById(streams as any, competitive.streamId);
+    const selectedExam = findById(exams as any, competitive.examId);
+    const selectedSubject = findById(examSubjects as any, competitive.subjectId);
+    const selectedLevel = findById(difficultyLevels as any, competitive.levelId);
+    return {
+      className: selectedExam?.name || selectedExam?.label || selectedStream?.name,
+      subject: selectedSubject?.name || selectedSubject?.label,
+      lesson: competitive.topic.trim(),
+      difficulty: selectedLevel?.name || selectedLevel?.label,
+      additionalInstructions: competitive.itext.trim(),
+    };
+  };
+
+  const handleGenerateWorksheet = async (counts: {
+    mcq: number;
+    fitb: number;
+    tf: number;
+    shortQ: number;
+    matching: number;
+  }) => {
+    const validationError = mode === 'general' ? validateGeneral() : validateCompetitive();
+    if (validationError) {
+      setWorksheetError(validationError);
+      return;
+    }
+
+    const ctx = getWorksheetContext();
+    const total = counts.mcq + counts.fitb + counts.tf + counts.shortQ + counts.matching;
+    if (total === 0) {
+      setWorksheetError('Please select at least one question type.');
+      return;
+    }
+
+    setWorksheetLoading(true);
+    setWorksheetError('');
+    try {
+      const result = await generateWorksheet({
+        class: ctx.className,
+        subject: ctx.subject,
+        lesson: ctx.lesson,
+        level: ctx.levelSlug,
+        itext: ctx.itext,
+        count: total,
+        mcq_count: counts.mcq,
+        fitb_count: counts.fitb,
+        tf_count: counts.tf,
+        short_q_count: counts.shortQ,
+        matching_count: counts.matching,
+        type: 'worksheet',
+      });
+
+      const wsData = result?.WorksheetData;
+      const title = [ctx.subject, ctx.lesson].filter(Boolean).join(' – ') || 'AI Worksheet';
+
+      if (wsData) {
+        try {
+          await saveUserAssessment({
+            title,
+            subject: ctx.subject,
+            class_name: ctx.className,
+            level: ctx.levelLabel,
+            lesson: ctx.lesson,
+            assessment_type: 'worksheet',
+            source: 'Worksheet',
+            school_id: resolvedSchoolId,
+            questions: [
+              {
+                quiz: {
+                  question: '__WS_DATA__' + JSON.stringify(wsData),
+                  options: [],
+                  answer: 'A',
+                },
+                answer: 'A',
+              },
+            ],
+          });
+        } catch {
+          // Non-blocking save failure
+        }
+      }
+
+      setWorksheetModalOpen(false);
+      navigation.navigate('WorksheetScreen', {
+        worksheetData: result,
+        title,
+      });
+    } catch (e: any) {
+      setWorksheetError(e?.message || 'Failed to generate worksheet.');
+    } finally {
+      setWorksheetLoading(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -252,7 +407,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         const processedQuestions = result?.quiz || [];
         await refreshAfterQuizGenerated();
 
-        navigation.replace('QuizTakingScreen', {
+        navigation.navigate('QuizTakingScreen', {
           quizData: {
             id: result.quiz_id,
             title: `${general.lesson.trim()} Assessment`,
@@ -288,8 +443,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
               },
               answer: q.answer || q.correctAnswer || 'A',
             })),
-            assessment_type: 'quiz',
-            source: 'General',
+            assessment_type: 'web-quiz',
+            source: 'AIQuiz',
             school_id: resolvedSchoolId,
           });
         } catch {
@@ -319,7 +474,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         const processedQuestions = result?.quiz || [];
         await refreshAfterQuizGenerated();
 
-        navigation.replace('QuizTakingScreen', {
+        navigation.navigate('QuizTakingScreen', {
           quizData: {
             id: result.quiz_id,
             title: `${competitive.topic.trim()} Competitive Assessment`,
@@ -355,8 +510,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
               },
               answer: q.answer || q.correctAnswer || 'A',
             })),
-            assessment_type: 'quiz',
-            source: 'Competitive',
+            assessment_type: 'web-quiz',
+            source: 'AIQuiz',
             school_id: resolvedSchoolId,
           });
         } catch {
@@ -528,6 +683,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     </>
   );
 
+  const summaryContext = getSummaryContext();
+  const worksheetContext = getWorksheetContext();
+  const busy = loading || worksheetLoading;
+
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -558,8 +717,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
       <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom) }]}>
         {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
         <TouchableOpacity
-          style={[styles.generateButton, loading && styles.buttonDisabled]}
-          disabled={loading}
+          style={[styles.generateButton, (!isFormEnabled || busy) && styles.buttonDisabled]}
+          disabled={!isFormEnabled || busy}
           onPress={handleGenerate}
         >
           {loading ? (
@@ -570,7 +729,79 @@ export default function CreateAIQuizScreen({ navigation }: any) {
             </Text>
           )}
         </TouchableOpacity>
+
+        {!isFormEnabled && !busy ? (
+          <Text style={styles.footerHint}>
+            Fill in Class, Subject, Level, and Lesson to generate
+          </Text>
+        ) : null}
+
+        <TouchableOpacity
+          style={[
+            styles.secondaryButton,
+            { borderColor: isFormEnabled && !busy ? theme.colors.primary : theme.colors.border },
+            (!isFormEnabled || busy) && styles.buttonDisabled,
+          ]}
+          disabled={!isFormEnabled || busy}
+          onPress={() => {
+            setWorksheetError('');
+            setWorksheetModalOpen(true);
+          }}
+        >
+          <Text
+            style={[
+              styles.secondaryButtonText,
+              { color: isFormEnabled && !busy ? theme.colors.primary : theme.colors.textSecondary },
+            ]}
+          >
+            📄 Generate Worksheet
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.secondaryButton,
+            { borderColor: isSummaryEnabled && !busy ? theme.colors.primary : theme.colors.border },
+            (!isSummaryEnabled || busy) && styles.buttonDisabled,
+          ]}
+          disabled={!isSummaryEnabled || busy}
+          onPress={() => setSummaryModalOpen(true)}
+        >
+          <Text
+            style={[
+              styles.secondaryButtonText,
+              { color: isSummaryEnabled && !busy ? theme.colors.primary : theme.colors.textSecondary },
+            ]}
+          >
+            📋 Generate Summary
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      <GenerateWorksheetModal
+        visible={worksheetModalOpen}
+        onClose={() => {
+          setWorksheetModalOpen(false);
+          setWorksheetError('');
+        }}
+        onGenerate={handleGenerateWorksheet}
+        loading={worksheetLoading}
+        presetClass={worksheetContext.className}
+        presetSubject={worksheetContext.subject}
+        presetLesson={worksheetContext.lesson}
+        error={worksheetError}
+      />
+
+      <TopicSummaryModal
+        visible={summaryModalOpen}
+        onClose={() => setSummaryModalOpen(false)}
+        className={summaryContext.className}
+        subject={summaryContext.subject}
+        lesson={summaryContext.lesson}
+        difficulty={summaryContext.difficulty}
+        additionalInstructions={summaryContext.additionalInstructions}
+        autoGenerate
+      />
     </View>
   );
 }
@@ -582,7 +813,7 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background,
     },
     scrollContent: {
-      paddingBottom: 140,
+      paddingBottom: 220,
     },
     formWrap: {
       paddingHorizontal: 12,
@@ -727,6 +958,27 @@ const createStyles = (colors: any) =>
     generateButtonText: {
       color: colors.buttonText,
       fontSize: 15,
+      fontWeight: '700',
+    },
+    footerHint: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 6,
+      marginBottom: 4,
+    },
+    secondaryButton: {
+      marginTop: 8,
+      minHeight: 46,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 14,
+      backgroundColor: colors.cardBackground,
+    },
+    secondaryButtonText: {
+      fontSize: 14,
       fontWeight: '700',
     },
   });

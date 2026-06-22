@@ -14,8 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { useTheme } from '@context/ThemeContext';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
+import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
 import { checkQuizAttempt, getQuizBySessionId } from '@core/services/sharedApi';
@@ -38,29 +38,43 @@ interface Props {
   };
 }
 
-// Status badge color mapping - matching UnifiedDashboard design (for teachers)
+// Status badge color mapping — ERP Schools semantic colors
 const getStatusConfig = (status: string) => {
   const configs: Record<string, { color: string; bg: string; text: string }> = {
-    active: { color: '#059669', bg: '#D1FAE5', text: 'Active' },
-    expired: { color: '#DC2626', bg: '#FEE2E2', text: 'Expired' },
-    available_soon: { color: '#1B4F5C', bg: '#E8F4F8', text: 'Upcoming' },
+    active:         { color: '#22C55E', bg: '#E8F5E9', text: 'Active' },
+    expired:        { color: '#EF4444', bg: '#FEE2E2', text: 'Expired' },
+    available_soon: { color: '#0B5563', bg: '#E6F3F5', text: 'Upcoming' },
   };
-  return configs[status] || { color: '#6B7280', bg: '#F3F4F6', text: status };
+  return configs[status] || { color: '#64748B', bg: '#F1F5F9', text: status };
 };
 
-// Student status badge color mapping
+// Student status badge color mapping — ERP Schools semantic colors
 const getStudentStatusConfig = (status: string) => {
   const configs: Record<string, { color: string; bg: string; text: string }> = {
-    pending: { color: '#1B4F5C', bg: '#E8F4F8', text: 'Pending' },
-    completed: { color: '#059669', bg: '#D1FAE5', text: 'Completed' },
-    missed: { color: '#DC2626', bg: '#FEE2E2', text: 'Missed' },
-    in_progress: { color: '#F59E0B', bg: '#FEF3C7', text: 'In Progress' },
+    pending:     { color: '#0B5563', bg: '#E6F3F5', text: 'Pending' },
+    completed:   { color: '#22C55E', bg: '#E8F5E9', text: 'Completed' },
+    missed:      { color: '#EF4444', bg: '#FEE2E2', text: 'Missed' },
+    in_progress: { color: '#F59E0B', bg: '#FFF3E0', text: 'In Progress' },
   };
-  return configs[status] || { color: '#6B7280', bg: '#F3F4F6', text: status };
+  return configs[status] || { color: '#64748B', bg: '#F1F5F9', text: status };
 };
 
 export default function Assessments({ navigation, onNavigate, userRole, route }: Props) {
-  const { theme, isDark } = useTheme();
+  const t = useTeacherTheme();
+  const isDark = t.isDark;
+  // Compat shim — maps old theme.colors.* names to ERP Schools tokens
+  const theme = {
+    colors: {
+      background:    t.colors.background,
+      card:          t.colors.surface,
+      surface:       t.colors.surfaceAlt,
+      text:          t.colors.textPrimary,
+      textSecondary: t.colors.textSecondary,
+      primary:       t.colors.primary,
+      border:        t.colors.border,
+      error:         t.colors.danger,
+    },
+  };
   const { width } = useWindowDimensions();
   const { user } = useAuth();
   
@@ -621,31 +635,38 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
       {/* My AI Content Quick Links — teachers only */}
       {isTeacher && navigation && (
-        <View style={[styles.aiToolsBar, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-          <TouchableOpacity
-            style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
-            onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
-            activeOpacity={0.75}
+        <View style={[styles.aiToolsBarWrapper, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.aiToolsBar}
+            keyboardShouldPersistTaps="handled"
           >
-            <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
-            <Text style={[styles.aiToolBtnText, { color: '#0F766E' }]}>Document Upload</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
-            onPress={() => navigation.navigate('RecentAssessmentsScreen')}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
-            <Text style={[styles.aiToolBtnText, { color: theme.colors.primary }]}>Recent AI Quizzes</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
-            onPress={() => navigation.navigate('WorksheetScreen')}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="document-text-outline" size={16} color="#059669" />
-            <Text style={[styles.aiToolBtnText, { color: '#059669' }]}>Worksheets</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
+              onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
+              <Text style={[styles.aiToolBtnText, { color: '#0F766E' }]}>Document Upload</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
+              onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
+              <Text style={[styles.aiToolBtnText, { color: theme.colors.primary }]}>Recent AI Quizzes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
+              onPress={() => navigation.navigate('WorksheetScreen')}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="document-text-outline" size={16} color="#059669" />
+              <Text style={[styles.aiToolBtnText, { color: '#059669' }]}>Worksheets</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       )}
 
@@ -665,9 +686,14 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
         {filteredQuizzes.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={64} color={theme.colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: t.colors.primary + '14' }]}>
+              <Ionicons name="document-text-outline" size={44} color={t.colors.primary} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: t.colors.textPrimary }]}>
               No assessments found
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: t.colors.textSecondary }]}>
+              Try adjusting your filters or date range
             </Text>
           </View>
         ) : (
@@ -771,17 +797,17 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       <View style={styles.attemptInfoContainer}>
                         <View style={styles.attemptInfoRow}>
                           {getTimeTakenDisplay() && (
-                            <View style={[styles.attemptInfoBadge, { backgroundColor: '#DBEAFE' }]}>
-                              <Ionicons name="timer-outline" size={14} color={theme.colors.primary} />
-                              <Text style={[styles.attemptInfoText, { color: theme.colors.primary }]}>
+                            <View style={[styles.attemptInfoBadge, { backgroundColor: t.colors.primary + '18' }]}>
+                              <Ionicons name="timer-outline" size={14} color={t.colors.primary} />
+                              <Text style={[styles.attemptInfoText, { color: t.colors.primary }]}>
                                 Took: {getTimeTakenDisplay()}
                               </Text>
                             </View>
                           )}
                           {(quiz.score !== null && quiz.score !== undefined) && (
-                            <View style={[styles.attemptInfoBadge, { backgroundColor: quiz.score >= 70 ? '#D1FAE5' : '#FEE2E2' }]}>
-                              <Ionicons name="trophy-outline" size={14} color={quiz.score >= 70 ? '#059669' : '#DC2626'} />
-                              <Text style={[styles.attemptInfoText, { color: quiz.score >= 70 ? '#059669' : '#DC2626' }]}>
+                            <View style={[styles.attemptInfoBadge, { backgroundColor: quiz.score >= 70 ? '#E8F5E9' : '#FEE2E2' }]}>
+                              <Ionicons name="trophy-outline" size={14} color={quiz.score >= 70 ? '#22C55E' : '#EF4444'} />
+                              <Text style={[styles.attemptInfoText, { color: quiz.score >= 70 ? '#22C55E' : '#EF4444' }]}>
                                 Score: {quiz.score}%
                               </Text>
                             </View>
@@ -1141,14 +1167,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   header: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    shadowColor: '#0B5563',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
   },
   headerTop: {
     flexDirection: 'row',
@@ -1205,24 +1231,22 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   tabsContainer: {
-    paddingRight: 12,
-    paddingLeft: 12,
-    gap: 1,
-    paddingVertical: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    gap: 6,
   },
   tab: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 2,
-    marginRight: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
     alignItems: 'center',
   },
   tabActive: {
-    elevation: 2,
-    shadowColor: '#000',
+    elevation: 3,
+    shadowColor: '#0B5563',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
   },
   tabText: {
     fontSize: 12,
@@ -1243,12 +1267,15 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  aiToolsBarWrapper: {
+    borderBottomWidth: 1,
+  },
   aiToolsBar: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderBottomWidth: 1,
+    alignItems: 'center',
   },
   aiToolBtn: {
     flexDirection: 'row',
@@ -1267,6 +1294,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 80,
+    gap: 8,
+  },
+  emptyIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    fontSize: 13,
   },
   emptyText: {
     fontSize: 16,
@@ -1401,15 +1444,15 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 999,
     alignSelf: 'flex-start',
   },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   actionButton: {
     width: 32,
@@ -1420,21 +1463,21 @@ const styles = StyleSheet.create({
   },
   // Card Styles (Mobile & Desktop)
   cardsContainer: {
-    padding: 6,
-    gap: 6,
+    padding: 12,
+    gap: 10,
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
   card: {
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 0,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowColor: '#0B5563',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
     width: '100%',
     flexBasis: '100%',
   },
@@ -1442,22 +1485,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 6,
-    gap: 6,
+    marginBottom: 10,
+    gap: 8,
   },
   cardTitle: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
+    fontWeight: '700',
+    lineHeight: 22,
   },
   cardContent: {
-    gap: 5,
+    gap: 6,
   },
   cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   cardDetail: {
     fontSize: 13,
@@ -1535,10 +1578,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   cardFooter: {
-    marginTop: 8,
-    paddingTop: 8,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(128, 128, 128, 0.15)',
+    borderTopColor: 'rgba(11, 85, 99, 0.10)',
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
@@ -1546,14 +1589,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 5,
   },
   smallButtonText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   loadMoreContainer: {
@@ -1564,9 +1607,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 28,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 999,
     gap: 8,
   },
   loadMoreButtonText: {
@@ -1718,10 +1761,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   attemptInfoContainer: {
-    marginTop: 6,
-    paddingTop: 6,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(128, 128, 128, 0.15)',
+    borderTopColor: 'rgba(11, 85, 99, 0.10)',
   },
   attemptInfoRow: {
     flexDirection: 'row',
@@ -1733,11 +1776,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingVertical: 5,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
   },
   attemptInfoText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   generateAssessmentContainer: {
