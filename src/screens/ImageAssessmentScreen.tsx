@@ -920,7 +920,7 @@ export default function ImageAssessmentScreen({ navigation }: any) {
         </ScrollView>
 
         {/* Sticky action footer */}
-        <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom + 8) }]}>
           <TouchableOpacity
             style={[styles.primaryBtn, quizLoading && styles.btnDisabled]}
             disabled={quizLoading}

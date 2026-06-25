@@ -658,7 +658,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         style={[
           styles.footer,
           {
-            paddingBottom: Math.max(20, insets.bottom),
+            paddingBottom: Math.max(20, insets.bottom + 8),
             backgroundColor: colors.cardBackground,
             borderTopColor: colors.border,
           },

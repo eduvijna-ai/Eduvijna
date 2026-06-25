@@ -269,7 +269,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: Math.max(24, insets.bottom + 16) }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: Math.max(28, insets.bottom + 16) }}>
         {/* Book header */}
         <View style={styles.bookHeader}>
           <View style={[styles.bookIcon, { backgroundColor: colors.primary + '15' }]}>

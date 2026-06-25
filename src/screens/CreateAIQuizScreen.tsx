@@ -689,7 +689,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: 220 + insets.bottom }]}>
         <View style={styles.formWrap}>
           <Text style={styles.pageTitle}>Create AI Assessment</Text>
           <Text style={styles.pageSubTitle}>Configure your assessment details</Text>
@@ -714,7 +714,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         {submitError ? <Text style={styles.submitError}>{submitError}</Text> : null}
         <TouchableOpacity
           style={[styles.generateButton, (!isFormEnabled || busy) && styles.buttonDisabled]}

@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
@@ -23,7 +24,11 @@ import {
   uploadDocumentToRag,
   resolveBookPageCount,
   resolveServerBook,
+  createCameraSessionBook,
+  appendCameraPage,
+  MAX_QUIZ_PAGES,
 } from '@core/services/documentUploadApi';
+import { compressCameraImage } from '@core/services/documentImageUtils';
 import {
   getDocumentUploadBooks,
   upsertDocumentUploadBook,
@@ -60,6 +65,7 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
 export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
@@ -152,7 +158,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
-      await processAssetAndNavigate(asset, false);
+      await processAssetAndNavigate(asset);
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to upload document.'));
     } finally {
@@ -160,13 +166,52 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     }
   };
 
+  const processCameraCapture = async (asset: {
+    uri: string;
+    name?: string;
+    mimeType?: string;
+    size?: number;
+  }) => {
+    setError('');
+    const compressedUri = await compressCameraImage(asset.uri);
+    const fileName = asset.name || `camera-${Date.now()}.jpg`;
+    const page = {
+      pageNumber: 1,
+      fileUri: compressedUri,
+      fileName,
+      mimeType: asset.mimeType || 'image/jpeg',
+      thumbnailUri: compressedUri,
+    };
+
+    const title = (bookName || fileName.replace(/\.[^/.]+$/, '') || 'Camera Document').trim();
+    let next: DocumentUploadBook;
+
+    if (selectedBook?.isCameraSession && (selectedBook.pages?.length || 0) < MAX_QUIZ_PAGES) {
+      next = appendCameraPage(selectedBook, page);
+      next = { ...next, title: title || next.title };
+    } else {
+      next = createCameraSessionBook(page, title);
+    }
+
+    if ((next.pages?.length || 0) > MAX_QUIZ_PAGES) {
+      setError(`You can capture up to ${MAX_QUIZ_PAGES} pages.`);
+      return;
+    }
+
+    await upsertDocumentUploadBook(next);
+    setSelectedBook(next);
+    setBookName(next.title);
+    await loadBooks();
+    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+  };
+
   const processAssetAndNavigate = async (asset: {
     uri: string;
     name?: string;
     mimeType?: string;
     size?: number;
-  }, fromCamera: boolean) => {
-    const fileName = asset.name || (fromCamera ? `camera-${Date.now()}.jpg` : `document-${Date.now()}`);
+  }) => {
+    const fileName = asset.name || `document-${Date.now()}`;
     const mimeType = asset.mimeType || 'application/octet-stream';
     const title = (bookName || fileName.replace(/\.[^/.]+$/, '') || 'Uploaded Book').trim();
     const now = new Date().toISOString();
@@ -175,7 +220,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     // so total_pages and page images use the same doc_id as the document library.
     let next: DocumentUploadBook;
 
-    if (!fromCamera && isPdfAsset(fileName, mimeType)) {
+    if (isPdfAsset(fileName, mimeType)) {
       const uploaded = await uploadBookWithMetadata({
         fileUri: asset.uri,
         fileName,
@@ -212,7 +257,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileUri: asset.uri,
         fileName,
         mimeType,
-        forceOcr: fromCamera,
+        forceOcr: false,
       });
 
       let totalPages = Math.max(1, rag.totalPages || 1);
@@ -231,7 +276,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileSize: asset.size || rag.fileSize,
         fileUri: asset.uri,
         mimeType,
-        thumbnailUri: mimeType.startsWith('image/') || fromCamera ? asset.uri : undefined,
+        thumbnailUri: mimeType.startsWith('image/') ? asset.uri : undefined,
         createdAt: now,
       };
     }
@@ -283,15 +328,12 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
 
       if (cameraResult.canceled || !cameraResult.assets?.length) return;
       const captured = cameraResult.assets[0];
-      await processAssetAndNavigate(
-        {
-          uri: captured.uri,
-          name: captured.fileName || `camera-${Date.now()}.jpg`,
-          mimeType: captured.mimeType || 'image/jpeg',
-          size: captured.fileSize,
-        },
-        true,
-      );
+      await processCameraCapture({
+        uri: captured.uri,
+        name: captured.fileName || `camera-${Date.now()}.jpg`,
+        mimeType: captured.mimeType || 'image/jpeg',
+        size: captured.fileSize,
+      });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to capture document.'));
     } finally {
@@ -381,7 +423,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         })}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 16) }]}>
         <TouchableOpacity
           style={styles.libraryBanner}
           onPress={() => navigation.navigate('DocumentLibraryScreen')}

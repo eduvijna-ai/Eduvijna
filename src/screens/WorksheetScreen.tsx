@@ -372,7 +372,7 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={[styles.viewContent, { paddingBottom: Math.max(16, insets.bottom) }]}>
+        <ScrollView contentContainerStyle={[styles.viewContent, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
           {!hasContent && (
             <View style={styles.emptyView}>
               <Ionicons name="document-outline" size={40} color={colors.textSecondary} />
@@ -576,7 +576,7 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { borderTopColor: colors.border, paddingBottom: Math.max(16, insets.bottom) }]}>
+      <View style={[styles.footer, { borderTopColor: colors.border, paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <TouchableOpacity
           style={[styles.generateBtn, { backgroundColor: colors.primary }, loading && { opacity: 0.6 }]}
