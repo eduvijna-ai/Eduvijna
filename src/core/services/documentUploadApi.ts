@@ -12,6 +12,14 @@ export const MAX_QUIZ_PAGES = 5;
 
 export type BookPageImageSize = 'mini' | 'thumbnail' | 'medium' | 'full';
 
+export interface DocumentCameraPage {
+  pageNumber: number;
+  fileUri: string;
+  fileName: string;
+  mimeType: string;
+  thumbnailUri?: string;
+}
+
 export interface DocumentUploadBook {
   id: string;
   title: string;
@@ -24,6 +32,149 @@ export interface DocumentUploadBook {
   mimeType?: string;
   thumbnailUri?: string;
   createdAt: string;
+  /** Camera session: pages stored locally (no server upload until OCR). */
+  pages?: DocumentCameraPage[];
+  isCameraSession?: boolean;
+  extractedText?: string;
+  ocrExtracted?: boolean;
+  /** Page numbers included in the last successful OCR run. */
+  extractedPageNumbers?: number[];
+}
+
+export interface BatchOCRPageResult {
+  page_number: number;
+  status: string;
+  text?: string;
+  latex?: string;
+}
+
+export interface BatchOCRFileResult {
+  filename: string;
+  file_id: string;
+  file_type: string;
+  total_pages: number;
+  status: string;
+  pages: BatchOCRPageResult[];
+}
+
+export interface BatchOCRResponse {
+  success: boolean;
+  message: string;
+  files: BatchOCRFileResult[];
+  total_files: number;
+  successful_files: number;
+  total_pages_processed: number;
+}
+
+/** Local preview URI for a page (camera session or single local file). */
+export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pageNumber: number): string | undefined {
+  if (!book) return undefined;
+  const fromPages = book.pages?.find((p) => p.pageNumber === pageNumber);
+  if (fromPages) return fromPages.thumbnailUri || fromPages.fileUri;
+  if (pageNumber === 1) return book.thumbnailUri || book.fileUri;
+  return undefined;
+}
+
+export function createCameraSessionBook(firstPage: DocumentCameraPage, title?: string): DocumentUploadBook {
+  const now = new Date().toISOString();
+  const sessionTitle = (title || firstPage.fileName.replace(/\.[^/.]+$/, '') || 'Camera Document').trim();
+  return {
+    id: `camera-${Date.now()}`,
+    title: sessionTitle,
+    originalName: firstPage.fileName,
+    totalPages: 1,
+    pages: [firstPage],
+    isCameraSession: true,
+    mimeType: 'image/jpeg',
+    thumbnailUri: firstPage.thumbnailUri || firstPage.fileUri,
+    fileUri: firstPage.fileUri,
+    createdAt: now,
+    ocrExtracted: false,
+  };
+}
+
+export function appendCameraPage(book: DocumentUploadBook, page: DocumentCameraPage): DocumentUploadBook {
+  const pages = [...(book.pages || []), page].map((p, index) => ({
+    ...p,
+    pageNumber: index + 1,
+  }));
+  return {
+    ...book,
+    pages,
+    totalPages: pages.length,
+    thumbnailUri: pages[0]?.thumbnailUri || pages[0]?.fileUri,
+    fileUri: pages[0]?.fileUri,
+    ocrExtracted: false,
+    extractedText: undefined,
+    extractedPageNumbers: undefined,
+  };
+}
+
+export function aggregateOcrText(files: BatchOCRFileResult[]): string {
+  const parts: string[] = [];
+  for (const file of files) {
+    if (file.status === 'success' || file.status === 'partial_success') {
+      for (const page of file.pages) {
+        if (page.status === 'success' && page.text?.trim()) {
+          parts.push(page.text.trim());
+        }
+        if (page.latex?.trim()) {
+          parts.push(page.latex.trim());
+        }
+      }
+    }
+  }
+  return parts.join('\n\n');
+}
+
+export async function runBatchOcrOnImages(
+  images: Array<{ uri: string; name: string; type: string }>,
+): Promise<BatchOCRResponse> {
+  const formData = new FormData();
+  images.forEach((img) => {
+    formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
+  });
+
+  const response = await apiClient.post<BatchOCRResponse>('/api/v1/batch-ocr-upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 180000,
+  });
+
+  return response.data;
+}
+
+export async function generateStrictQuizFromContent(
+  content: string,
+  language = 'English',
+): Promise<
+  Array<{
+    id: string;
+    question: string;
+    options: string[];
+    correctAnswer: string;
+    answer: string;
+    explanation: string | null;
+  }>
+> {
+  const response = await apiClient.post<{
+    success: boolean;
+    quiz: Array<{ question: string; options: string[]; correctAnswer: string }>;
+    message: string;
+  }>('/api/v1/quiz/generate-strict', { content, language }, { timeout: 120000 });
+
+  const payload = response.data;
+  if (!payload.success || !payload.quiz?.length) {
+    throw new Error(payload.message || 'Assessment generation returned no questions.');
+  }
+
+  return payload.quiz.map((item, idx) => ({
+    id: `cam-q-${idx}`,
+    question: item.question,
+    options: item.options,
+    correctAnswer: item.correctAnswer,
+    answer: item.correctAnswer,
+    explanation: null,
+  }));
 }
 
 export interface GenerateMultimodalParams {

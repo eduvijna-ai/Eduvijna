@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,21 +10,30 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
+  appendCameraPage,
   extractRawContent,
   fetchBookPageImage,
   generateFromBook,
   generateMultimodalAssessmentFromDocument,
+  generateStrictQuizFromContent,
+  getLocalPageUri,
   isPdfAsset,
   MAX_QUIZ_PAGES,
   resolveServerBook,
+  runBatchOcrOnImages,
+  aggregateOcrText,
 } from '@core/services/documentUploadApi';
+import { compressCameraImage } from '@core/services/documentImageUtils';
+import { upsertDocumentUploadBook, markDocumentUploadSessionComplete } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
-import { markDocumentUploadSessionComplete } from '@core/services/documentUploadStorage';
 import { useUserStore } from '@core/store/user.store';
+import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
@@ -57,13 +67,29 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
   return fallback;
 };
 
+const pageNumbersMatch = (a: number[], b: number[]): boolean =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+const isUuidLike = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+
+const defaultCameraLessonTitle = (book: DocumentUploadBook): string => {
+  const candidate = (book.title || book.originalName || '').trim();
+  if (!candidate || isUuidLike(candidate)) return 'Camera Document';
+  if (/^camera-\d+$/i.test(candidate)) return 'Camera Document';
+  return candidate.replace(/\.[^/.]+$/, '') || 'Camera Document';
+};
+
 export default function DocumentUploadPreviewScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const schoolId = useUserStore((s) => s.schoolId);
 
   const book: DocumentUploadBook | undefined = route?.params?.book;
+  const [bookState, setBookState] = useState<DocumentUploadBook | undefined>(book);
+  const isCameraSession = bookState?.isCameraSession === true;
 
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
@@ -75,6 +101,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set([1]));
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [loadingWorksheet, setLoadingWorksheet] = useState(false);
+  const [loadingExtract, setLoadingExtract] = useState(false);
+  const [capturingPage, setCapturingPage] = useState(false);
+  const [extractSuccess, setExtractSuccess] = useState('');
   const [error, setError] = useState('');
   const [thumbImages, setThumbImages] = useState<Record<number, string>>({});
   const [previewImages, setPreviewImages] = useState<Record<number, string>>({});
@@ -83,24 +112,59 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
   const requestedImages = useRef<Set<string>>(new Set());
 
-  const totalPages = resolvedPageCount ?? book?.totalPages ?? 1;
-  const docId = book?.docId;
+  const totalPages = resolvedPageCount ?? bookState?.totalPages ?? 1;
+  const docId = bookState?.docId;
 
   useEffect(() => {
-    if (!book) return;
-    setLesson((prev) => prev || book.title || book.originalName || '');
-  }, [book?.title, book?.originalName]);
+    if (route?.params?.book) {
+      setBookState(route.params.book);
+    }
+  }, [route?.params?.book]);
+
+  useEffect(() => {
+    if (!bookState) return;
+    setLesson((prev) => {
+      if (prev && !isUuidLike(prev)) return prev;
+      if (isCameraSession) return defaultCameraLessonTitle(bookState);
+      return bookState.title || bookState.originalName || '';
+    });
+    if (isCameraSession && bookState.pages?.length) {
+      setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
+    }
+  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length]);
+
+  const persistBook = useCallback(async (next: DocumentUploadBook) => {
+    setBookState(next);
+    await upsertDocumentUploadBook(next);
+    navigation.setParams?.({ book: next });
+  }, [navigation]);
 
   const resolvedClass = classValue.trim() || 'Class 10';
   const resolvedSubject = subject.trim() || 'Document';
-  const resolvedLesson = lesson.trim() || book?.title || book?.originalName || 'Document Lesson';
+  const resolvedLesson = lesson.trim() || bookState?.title || bookState?.originalName || 'Document Lesson';
 
-  // Resolve accurate page count + library file_id for page images.
+  const syncLocalPageImages = useCallback(() => {
+    if (!bookState) return;
+    const thumbs: Record<number, string> = {};
+    const previews: Record<number, string> = {};
+    for (let p = 1; p <= totalPages; p += 1) {
+      const uri = getLocalPageUri(bookState, p);
+      if (uri) {
+        thumbs[p] = uri;
+        previews[p] = uri;
+      }
+    }
+    setThumbImages(thumbs);
+    setPreviewImages(previews);
+    setLoadingImages(false);
+  }, [bookState, totalPages]);
+
+  // Resolve accurate page count + library file_id for page images (server-backed books only).
   useEffect(() => {
-    if (!docId || !book) return;
+    if (!docId || !bookState || isCameraSession) return;
     let cancelled = false;
     (async () => {
-      const serverBook = await resolveServerBook(docId, book.originalName || book.title);
+      const serverBook = await resolveServerBook(docId, bookState.originalName || bookState.title);
       if (cancelled) return;
       if (serverBook?.totalPages) {
         setResolvedPageCount(serverBook.totalPages);
@@ -114,11 +178,19 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     return () => {
       cancelled = true;
     };
-  }, [docId, book?.originalName, book?.title]);
+  }, [docId, bookState?.originalName, bookState?.title, isCameraSession]);
 
-  // Load real page thumbnails + larger preview from server (study-materials / pdf-questions).
+  // Camera sessions and local image files: use on-device URIs immediately.
   useEffect(() => {
-    if (!docId) return;
+    if (!bookState) return;
+    if (isCameraSession || !docId || bookState.mimeType?.startsWith('image/')) {
+      syncLocalPageImages();
+    }
+  }, [bookState, isCameraSession, docId, syncLocalPageImages]);
+
+  // Load server page thumbnails for PDF / server-backed documents.
+  useEffect(() => {
+    if (!docId || isCameraSession) return;
     let cancelled = false;
     setLoadingImages(true);
 
@@ -133,6 +205,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       if (cancelled) return;
       if (!uri) {
         requestedImages.current.delete(key);
+        const localUri = getLocalPageUri(bookState, p);
+        if (localUri) {
+          if (size === 'mini') {
+            setThumbImages((prev) => ({ ...prev, [p]: localUri }));
+          } else {
+            setPreviewImages((prev) => ({ ...prev, [p]: localUri }));
+          }
+        }
         return;
       }
       if (size === 'mini') {
@@ -154,7 +234,114 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     return () => {
       cancelled = true;
     };
-  }, [docId, imageDocIds, totalPages, page]);
+  }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
+
+  const handleAddCameraPage = async () => {
+    if (!bookState?.isCameraSession) return;
+    if ((bookState.pages?.length || 0) >= MAX_QUIZ_PAGES) {
+      setError(`You can capture up to ${MAX_QUIZ_PAGES} pages.`);
+      return;
+    }
+
+    try {
+      setError('');
+      setExtractSuccess('');
+      setCapturingPage(true);
+
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Camera permission is required to capture document pages.');
+        return;
+      }
+
+      let cameraResult: ImagePicker.ImagePickerResult;
+      try {
+        cameraResult = await ImagePicker.launchCameraAsync({
+          allowsEditing: false,
+          quality: 0.9,
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        });
+      } catch {
+        if (Platform.OS === 'web') {
+          cameraResult = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: false,
+            quality: 0.9,
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          });
+        } else {
+          throw new Error('Unable to open camera.');
+        }
+      }
+
+      if (cameraResult.canceled || !cameraResult.assets?.length) return;
+
+      const captured = cameraResult.assets[0];
+      const compressedUri = await compressCameraImage(captured.uri);
+      const fileName = captured.fileName || `camera-${Date.now()}.jpg`;
+      const newPage = {
+        pageNumber: (bookState.pages?.length || 0) + 1,
+        fileUri: compressedUri,
+        fileName,
+        mimeType: captured.mimeType || 'image/jpeg',
+        thumbnailUri: compressedUri,
+      };
+
+      const next = appendCameraPage(bookState, newPage);
+      await persistBook(next);
+      setPage(next.totalPages);
+      setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
+  const handleExtractText = async () => {
+    if (!bookState?.isCameraSession || !bookState.pages?.length) {
+      setError('No camera pages available to extract.');
+      return;
+    }
+
+    const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
+    if (pageNumbers.length === 0) {
+      setError('Please select at least one page to extract text from.');
+      return;
+    }
+
+    const imagesToOcr = bookState.pages
+      .filter((p) => selectedPages.has(p.pageNumber))
+      .map((p) => ({ uri: p.fileUri, name: p.fileName, type: p.mimeType }));
+
+    try {
+      setError('');
+      setExtractSuccess('');
+      setLoadingExtract(true);
+
+      const ocrData = await runBatchOcrOnImages(imagesToOcr);
+      if (!ocrData.success || !ocrData.files?.length) {
+        throw new Error(ocrData.message || 'Text extraction failed.');
+      }
+
+      const extracted = aggregateOcrText(ocrData.files);
+      if (!extracted.trim() || extracted.trim().length < 10) {
+        throw new Error('Could not extract readable text. Try clearer photos or different pages.');
+      }
+
+      const next: DocumentUploadBook = {
+        ...bookState,
+        extractedText: extracted,
+        ocrExtracted: true,
+        extractedPageNumbers: pageNumbers,
+      };
+      await persistBook(next);
+      setExtractSuccess(`Text extracted from ${pageNumbers.length} page(s). You can now generate your assessment.`);
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to extract text from images.'));
+    } finally {
+      setLoadingExtract(false);
+    }
+  };
 
   const goBackHome = () => {
     navigation.navigate('DocumentUploadHomeScreen');
@@ -163,9 +350,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const handleGenerateQuiz = async () => {
     const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
     const useServerBook =
-      !!book?.docId && isPdfAsset(book.originalName, book.mimeType);
+      !!bookState?.docId && isPdfAsset(bookState.originalName, bookState.mimeType) && !isCameraSession;
 
-    if (!useServerBook && !book?.fileUri) {
+    if (!isCameraSession && !useServerBook && !bookState?.fileUri) {
       setError('Original file reference is not available. Please upload again from Document Upload Home.');
       return;
     }
@@ -173,6 +360,18 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (selectedPages.size === 0) {
       setError('Please select at least one page to generate the assessment.');
       return;
+    }
+
+    if (isCameraSession) {
+      const extractedPages = bookState?.extractedPageNumbers || [];
+      if (!bookState?.ocrExtracted || !bookState.extractedText?.trim()) {
+        setError('Please extract text from your images before generating the assessment.');
+        return;
+      }
+      if (!pageNumbersMatch(extractedPages, pageNumbers)) {
+        setError('Page selection changed. Please extract text again before generating.');
+        return;
+      }
     }
 
     try {
@@ -188,9 +387,19 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         explanation: string | null;
       }> = [];
 
-      if (useServerBook && book.docId) {
+      if (isCameraSession && bookState?.extractedText) {
+        const content = buildStrictQuizContent({
+          classValue: resolvedClass,
+          subject: resolvedSubject,
+          lesson: resolvedLesson,
+          difficulty,
+          questionCount,
+          ocrText: bookState.extractedText,
+        });
+        questions = await generateStrictQuizFromContent(content);
+      } else if (useServerBook && bookState.docId) {
         const result = await generateFromBook({
-          docId: book.docId,
+          docId: bookState.docId,
           pageNumbers,
           questionCount,
           difficulty,
@@ -199,11 +408,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           lessonTitle: resolvedLesson,
         });
         questions = result.questions;
-      } else if (book?.fileUri) {
+      } else if (bookState?.fileUri) {
         const result = await generateMultimodalAssessmentFromDocument({
-          fileUri: book.fileUri,
-          fileName: book.originalName || 'document.pdf',
-          mimeType: book.mimeType || 'application/pdf',
+          fileUri: bookState.fileUri,
+          fileName: bookState.originalName || 'document.pdf',
+          mimeType: bookState.mimeType || 'application/pdf',
           questionCount,
           difficulty,
           language: 'English',
@@ -221,7 +430,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       }
 
       await saveUserAssessment({
-        title: book.title || book.originalName,
+        title: bookState.title || bookState.originalName,
         subject: resolvedSubject,
         class_name: resolvedClass,
         level: difficulty,
@@ -240,14 +449,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      if (book?.id) {
-        await markDocumentUploadSessionComplete(book.id);
+      if (bookState?.id) {
+        await markDocumentUploadSessionComplete(bookState.id);
       }
 
       navigation.navigate('DocumentUploadQuizScreen', {
         quizData: {
-          id: book.docId || book.id,
-          title: book.title || book.originalName,
+          id: bookState.docId || bookState.id,
+          title: bookState.title || bookState.originalName,
           class: resolvedClass,
           subject: resolvedSubject,
           difficulty,
@@ -255,7 +464,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           questions,
           regenerationParams: {
             type: 'document-upload',
-            fileName: book.originalName || 'document.pdf',
+            fileName: bookState.originalName || 'document.pdf',
             grade: resolvedClass,
             subject: resolvedSubject,
             level: difficulty,
@@ -278,16 +487,29 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    if (isCameraSession) {
+      const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
+      const extractedPages = bookState?.extractedPageNumbers || [];
+      if (!bookState?.ocrExtracted || !bookState.extractedText?.trim()) {
+        setError('Please extract text from your images before generating the worksheet.');
+        return;
+      }
+      if (!pageNumbersMatch(extractedPages, pageNumbers)) {
+        setError('Page selection changed. Please extract text again before generating.');
+        return;
+      }
+    }
+
     try {
       setError('');
       setLoadingWorksheet(true);
 
-      // Web parity: feed extracted page text into the worksheet generator as itext.
-      // Only available when the book exists in the server study-materials store.
       let rawContent = '';
-      if (book?.docId) {
+      if (isCameraSession && bookState?.extractedText) {
+        rawContent = bookState.extractedText;
+      } else if (bookState?.docId) {
         rawContent = await extractRawContent({
-          docId: book.docId,
+          docId: bookState.docId,
           pageNumbers: Array.from(selectedPages).sort((a, b) => a - b),
         });
       }
@@ -310,11 +532,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       const wsData = worksheet?.WorksheetData;
       if (wsData) {
         await saveUserAssessment({
-          title: `${book?.title || 'Document'} Worksheet`,
+          title: `${bookState?.title || 'Document'} Worksheet`,
           subject: wsData.Metadata?.Subject || 'Document',
           class_name: wsData.Metadata?.Class || 'Class 10',
           level: wsData.Metadata?.Difficulty || difficulty,
-          lesson: wsData.Metadata?.Lesson || book?.title,
+          lesson: wsData.Metadata?.Lesson || bookState?.title,
           assessment_type: 'worksheet',
           source: 'Doc-Worksheet',
           school_id: schoolId,
@@ -331,13 +553,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         });
       }
 
-      if (book?.id) {
-        await markDocumentUploadSessionComplete(book.id);
+      if (bookState?.id) {
+        await markDocumentUploadSessionComplete(bookState.id);
       }
 
       navigation.navigate('WorksheetScreen', {
         worksheetData: worksheet,
-        title: `${book?.title || 'Document'} Worksheet`,
+        title: `${bookState?.title || 'Document'} Worksheet`,
         selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
       });
     } catch (e: any) {
@@ -347,7 +569,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   };
 
-  if (!book) {
+  if (!bookState) {
     return (
       <View style={styles.centerEmpty}>
         <Text style={styles.emptyTitle}>No document selected</Text>
@@ -360,6 +582,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const togglePageSelection = (p: number) => {
     setError('');
+    setExtractSuccess('');
     setSelectedPages((prev) => {
       const next = new Set(prev);
       if (next.has(p)) {
@@ -371,12 +594,24 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         }
         next.add(p);
       }
+      if (isCameraSession && bookState?.ocrExtracted) {
+        setBookState((current) =>
+          current
+            ? {
+                ...current,
+                ocrExtracted: false,
+                extractedText: undefined,
+                extractedPageNumbers: undefined,
+              }
+            : current,
+        );
+      }
       return next;
     });
   };
 
   const pageList = pageItems(totalPages);
-  const previewUri = previewImages[page] || thumbImages[page];
+  const previewUri = previewImages[page] || thumbImages[page] || getLocalPageUri(bookState, page);
   const showImageFallback = !previewUri && !loadingImages;
 
   const toggleSelectAll = () => {
@@ -391,18 +626,39 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 16) }]}>
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <Ionicons name="document-text" size={20} color="#DC2626" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.summaryTitle} numberOfLines={1}>{book.title || book.originalName}</Text>
+            <Text style={styles.summaryTitle} numberOfLines={1}>{bookState.title || bookState.originalName}</Text>
             <Text style={styles.summaryMeta} numberOfLines={1}>
-              Pages: {totalPages}{book.originalName ? ` · ${book.originalName}` : ''}
+              Pages: {totalPages}{isCameraSession ? ' · Camera session' : ''}{bookState.originalName ? ` · ${bookState.originalName}` : ''}
             </Text>
           </View>
         </View>
+
+        {isCameraSession && (
+          <TouchableOpacity
+            style={[styles.addPageBtn, capturingPage && styles.disabled]}
+            onPress={handleAddCameraPage}
+            disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES}
+          >
+            {capturingPage ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="camera-outline" size={16} color={colors.primary} />
+            )}
+            <Text style={styles.addPageBtnText}>
+              {capturingPage
+                ? 'Opening camera…'
+                : (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES
+                  ? `Maximum ${MAX_QUIZ_PAGES} pages reached`
+                  : `Add Page via Camera (${bookState.pages?.length || 0}/${MAX_QUIZ_PAGES})`}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.toolbar}>
           <View style={styles.pageNav}>
@@ -497,8 +753,49 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           })}
         </ScrollView>
 
+        {isCameraSession && (
+          <View style={styles.extractCard}>
+            <Text style={styles.sectionTitle}>Step 2 · Extract Text</Text>
+            <Text style={styles.sectionSub}>
+              Preview your pages first, then extract text when ready. OCR can take a minute.
+            </Text>
+
+            {!!extractSuccess && (
+              <View style={styles.successBox}>
+                <Ionicons name="checkmark-circle" size={16} color="#15803D" />
+                <Text style={styles.successText}>{extractSuccess}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.extractBtn,
+                (loadingExtract || selectedPages.size === 0) && styles.disabled,
+              ]}
+              onPress={handleExtractText}
+              disabled={loadingExtract || selectedPages.size === 0}
+            >
+              {loadingExtract ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="scan-outline" size={16} color="#fff" />
+              )}
+              <Text style={styles.extractBtnText}>
+                {loadingExtract ? 'Extracting text…' : 'Extract Text from Images'}
+              </Text>
+            </TouchableOpacity>
+
+            {bookState.ocrExtracted && bookState.extractedText ? (
+              <Text style={styles.extractPreview} numberOfLines={3}>
+                {bookState.extractedText.trim().slice(0, 180)}
+                {bookState.extractedText.length > 180 ? '…' : ''}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
         <View style={styles.generatorCard}>
-          <Text style={styles.sectionTitle}>Step 3 · Generate Quiz</Text>
+          <Text style={styles.sectionTitle}>{isCameraSession ? 'Step 3 · Generate Quiz' : 'Step 3 · Generate Quiz'}</Text>
           <Text style={styles.sectionSub}>Configure options, then generate from selected pages</Text>
 
           <Text style={styles.label}>Class / Grade</Text>
@@ -567,16 +864,26 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             </View>
           )}
 
-          <TouchableOpacity style={[styles.primaryAction, (loadingQuiz || selectedPages.size === 0) && styles.disabled]} onPress={handleGenerateQuiz} disabled={loadingQuiz || selectedPages.size === 0}>
+          <TouchableOpacity
+            style={[
+              styles.primaryAction,
+              (loadingQuiz || selectedPages.size === 0 || (isCameraSession && !bookState.ocrExtracted)) && styles.disabled,
+            ]}
+            onPress={handleGenerateQuiz}
+            disabled={loadingQuiz || selectedPages.size === 0 || (isCameraSession && !bookState.ocrExtracted)}
+          >
             {loadingQuiz ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="flash-outline" size={16} color="#fff" />}
             <Text style={styles.primaryActionText}>{loadingQuiz ? 'Generating Assessment...' : 'Generate Assessment'}</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity
-          style={[styles.worksheetBtn, loadingWorksheet && styles.disabled]}
+          style={[
+            styles.worksheetBtn,
+            (loadingWorksheet || (isCameraSession && !bookState.ocrExtracted)) && styles.disabled,
+          ]}
           onPress={handleGenerateWorksheet}
-          disabled={loadingWorksheet}
+          disabled={loadingWorksheet || (isCameraSession && !bookState.ocrExtracted)}
         >
           {loadingWorksheet ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
           <Text style={styles.worksheetBtnText}>{loadingWorksheet ? 'Generating Worksheet...' : 'Generate Worksheet'}</Text>
@@ -817,6 +1124,59 @@ const makeStyles = (colors: any) =>
       gap: 8,
     },
     errorText: { color: '#B91C1C', fontSize: 12, flex: 1 },
+
+    addPageBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      minHeight: 44,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.card,
+      paddingHorizontal: 12,
+    },
+    addPageBtnText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
+
+    extractCard: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      padding: 12,
+      gap: 8,
+    },
+    extractBtn: {
+      marginTop: 4,
+      minHeight: 46,
+      borderRadius: 10,
+      backgroundColor: '#0E7490',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    extractBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    extractPreview: {
+      marginTop: 4,
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 17,
+      fontStyle: 'italic',
+    },
+    successBox: {
+      borderWidth: 1,
+      borderColor: '#86EFAC',
+      backgroundColor: '#F0FDF4',
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    successText: { color: '#15803D', fontSize: 12, fontWeight: '600', flex: 1 },
 
     centerEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, backgroundColor: colors.background },
     emptyTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },

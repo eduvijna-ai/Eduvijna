@@ -405,7 +405,7 @@ export default function RecentAssessmentsScreen({ navigation }: any) {
           renderItem={({ item }) => (
             <AssessmentCard item={item} onPress={onPress} onDelete={handleDelete} />
           )}
-          contentContainerStyle={[styles.list, { paddingBottom: Math.max(16, insets.bottom) }]}
+          contentContainerStyle={[styles.list, { paddingBottom: Math.max(24, insets.bottom + 16) }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
           }

@@ -87,7 +87,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web' && width > 768;
   const insets = useSafeAreaInsets();
-  
+  const footerBottomInset = Math.max(16, insets.bottom + 8);
   // ==========================================
   // SIMPLIFIED PARAMS - Accept normalized quiz
   // ==========================================
@@ -103,6 +103,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     showActionButtons,
   } = routeParams;
   const source = routeParams?.source;
+  /** Document quiz wrapper hides the stack header — content must clear the status bar. */
+  const isFullScreenQuiz = source === 'document-upload';
 
   // ── Saved-assessment response persistence (mirrors web restore flow) ──────
   // When a quiz is opened from history we know its user-assessment id, which
@@ -997,7 +999,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // QuizTakingScreen only renders the quiz interface
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: isFullScreenQuiz ? insets.top : 0 }]}>
       {/* Action Buttons - Top (Regenerate, Retake, New Quiz, Share) */}
       {(showShareButton || showActionButtons) && (
         <View style={[styles.topActionsContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -1229,7 +1231,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         </View>
       )}
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={{ paddingBottom: Math.max(16, insets.bottom) }}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{ paddingBottom: footerBottomInset }}>
         <View style={[styles.questionCard, { backgroundColor: colors.card }]}>
           <View style={styles.questionHeader}>
             <View style={[styles.questionNumber, { backgroundColor: colors.primary }]}>
@@ -1366,7 +1368,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       </ScrollView>
 
       {!showResults && (
-        <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: Math.max(8, insets.bottom) }]}>
+        <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: footerBottomInset }]}>
           <View style={styles.footerButtons}>
             <TouchableOpacity
               style={[

@@ -129,31 +129,58 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
   const [wsCount, setWsCount] = useState<number>(10);
   const [wsGenerating, setWsGenerating] = useState(false);
 
-  // ── fetch data when active tab changes ───────────────────────────────────
+  // ── fetch data when active tab or mode changes ───────────────────────────
   const fetchTabData = useCallback(async (tab: typeof centerTab) => {
     if (tab === 'preview') return;
     setTabLoading(true);
     try {
-      // Fetch all assessments once and split by type so every quiz flavour
-      // (web-quiz / youtube-quiz / image-quiz / quiz) shows up consistently.
-      const all = await listUserAssessments();
-      const list = Array.isArray(all) ? all : [];
-      const isWorksheet = (i: AssessmentListItem) =>
-        i.assessment_type === 'worksheet' || i.source === 'Worksheet';
       const sortByDate = (a: AssessmentListItem, b: AssessmentListItem) =>
         (b.created_at || '').localeCompare(a.created_at || '');
-      setQuizList(list.filter((i) => !isWorksheet(i)).sort(sortByDate));
-      setWorksheetList(list.filter(isWorksheet).sort(sortByDate));
+
+      if (mode === 'document') {
+        // Web parity (HandwrittenWorkspace.loadDocumentHistory):
+        // document quizzes → web-quiz + Document; worksheets → Doc-Worksheet.
+        const [quizRaw, quizLegacyRaw, worksheetRaw] = await Promise.all([
+          listUserAssessments('web-quiz', 'Document'),
+          listUserAssessments('quiz', 'DocumentUpload'),
+          listUserAssessments('worksheet', 'Doc-Worksheet'),
+        ]);
+
+        const mergedQuizzes = [
+          ...(Array.isArray(quizRaw) ? quizRaw : []),
+          ...(Array.isArray(quizLegacyRaw) ? quizLegacyRaw : []),
+        ];
+        const seen = new Set<number | string>();
+        const quizzes = mergedQuizzes.filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
+
+        setQuizList(quizzes.sort(sortByDate));
+        setWorksheetList((Array.isArray(worksheetRaw) ? worksheetRaw : []).sort(sortByDate));
+        return;
+      }
+
+      // Handwritten mode: only assessments saved from the handwritten flow.
+      const [handwrittenQuizzes, handwrittenWorksheets] = await Promise.all([
+        listUserAssessments('web-quiz', 'Handwritten'),
+        listUserAssessments('worksheet', 'Handwritten'),
+      ]);
+      setQuizList((Array.isArray(handwrittenQuizzes) ? handwrittenQuizzes : []).sort(sortByDate));
+      setWorksheetList(
+        (Array.isArray(handwrittenWorksheets) ? handwrittenWorksheets : []).sort(sortByDate),
+      );
     } catch (e) {
       console.error('fetchTabData:', e);
     } finally {
       setTabLoading(false);
     }
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     fetchTabData(centerTab);
-  }, [centerTab, fetchTabData]);
+  }, [centerTab, mode, fetchTabData]);
 
   // Pre-fill worksheet form from AI settings when switching to worksheet tab
   useEffect(() => {
@@ -339,7 +366,7 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
     <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 12) }]}
+        contentContainerStyle={[styles.content, { paddingBottom: Math.max(32, insets.bottom + 16) }]}
       >
         {/* ─── Header: mode switch ────────────────────────────────────── */}
         <View style={styles.headerCard}>
