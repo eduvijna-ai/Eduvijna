@@ -11,6 +11,7 @@ import {
   Clipboard,
 } from 'react-native';
 import { useTheme } from '@context/ThemeContext';
+import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
 
 interface ShareOptionsModalProps {
   visible: boolean;
@@ -103,12 +104,8 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+    <Modal visible={visible} onRequestClose={onClose} {...getFullScreenModalProps('slide')}>
+      <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
         <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Share Assessment ✨</Text>
@@ -221,7 +218,6 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
 
 const styles = StyleSheet.create({
   modalOverlay: {
-    flex: 1,
     justifyContent: 'flex-end',
   },
   modalContainer: {

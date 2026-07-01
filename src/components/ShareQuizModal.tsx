@@ -18,6 +18,7 @@ import { apiClient, API_BASE_URL } from '@core/api/config';
 import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
 import { getAccessToken } from '@core/services/tokenStorage';
+import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
 
 interface QuizQuestion {
   question: string;
@@ -593,8 +594,8 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
-      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+    <Modal visible={visible} onRequestClose={onClose} {...getFullScreenModalProps('fade')}>
+      <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
         <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>🔗 Share Assessment</Text>
@@ -805,8 +806,12 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
         {/* Start Date/Time Picker Modal */}
         {showStartPicker && (
-          <Modal transparent={true} animationType="fade" visible={showStartPicker} onRequestClose={() => setShowStartPicker(false)}>
-            <View style={styles.datePickerOverlay}>
+          <Modal
+            visible={showStartPicker}
+            onRequestClose={() => setShowStartPicker(false)}
+            {...getFullScreenModalProps('fade')}
+          >
+            <View style={[fullScreenModalOverlay, styles.datePickerOverlay]}>
               <View style={[styles.datePickerContainer, { backgroundColor: colors.card }]}>
                 <View style={[styles.datePickerHeader, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.datePickerTitle, { color: colors.text }]}>
@@ -852,8 +857,12 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
         {/* End Date/Time Picker Modal */}
         {showEndPicker && (
-          <Modal transparent={true} animationType="fade" visible={showEndPicker} onRequestClose={() => setShowEndPicker(false)}>
-            <View style={styles.datePickerOverlay}>
+          <Modal
+            visible={showEndPicker}
+            onRequestClose={() => setShowEndPicker(false)}
+            {...getFullScreenModalProps('fade')}
+          >
+            <View style={[fullScreenModalOverlay, styles.datePickerOverlay]}>
               <View style={[styles.datePickerContainer, { backgroundColor: colors.card }]}>
                 <View style={[styles.datePickerHeader, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.datePickerTitle, { color: colors.text }]}>
@@ -903,7 +912,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {flex: 1, justifyContent: 'center', alignItems: 'center'},
+  modalOverlay: { justifyContent: 'center', alignItems: 'center' },
   modalContainer: {width: '90%', maxHeight: '85%', borderRadius: 16, overflow: 'hidden'},
   modalHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1},
   modalTitle: {fontSize: 20, fontWeight: '700'},
@@ -942,10 +951,9 @@ const styles = StyleSheet.create({
   shareButtonText: {fontSize: 16, fontWeight: '600', color: '#fff'},
   // Date Picker Modal Styles
   datePickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   datePickerContainer: {
     width: '85%',

@@ -175,6 +175,11 @@ export default function DocumentUploadHistoryScreen({ navigation }: any) {
         lesson: detail.lesson,
         questions,
       },
+      source: 'history',
+      workspaceMode: 'document',
+      assessmentId: detail.id,
+      showActionButtons: true,
+      showShareButton: true,
     });
   };
 

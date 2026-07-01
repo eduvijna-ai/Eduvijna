@@ -110,6 +110,38 @@ export function appendCameraPage(book: DocumentUploadBook, page: DocumentCameraP
   };
 }
 
+/** Remove one camera page and renumber remaining pages. Returns null when no pages left. */
+export function removeCameraPage(book: DocumentUploadBook, pageNumber: number): DocumentUploadBook | null {
+  const pages = (book.pages || []).filter((p) => p.pageNumber !== pageNumber);
+  if (pages.length === 0) return null;
+
+  const renumbered = pages.map((p, index) => ({
+    ...p,
+    pageNumber: index + 1,
+  }));
+
+  return {
+    ...book,
+    pages: renumbered,
+    totalPages: renumbered.length,
+    thumbnailUri: renumbered[0]?.thumbnailUri || renumbered[0]?.fileUri,
+    fileUri: renumbered[0]?.fileUri,
+    ocrExtracted: false,
+    extractedText: undefined,
+    extractedPageNumbers: undefined,
+  };
+}
+
+export function remapPageSelectionAfterDelete(selected: Set<number>, removedPage: number): Set<number> {
+  const next = new Set<number>();
+  selected.forEach((p) => {
+    if (p === removedPage) return;
+    if (p > removedPage) next.add(p - 1);
+    else next.add(p);
+  });
+  return next;
+}
+
 export function aggregateOcrText(files: BatchOCRFileResult[]): string {
   const parts: string[] = [];
   for (const file of files) {
@@ -175,6 +207,164 @@ export async function generateStrictQuizFromContent(
     answer: item.correctAnswer,
     explanation: null,
   }));
+}
+
+export interface DocumentUploadRegenerationParams {
+  type?: string;
+  fileName?: string;
+  grade?: string;
+  subject?: string;
+  level?: string;
+  lesson?: string;
+  count?: number;
+  selectedPages?: number[];
+  isCameraSession?: boolean;
+  ocrText?: string;
+  itext?: string;
+  docId?: string;
+  useServerBook?: boolean;
+  fileUri?: string;
+  mimeType?: string;
+}
+
+function buildStrictQuizContentFromOcr(params: {
+  classValue?: string;
+  subject?: string;
+  lesson?: string;
+  difficulty?: string;
+  questionCount?: number;
+  ocrText: string;
+}): string {
+  const parts: string[] = [];
+  const cls = (params.classValue || '').trim();
+  const sub = (params.subject || '').trim();
+  const lesson = (params.lesson || '').trim();
+  const difficulty = (params.difficulty || '').trim();
+
+  if (cls) parts.push(`Class: ${cls}`);
+  if (sub) parts.push(`Subject: ${sub}`);
+  if (lesson) parts.push(`Lesson: ${lesson}`);
+  if (difficulty) parts.push(`Difficulty: ${difficulty}`);
+  if (params.questionCount) parts.push(`Number of questions: ${params.questionCount}`);
+  parts.push(params.ocrText.trim());
+  return parts.join('\n\n');
+}
+
+/** Regenerate a document-upload quiz (camera OCR, server book, or local file). */
+export async function regenerateDocumentUploadQuiz(
+  params: DocumentUploadRegenerationParams,
+  currentQuiz: {
+    id?: string | number;
+    title?: string;
+    class?: string;
+    subject?: string;
+    difficulty?: string;
+    lesson?: string;
+    questions?: Array<{ id: string }>;
+  },
+): Promise<{
+  id?: string | number;
+  title?: string;
+  questions: Array<{
+    id: string;
+    question: string;
+    options: string[];
+    correctAnswer: string;
+    answer: string;
+    explanation: string | null;
+  }>;
+  class?: string;
+  subject?: string;
+  difficulty?: string;
+  lesson?: string;
+  regenerationParams: DocumentUploadRegenerationParams;
+}> {
+  const difficulty = (params.level || currentQuiz.difficulty || 'medium') as DocumentUploadDifficulty;
+  const questionCount = params.count || currentQuiz.questions?.length || 5;
+  const pageNumbers = Array.isArray(params.selectedPages) ? params.selectedPages : [];
+  const ocrText = String(params.ocrText || params.itext || '').trim();
+  const regenerationParams: DocumentUploadRegenerationParams = {
+    ...params,
+    type: 'document-upload',
+    ocrText: ocrText || params.ocrText,
+    itext: ocrText || params.itext,
+  };
+
+  if (ocrText) {
+    const content = buildStrictQuizContentFromOcr({
+      classValue: params.grade || currentQuiz.class || '',
+      subject: params.subject || currentQuiz.subject || '',
+      lesson: params.lesson || currentQuiz.lesson || '',
+      difficulty,
+      questionCount,
+      ocrText,
+    });
+    const questions = await generateStrictQuizFromContent(content);
+    return {
+      id: currentQuiz.id,
+      title: currentQuiz.title,
+      questions,
+      class: currentQuiz.class,
+      subject: currentQuiz.subject,
+      difficulty,
+      lesson: currentQuiz.lesson,
+      regenerationParams,
+    };
+  }
+
+  if (params.useServerBook && params.docId) {
+    const result = await generateFromBook({
+      docId: params.docId,
+      pageNumbers,
+      questionCount,
+      difficulty,
+      subject: params.subject || currentQuiz.subject || '',
+      gradeLevel: params.grade || currentQuiz.class || '',
+      lessonTitle: params.lesson || currentQuiz.lesson || '',
+    });
+    return {
+      id: currentQuiz.id,
+      title: currentQuiz.title,
+      questions: result.questions,
+      class: currentQuiz.class,
+      subject: currentQuiz.subject,
+      difficulty,
+      lesson: currentQuiz.lesson,
+      regenerationParams,
+    };
+  }
+
+  if (params.fileUri) {
+    const result = await generateMultimodalAssessmentFromDocument({
+      fileUri: params.fileUri,
+      fileName: params.fileName || 'document.pdf',
+      mimeType: params.mimeType || 'application/pdf',
+      questionCount,
+      difficulty,
+      language: 'English',
+      subject: params.subject || currentQuiz.subject || '',
+      gradeLevel: params.grade || currentQuiz.class || '',
+      lessonTitle: params.lesson || currentQuiz.lesson || '',
+      selectedPages: pageNumbers,
+    });
+    return {
+      id: currentQuiz.id,
+      title: currentQuiz.title,
+      questions: result.quizData.questions,
+      class: currentQuiz.class,
+      subject: currentQuiz.subject,
+      difficulty,
+      lesson: currentQuiz.lesson,
+      regenerationParams: {
+        ...regenerationParams,
+        ...result.quizData.regenerationParams,
+        fileUri: params.fileUri,
+        mimeType: params.mimeType,
+      },
+    };
+  }
+
+  throw new Error('Cannot regenerate: document source is no longer available. Generate a new assessment from the document workspace.');
 }
 
 export interface GenerateMultimodalParams {
@@ -747,6 +937,8 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
         lesson: params.lessonTitle || '',
         count: params.questionCount,
         selectedPages: params.selectedPages,
+        fileUri: params.fileUri,
+        mimeType: params.mimeType,
       },
     },
     raw: payload,

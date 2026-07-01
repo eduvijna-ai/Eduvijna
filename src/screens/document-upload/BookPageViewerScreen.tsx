@@ -54,13 +54,29 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   const schoolId = useUserStore((s) => s.schoolId);
 
   const book: ServerBook | undefined = route.params?.book;
+  const restoredForm = route.params?.previewFormState as
+    | {
+        selectedPages?: number[];
+        difficulty?: DocumentUploadDifficulty;
+        questionCount?: number;
+        subject?: string;
+        grade?: string;
+        lesson?: string;
+      }
+    | undefined;
 
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set([1]));
-  const [difficulty, setDifficulty] = useState<DocumentUploadDifficulty>('medium');
-  const [questionCount, setQuestionCount] = useState(10);
-  const [subject, setSubject] = useState(book?.subject || '');
-  const [grade, setGrade] = useState(book?.gradeLevel || '');
-  const [lesson, setLesson] = useState(book?.lessonTitle || book?.title || '');
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(
+    () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
+  );
+  const [difficulty, setDifficulty] = useState<DocumentUploadDifficulty>(
+    restoredForm?.difficulty || 'medium',
+  );
+  const [questionCount, setQuestionCount] = useState(restoredForm?.questionCount ?? 10);
+  const [subject, setSubject] = useState(restoredForm?.subject ?? book?.subject ?? '');
+  const [grade, setGrade] = useState(restoredForm?.grade ?? book?.gradeLevel ?? '');
+  const [lesson, setLesson] = useState(
+    restoredForm?.lesson ?? book?.lessonTitle ?? book?.title ?? '',
+  );
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [generatingWorksheet, setGeneratingWorksheet] = useState(false);
   const [error, setError] = useState('');
@@ -72,6 +88,19 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
 
   const docId = book?.docId;
   const totalPagesRaw = Math.max(1, book?.totalPages || 1);
+
+  useEffect(() => {
+    const restored = route.params?.previewFormState;
+    if (!restored) return;
+    if (restored.difficulty) setDifficulty(restored.difficulty);
+    if (restored.questionCount) setQuestionCount(restored.questionCount);
+    if (restored.subject !== undefined) setSubject(restored.subject);
+    if (restored.grade !== undefined) setGrade(restored.grade);
+    if (restored.lesson !== undefined) setLesson(restored.lesson);
+    if (restored.selectedPages?.length) {
+      setSelectedPages(new Set(restored.selectedPages));
+    }
+  }, [route.params?.previewFormState]);
 
   // Lazily load protected page thumbnails + a larger preview for the focused page.
   useEffect(() => {
@@ -185,18 +214,43 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         // non-blocking
       }
 
-      navigation.navigate('QuizTakingScreen', {
+      const pageNumbers = orderedPages();
+      const resolvedGrade = grade.trim() || book.gradeLevel || 'General';
+      const resolvedSubject = subject.trim() || book.subject || 'Document';
+      const resolvedLesson = lesson.trim() || book.lessonTitle || book.title;
+
+      navigation.navigate('DocumentUploadQuizScreen', {
         quizData: {
-          title: lesson.trim() || book.title,
+          id: book.docId,
+          title: resolvedLesson,
           questions: result.questions,
-          class: grade.trim(),
-          subject: subject.trim(),
+          class: resolvedGrade,
+          subject: resolvedSubject,
           difficulty,
-          lesson: lesson.trim() || book.title,
+          lesson: resolvedLesson,
+          regenerationParams: {
+            type: 'document-upload',
+            fileName: book.title,
+            grade: resolvedGrade,
+            subject: resolvedSubject,
+            level: difficulty,
+            lesson: resolvedLesson,
+            count: questionCount,
+            selectedPages: pageNumbers,
+            useServerBook: true,
+            docId: book.docId,
+          },
         },
-        source: 'document',
-        showShareButton: true,
-        showActionButtons: true,
+        previewBook: book,
+        returnScreen: 'BookPageViewerScreen',
+        previewFormState: {
+          selectedPages: pageNumbers,
+          difficulty,
+          questionCount,
+          subject: resolvedSubject,
+          grade: resolvedGrade,
+          lesson: resolvedLesson,
+        },
       });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz from this book.'));
