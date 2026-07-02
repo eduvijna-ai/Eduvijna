@@ -16,8 +16,11 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
 import { useTheme } from '@context/ThemeContext';
 
 export interface WorksheetQuestionTypeCount {
@@ -72,6 +75,8 @@ export default function GenerateWorksheetModal({
 }: Props) {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
+  const sheetBottomPad = Math.max(insets.bottom + 16, Platform.OS === 'android' ? 32 : 20);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [counts, setCounts] = useState<CountsState>(DEFAULT_COUNTS);
 
@@ -85,9 +90,9 @@ export default function GenerateWorksheetModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <Modal visible={visible} onRequestClose={onClose} {...getFullScreenModalProps('slide')}>
+      <View style={[fullScreenModalOverlay, styles.overlay]}>
+        <View style={[styles.sheet, { paddingBottom: sheetBottomPad }]}>
           <View style={styles.handle} />
 
           <View style={styles.headerRow}>
@@ -178,8 +183,7 @@ export default function GenerateWorksheetModal({
 const createStyles = (colors: any) =>
   StyleSheet.create({
     overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(15, 23, 42, 0.45)',
+      backgroundColor: 'rgba(15, 23, 42, 0.55)',
       justifyContent: 'flex-end',
     },
     sheet: {
@@ -188,7 +192,6 @@ const createStyles = (colors: any) =>
       borderTopRightRadius: 24,
       paddingHorizontal: 20,
       paddingTop: 10,
-      paddingBottom: 24,
       maxHeight: '85%',
     },
     handle: {
@@ -256,6 +259,7 @@ const createStyles = (colors: any) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
+      marginTop: 4,
     },
     generateBtnText: { fontSize: 16, fontWeight: '700' },
   });

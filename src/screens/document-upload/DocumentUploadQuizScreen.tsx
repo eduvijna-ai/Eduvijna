@@ -2,7 +2,19 @@ import React from 'react';
 import QuizTakingScreen from '../QuizTakingScreen';
 
 export default function DocumentUploadQuizScreen(props: any) {
-  const quizData = props?.route?.params?.quizData;
+  const params = props?.route?.params || {};
+  const {
+    quizData,
+    previewBook,
+    returnScreen,
+    previewFormState,
+    source,
+    workspaceMode,
+    assessmentId,
+    initialResponses,
+    showActionButtons,
+    showShareButton,
+  } = params;
 
   return (
     <QuizTakingScreen
@@ -10,11 +22,18 @@ export default function DocumentUploadQuizScreen(props: any) {
       route={{
         ...props.route,
         params: {
-          ...(props?.route?.params || {}),
+          ...params,
           quiz: quizData,
-          source: 'document-upload',
-          showActionButtons: true,
-          showShareButton: true,
+          source: source || 'document-upload',
+          hideStackHeader: true,
+          showActionButtons: showActionButtons ?? true,
+          showShareButton: showShareButton ?? true,
+          previewBook,
+          returnScreen,
+          previewFormState,
+          workspaceMode,
+          assessmentId,
+          initialResponses,
         },
       }}
     />

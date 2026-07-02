@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
@@ -25,12 +26,18 @@ import {
   getLocalPageUri,
   isPdfAsset,
   MAX_QUIZ_PAGES,
+  remapPageSelectionAfterDelete,
+  removeCameraPage,
   resolveServerBook,
   runBatchOcrOnImages,
   aggregateOcrText,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
-import { upsertDocumentUploadBook, markDocumentUploadSessionComplete } from '@core/services/documentUploadStorage';
+import {
+  upsertDocumentUploadBook,
+  markDocumentUploadSessionComplete,
+  removeDocumentUploadBook,
+} from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
@@ -67,9 +74,6 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
   return fallback;
 };
 
-const pageNumbersMatch = (a: number[], b: number[]): boolean =>
-  a.length === b.length && a.every((value, index) => value === b[index]);
-
 const isUuidLike = (value: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
 
@@ -85,25 +89,41 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  /** Android 3-button nav often reports 0 — keep a minimum clearance above system buttons. */
+  const scrollBottomPad = Math.max(insets.bottom + 28, Platform.OS === 'android' ? 48 : 28);
   const schoolId = useUserStore((s) => s.schoolId);
 
   const book: DocumentUploadBook | undefined = route?.params?.book;
+  const restoredForm = route?.params?.previewFormState as
+    | {
+        selectedPages?: number[];
+        difficulty?: 'easy' | 'medium' | 'hard';
+        questionCount?: number;
+        classValue?: string;
+        subject?: string;
+        lesson?: string;
+      }
+    | undefined;
+
   const [bookState, setBookState] = useState<DocumentUploadBook | undefined>(book);
   const isCameraSession = bookState?.isCameraSession === true;
 
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
-  const [classValue, setClassValue] = useState('');
-  const [subject, setSubject] = useState('');
-  const [lesson, setLesson] = useState('');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [questionCount, setQuestionCount] = useState<number>(5);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set([1]));
+  const [classValue, setClassValue] = useState(restoredForm?.classValue ?? '');
+  const [subject, setSubject] = useState(restoredForm?.subject ?? '');
+  const [lesson, setLesson] = useState(restoredForm?.lesson ?? '');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
+    restoredForm?.difficulty ?? 'medium',
+  );
+  const [questionCount, setQuestionCount] = useState<number>(restoredForm?.questionCount ?? 5);
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(
+    () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
+  );
   const [loadingQuiz, setLoadingQuiz] = useState(false);
   const [loadingWorksheet, setLoadingWorksheet] = useState(false);
-  const [loadingExtract, setLoadingExtract] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
   const [capturingPage, setCapturingPage] = useState(false);
-  const [extractSuccess, setExtractSuccess] = useState('');
   const [error, setError] = useState('');
   const [thumbImages, setThumbImages] = useState<Record<number, string>>({});
   const [previewImages, setPreviewImages] = useState<Record<number, string>>({});
@@ -122,16 +142,29 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   }, [route?.params?.book]);
 
   useEffect(() => {
+    const restored = route?.params?.previewFormState;
+    if (!restored) return;
+    if (restored.difficulty) setDifficulty(restored.difficulty);
+    if (restored.questionCount) setQuestionCount(restored.questionCount);
+    if (restored.classValue !== undefined) setClassValue(restored.classValue);
+    if (restored.subject !== undefined) setSubject(restored.subject);
+    if (restored.lesson !== undefined) setLesson(restored.lesson);
+    if (restored.selectedPages?.length) {
+      setSelectedPages(new Set(restored.selectedPages));
+    }
+  }, [route?.params?.previewFormState]);
+
+  useEffect(() => {
     if (!bookState) return;
     setLesson((prev) => {
       if (prev && !isUuidLike(prev)) return prev;
       if (isCameraSession) return defaultCameraLessonTitle(bookState);
       return bookState.title || bookState.originalName || '';
     });
-    if (isCameraSession && bookState.pages?.length) {
+    if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
     }
-  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length]);
+  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState]);
 
   const persistBook = useCallback(async (next: DocumentUploadBook) => {
     setBookState(next);
@@ -143,12 +176,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const resolvedSubject = subject.trim() || 'Document';
   const resolvedLesson = lesson.trim() || bookState?.title || bookState?.originalName || 'Document Lesson';
 
-  const syncLocalPageImages = useCallback(() => {
-    if (!bookState) return;
+  const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
+    const book = bookOverride ?? bookState;
+    if (!book) return;
+    const pageCount = book.totalPages ?? 1;
     const thumbs: Record<number, string> = {};
     const previews: Record<number, string> = {};
-    for (let p = 1; p <= totalPages; p += 1) {
-      const uri = getLocalPageUri(bookState, p);
+    for (let p = 1; p <= pageCount; p += 1) {
+      const uri = getLocalPageUri(book, p);
       if (uri) {
         thumbs[p] = uri;
         previews[p] = uri;
@@ -157,7 +192,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     setThumbImages(thumbs);
     setPreviewImages(previews);
     setLoadingImages(false);
-  }, [bookState, totalPages]);
+  }, [bookState]);
 
   // Resolve accurate page count + library file_id for page images (server-backed books only).
   useEffect(() => {
@@ -245,7 +280,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
     try {
       setError('');
-      setExtractSuccess('');
       setCapturingPage(true);
 
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -297,50 +331,80 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   };
 
-  const handleExtractText = async () => {
+  const handleRemoveCameraPage = (pageNumber: number) => {
+    if (!bookState?.isCameraSession) return;
+
+    Alert.alert(
+      'Remove page?',
+      `Remove page ${pageNumber} from this document?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setError('');
+              const next = removeCameraPage(bookState, pageNumber);
+              if (!next) {
+                await removeDocumentUploadBook(bookState.id);
+                navigation.navigate('DocumentUploadHomeScreen');
+                return;
+              }
+
+              const remappedSelection = remapPageSelectionAfterDelete(selectedPages, pageNumber);
+              const nextSelected =
+                remappedSelection.size > 0
+                  ? remappedSelection
+                  : new Set(next.pages?.map((p) => p.pageNumber) || [1]);
+
+              await persistBook(next);
+              setSelectedPages(nextSelected);
+              setPage((current) => {
+                if (current === pageNumber) {
+                  return Math.min(pageNumber, next.totalPages);
+                }
+                if (current > pageNumber) return current - 1;
+                return current;
+              });
+              requestedImages.current.clear();
+              setThumbImages({});
+              setPreviewImages({});
+              syncLocalPageImages(next);
+            } catch (e: any) {
+              setError(normalizeErrorMessage(e, 'Failed to remove page.'));
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const extractCameraTextForSelectedPages = async (): Promise<string> => {
     if (!bookState?.isCameraSession || !bookState.pages?.length) {
-      setError('No camera pages available to extract.');
-      return;
+      throw new Error('No camera pages available.');
     }
 
     const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
     if (pageNumbers.length === 0) {
-      setError('Please select at least one page to extract text from.');
-      return;
+      throw new Error('Please select at least one page.');
     }
 
     const imagesToOcr = bookState.pages
       .filter((p) => selectedPages.has(p.pageNumber))
       .map((p) => ({ uri: p.fileUri, name: p.fileName, type: p.mimeType }));
 
-    try {
-      setError('');
-      setExtractSuccess('');
-      setLoadingExtract(true);
-
-      const ocrData = await runBatchOcrOnImages(imagesToOcr);
-      if (!ocrData.success || !ocrData.files?.length) {
-        throw new Error(ocrData.message || 'Text extraction failed.');
-      }
-
-      const extracted = aggregateOcrText(ocrData.files);
-      if (!extracted.trim() || extracted.trim().length < 10) {
-        throw new Error('Could not extract readable text. Try clearer photos or different pages.');
-      }
-
-      const next: DocumentUploadBook = {
-        ...bookState,
-        extractedText: extracted,
-        ocrExtracted: true,
-        extractedPageNumbers: pageNumbers,
-      };
-      await persistBook(next);
-      setExtractSuccess(`Text extracted from ${pageNumbers.length} page(s). You can now generate your assessment.`);
-    } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to extract text from images.'));
-    } finally {
-      setLoadingExtract(false);
+    const ocrData = await runBatchOcrOnImages(imagesToOcr);
+    if (!ocrData.success || !ocrData.files?.length) {
+      throw new Error(ocrData.message || 'Text extraction failed.');
     }
+
+    const extracted = aggregateOcrText(ocrData.files);
+    if (!extracted.trim() || extracted.trim().length < 10) {
+      throw new Error('Could not extract readable text. Try clearer photos or different pages.');
+    }
+
+    return extracted;
   };
 
   const goBackHome = () => {
@@ -362,18 +426,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
-    if (isCameraSession) {
-      const extractedPages = bookState?.extractedPageNumbers || [];
-      if (!bookState?.ocrExtracted || !bookState.extractedText?.trim()) {
-        setError('Please extract text from your images before generating the assessment.');
-        return;
-      }
-      if (!pageNumbersMatch(extractedPages, pageNumbers)) {
-        setError('Page selection changed. Please extract text again before generating.');
-        return;
-      }
-    }
-
     try {
       setError('');
       setLoadingQuiz(true);
@@ -386,15 +438,19 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         answer: string;
         explanation: string | null;
       }> = [];
+      let cameraOcrText = '';
 
-      if (isCameraSession && bookState?.extractedText) {
+      if (isCameraSession) {
+        setProcessingStatus('Extracting text from images…');
+        cameraOcrText = await extractCameraTextForSelectedPages();
+        setProcessingStatus('Generating assessment…');
         const content = buildStrictQuizContent({
           classValue: resolvedClass,
           subject: resolvedSubject,
           lesson: resolvedLesson,
           difficulty,
           questionCount,
-          ocrText: bookState.extractedText,
+          ocrText: cameraOcrText,
         });
         questions = await generateStrictQuizFromContent(content);
       } else if (useServerBook && bookState.docId) {
@@ -471,13 +527,31 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             lesson: resolvedLesson,
             count: questionCount,
             selectedPages: pageNumbers,
+            isCameraSession,
+            ocrText: isCameraSession ? cameraOcrText : undefined,
+            itext: isCameraSession ? cameraOcrText : undefined,
+            docId: useServerBook ? bookState.docId : undefined,
+            useServerBook: !!useServerBook,
+            fileUri: !isCameraSession && !useServerBook ? bookState.fileUri : undefined,
+            mimeType: bookState.mimeType,
           },
+        },
+        previewBook: bookState,
+        returnScreen: 'DocumentUploadPreviewScreen',
+        previewFormState: {
+          selectedPages: pageNumbers,
+          difficulty,
+          questionCount,
+          classValue: resolvedClass,
+          subject: resolvedSubject,
+          lesson: resolvedLesson,
         },
       });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
     } finally {
       setLoadingQuiz(false);
+      setProcessingStatus('');
     }
   };
 
@@ -487,26 +561,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
-    if (isCameraSession) {
-      const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
-      const extractedPages = bookState?.extractedPageNumbers || [];
-      if (!bookState?.ocrExtracted || !bookState.extractedText?.trim()) {
-        setError('Please extract text from your images before generating the worksheet.');
-        return;
-      }
-      if (!pageNumbersMatch(extractedPages, pageNumbers)) {
-        setError('Page selection changed. Please extract text again before generating.');
-        return;
-      }
-    }
-
     try {
       setError('');
       setLoadingWorksheet(true);
 
       let rawContent = '';
-      if (isCameraSession && bookState?.extractedText) {
-        rawContent = bookState.extractedText;
+      if (isCameraSession) {
+        setProcessingStatus('Extracting text from images…');
+        rawContent = await extractCameraTextForSelectedPages();
+        setProcessingStatus('Generating worksheet…');
       } else if (bookState?.docId) {
         rawContent = await extractRawContent({
           docId: bookState.docId,
@@ -566,6 +629,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
     } finally {
       setLoadingWorksheet(false);
+      setProcessingStatus('');
     }
   };
 
@@ -582,7 +646,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const togglePageSelection = (p: number) => {
     setError('');
-    setExtractSuccess('');
     setSelectedPages((prev) => {
       const next = new Set(prev);
       if (next.has(p)) {
@@ -593,18 +656,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           return prev;
         }
         next.add(p);
-      }
-      if (isCameraSession && bookState?.ocrExtracted) {
-        setBookState((current) =>
-          current
-            ? {
-                ...current,
-                ocrExtracted: false,
-                extractedText: undefined,
-                extractedPageNumbers: undefined,
-              }
-            : current,
-        );
       }
       return next;
     });
@@ -625,8 +676,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 16) }]}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <Ionicons name="document-text" size={20} color="#DC2626" />
@@ -638,27 +689,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             </Text>
           </View>
         </View>
-
-        {isCameraSession && (
-          <TouchableOpacity
-            style={[styles.addPageBtn, capturingPage && styles.disabled]}
-            onPress={handleAddCameraPage}
-            disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES}
-          >
-            {capturingPage ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons name="camera-outline" size={16} color={colors.primary} />
-            )}
-            <Text style={styles.addPageBtnText}>
-              {capturingPage
-                ? 'Opening camera…'
-                : (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES
-                  ? `Maximum ${MAX_QUIZ_PAGES} pages reached`
-                  : `Add Page via Camera (${bookState.pages?.length || 0}/${MAX_QUIZ_PAGES})`}
-            </Text>
-          </TouchableOpacity>
-        )}
 
         <View style={styles.toolbar}>
           <View style={styles.pageNav}>
@@ -718,15 +748,38 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
         <View style={styles.selectionBar}>
           <Text style={styles.thumbHint} numberOfLines={2}>
-            Tap thumbnails to preview, use the check icon to include pages (max {MAX_QUIZ_PAGES})
+            {isCameraSession
+              ? `Tap thumbnails to preview. Use ✓ to select pages and ✗ to remove (max ${MAX_QUIZ_PAGES}).`
+              : `Tap thumbnails to preview, use the check icon to include pages (max ${MAX_QUIZ_PAGES})`}
           </Text>
           <View style={styles.selectionMetaRow}>
             <Text style={styles.selectionCount}>
               Selected: {selectedPages.size} / {Math.min(MAX_QUIZ_PAGES, totalPages)} (max {MAX_QUIZ_PAGES})
             </Text>
-            <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
-              <Text style={styles.selectAllText}>{selectedPages.size > 0 ? 'Clear' : 'Select All'}</Text>
-            </TouchableOpacity>
+            <View style={styles.selectionActions}>
+              {isCameraSession && (
+                <TouchableOpacity
+                  style={[
+                    styles.compactActionBtn,
+                    (capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES) && styles.disabled,
+                  ]}
+                  onPress={handleAddCameraPage}
+                  disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES}
+                >
+                  {capturingPage ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="camera-outline" size={14} color={colors.primary} />
+                  )}
+                  <Text style={styles.compactActionText}>
+                    {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_QUIZ_PAGES})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
+                <Text style={styles.selectAllText}>{selectedPages.size > 0 ? 'Clear' : 'Select All'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -738,6 +791,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                 <TouchableOpacity style={styles.selectCheck} onPress={() => togglePageSelection(p)}>
                   <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={isSelected ? '#0E7490' : '#94A3B8'} />
                 </TouchableOpacity>
+                {isCameraSession && (
+                  <TouchableOpacity
+                    style={styles.removeThumbBtn}
+                    onPress={() => handleRemoveCameraPage(p)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="close-circle" size={16} color="#DC2626" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={() => setPage(p)}>
                   {thumbImages[p] ? (
                     <Image source={{ uri: thumbImages[p] }} style={styles.thumbImage} />
@@ -753,50 +815,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           })}
         </ScrollView>
 
-        {isCameraSession && (
-          <View style={styles.extractCard}>
-            <Text style={styles.sectionTitle}>Step 2 · Extract Text</Text>
-            <Text style={styles.sectionSub}>
-              Preview your pages first, then extract text when ready. OCR can take a minute.
-            </Text>
-
-            {!!extractSuccess && (
-              <View style={styles.successBox}>
-                <Ionicons name="checkmark-circle" size={16} color="#15803D" />
-                <Text style={styles.successText}>{extractSuccess}</Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.extractBtn,
-                (loadingExtract || selectedPages.size === 0) && styles.disabled,
-              ]}
-              onPress={handleExtractText}
-              disabled={loadingExtract || selectedPages.size === 0}
-            >
-              {loadingExtract ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="scan-outline" size={16} color="#fff" />
-              )}
-              <Text style={styles.extractBtnText}>
-                {loadingExtract ? 'Extracting text…' : 'Extract Text from Images'}
-              </Text>
-            </TouchableOpacity>
-
-            {bookState.ocrExtracted && bookState.extractedText ? (
-              <Text style={styles.extractPreview} numberOfLines={3}>
-                {bookState.extractedText.trim().slice(0, 180)}
-                {bookState.extractedText.length > 180 ? '…' : ''}
-              </Text>
-            ) : null}
-          </View>
-        )}
-
         <View style={styles.generatorCard}>
-          <Text style={styles.sectionTitle}>{isCameraSession ? 'Step 3 · Generate Quiz' : 'Step 3 · Generate Quiz'}</Text>
-          <Text style={styles.sectionSub}>Configure options, then generate from selected pages</Text>
+          <Text style={styles.sectionTitle}>
+            {isCameraSession ? 'Step 2 · Generate Quiz' : 'Step 3 · Generate Quiz'}
+          </Text>
+          <Text style={styles.sectionSub}>
+            {isCameraSession
+              ? 'Configure options, then generate — text is extracted automatically from selected pages'
+              : 'Configure options, then generate from selected pages'}
+          </Text>
 
           <Text style={styles.label}>Class / Grade</Text>
           <TextInput
@@ -867,29 +894,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           <TouchableOpacity
             style={[
               styles.primaryAction,
-              (loadingQuiz || selectedPages.size === 0 || (isCameraSession && !bookState.ocrExtracted)) && styles.disabled,
+              (loadingQuiz || selectedPages.size === 0) && styles.disabled,
             ]}
             onPress={handleGenerateQuiz}
-            disabled={loadingQuiz || selectedPages.size === 0 || (isCameraSession && !bookState.ocrExtracted)}
+            disabled={loadingQuiz || selectedPages.size === 0}
           >
             {loadingQuiz ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="flash-outline" size={16} color="#fff" />}
-            <Text style={styles.primaryActionText}>{loadingQuiz ? 'Generating Assessment...' : 'Generate Assessment'}</Text>
+            <Text style={styles.primaryActionText}>
+              {loadingQuiz ? (processingStatus || 'Generating assessment…') : 'Generate Assessment'}
+            </Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity
-          style={[
-            styles.worksheetBtn,
-            (loadingWorksheet || (isCameraSession && !bookState.ocrExtracted)) && styles.disabled,
-          ]}
+          style={[styles.worksheetBtn, loadingWorksheet && styles.disabled]}
           onPress={handleGenerateWorksheet}
-          disabled={loadingWorksheet || (isCameraSession && !bookState.ocrExtracted)}
+          disabled={loadingWorksheet}
         >
           {loadingWorksheet ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
-          <Text style={styles.worksheetBtnText}>{loadingWorksheet ? 'Generating Worksheet...' : 'Generate Worksheet'}</Text>
+          <Text style={styles.worksheetBtnText}>
+            {loadingWorksheet ? (processingStatus || 'Generating worksheet…') : 'Generate Worksheet'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -991,7 +1019,29 @@ const makeStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 12,
+      gap: 8,
+    },
+    selectionActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flexShrink: 0,
+    },
+    compactActionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: 8,
+      backgroundColor: colors.card,
+    },
+    compactActionText: {
+      color: colors.primary,
+      fontWeight: '700',
+      fontSize: 12,
     },
     selectAllBtn: {
       flexShrink: 0,
@@ -1030,6 +1080,14 @@ const makeStyles = (colors: any) =>
       position: 'absolute',
       top: 2,
       left: 2,
+      zIndex: 2,
+      backgroundColor: 'rgba(255,255,255,0.92)',
+      borderRadius: 10,
+    },
+    removeThumbBtn: {
+      position: 'absolute',
+      top: 2,
+      right: 2,
       zIndex: 2,
       backgroundColor: 'rgba(255,255,255,0.92)',
       borderRadius: 10,
@@ -1124,59 +1182,6 @@ const makeStyles = (colors: any) =>
       gap: 8,
     },
     errorText: { color: '#B91C1C', fontSize: 12, flex: 1 },
-
-    addPageBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      minHeight: 44,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      backgroundColor: colors.card,
-      paddingHorizontal: 12,
-    },
-    addPageBtnText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
-
-    extractCard: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      backgroundColor: colors.card,
-      padding: 12,
-      gap: 8,
-    },
-    extractBtn: {
-      marginTop: 4,
-      minHeight: 46,
-      borderRadius: 10,
-      backgroundColor: '#0E7490',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 8,
-    },
-    extractBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    extractPreview: {
-      marginTop: 4,
-      fontSize: 12,
-      color: colors.textSecondary,
-      lineHeight: 17,
-      fontStyle: 'italic',
-    },
-    successBox: {
-      borderWidth: 1,
-      borderColor: '#86EFAC',
-      backgroundColor: '#F0FDF4',
-      borderRadius: 10,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    successText: { color: '#15803D', fontSize: 12, fontWeight: '600', flex: 1 },
 
     centerEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, backgroundColor: colors.background },
     emptyTitle: { color: colors.text, fontWeight: '700', fontSize: 16 },

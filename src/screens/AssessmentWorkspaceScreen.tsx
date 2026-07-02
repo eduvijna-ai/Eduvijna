@@ -108,12 +108,18 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
 
   const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
 
-  // ── route param → mode sync ──────────────────────────────────────────────
+  // ── route param → mode / tab sync ───────────────────────────────────────
   React.useEffect(() => {
     const routeMode = route?.params?.mode;
     if (routeMode && routeMode !== mode) setMode(routeMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.params?.mode]);
+
+  React.useEffect(() => {
+    const routeTab = route?.params?.centerTab;
+    if (routeTab && routeTab !== centerTab) setCenterTab(routeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.centerTab]);
 
   // ── list data ────────────────────────────────────────────────────────────
   const [quizList, setQuizList] = useState<AssessmentListItem[]>([]);
@@ -218,23 +224,39 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
       if (questions.length === 0) { Alert.alert('Empty', 'This quiz has no questions.'); return; }
 
       const launch = (initialResponses?: Record<string, string>) => {
+        const quizPayload = {
+          id: detail.id,
+          title: detail.title,
+          class: detail.class_name,
+          subject: detail.subject,
+          difficulty: detail.level,
+          lesson: detail.lesson,
+          questions,
+          duration: 30,
+          has_time_limit: false,
+        };
+
+        if (mode === 'document') {
+          navigation.navigate('DocumentUploadQuizScreen', {
+            quizData: quizPayload,
+            source: 'history',
+            workspaceMode: 'document',
+            assessmentId: detail.id,
+            initialResponses,
+            showActionButtons: true,
+            showShareButton: true,
+          });
+          return;
+        }
+
         navigation.navigate('QuizTakingScreen', {
-          quiz: {
-            id: detail.id,
-            title: detail.title,
-            class: detail.class_name,
-            subject: detail.subject,
-            difficulty: detail.level,
-            lesson: detail.lesson,
-            questions,
-            duration: 30,
-            has_time_limit: false,
-          },
+          quiz: quizPayload,
           assessmentId: detail.id,
           initialResponses,
           showActionButtons: true,
-          showShareButton: false,
+          showShareButton: true,
           source: 'history',
+          workspaceMode: 'handwritten',
         });
       };
 
@@ -611,7 +633,9 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
             <Text style={styles.emptyBody}>
               {listSearch
                 ? 'Try a different search term.'
-                : 'Generate a document or AI quiz to see it here.'}
+                : mode === 'document'
+                  ? 'Upload a document from Setup to generate your first quiz.'
+                  : 'Generate a document or AI quiz to see it here.'}
             </Text>
           </View>
         ) : (
@@ -636,13 +660,15 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity
-          style={[styles.primaryAction, { marginTop: 12 }]}
-          onPress={() => setCenterTab('preview')}
-        >
-          <Ionicons name="add-outline" size={16} color="#fff" />
-          <Text style={styles.primaryActionText}>Create New Quiz</Text>
-        </TouchableOpacity>
+        {mode !== 'document' && (
+          <TouchableOpacity
+            style={[styles.primaryAction, { marginTop: 12 }]}
+            onPress={() => setCenterTab('preview')}
+          >
+            <Ionicons name="add-outline" size={16} color="#fff" />
+            <Text style={styles.primaryActionText}>Create New Quiz</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -655,93 +681,94 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
 
     return (
       <>
-        {/* Generation form */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Generate Worksheet</Text>
+        {mode !== 'document' && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Generate Worksheet</Text>
 
-          <Text style={styles.label}>Class / Grade</Text>
-          <TextInput
-            value={wsClass}
-            onChangeText={setWsClass}
-            placeholder="e.g., Class 10"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
+            <Text style={styles.label}>Class / Grade</Text>
+            <TextInput
+              value={wsClass}
+              onChangeText={setWsClass}
+              placeholder="e.g., Class 10"
+              style={styles.input}
+              placeholderTextColor={theme.colors.placeholder}
+            />
 
-          <Text style={styles.label}>Subject</Text>
-          <TextInput
-            value={wsSubject}
-            onChangeText={setWsSubject}
-            placeholder="e.g., Physics"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
+            <Text style={styles.label}>Subject</Text>
+            <TextInput
+              value={wsSubject}
+              onChangeText={setWsSubject}
+              placeholder="e.g., Physics"
+              style={styles.input}
+              placeholderTextColor={theme.colors.placeholder}
+            />
 
-          <Text style={styles.label}>Lesson / Topic</Text>
-          <TextInput
-            value={wsLesson}
-            onChangeText={setWsLesson}
-            placeholder="e.g., Reflection of Light"
-            style={styles.input}
-            placeholderTextColor={theme.colors.placeholder}
-          />
+            <Text style={styles.label}>Lesson / Topic</Text>
+            <TextInput
+              value={wsLesson}
+              onChangeText={setWsLesson}
+              placeholder="e.g., Reflection of Light"
+              style={styles.input}
+              placeholderTextColor={theme.colors.placeholder}
+            />
 
-          <Text style={styles.label}>Difficulty Level</Text>
-          <View style={styles.pillsRow}>
-            {WS_LEVELS.map((l) => {
-              const selected = wsLevel === l;
-              return (
-                <TouchableOpacity
-                  key={l}
-                  style={[styles.pill, selected && styles.pillSelected]}
-                  onPress={() => setWsLevel(l)}
-                >
-                  <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
-                    {l.charAt(0).toUpperCase() + l.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+            <Text style={styles.label}>Difficulty Level</Text>
+            <View style={styles.pillsRow}>
+              {WS_LEVELS.map((l) => {
+                const selected = wsLevel === l;
+                return (
+                  <TouchableOpacity
+                    key={l}
+                    style={[styles.pill, selected && styles.pillSelected]}
+                    onPress={() => setWsLevel(l)}
+                  >
+                    <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
+                      {l.charAt(0).toUpperCase() + l.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.label}>Total Questions</Text>
+            <View style={styles.pillsRow}>
+              {COUNT_OPTIONS.map((c) => {
+                const selected = wsCount === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.countPill, selected && styles.pillSelected]}
+                    onPress={() => setWsCount(c)}
+                  >
+                    <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{c}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.primaryAction,
+                { marginTop: 16 },
+                wsGenerating && styles.primaryActionDisabled,
+              ]}
+              onPress={handleGenerateWorksheet}
+              disabled={wsGenerating}
+            >
+              {wsGenerating ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.primaryActionText}>Generating…</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="document-text-outline" size={18} color="#fff" />
+                  <Text style={styles.primaryActionText}>Generate Worksheet</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
-
-          <Text style={styles.label}>Total Questions</Text>
-          <View style={styles.pillsRow}>
-            {COUNT_OPTIONS.map((c) => {
-              const selected = wsCount === c;
-              return (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.countPill, selected && styles.pillSelected]}
-                  onPress={() => setWsCount(c)}
-                >
-                  <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{c}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.primaryAction,
-              { marginTop: 16 },
-              wsGenerating && styles.primaryActionDisabled,
-            ]}
-            onPress={handleGenerateWorksheet}
-            disabled={wsGenerating}
-          >
-            {wsGenerating ? (
-              <>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.primaryActionText}>Generating…</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="document-text-outline" size={18} color="#fff" />
-                <Text style={styles.primaryActionText}>Generate Worksheet</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+        )}
 
         {/* Recent worksheets */}
         <View style={styles.card}>
@@ -762,7 +789,11 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
               <Ionicons name="document-text-outline" size={40} color={theme.colors.border} />
               <Text style={styles.emptyTitle}>{listSearch ? 'No results' : 'No worksheets yet'}</Text>
               <Text style={styles.emptyBody}>
-                {listSearch ? 'Try a different search term.' : 'Generate your first worksheet above.'}
+                {listSearch
+                  ? 'Try a different search term.'
+                  : mode === 'document'
+                    ? 'Upload a document from Setup to generate your first worksheet.'
+                    : 'Generate your first worksheet above.'}
               </Text>
             </View>
           ) : (

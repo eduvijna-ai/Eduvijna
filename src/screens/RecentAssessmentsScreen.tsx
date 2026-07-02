@@ -157,8 +157,9 @@ export default function RecentAssessmentsScreen({ navigation }: any) {
             assessmentId: detail.id,
             initialResponses,
             showActionButtons: true,
-            showShareButton: false,
+            showShareButton: true,
             source: 'history',
+            workspaceMode: 'document',
           });
         };
 

@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
@@ -66,6 +66,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
+  const scrollBottomPad = Math.max(insets.bottom + 28, Platform.OS === 'android' ? 48 : 28);
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
@@ -404,7 +405,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.tabRow}>
         {([
           { key: 'upload', label: 'Upload' },
@@ -423,7 +424,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         })}
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(28, insets.bottom + 16) }]}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
         <TouchableOpacity
           style={styles.libraryBanner}
           onPress={() => navigation.navigate('DocumentLibraryScreen')}
@@ -558,7 +559,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

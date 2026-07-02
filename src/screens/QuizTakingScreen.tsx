@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  StatusBar,
   useWindowDimensions,
   BackHandler,
 } from 'react-native';
@@ -30,6 +31,7 @@ import ShareOptionsModal from '../components/ShareOptionsModal';
 import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MathRenderer from '../components/MathRenderer';
+import { regenerateDocumentUploadQuiz } from '../core/services/documentUploadApi';
 
 interface QuizQuestion {
   id: string;
@@ -103,8 +105,12 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     showActionButtons,
   } = routeParams;
   const source = routeParams?.source;
-  /** Document quiz wrapper hides the stack header — content must clear the status bar. */
-  const isFullScreenQuiz = source === 'document-upload';
+  /** Wrapper screens (e.g. DocumentUploadQuizScreen) hide the stack header. */
+  const hideStackHeader = routeParams?.hideStackHeader === true;
+  const isFullScreenQuiz = hideStackHeader || source === 'document-upload';
+  const topSafeInset = isFullScreenQuiz
+    ? Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 28) : 0)
+    : 0;
 
   // ── Saved-assessment response persistence (mirrors web restore flow) ──────
   // When a quiz is opened from history we know its user-assessment id, which
@@ -126,6 +132,32 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const responseSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleCreateNewQuiz = () => {
+    const workspaceMode = routeParams?.workspaceMode === 'handwritten' ? 'handwritten' : 'document';
+
+    const goToWorkspaceSetup = () => {
+      navigation.navigate('AssessmentWorkspaceScreen', {
+        mode: workspaceMode,
+        centerTab: 'preview',
+      });
+    };
+
+    if (source === 'history') {
+      goToWorkspaceSetup();
+      return;
+    }
+
+    if (source === 'document-upload') {
+      const previewBook = routeParams?.previewBook;
+      const returnScreen = routeParams?.returnScreen || 'DocumentUploadPreviewScreen';
+      const previewFormState = routeParams?.previewFormState;
+      if (previewBook) {
+        navigation.navigate(returnScreen, { book: previewBook, previewFormState });
+      } else {
+        goToWorkspaceSetup();
+      }
+      return;
+    }
+
     if (source === 'image' || source === 'youtube' || source === 'document' || source === 'handwritten') {
       navigation.goBack();
       return;
@@ -568,11 +600,19 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     }
 
     const regenerationParams = currentQuizData.regenerationParams;
+    const regType = String(regenerationParams.type || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
     
     try {
       let newQuizData;
+
+      if (regType === 'document-upload') {
+        return await regenerateDocumentUploadQuiz(regenerationParams, currentQuizData);
+      }
       
-      switch (regenerationParams.type) {
+      switch (regType) {
         case 'ai':
           newQuizData = await generateAIQuiz({
             class: regenerationParams.classId,
@@ -667,7 +707,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           };
 
         default:
-          throw new Error(`Unsupported regeneration type: ${regenerationParams.type}`);
+          throw new Error(`Unsupported regeneration type: ${regenerationParams.type || regType}`);
       }
     } catch (error) {
       console.error('Regeneration error:', error);
@@ -999,7 +1039,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // QuizTakingScreen only renders the quiz interface
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: isFullScreenQuiz ? insets.top : 0 }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: topSafeInset }]}>
       {/* Action Buttons - Top (Regenerate, Retake, New Quiz, Share) */}
       {(showShareButton || showActionButtons) && (
         <View style={[styles.topActionsContainer, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -1096,14 +1136,16 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.primary }]}
               onPress={() => {
-                Alert.alert(
-                  'Create New Assessment',
-                  'Go back to create a new assessment?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Yes', onPress: handleCreateNewQuiz },
-                  ]
-                );
+                const message =
+                  source === 'document-upload' && routeParams?.previewBook
+                    ? 'Go back to change pages, difficulty, or details and generate a new assessment?'
+                    : source === 'history' || source === 'document-upload'
+                      ? 'Go to Setup to upload a new document and create a fresh assessment?'
+                      : 'Go back to create a new assessment?';
+                Alert.alert('Create New Assessment', message, [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Yes', onPress: handleCreateNewQuiz },
+                ]);
               }}
               activeOpacity={0.8}
             >
@@ -1482,14 +1524,16 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 12 },
   topActionsContainer: {
     flexDirection: 'row',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderBottomWidth: 1,
     gap: 8,
   },
   actionButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '30%',
+    minWidth: 100,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
