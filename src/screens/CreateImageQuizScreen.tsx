@@ -21,6 +21,7 @@ import QuizFormFields from '../components/QuizFormFields';
 import { useDropdowns } from '../context/DropdownContext';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 export default function CreateImageQuizScreen({ navigation }: any) {
   const { theme } = useTheme();
@@ -283,6 +284,12 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         ? finalPrompt.substring(0, 497) + '...' 
         : finalPrompt;
       
+      const sanitizedQuiz = sanitizeQuizQuestions(result.quiz || []);
+      if (!sanitizedQuiz.length) {
+        setSubmitError('Assessment generation completed but returned no valid questions.');
+        return;
+      }
+
       // Refresh notifications after assessment creation
       await refreshAfterQuizGenerated();
 
@@ -301,7 +308,7 @@ export default function CreateImageQuizScreen({ navigation }: any) {
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson} Assessment`,
-          questions: result.quiz || [],
+          questions: sanitizedQuiz,
           class: classLabel,
           subject: subjectLabel,
           difficulty: values.level,

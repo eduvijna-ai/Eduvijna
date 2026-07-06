@@ -27,6 +27,7 @@ import {
   AssessmentListItem,
 } from '../core/services/sharedApi';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 const WS_DATA_MARKER = '__WS_DATA__';
 
@@ -38,32 +39,11 @@ const WS_DATA_MARKER = '__WS_DATA__';
  */
 function decodeQuizQuestions(raw: any[]): any[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item: any, idx: number) => {
-      if (item?.quiz?.question) {
-        const qText = String(item.quiz.question);
-        if (qText.startsWith(WS_DATA_MARKER)) return null;
-        return {
-          id: `q-${idx}`,
-          question: item.quiz.question,
-          options: item.quiz.options || [],
-          correctAnswer: item.quiz.answer || 'A',
-          answer: item.quiz.answer || 'A',
-          explanation: item.quiz.explanation || null,
-        };
-      }
-      const flatQ = String(item?.question || '');
-      if (flatQ.startsWith(WS_DATA_MARKER)) return null;
-      return {
-        id: item.id || `q-${idx}`,
-        question: item.question || '',
-        options: item.options || [],
-        correctAnswer: item.correctAnswer || item.answer || 'A',
-        answer: item.answer || item.correctAnswer || 'A',
-        explanation: item.explanation || null,
-      };
-    })
-    .filter(Boolean) as any[];
+  const filtered = raw.filter((item: any) => {
+    const qText = String(item?.quiz?.question ?? item?.question ?? '');
+    return !qText.startsWith(WS_DATA_MARKER);
+  });
+  return sanitizeQuizQuestions(filtered);
 }
 
 const uniqueSorted = (values: (string | undefined)[]): string[] =>

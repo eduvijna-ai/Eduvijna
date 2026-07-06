@@ -14,6 +14,7 @@ import * as Yup from 'yup';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import { generateAIQuiz, saveUserAssessment } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
 import QuizFormFields from '../components/QuizFormFields';
@@ -347,8 +348,9 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         itext: finalPrompt,
       });
 
-      if (!result.quiz || !Array.isArray(result.quiz) || result.quiz.length === 0) {
-        setSubmitError('The assessment was created but no questions were generated from the video.');
+      const sanitizedQuiz = sanitizeQuizQuestions(result.quiz || []);
+      if (!sanitizedQuiz.length) {
+        setSubmitError('The assessment was created but no valid questions were generated from the video.');
         return;
       }
 
@@ -393,7 +395,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson} Assessment`,
-          questions: result.quiz || [],
+          questions: sanitizedQuiz,
           class: classLabel,
           subject: subjectLabel,
           difficulty: values.level,

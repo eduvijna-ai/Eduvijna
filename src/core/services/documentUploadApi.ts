@@ -444,9 +444,11 @@ const pageImageUrlCandidates = (
 
 const uint8ToBase64 = (bytes: Uint8Array): string => {
   if (typeof globalThis.btoa === 'function') {
+    const chunkSize = 0x8000;
     let binary = '';
-    for (let i = 0; i < bytes.length; i += 1) {
-      binary += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const slice = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(slice));
     }
     return globalThis.btoa(binary);
   }
@@ -870,16 +872,7 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
       answer: string;
       explanation: string | null;
     }>;
-    regenerationParams: {
-      type: 'document-upload';
-      fileName: string;
-      grade: string;
-      subject: string;
-      level: string;
-      lesson: string;
-      count: number;
-        selectedPages?: number[];
-    };
+    regenerationParams: DocumentUploadRegenerationParams;
   };
   raw: any;
 }> {

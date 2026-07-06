@@ -30,6 +30,7 @@ import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 interface PickedImage {
   uri: string;
@@ -349,13 +350,19 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         throw new Error('Assessment generation returned no questions. Please try again.');
       }
 
-      const questions = quizData.quiz.map((item, idx) => ({
-        id: `hw-q-${idx}`,
-        question: item.question,
-        options: item.options,
-        correctAnswer: item.correctAnswer,
-        answer: item.correctAnswer,
-      }));
+      const questions = sanitizeQuizQuestions(
+        quizData.quiz.map((item, idx) => ({
+          id: `hw-q-${idx}`,
+          question: item.question,
+          options: item.options,
+          correctAnswer: item.correctAnswer,
+          answer: item.correctAnswer,
+        })),
+      );
+
+      if (questions.length === 0) {
+        throw new Error('Assessment generation returned no valid questions. Please try again.');
+      }
 
       try {
         await saveUserAssessment({
