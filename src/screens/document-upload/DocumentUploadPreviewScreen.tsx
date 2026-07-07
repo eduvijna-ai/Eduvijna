@@ -41,6 +41,7 @@ import {
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
@@ -482,6 +483,12 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
       if (!questions.length) {
         setError('Assessment generation returned no questions. Please try another file or configuration.');
+        return;
+      }
+
+      questions = sanitizeQuizQuestions(questions);
+      if (!questions.length) {
+        setError('Assessment questions were invalid. Please try generating again.');
         return;
       }
 

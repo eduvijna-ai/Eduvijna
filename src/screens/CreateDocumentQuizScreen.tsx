@@ -28,6 +28,7 @@ import { useTheme } from '@context/ThemeContext';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 interface QuizQuestion {
   id?: string;
@@ -103,6 +104,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
   const [questionResults, setQuestionResults] = useState<{ [key: number]: boolean }>({});
   const [allQuestionsVerified, setAllQuestionsVerified] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   
   // Quiz form states
   const [classValue, setClassValue] = useState('');
@@ -938,6 +940,13 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
         return;
       }
 
+      const sanitizedQuestions = sanitizeQuizQuestions(questions);
+      if (!sanitizedQuestions.length) {
+        setQuizError('Assessment generation returned invalid questions. Try different parameters.');
+        setGenerating(false);
+        return;
+      }
+
       await refreshAfterQuizGenerated();
 
       setClassValue(values.classValue);
@@ -951,7 +960,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson.trim()} Assessment`,
-          questions: questions,
+          questions: sanitizedQuestions,
           class: classLabel,
           subject: subjectLabel,
           difficulty: values.level,
@@ -1038,6 +1047,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
     setSelectedAnswers({});
     setQuestionResults({});
     setAllQuestionsVerified(false);
+    setCurrentQuestionIndex(0);
     setSelectedBoardType('');
     setDocumentMetadata({
       board: '',
@@ -1056,6 +1066,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
     setSelectedAnswers({});
     setQuestionResults({});
     setAllQuestionsVerified(false);
+    setCurrentQuestionIndex(0);
   };
 
   const handleGenerateAnotherQuiz = () => {
@@ -1571,16 +1582,26 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
             </TouchableOpacity>
           </View>
 
-          {/* Quiz Questions */}
+          {/* Quiz Questions — one at a time to avoid dozens of WebViews on screen */}
           <View style={styles.questionsContainer}>
-            {quizData.questions.map((question: any, index: number) => {
+            {(() => {
+              const questions = quizData.questions ?? [];
+              if (questions.length === 0) return null;
+
+              const index = currentQuestionIndex;
+              const question = questions[index];
+              if (!question) return null;
+
               const isCorrect = questionResults[index] === true;
               const isWrong = questionResults[index] === false;
+              const options = Array.isArray(question.options) ? question.options : [];
 
               return (
                 <View key={question.id || index} style={styles.questionCard}>
                   <View style={styles.questionHeader}>
-                    <Text style={styles.questionNumber}>Q{index + 1}</Text>
+                    <Text style={styles.questionNumber}>
+                      Q{index + 1} of {questions.length}
+                    </Text>
                     {allQuestionsVerified && (
                       isCorrect ? (
                         <View style={styles.correctBadge}>
@@ -1596,10 +1617,10 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
                     )}
                   </View>
 
-                  <MathRenderer text={question.question} colors={theme.colors} />
+                  <MathRenderer text={String(question.question ?? '')} colors={theme.colors} />
 
                   <View style={styles.optionsContainer}>
-                    {question.options.map((option: any, optionIndex: number) => {
+                    {options.map((option: any, optionIndex: number) => {
                       const optionLetter = String.fromCharCode(65 + optionIndex);
                       const isSelected = selectedAnswers[index] === option;
                       const isCorrectOption = allQuestionsVerified && option === question.correctAnswer;
@@ -1626,7 +1647,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
                             ]}>
                               {optionLetter}
                             </Text>
-                            <MathRenderer text={option} colors={theme.colors} />
+                            <MathRenderer text={String(option ?? '')} colors={theme.colors} />
                           </View>
                           {allQuestionsVerified && (
                             isCorrectOption ? (
@@ -1639,9 +1660,29 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
                       );
                     })}
                   </View>
+
+                  <View style={styles.questionNavRow}>
+                    <TouchableOpacity
+                      style={[styles.questionNavBtn, index === 0 && styles.questionNavBtnDisabled]}
+                      disabled={index === 0}
+                      onPress={() => setCurrentQuestionIndex((i) => Math.max(0, i - 1))}
+                    >
+                      <Text style={styles.questionNavBtnText}>Previous</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.questionNavBtn,
+                        index >= questions.length - 1 && styles.questionNavBtnDisabled,
+                      ]}
+                      disabled={index >= questions.length - 1}
+                      onPress={() => setCurrentQuestionIndex((i) => Math.min(questions.length - 1, i + 1))}
+                    >
+                      <Text style={styles.questionNavBtnText}>Next</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
-            })}
+            })()}
           </View>
 
           {!allQuestionsVerified && (
@@ -2367,6 +2408,27 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   questionsContainer: {
     gap: 16,
+  },
+  questionNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 16,
+  },
+  questionNavBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  questionNavBtnDisabled: {
+    opacity: 0.4,
+  },
+  questionNavBtnText: {
+    color: colors.buttonText,
+    fontWeight: '600',
+    fontSize: 14,
   },
   questionCard: {
     backgroundColor: colors.cardBackground,

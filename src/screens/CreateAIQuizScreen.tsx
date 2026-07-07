@@ -30,6 +30,7 @@ import {
 } from '../core/services/dropdown';
 import { useDropdowns } from '../context/DropdownContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 type Mode = 'general' | 'competitive';
 
@@ -404,7 +405,11 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           itext: general.itext.trim(),
         });
 
-        const processedQuestions = result?.quiz || [];
+        const processedQuestions = sanitizeQuizQuestions(result?.quiz || []);
+        if (!processedQuestions.length) {
+          setSubmitError('Assessment generation completed but returned no valid questions.');
+          return;
+        }
         await refreshAfterQuizGenerated();
 
         navigation.navigate('QuizTakingScreen', {
@@ -471,7 +476,11 @@ export default function CreateAIQuizScreen({ navigation }: any) {
           language: competitive.language,
         });
 
-        const processedQuestions = result?.quiz || [];
+        const processedQuestions = sanitizeQuizQuestions(result?.quiz || []);
+        if (!processedQuestions.length) {
+          setSubmitError('Assessment generation completed but returned no valid questions.');
+          return;
+        }
         await refreshAfterQuizGenerated();
 
         navigation.navigate('QuizTakingScreen', {

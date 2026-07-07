@@ -31,6 +31,7 @@ import ShareOptionsModal from '../components/ShareOptionsModal';
 import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MathRenderer from '../components/MathRenderer';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import { regenerateDocumentUploadQuiz } from '../core/services/documentUploadApi';
 
 interface QuizQuestion {
@@ -76,6 +77,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const colors = {
     background: t.colors.background,
     card: t.colors.surface,
+    surface: t.colors.surface,
     text: t.colors.textPrimary,
     textSecondary: t.colors.textSecondary,
     primary: t.colors.primary,
@@ -400,7 +402,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // Normalize questions: strip option label prefixes, resolve correctAnswer to a letter,
   // and shuffle options so the correct answer isn't always at the same position.
   const normalizeQuestions = (questions: any[]): any[] =>
-    questions.map((q: any) => {
+    sanitizeQuizQuestions(questions).map((q) => {
       const cleanOptions = (q.options || []).map(stripOptionLabel);
 
       // Resolve correctAnswer — the API may return it as:
@@ -481,7 +483,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       // No quiz data provided
       setIsLoading(false);
     }
-  }, [quizSource, navigation, isAssignedQuiz]); // Re-run when quiz params change
+  }, [quizSource]); // Re-run only when quiz payload changes — not isAssignedQuiz (avoids reset loops)
 
   // Timer countdown
   useEffect(() => {
@@ -1354,7 +1356,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             {/* Quiz Explanation Accordion - Only in results view */}
         {showResults && (
           <QuizExplanationAccordion
-            questionId={currentQuestion.id || `q-${currentQuestionIndex}-${currentQuestion.question.substring(0, 20)}`}
+            questionId={currentQuestion.id || `q-${currentQuestionIndex}-${currentQuestion.question?.substring(0, 20) ?? 'question'}`}
             questionText={currentQuestion.question}
             options={currentQuestion.options}
             selectedAnswer={selectedAnswers[currentQuestionIndex] || ''}

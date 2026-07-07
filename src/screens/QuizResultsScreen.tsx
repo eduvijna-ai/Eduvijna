@@ -393,7 +393,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         </View>
 
         <QuizExplanationAccordion
-          questionId={question.id || `q-${index}-${question.question.substring(0, 20)}`}
+          questionId={question.id || `q-${index}-${question.question?.substring(0, 20) ?? 'question'}`}
           questionText={question.question}
           options={question.options}
           selectedAnswer={userAnswers[index] || ''}

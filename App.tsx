@@ -53,6 +53,7 @@ import ERPNavigator from './src/erp/navigation/ERPNavigator';
 import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
 import { useAppFonts } from './src/theme/useAppFonts';
+import AppErrorBoundary from './src/components/AppErrorBoundary';
 
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
@@ -578,13 +579,15 @@ function AppWithFonts() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AuthProvider>
-          <DropdownProvider>
-            <AppWithFonts />
-          </DropdownProvider>
-        </AuthProvider>
-      </ThemeProvider>
+      <AppErrorBoundary>
+        <ThemeProvider>
+          <AuthProvider>
+            <DropdownProvider>
+              <AppWithFonts />
+            </DropdownProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }

@@ -42,6 +42,8 @@ import {
   getUserAssessmentById,
   type AssessmentListItem,
 } from '../core/services/sharedApi';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import { compressCameraImage } from '@core/services/documentImageUtils';
 import {
   analyzeImage,
   fileToBase64,
@@ -74,6 +76,43 @@ interface HistoryEntry {
 }
 
 const COUNT_OPTIONS = [5, 10, 15, 20];
+
+/** Collapsible analysis section — keeps heavy MathRenderer blocks off-screen until expanded. */
+function CollapsibleAnalysisCard({
+  title,
+  icon,
+  defaultOpen = false,
+  colors,
+  styles,
+  children,
+}: {
+  title: string;
+  icon: string;
+  defaultOpen?: boolean;
+  colors: any;
+  styles: ReturnType<typeof createStyles>;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={styles.infoCard}>
+      <TouchableOpacity
+        style={styles.infoCardHeader}
+        onPress={() => setOpen((v) => !v)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.infoCardIcon}>{icon}</Text>
+        <Text style={[styles.infoCardTitle, { flex: 1 }]}>{title}</Text>
+        <Ionicons
+          name={open ? 'chevron-up' : 'chevron-down'}
+          size={18}
+          color={colors.textSecondary}
+        />
+      </TouchableOpacity>
+      {open ? children : null}
+    </View>
+  );
+}
 
 const formatDate = (value?: string) => {
   if (!value) return '';
@@ -273,7 +312,8 @@ export default function ImageAssessmentScreen({ navigation }: any) {
 
       // Persist the analyzed image so it appears in the library (web parity).
       try {
-        const base64 = await fileToBase64(imageUri);
+        const compressedUri = await compressCameraImage(imageUri);
+        const base64 = await fileToBase64(compressedUri);
         const saved = await saveImageAssessment({
           image_name: imageName || 'image.jpg',
           mime_type: imageMime || 'image/png',
@@ -326,18 +366,10 @@ export default function ImageAssessmentScreen({ navigation }: any) {
         throw new Error('No questions were returned for this image.');
       }
 
-      const flatQuestions = rawQuiz.map((item, idx) => {
-        const options = Array.isArray(item.options) ? item.options.map((o) => String(o)) : [];
-        const letter = toOptionLetter(String(item.correctAnswer || item.answer || ''), options);
-        return {
-          id: `q-${idx}`,
-          question: item.question,
-          options,
-          correctAnswer: letter,
-          answer: letter,
-          explanation: item.explanation || null,
-        };
-      });
+      const flatQuestions = sanitizeQuizQuestions(rawQuiz);
+      if (!flatQuestions.length) {
+        throw new Error('No valid questions were returned for this image.');
+      }
 
       await refreshAfterQuizGenerated();
 
@@ -703,7 +735,13 @@ export default function ImageAssessmentScreen({ navigation }: any) {
               onPress={() => selectLibraryItem(item)}
               activeOpacity={0.85}
             >
-              <Image source={{ uri: toDataUrl(item.mime_type, item.image_base64) }} style={styles.libraryThumb} />
+              {item.image_base64 && item.image_base64.length < 120_000 ? (
+                <Image source={{ uri: toDataUrl(item.mime_type, item.image_base64) }} style={styles.libraryThumb} />
+              ) : (
+                <View style={[styles.libraryThumb, styles.libraryThumbPlaceholder]}>
+                  <Ionicons name="image-outline" size={22} color={colors.textSecondary} />
+                </View>
+              )}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.libraryName} numberOfLines={1}>{item.image_name}</Text>
                 <Text style={styles.librarySub}>
@@ -769,9 +807,11 @@ export default function ImageAssessmentScreen({ navigation }: any) {
             </View>
           ) : null}
 
-          {!!analysis.summary && renderInfoCard('Analysis Summary', '📝', (
-            <MathRenderer text={analysis.summary} colors={colors} />
-          ))}
+          {!!analysis.summary && (
+            <CollapsibleAnalysisCard title="Analysis Summary" icon="📝" defaultOpen colors={colors} styles={styles}>
+              <MathRenderer text={analysis.summary} colors={colors} />
+            </CollapsibleAnalysisCard>
+          )}
 
           {(analysis.subject || analysis.topic || Object.keys(tags).length > 0) && renderInfoCard('Tags', '🏷️', (
             <View style={styles.tagGrid}>
@@ -801,51 +841,59 @@ export default function ImageAssessmentScreen({ navigation }: any) {
             </View>
           ))}
 
-          {Array.isArray(analysis.elements) && analysis.elements.length > 0 && renderInfoCard('Detected Elements', '🔍', (
-            <View style={{ gap: 10 }}>
-              {analysis.elements.map((el, i) => (
-                <View key={`${el.label}-${i}`} style={styles.subCard}>
-                  <Text style={styles.subCardTitle}>{i + 1}. {el.label}</Text>
-                  <MathRenderer text={el.description} colors={colors} />
-                  {!!el.role && <Text style={styles.subCardMeta}>Role: {el.role}</Text>}
-                </View>
-              ))}
-            </View>
-          ))}
+          {Array.isArray(analysis.elements) && analysis.elements.length > 0 && (
+            <CollapsibleAnalysisCard title="Detected Elements" icon="🔍" colors={colors} styles={styles}>
+              <View style={{ gap: 10 }}>
+                {analysis.elements.map((el, i) => (
+                  <View key={`${el.label}-${i}`} style={styles.subCard}>
+                    <Text style={styles.subCardTitle}>{i + 1}. {el.label}</Text>
+                    <MathRenderer text={el.description} colors={colors} />
+                    {!!el.role && <Text style={styles.subCardMeta}>Role: {el.role}</Text>}
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
-          {Array.isArray(analysis.summary_points) && analysis.summary_points.length > 0 && renderInfoCard('Key Points', '📌', (
-            <View style={{ gap: 6 }}>
-              {analysis.summary_points.map((p, i) => (
-                <View key={i} style={styles.bulletRow}>
-                  <Text style={styles.bulletDot}>•</Text>
-                  <View style={{ flex: 1 }}><MathRenderer text={p} colors={colors} /></View>
-                </View>
-              ))}
-            </View>
-          ))}
+          {Array.isArray(analysis.summary_points) && analysis.summary_points.length > 0 && (
+            <CollapsibleAnalysisCard title="Key Points" icon="📌" colors={colors} styles={styles}>
+              <View style={{ gap: 6 }}>
+                {analysis.summary_points.map((p, i) => (
+                  <View key={i} style={styles.bulletRow}>
+                    <Text style={styles.bulletDot}>•</Text>
+                    <View style={{ flex: 1 }}><MathRenderer text={p} colors={colors} /></View>
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
-          {Array.isArray(analysis.concepts) && analysis.concepts.length > 0 && renderInfoCard('Concepts', '🧠', (
-            <View style={{ gap: 10 }}>
-              {analysis.concepts.map((c, i) => (
-                <View key={`${c.name}-${i}`} style={styles.subCard}>
-                  <Text style={styles.subCardTitle}>{c.name}</Text>
-                  <MathRenderer text={c.explanation} colors={colors} />
-                  {!!c.importance && <Text style={styles.subCardMeta}>Importance: {c.importance}</Text>}
-                </View>
-              ))}
-            </View>
-          ))}
+          {Array.isArray(analysis.concepts) && analysis.concepts.length > 0 && (
+            <CollapsibleAnalysisCard title="Concepts" icon="🧠" colors={colors} styles={styles}>
+              <View style={{ gap: 10 }}>
+                {analysis.concepts.map((c, i) => (
+                  <View key={`${c.name}-${i}`} style={styles.subCard}>
+                    <Text style={styles.subCardTitle}>{c.name}</Text>
+                    <MathRenderer text={c.explanation} colors={colors} />
+                    {!!c.importance && <Text style={styles.subCardMeta}>Importance: {c.importance}</Text>}
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
-          {Array.isArray(analysis.process) && analysis.process.length > 0 && renderInfoCard('Process', '🔄', (
-            <View style={{ gap: 8 }}>
-              {analysis.process.map((p, i) => (
-                <View key={i} style={styles.subCard}>
-                  <Text style={styles.subCardTitle}>{i + 1}. {p.step}</Text>
-                  <MathRenderer text={p.explanation} colors={colors} />
-                </View>
-              ))}
-            </View>
-          ))}
+          {Array.isArray(analysis.process) && analysis.process.length > 0 && (
+            <CollapsibleAnalysisCard title="Process" icon="🔄" colors={colors} styles={styles}>
+              <View style={{ gap: 8 }}>
+                {analysis.process.map((p, i) => (
+                  <View key={i} style={styles.subCard}>
+                    <Text style={styles.subCardTitle}>{i + 1}. {p.step}</Text>
+                    <MathRenderer text={p.explanation} colors={colors} />
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
           {Array.isArray(analysis.relationships) && analysis.relationships.length > 0 && renderInfoCard('Relationships', '🔗', (
             <View style={{ gap: 6 }}>
@@ -857,27 +905,31 @@ export default function ImageAssessmentScreen({ navigation }: any) {
             </View>
           ))}
 
-          {analysis.mathematics?.detected && renderInfoCard('Mathematics', '➗', (
-            <View style={{ gap: 8 }}>
-              {(analysis.mathematics.expressions || []).map((ex, i) => (
-                <View key={i} style={styles.subCard}>
-                  <MathRenderer text={ex.latex} colors={colors} />
-                  <MathRenderer text={ex.meaning} colors={colors} />
-                </View>
-              ))}
-            </View>
-          ))}
+          {analysis.mathematics?.detected && (
+            <CollapsibleAnalysisCard title="Mathematics" icon="➗" colors={colors} styles={styles}>
+              <View style={{ gap: 8 }}>
+                {(analysis.mathematics.expressions || []).map((ex, i) => (
+                  <View key={i} style={styles.subCard}>
+                    <MathRenderer text={ex.latex} colors={colors} />
+                    <MathRenderer text={ex.meaning} colors={colors} />
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
-          {Array.isArray(analysis.applications) && analysis.applications.length > 0 && renderInfoCard('Applications', '🚀', (
-            <View style={{ gap: 8 }}>
-              {analysis.applications.map((a, i) => (
-                <View key={i} style={styles.subCard}>
-                  <Text style={styles.subCardTitle}>{a.use_case}</Text>
-                  <MathRenderer text={a.explanation} colors={colors} />
-                </View>
-              ))}
-            </View>
-          ))}
+          {Array.isArray(analysis.applications) && analysis.applications.length > 0 && (
+            <CollapsibleAnalysisCard title="Applications" icon="🚀" colors={colors} styles={styles}>
+              <View style={{ gap: 8 }}>
+                {analysis.applications.map((a, i) => (
+                  <View key={i} style={styles.subCard}>
+                    <Text style={styles.subCardTitle}>{a.use_case}</Text>
+                    <MathRenderer text={a.explanation} colors={colors} />
+                  </View>
+                ))}
+              </View>
+            </CollapsibleAnalysisCard>
+          )}
 
           {/* AI Settings */}
           {renderInfoCard('AI Settings', '🤖', (
@@ -1228,6 +1280,7 @@ const createStyles = (colors: any) =>
     },
     libraryItemActive: { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
     libraryThumb: { width: 46, height: 46, borderRadius: 8, backgroundColor: colors.inputBackground },
+    libraryThumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
     libraryName: { fontSize: 13, fontWeight: '600', color: colors.text },
     librarySub: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
     libraryDate: { fontSize: 10, color: colors.textSecondary, marginTop: 1 },

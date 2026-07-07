@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 
@@ -7,6 +7,10 @@ interface MathRendererProps {
   colors: any;
   inline?: boolean;
 }
+
+/** Cap concurrent KaTeX WebViews — too many crash Android from OOM. */
+const MAX_CONCURRENT_MATH_WEBVIEWS = 10;
+let activeMathWebViews = 0;
 
 /**
  * Mirrors the preprocessLatex logic from the working web MathRenderer.
@@ -43,16 +47,10 @@ const hasLatexContent = (text: string): boolean => {
   return /\\[a-zA-Z]+|\$|\^|\{.*\}|_\{/.test(text);
 };
 
+const MAX_WEBVIEW_HEIGHT = 480;
+
 /**
  * Generates a self-contained HTML page that renders a KaTeX expression.
- *
- * KEY: JSON.stringify embeds the LaTeX text as a valid JS string literal.
- * Example: text = "$\\frac{1}{2}$"
- *   JSON.stringify → '"$\\\\frac{1}{2}$"'   (valid JS literal)
- *   Browser eval  → "$\\frac{1}{2}$"        (single backslash — correct for KaTeX)
- *
- * This avoids the backtick-wrapping / double-escape bugs that caused
- * raw LaTeX commands to appear as plain text.
  */
 const buildKatexHtml = (
   text: string,
@@ -60,7 +58,6 @@ const buildKatexHtml = (
   bgColor: string,
   fontSize: number,
 ): string => {
-  // Produces a ready-to-eval JS string literal, e.g. "\"$\\\\frac{1}{2}$\""
   const jsLiteral = JSON.stringify(text);
 
   return `<!DOCTYPE html>
@@ -91,8 +88,6 @@ const buildKatexHtml = (
 (function() {
   var rawText = ${jsLiteral};
   var el = document.getElementById('content');
-  // textContent sets a plain text node; renderMathInElement then finds
-  // the $...$ delimiters in that text node and replaces them with KaTeX.
   el.textContent = rawText;
   renderMathInElement(el, {
     delimiters: [
@@ -101,7 +96,6 @@ const buildKatexHtml = (
     ],
     throwOnError: false
   });
-  // Delay slightly so KaTeX has time to finish layout before we measure.
   setTimeout(function() {
     window.ReactNativeWebView.postMessage(String(document.body.scrollHeight));
   }, 80);
@@ -111,56 +105,103 @@ const buildKatexHtml = (
 </html>`;
 };
 
+const releaseWebViewSlot = (slotHeld: React.MutableRefObject<boolean>) => {
+  if (slotHeld.current) {
+    activeMathWebViews = Math.max(0, activeMathWebViews - 1);
+    slotHeld.current = false;
+  }
+};
+
 /**
- * MathRenderer Component for React Native
- *
- * Uses the exact same preprocessLatex logic as the working web version.
- * Plain text is rendered with a fast native <Text> node.
- * Text containing LaTeX/math is rendered via a KaTeX WebView for pixel-
- * perfect mathematical notation — identical to what the web app shows.
- *
- * Performance: WebView is only mounted when LaTeX is detected. Memoized
- * HTML prevents unnecessary re-renders.
+ * MathRenderer — plain text uses native <Text>; LaTeX uses a KaTeX WebView.
+ * WebView instances are capped to avoid Android OOM crashes on dense screens.
  */
 const MathRenderer: React.FC<MathRendererProps> = ({
   text,
   colors,
-  // inline prop kept for API compatibility but WebView renders correctly in all contexts
   inline: _inline = false,
 }) => {
-  if (!text) return null;
+  const safeText = text ?? '';
+  const processed = useMemo(() => preprocessLatex(safeText), [safeText]);
+  const needsKatex = useMemo(
+    () => safeText.length > 0 && hasLatexContent(processed),
+    [safeText, processed],
+  );
 
-  const processed = useMemo(() => preprocessLatex(text), [text]);
-  const needsKatex = useMemo(() => hasLatexContent(processed), [processed]);
-
-  // Height of the WebView, reported by the page after rendering
   const [webViewHeight, setWebViewHeight] = useState(28);
+  const [webViewEnabled, setWebViewEnabled] = useState(false);
+  const slotHeld = useRef(false);
+
+  const textColor = colors?.text ?? '#111827';
+  const bgColor = colors?.card ?? colors?.background ?? '#ffffff';
 
   const htmlContent = useMemo(() => {
     if (!needsKatex) return '';
-    return buildKatexHtml(processed, colors.text, colors.card, 15);
-  }, [needsKatex, processed, colors.text, colors.card]);
+    return buildKatexHtml(processed, textColor, bgColor, 15);
+  }, [needsKatex, processed, textColor, bgColor]);
+
+  useEffect(() => {
+    if (!needsKatex) {
+      releaseWebViewSlot(slotHeld);
+      setWebViewEnabled(false);
+      return undefined;
+    }
+
+    if (!slotHeld.current && activeMathWebViews < MAX_CONCURRENT_MATH_WEBVIEWS) {
+      activeMathWebViews += 1;
+      slotHeld.current = true;
+      setWebViewEnabled(true);
+    } else if (!slotHeld.current) {
+      setWebViewEnabled(false);
+    }
+
+    return () => {
+      releaseWebViewSlot(slotHeld);
+    };
+  }, [needsKatex]);
+
+  if (!safeText) return null;
 
   if (!needsKatex) {
-    // Fast path: no math — plain native text render
     return (
-      <Text style={[styles.plainText, { color: colors.text }]}>
+      <Text style={[styles.plainText, { color: textColor }]}>
         {processed}
       </Text>
     );
   }
 
+  if (!webViewEnabled) {
+    return (
+      <Text style={[styles.plainText, { color: textColor }]}>
+        {processed}
+      </Text>
+    );
+  }
+
+  const cappedHeight = Math.min(webViewHeight, MAX_WEBVIEW_HEIGHT);
+
   return (
-    <View style={[styles.webViewWrapper, { height: webViewHeight }]}>
+    <View style={[styles.webViewWrapper, { height: cappedHeight }]}>
       <WebView
         source={{ html: htmlContent }}
         style={styles.webView}
         scrollEnabled={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
+        cacheEnabled={false}
+        javaScriptEnabled
+        domStorageEnabled={false}
+        androidLayerType="hardware"
         onMessage={(event) => {
           const h = parseInt(event.nativeEvent.data, 10);
-          if (!isNaN(h) && h > 0) setWebViewHeight(h);
+          if (!isNaN(h) && h > 0) {
+            setWebViewHeight(Math.min(h, MAX_WEBVIEW_HEIGHT));
+          }
+        }}
+        onRenderProcessGone={() => {
+          releaseWebViewSlot(slotHeld);
+          setWebViewEnabled(false);
+          return true;
         }}
         originWhitelist={['*']}
       />

@@ -2,7 +2,7 @@
  * AssessmentWorkspaceScreen – unified entry for Document + Handwritten assessment flows.
  *
  * Second slice: replaces shell tab panels with real, API-backed content.
- *   • Setup (preview) tab – source selector + AI settings + action buttons
+ *   • Generate (preview) tab – source selector + AI settings + action buttons
  *   • Quizzes tab        – recent quizzes list with search, open, delete
  *   • Worksheets tab     – inline worksheet generation form + recent worksheet list
  *   • History tab        – combined quizzes + worksheets sorted by date
@@ -34,12 +34,14 @@ import {
   saveUserAssessment,
   type AssessmentListItem,
 } from '../core/services/sharedApi';
+import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 
 interface Props {
   navigation: any;
   route?: {
     params?: {
       mode?: WorkspaceMode;
+      centerTab?: 'preview' | 'quiz' | 'worksheet' | 'history';
     };
   };
 }
@@ -68,27 +70,7 @@ const DOCUMENT_FLOW_STEPS = [
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function decodeQuizQuestions(raw: any[]): any[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item: any, idx: number) => {
-    if (item?.quiz?.question) {
-      return {
-        id: `q-${idx}`,
-        question: item.quiz.question,
-        options: item.quiz.options || [],
-        correctAnswer: item.quiz.answer || 'A',
-        answer: item.quiz.answer || 'A',
-        explanation: item.quiz.explanation || null,
-      };
-    }
-    return {
-      id: item.id || `q-${idx}`,
-      question: item.question || '',
-      options: item.options || [],
-      correctAnswer: item.correctAnswer || item.answer || 'A',
-      answer: item.answer || item.correctAnswer || 'A',
-      explanation: item.explanation || null,
-    };
-  });
+  return sanitizeQuizQuestions(raw);
 }
 
 // ── screen ─────────────────────────────────────────────────────────────────
@@ -419,11 +401,17 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
           <Text style={styles.modeSub}>{modeSub}</Text>
         </View>
 
-        {/* ─── Tab chips ──────────────────────────────────────────────── */}
-        <View style={styles.tabsRow}>
+        {/* ─── Tab badges (single row, horizontal scroll) ─────────────── */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+        >
           {(
             [
-              { key: 'preview', icon: 'settings-outline', label: 'Setup' },
+              { key: 'preview', icon: 'sparkles-outline', label: 'Generate' },
               { key: 'quiz', icon: 'clipboard-outline', label: 'Quizzes' },
               { key: 'worksheet', icon: 'document-text-outline', label: 'Worksheets' },
               { key: 'history', icon: 'time-outline', label: 'History' },
@@ -433,19 +421,22 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
             return (
               <TouchableOpacity
                 key={tab}
-                style={[styles.tabChip, active && styles.tabChipActive]}
+                style={[styles.tabBadge, active && styles.tabBadgeActive]}
                 onPress={() => setCenterTab(tab)}
+                activeOpacity={0.85}
               >
-                <Ionicons
-                  name={icon as any}
-                  size={13}
-                  color={active ? theme.colors.primary : theme.colors.textSecondary}
-                />
-                <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>{label}</Text>
+                <View style={[styles.tabBadgeIconWrap, active && styles.tabBadgeIconWrapActive]}>
+                  <Ionicons
+                    name={icon as any}
+                    size={12}
+                    color={active ? '#fff' : theme.colors.primary}
+                  />
+                </View>
+                <Text style={[styles.tabBadgeText, active && styles.tabBadgeTextActive]}>{label}</Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* ─── Tab panels ─────────────────────────────────────────────── */}
         {centerTab === 'preview' && renderPreviewTab()}
@@ -634,7 +625,7 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
               {listSearch
                 ? 'Try a different search term.'
                 : mode === 'document'
-                  ? 'Upload a document from Setup to generate your first quiz.'
+                  ? 'Go to Generate to upload a document and create your first quiz.'
                   : 'Generate a document or AI quiz to see it here.'}
             </Text>
           </View>
@@ -792,7 +783,7 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
                 {listSearch
                   ? 'Try a different search term.'
                   : mode === 'document'
-                    ? 'Upload a document from Setup to generate your first worksheet.'
+                    ? 'Go to Generate to upload a document and create your first worksheet.'
                     : 'Generate your first worksheet above.'}
               </Text>
             </View>
@@ -961,30 +952,59 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
+  tabsScroll: {
+    marginTop: 4,
+    flexGrow: 0,
+  },
   tabsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
+    paddingRight: 4,
   },
-  tabChip: {
+  tabBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
+    paddingLeft: 5,
+    paddingRight: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  tabChipActive: {
+  tabBadgeActive: {
     borderColor: colors.primary,
-    backgroundColor: colors.primary + '18',
+    backgroundColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  tabChipText: {
-    fontSize: 11,
+  tabBadgeIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.primary + '14',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeIconWrapActive: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  tabBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
     color: colors.textSecondary,
+    letterSpacing: 0.1,
   },
-  tabChipTextActive: {
-    color: colors.primary,
+  tabBadgeTextActive: {
+    color: '#fff',
   },
   card: {
     backgroundColor: colors.card,
