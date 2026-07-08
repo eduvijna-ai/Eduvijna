@@ -17,20 +17,26 @@ interface ShareOptionsModalProps {
   visible: boolean;
   onClose: () => void;
   shareUrl: string;
+  shareKind?: 'quiz' | 'worksheet';
 }
 
 const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
   visible,
   onClose,
   shareUrl,
+  shareKind = 'quiz',
 }) => {
   const { theme } = useTheme();
   const colors = theme.colors;
   const [showCopySuccess, setShowCopySuccess] = useState(false);
+  const isWorksheet = shareKind === 'worksheet';
+  const label = isWorksheet ? 'worksheet' : 'assessment';
+  const emoji = isWorksheet ? '📄' : '🎯';
+  const shareTitle = isWorksheet ? 'Share Worksheet' : 'Share Assessment';
 
   const handleWhatsAppShare = () => {
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(
-      `Check out this assessment! 🎯\n\n${shareUrl}`
+      `Check out this ${label}! ${emoji}\n\n${shareUrl}`
     )}`;
     
     Linking.canOpenURL(whatsappUrl)
@@ -55,8 +61,8 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
   };
 
   const handleEmailShare = () => {
-    const emailUrl = `mailto:?subject=${encodeURIComponent('Check out this assessment!')}&body=${encodeURIComponent(
-      `I found this interesting assessment and thought you might like it:\n\n${shareUrl}`
+    const emailUrl = `mailto:?subject=${encodeURIComponent(`Check out this ${label}!`)}&body=${encodeURIComponent(
+      `I found this interesting ${label} and thought you might like it:\n\n${shareUrl}`
     )}`;
     
     Linking.canOpenURL(emailUrl)
@@ -68,7 +74,7 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
 
   const handleTwitterShare = () => {
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      `Check out this assessment! 🎯`
+      `Check out this ${label}! ${emoji}`
     )}&url=${encodeURIComponent(shareUrl)}`;
     
     Linking.canOpenURL(twitterUrl)
@@ -94,9 +100,9 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
   const handleNativeShare = async () => {
     try {
       await Share.share({
-        message: `Check out this assessment! 🎯\n\n${shareUrl}`,
+        message: `Check out this ${label}! ${emoji}\n\n${shareUrl}`,
         url: shareUrl,
-        title: 'Share Assessment',
+        title: shareTitle,
       });
     } catch (error) {
       console.error('Error sharing:', error);
@@ -108,7 +114,9 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
       <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
         <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Share Assessment ✨</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              Share {isWorksheet ? 'Worksheet' : 'Assessment'} ✨
+            </Text>
             <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.surface }]}>
               <Text style={[styles.closeButtonText, { color: colors.textSecondary }]}>✕</Text>
             </TouchableOpacity>
@@ -116,7 +124,7 @@ const ShareOptionsModal: React.FC<ShareOptionsModalProps> = ({
 
           <View style={styles.modalContent}>
             <Text style={[styles.successMessage, { color: colors.text }]}>
-              Assessment Share Link Generated successfully! 🎉
+              {isWorksheet ? 'Worksheet' : 'Assessment'} share link generated successfully! 🎉
             </Text>
 
             {/* Share URL Display */}

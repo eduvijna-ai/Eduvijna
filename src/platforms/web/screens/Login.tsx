@@ -16,7 +16,7 @@ import { useAuth } from '@core/hooks/useAuth';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function Login() {
-  const { login, isLoading, error, clearError } = useAuth();
+  const { login, isLoggingIn, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -43,7 +43,7 @@ export default function Login() {
         onChangeText={setEmail}
         autoCapitalize="none"
         autoCorrect={false}
-        editable={!isLoading}
+        editable={!isLoggingIn}
       />
       
       <TextInput 
@@ -53,15 +53,15 @@ export default function Login() {
         value={password} 
         onChangeText={setPassword}
         autoCapitalize="none"
-        editable={!isLoading}
+        editable={!isLoggingIn}
       />
       
       <TouchableOpacity 
-        style={[styles.button, isLoading && styles.buttonDisabled]} 
+        style={[styles.button, isLoggingIn && styles.buttonDisabled]} 
         onPress={onLogin} 
-        disabled={isLoading}
+        disabled={isLoggingIn}
       >
-        {isLoading ? (
+        {isLoggingIn ? (
           <LoadingSpinner size={24} />
         ) : (
           <Text style={styles.buttonText}>Sign in</Text>

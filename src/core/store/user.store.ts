@@ -12,6 +12,8 @@ interface UserState {
   user: UserProfile | null;
   tokens: AuthTokens | null;
   isAuthenticated: boolean;
+  /** True only during the first app-launch auth check (splash gate). */
+  isInitializing: boolean;
   isLoading: boolean;
   /** Resolved school ID – centrally managed for all ERP/API calls */
   schoolId: number | null;
@@ -20,6 +22,7 @@ interface UserState {
   setUser: (user: UserProfile | null) => void;
   setTokens: (tokens: AuthTokens | null) => void;
   setAuthenticated: (isAuthenticated: boolean) => void;
+  setInitializing: (isInitializing: boolean) => void;
   setLoading: (isLoading: boolean) => void;
   setSchoolId: (schoolId: number | null) => void;
   logout: () => void;
@@ -30,7 +33,8 @@ const initialState = {
   user: null,
   tokens: null,
   isAuthenticated: false,
-  isLoading: true,
+  isInitializing: true,
+  isLoading: false,
   schoolId: null as number | null,
 };
 
@@ -45,7 +49,9 @@ export const useUserStore = create<UserState>((set) => ({
   setTokens: (tokens) => set({ tokens }),
   
   setAuthenticated: (isAuthenticated) => set({ isAuthenticated }),
-  
+
+  setInitializing: (isInitializing) => set({ isInitializing }),
+
   setLoading: (isLoading) => set({ isLoading }),
   
   setSchoolId: (schoolId) => set({ schoolId }),

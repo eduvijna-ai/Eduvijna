@@ -389,6 +389,14 @@ export default function MobileNavigation() {
           const routeParams: any = route?.params;
           const isDocumentFlow = routeParams?.source === 'document';
 
+          const handleLeave = () => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Main', { screen: 'Dashboard' });
+            }
+          };
+
           if (isDocumentFlow) {
             return {
               headerShown: true,
@@ -405,21 +413,17 @@ export default function MobileNavigation() {
             headerShown: true,
             presentation: 'card',
             title: 'Taking Assessment',
-            headerBackTitle: 'Dashboard',
+            headerBackTitle: 'Back',
             headerLeft: () => (
               <TouchableOpacity 
-                onPress={() => {
-                  navigation.navigate('Main', { screen: 'Dashboard' });
-                }}
+                onPress={handleLeave}
                 style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
               >
                 <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
               </TouchableOpacity>
             ),
             headerRight: () => (
-              <TouchableOpacity onPress={() => {
-                navigation.navigate('Main', { screen: 'Dashboard' });
-              }} style={{ marginRight: 16 }}>
+              <TouchableOpacity onPress={handleLeave} style={{ marginRight: 16 }}>
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </TouchableOpacity>
             ),

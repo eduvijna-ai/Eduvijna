@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { logError } from '@core/services/errorLogger';
 
 interface State {
   hasError: boolean;
@@ -30,7 +31,7 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[App Error Boundary]', error, info.componentStack);
+    void logError(error, 'AppErrorBoundary', { componentStack: info.componentStack ?? undefined });
   }
 
   handleRetry = () => {

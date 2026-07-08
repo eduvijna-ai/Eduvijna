@@ -33,6 +33,7 @@ import { useAuth } from '@core/hooks/useAuth';
 import useNotifications from '@core/hooks/useNotifications';
 import MathRenderer from '../components/MathRenderer';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ModalDropdownField from '../components/ModalDropdownField';
 import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import {
   generateAIQuiz,
@@ -682,7 +683,15 @@ export default function ImageAssessmentScreen({ navigation }: any) {
       </View>
 
       {renderSelector('Difficulty', studentLevel, IMAGE_LEVELS, setStudentLevel)}
-      {renderSelector('Language', language, IMAGE_LANGUAGES, setLanguage)}
+      <View style={styles.field}>
+        <ModalDropdownField
+          label="Language"
+          value={language}
+          onChange={setLanguage}
+          items={IMAGE_LANGUAGES.map((l) => ({ id: l.value, name: l.label }))}
+          placeholder="Select language..."
+        />
+      </View>
 
       {inlineError ? <Text style={styles.errorText}>{inlineError}</Text> : null}
 

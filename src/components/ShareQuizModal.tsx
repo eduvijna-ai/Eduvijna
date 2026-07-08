@@ -10,8 +10,8 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import {Picker} from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient, API_BASE_URL } from '@core/api/config';
@@ -19,6 +19,11 @@ import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
 import { getAccessToken } from '@core/services/tokenStorage';
 import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
+import {
+  buildWorksheetShareQuestions,
+  countWorksheetQuestions,
+  type WorksheetResponseShape,
+} from '../core/utils/worksheetShareUtils';
 
 interface QuizQuestion {
   question: string;
@@ -52,6 +57,8 @@ interface ShareQuizModalProps {
     additional_instructions?: string;
   };
   onShareSuccess?: (shareUrl: string) => void;
+  /** When 'worksheet', posts type worksheet + WorksheetData payload (web parity). */
+  assessmentType?: 'quiz' | 'worksheet';
 }
 
 interface Classroom {
@@ -62,27 +69,65 @@ interface Classroom {
   students?: any[];
 }
 
+const SHARE_SUBJECT_OPTIONS = [
+  { id: 'math', name: 'Mathematics' },
+  { id: 'science', name: 'Science' },
+  { id: 'english', name: 'English' },
+  { id: 'history', name: 'History' },
+  { id: 'general', name: 'General' },
+];
+
+const SHARE_DURATION_OPTIONS = [
+  { id: '15', name: '15 minutes' },
+  { id: '30', name: '30 minutes' },
+  { id: '45', name: '45 minutes' },
+  { id: '60', name: '60 minutes' },
+  { id: '90', name: '90 minutes' },
+  { id: '120', name: '120 minutes' },
+];
+
+const SHARE_STATUS_OPTIONS = [
+  { id: 'active', name: 'Active' },
+  { id: 'inactive', name: 'Inactive' },
+  { id: 'draft', name: 'Draft' },
+];
+
 const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   visible,
   onClose,
   quizData,
   quizMetadata,
   onShareSuccess,
+  assessmentType = 'quiz',
 }) => {
   const { theme } = useTheme();
   const colors = theme.colors;
   const {user} = useAuth();
+  const isWorksheet = assessmentType === 'worksheet';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
 
-  // Get quiz array from quizData
-  const quiz = quizData?.quiz || quizData?.questions || [];
+  const worksheetPayload: WorksheetResponseShape | null = isWorksheet
+    ? {
+        WorksheetData:
+          (quizData?.questions as any)?.WorksheetData ??
+          (quizData as any)?.WorksheetData ??
+          null,
+      }
+    : null;
+
+  // Get quiz array from quizData (MCQ quizzes only)
+  const quiz = isWorksheet ? [] : (quizData?.quiz || quizData?.questions || []);
   
   // Calculate question count safely
-  const questionCount = quizMetadata?.question_count || quizData?.questionsCount || quiz.length || 0;
+  const questionCount = isWorksheet
+    ? (quizMetadata?.question_count || countWorksheetQuestions(worksheetPayload))
+    : (quizMetadata?.question_count || quizData?.questionsCount || quiz.length || 0);
   
   // Form state - Pre-fill with metadata if available
-  const topic = quizMetadata?.lesson || quizData?.title || `Quiz - ${questionCount} Questions`;
+  const topic = isWorksheet
+    ? (quizData?.title || quizMetadata?.lesson || `Worksheet - ${questionCount} Questions`)
+    : (quizMetadata?.lesson || quizData?.title || `Quiz - ${questionCount} Questions`);
   const [fileName, setFileName] = useState('');
   const [subject, setSubject] = useState(
     quizMetadata?.subject?.toLowerCase() || quizData?.subject?.toLowerCase() || 'math'
@@ -145,8 +190,10 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   // Update summary when modal opens or data changes
   useEffect(() => {
     if (visible) {
-      const count = quizMetadata?.question_count || quizData?.questionsCount || quiz.length || 0;
-      const defaultSummary = `Quiz - ${count} question${count !== 1 ? 's' : ''}`;
+      const count = questionCount;
+      const defaultSummary = isWorksheet
+        ? `Worksheet - ${count} question${count !== 1 ? 's' : ''}`
+        : `Quiz - ${count} question${count !== 1 ? 's' : ''}`;
       const rawSummary = quizMetadata?.additional_instructions || defaultSummary;
       const truncatedSummary = rawSummary.length > 500 
         ? rawSummary.substring(0, 497) + '...' 
@@ -213,12 +260,12 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
   const handleShare = async () => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to share a quiz');
+      Alert.alert('Error', `You must be logged in to share a ${isWorksheet ? 'worksheet' : 'quiz'}`);
       return;
     }
 
     if (!topic.trim()) {
-      Alert.alert('Validation Error', 'Quiz topic is required');
+      Alert.alert('Validation Error', `${isWorksheet ? 'Worksheet' : 'Quiz'} topic is required`);
       return;
     }
     // Classroom is optional for public quizzes and students
@@ -227,7 +274,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
       return;
     }
     if (!summary.trim()) {
-      Alert.alert('Validation Error', 'Quiz summary is required');
+      Alert.alert('Validation Error', `${isWorksheet ? 'Worksheet' : 'Quiz'} summary is required`);
       return;
     }
     if (startTime >= endTime) {
@@ -237,34 +284,49 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      if (!quiz || !Array.isArray(quiz) || quiz.length === 0) {
-        Alert.alert('Validation Error', 'No assessment questions found');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Transform quiz array to expected format
-      const quizzes = quiz.map((q: any) => {
-        const question = q.question || q.question_text;
-        const options = q.options || [];
-        const correctAnswer = q.correctAnswer || q.correct_answer || q.answer;
-        const explanation = q.explanation || null;
-
-        return {
-          quiz: {
-            question,
-            options,
-            answer: correctAnswer,
-            explanation,
-          },
-          answer: correctAnswer,
-        };
-      });
-
       const trimmedSummary = summary.trim();
-      const finalSummary = trimmedSummary.length > 500 
-        ? trimmedSummary.substring(0, 497) + '...' 
+      const finalSummary = trimmedSummary.length > 500
+        ? trimmedSummary.substring(0, 497) + '...'
         : trimmedSummary;
+
+      let questionsPayload: any;
+      let resolvedQuestionCount = questionCount;
+
+      if (isWorksheet) {
+        if (!worksheetPayload?.WorksheetData?.Worksheet) {
+          Alert.alert('Validation Error', 'No worksheet content found');
+          setIsSubmitting(false);
+          return;
+        }
+        questionsPayload = buildWorksheetShareQuestions(worksheetPayload);
+        resolvedQuestionCount = countWorksheetQuestions(worksheetPayload);
+      } else {
+        if (!quiz || !Array.isArray(quiz) || quiz.length === 0) {
+          Alert.alert('Validation Error', 'No assessment questions found');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const quizzes = quiz.map((q: any) => {
+          const question = q.question || q.question_text;
+          const options = q.options || [];
+          const correctAnswer = q.correctAnswer || q.correct_answer || q.answer;
+          const explanation = q.explanation || null;
+
+          return {
+            quiz: {
+              question,
+              options,
+              answer: correctAnswer,
+              explanation,
+            },
+            answer: correctAnswer,
+          };
+        });
+
+        questionsPayload = { quizzes };
+        resolvedQuestionCount = quiz.length || 0;
+      }
 
       const shareData = {
         topic: topic.trim(),
@@ -276,13 +338,13 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         createdby: user.name || user.username || 'Instructor',
         student_level: studentLevel,
         session_id: quizData?.thread_slug || `session_${Date.now()}`,
-        questions: { quizzes },
+        questions: questionsPayload,
         status: status,
         tags: { subject: subject, difficulty: difficulty },
-        question_count: quiz.length || 0,
+        question_count: resolvedQuestionCount,
         duration: parseInt(duration) || 30,
         summary: finalSummary,
-        type: 'multiple_choice',
+        type: isWorksheet ? 'worksheet' : 'multiple_choice',
         is_public: isPublic,
         is_timer: isTimer,
         start_time: startTime.toISOString(),
@@ -501,19 +563,25 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                   // Prepare notification payload
                   const notificationPayload = {
                     user_ids: studentIds,
-                    title: `📚 New Quiz: ${responseData.topic || topic.trim()}`,
-                    body: `Quiz Alert! ${instructorName} teacher has scheduled a quiz on ${topic} at ${startTime}. Good Luck! Tap to start!`,
+                    title: isWorksheet
+                      ? `📄 New Worksheet: ${responseData.topic || topic.trim()}`
+                      : `📚 New Quiz: ${responseData.topic || topic.trim()}`,
+                    body: isWorksheet
+                      ? `Worksheet Alert! ${instructorName} teacher has shared a worksheet on ${topic}. Tap to open!`
+                      : `Quiz Alert! ${instructorName} teacher has scheduled a quiz on ${topic} at ${startTime}. Good Luck! Tap to start!`,
                     priority: 'high',
                     data: {
-                      type: 'QUIZ_ASSIGNED',
+                      type: isWorksheet ? 'WORKSHEET_ASSIGNED' : 'QUIZ_ASSIGNED',
                       quiz_id: String(responseData.quiz_id),
                       classroom_id: responseData.classroom_id,
                       session_id: responseData.session_id,
-                      screen: 'QuizTakingScreen',
+                      screen: isWorksheet ? 'WorksheetScreen' : 'QuizTakingScreen',
                       quizId: String(responseData.quiz_id),
                       sessionId: responseData.session_id,
                       classroomId: responseData.classroom_id,
-                      click_action: `https://app.eduvijna.com/openquiz?session_id=${responseData.session_id}`
+                      click_action: isWorksheet
+                        ? `https://app.eduvijna.com/openworksheet?session_id=${responseData.session_id}`
+                        : `https://app.eduvijna.com/openquiz?session_id=${responseData.session_id}`,
                     },
                   };
                   
@@ -562,22 +630,22 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         }
       }
 
-      // Generate share URL
+      // Generate share URL (openworksheet for worksheets — web parity)
       const sessionId = responseData.session_id || quizData?.thread_slug;
       const baseUrl = 'https://app.eduvijna.com';
-      const quizUrl = sessionId 
-        ? `${baseUrl}/openquiz?session_id=${sessionId}`
-        : `${baseUrl}/quiz/${responseData.quiz_id}`;
+      const sharePath = isWorksheet ? 'openworksheet' : 'openquiz';
+      const quizUrl = sessionId
+        ? `${baseUrl}/${sharePath}?session_id=${sessionId}`
+        : `${baseUrl}/${isWorksheet ? 'worksheet' : 'quiz'}/${responseData.quiz_id}`;
 
       if (onShareSuccess) {
         onShareSuccess(quizUrl);
       }
       onClose();
-      
-      // Show appropriate success message based on whether classroom was selected
-      const successMessage = responseData.classroom_id 
-        ? 'Quiz shared successfully! Push notifications sent to students.'
-        : 'Quiz shared successfully!';
+
+      const successMessage = responseData.classroom_id
+        ? `${isWorksheet ? 'Worksheet' : 'Quiz'} shared successfully! Push notifications sent to students.`
+        : `${isWorksheet ? 'Worksheet' : 'Quiz'} shared successfully!`;
       
       Alert.alert('Success', successMessage);
     } catch (error: any) {
@@ -598,14 +666,18 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
       <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
         <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>🔗 Share Assessment</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              🔗 Share {isWorksheet ? 'Worksheet' : 'Assessment'}
+            </Text>
             <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.surface }]}>
               <Text style={[styles.closeButtonText, { color: colors.text }]}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.modalContent}>
             <View style={styles.formGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Quiz Topic (Read-only)</Text>
+              <Text style={[styles.label, { color: colors.text }]}>
+                {isWorksheet ? 'Worksheet' : 'Quiz'} Topic (Read-only)
+              </Text>
               <TextInput style={[styles.input, styles.inputDisabled, { borderColor: colors.border, color: colors.text, backgroundColor: colors.surface }]} value={topic} editable={false} />
             </View>
 
@@ -617,19 +689,21 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Classroom {!isPublic && <Text style={styles.required}>*</Text>}</Text>
               <Text style={[styles.helperText, { color: colors.textSecondary }]}>{isPublic ? 'Optional - select to send push notifications to students' : 'Required for private quizzes'}</Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker 
-                  selectedValue={selectedClassroom} 
-                  onValueChange={setSelectedClassroom} 
-                  style={[styles.picker, { color: colors.text }]}
-                  enabled={user?.role !== 'student'}
-                >
-                  <Picker.Item label={user?.role === 'student' ? 'Not available for students' : (isPublic ? 'Select a classroom (Optional)' : 'Select a classroom (Required)')} value="" />
-                  {classrooms.map((classroom) => (
-                    <Picker.Item key={classroom.classroom_id} label={classroom.classroom_name} value={classroom.classroom_id} />
-                  ))}
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Classroom"
+                hideLabel
+                value={selectedClassroom}
+                onChange={setSelectedClassroom}
+                items={classrooms.map((c) => ({ id: c.classroom_id, name: c.classroom_name }))}
+                placeholder={
+                  user?.role === 'student'
+                    ? 'Not available for students'
+                    : isPublic
+                      ? 'Select a classroom (Optional)'
+                      : 'Select a classroom (Required)'
+                }
+                disabled={user?.role === 'student'}
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -654,15 +728,15 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Subject <Text style={styles.required}>*</Text></Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={subject} onValueChange={setSubject} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="Mathematics" value="math" />
-                  <Picker.Item label="Science" value="science" />
-                  <Picker.Item label="English" value="english" />
-                  <Picker.Item label="History" value="history" />
-                  <Picker.Item label="General" value="general" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Subject"
+                hideLabel
+                value={subject}
+                onChange={setSubject}
+                items={SHARE_SUBJECT_OPTIONS}
+                placeholder="Select subject..."
+                required
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -703,16 +777,15 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Duration (minutes) <Text style={styles.required}>*</Text></Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={duration} onValueChange={setDuration} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="15 minutes" value="15" />
-                  <Picker.Item label="30 minutes" value="30" />
-                  <Picker.Item label="45 minutes" value="45" />
-                  <Picker.Item label="60 minutes" value="60" />
-                  <Picker.Item label="90 minutes" value="90" />
-                  <Picker.Item label="120 minutes" value="120" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Duration"
+                hideLabel
+                value={duration}
+                onChange={setDuration}
+                items={SHARE_DURATION_OPTIONS}
+                placeholder="Select duration..."
+                required
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -763,7 +836,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
               <Text style={[styles.label, { color: colors.text }]}>Question Count (Read-only)</Text>
               <TextInput 
                 style={[styles.input, styles.inputDisabled, { borderColor: colors.border, color: colors.text, backgroundColor: colors.surface }]} 
-                value={String(quizMetadata?.question_count || quizData?.questionsCount || quiz.length)} 
+                value={String(quizMetadata?.question_count || quizData?.questionsCount || questionCount)} 
                 editable={false} 
               />
             </View>
@@ -785,13 +858,14 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Status</Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={status} onValueChange={setStatus} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="Active" value="active" />
-                  <Picker.Item label="Inactive" value="inactive" />
-                  <Picker.Item label="Draft" value="draft" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Status"
+                hideLabel
+                value={status}
+                onChange={setStatus}
+                items={SHARE_STATUS_OPTIONS}
+                placeholder="Select status..."
+              />
             </View>
           </ScrollView>
           <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
@@ -926,8 +1000,6 @@ const styles = StyleSheet.create({
   input: {borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16},
   inputDisabled: {opacity: 0.6},
   textArea: {minHeight: 100, textAlignVertical: 'top'},
-  pickerContainer: {borderWidth: 1, borderRadius: 8, overflow: 'hidden'},
-  picker: {height: 50},
   radioGroup: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
   radioOption: {flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, minWidth: 120},
   radioCircle: {width: 20, height: 20, borderRadius: 10, borderWidth: 2, marginRight: 8, justifyContent: 'center', alignItems: 'center'},

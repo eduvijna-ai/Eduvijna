@@ -54,9 +54,12 @@ import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
 import { useAppFonts } from './src/theme/useAppFonts';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import { installGlobalErrorHandlers } from './src/core/services/errorLogger';
+
+installGlobalErrorHandlers();
 
 function AppContent() {
-  const { isAuthenticated, isLoading, user, logout } = useAuth();
+  const { isAuthenticated, isInitializing, user, logout } = useAuth();
   useNotificationPolling(); // Poll for notifications via API
   const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP'>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
@@ -106,14 +109,17 @@ function AppContent() {
     });
   }, [isMobile]);
 
-  // Sync push status after successful login
+  // Sync push status after successful login (defer so navigation can mount first)
   useEffect(() => {
     if (!isMobile || !isAuthenticated) return;
-    
-    // Sync push status after login - re-registers if needed and push is enabled
-    PushNotificationService.syncStatusAfterLogin().catch((error) => {
-      console.error('❌ Failed to sync push status after login:', error);
-    });
+
+    const timer = setTimeout(() => {
+      PushNotificationService.syncStatusAfterLogin().catch((error) => {
+        console.error('❌ Failed to sync push status after login:', error);
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, [isMobile, isAuthenticated]);
 
   // Set up notification listeners to receive notifications
@@ -414,8 +420,8 @@ function AppContent() {
   // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
   // This prevents duplicate listener registration
 
-  // Show loading screen while checking authentication
-  if (isLoading) {
+  // Show loading screen only during first auth check (not during login submit)
+  if (isInitializing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1B4F5C" />

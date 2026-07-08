@@ -34,6 +34,13 @@ module.exports = {
     'no-restricted-imports': [
       'error',
       {
+        paths: [
+          {
+            name: '@react-native-picker/picker',
+            message:
+              '🚫 Do not use inline Android Picker — it crashes when TextInputs on the same screen re-render. Use ModalDropdownField instead.',
+          },
+        ],
         patterns: [
           {
             group: ['**/core/api/*', '@core/api/*'],

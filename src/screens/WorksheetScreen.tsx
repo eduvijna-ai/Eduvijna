@@ -3,7 +3,7 @@
  * - Create mode: form to configure and generate a worksheet
  * - View mode: display the generated worksheet with print/share support
  */
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,17 +13,47 @@ import {
   TextInput,
   Alert,
   Platform,
-  Share,
+  KeyboardAvoidingView,
+  BackHandler,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ModalDropdownField from '../components/ModalDropdownField';
 import * as Print from 'expo-print';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useDropdowns } from '../context/DropdownContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ShareQuizModal from '../components/ShareQuizModal';
+import ShareOptionsModal from '../components/ShareOptionsModal';
 import { generateWorksheet, saveUserAssessment } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
+import {
+  buildWorksheetShareQuestions,
+  countWorksheetQuestions,
+  worksheetShareTopic,
+} from '../core/utils/worksheetShareUtils';
+
+/**
+ * Same preprocess as MathRenderer / web quiz MathRenderer:
+ * fix double-escaped backslashes and convert \( \) / \[ \] delimiters.
+ */
+function preprocessLatex(text: string): string {
+  if (!text) return '';
+  let processed = text.replace(/\\\\([a-zA-Z{,;!> ])/g, '\\$1');
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (_m, c) => `$${c}$`);
+  processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (_m, c) => `$$${c}$$`);
+  return processed;
+}
+
+/** Escape HTML then leave LaTeX `$...$` intact for KaTeX auto-render. */
+function escapeHtml(raw: unknown): string {
+  return preprocessLatex(String(raw ?? ''))
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 type ScreenMode = 'create' | 'view';
 
@@ -115,68 +145,172 @@ interface WorksheetFormState {
   count: string;
 }
 
-function buildHtml(meta: any, worksheet: any, _answerKey?: any): string {
+function buildHtml(
+  worksheet: any,
+  answerKey?: any,
+  themeColors?: { text?: string; background?: string; card?: string; border?: string; textSecondary?: string },
+): string {
+  const textColor = themeColors?.text ?? '#111827';
+  const bgColor = themeColors?.background ?? '#ffffff';
+  const cardColor = themeColors?.card ?? '#f9fafb';
+  const borderColor = themeColors?.border ?? '#e5e7eb';
+  const mutedColor = themeColors?.textSecondary ?? '#6b7280';
+
   const secA: any[] = worksheet?.Section_A_MCQ || [];
   const secB: any[] = worksheet?.Section_B_Fill_in_the_Blank || [];
   const secC: any[] = worksheet?.Section_C_True_False || [];
   const secD: any[] = worksheet?.Section_D_Short_Questions || [];
   const secE = worksheet?.Section_E_Matching || {};
+  const mcqAnswers: any[] = answerKey?.Section_A_MCQ || [];
+  const shortAnswers: any[] = answerKey?.Section_D_Short_Questions || [];
+
+  const sectionCard = (title: string, body: string, accent = '#0891B2') => `
+    <div class="section" style="background:${cardColor};border:1px solid ${borderColor}">
+      <div class="section-label" style="color:${accent}">${escapeHtml(title)}</div>
+      ${body}
+    </div>`;
 
   const mcqRows = secA
     .map(
       (q: any, i: number) => `
-      <p style="margin:8px 0"><b>${i + 1}. ${q.question}</b></p>
-      ${(q.options || []).map((o: string, oi: number) => `<p style="margin:2px 0 2px 16px">${String.fromCharCode(65 + oi)}. ${o}</p>`).join('')}
-    `,
+      <div class="q">
+        <p class="q-text"><b>${i + 1}.</b> ${escapeHtml(q.question)}</p>
+        ${(q.options || [])
+          .map(
+            (o: string, oi: number) =>
+              `<p class="opt">${String.fromCharCode(65 + oi)}. ${escapeHtml(o)}</p>`,
+          )
+          .join('')}
+      </div>`,
     )
     .join('');
 
   const fitbRows = secB
-    .map((q: any, i: number) => `<p style="margin:8px 0">${i + 1}. ${q.question || q}</p>`)
+    .map(
+      (q: any, i: number) =>
+        `<div class="q"><p class="q-text"><b>${i + 1}.</b> ${escapeHtml(q.question || q)}</p></div>`,
+    )
     .join('');
 
   const tfRows = secC
     .map(
       (q: any, i: number) =>
-        `<p style="margin:8px 0">${i + 1}. ${q.statement || q.question || q} &nbsp;&nbsp;(True / False)</p>`,
+        `<div class="q"><p class="q-text"><b>${i + 1}.</b> ${escapeHtml(q.statement || q.question || q)} <span class="muted">(True / False)</span></p></div>`,
     )
     .join('');
 
   const shortRows = secD
     .map(
       (q: any, i: number) =>
-        `<p style="margin:8px 0">${i + 1}. ${q.question || q}</p><p style="min-height:28px;border-bottom:1px solid #ccc;margin-bottom:8px"></p>`,
+        `<div class="q"><p class="q-text"><b>${i + 1}.</b> ${escapeHtml(q.question || q)}</p><div class="answer-line" style="border-bottom-color:${borderColor}"></div></div>`,
     )
     .join('');
 
   const matchPairs: any[] = secE?.Pairs || [];
-  const matchLeft = matchPairs.map((p: any, i: number) => `<p>${i + 1}. ${p.left}</p>`).join('');
-  const matchRight = matchPairs.map((p: any, i: number) => `<p>${String.fromCharCode(65 + i)}. ${p.right}</p>`).join('');
+  const matchLeft = matchPairs
+    .map((p: any, i: number) => `<p class="q-text"><b>${i + 1}.</b> ${escapeHtml(p.left)}</p>`)
+    .join('');
+  const matchRight = matchPairs
+    .map(
+      (p: any, i: number) =>
+        `<p class="q-text"><b>${String.fromCharCode(65 + i)}.</b> ${escapeHtml(p.right)}</p>`,
+    )
+    .join('');
+  const matchBody = matchPairs.length
+    ? `<div class="match-grid"><div class="match-col">${matchLeft}</div><div class="match-col">${matchRight}</div></div>`
+    : '';
+
+  const answerBody = [
+    ...mcqAnswers.map(
+      (a: any, i: number) =>
+        `<p class="q-text"><b>${i + 1}.</b> ${escapeHtml(a.correctAnswer)}</p>`,
+    ),
+    ...shortAnswers.map(
+      (a: any, i: number) =>
+        `<div class="q"><p class="q-text">${escapeHtml(secD[i]?.question || `Q${i + 1}`)}</p><p class="ans-green">${escapeHtml(a.modelAnswer)}</p></div>`,
+    ),
+  ].join('');
+
+  const hasContent = secA.length + secB.length + secC.length + secD.length + matchPairs.length > 0;
 
   return `<!DOCTYPE html><html><head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"><\/script>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 14px; padding: 24px; color: #111; }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  h3 { font-size: 15px; margin: 20px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-  .meta { color: #555; font-size: 13px; margin-bottom: 16px; }
-  .match-grid { display: flex; gap: 32px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: ${bgColor}; color: ${textColor}; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    padding: 12px;
+  }
+  .section {
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .q { margin-bottom: 12px; }
+  .q-text { margin: 0 0 4px; word-break: break-word; }
+  .opt { margin: 2px 0 2px 16px; color: ${mutedColor}; }
+  .muted { color: ${mutedColor}; font-size: 13px; }
+  .answer-line { height: 28px; border-bottom: 1px solid; margin-top: 4px; }
+  .match-grid { display: flex; gap: 16px; }
   .match-col { flex: 1; }
+  .ans-green { color: #059669; margin: 2px 0 0; font-style: italic; }
+  .katex { font-size: 1em !important; }
+  .katex-display { margin: 6px 0 !important; overflow-x: auto; }
+  .empty { text-align: center; color: ${mutedColor}; padding: 40px 16px; }
 </style>
 </head><body>
-<h1>${meta?.Subject || 'Worksheet'} – ${meta?.Lesson || ''}</h1>
-<p class="meta">Class: ${meta?.Class || ''} &nbsp; | &nbsp; Level: ${meta?.Difficulty || ''}</p>
+${!hasContent ? `<div class="empty">This worksheet has no displayable sections.</div>` : ''}
+${secA.length ? sectionCard('Section A – Multiple Choice Questions', mcqRows) : ''}
+${secB.length ? sectionCard('Section B – Fill in the Blanks', fitbRows) : ''}
+${secC.length ? sectionCard('Section C – True / False', tfRows) : ''}
+${secD.length ? sectionCard('Section D – Short Answer Questions', shortRows) : ''}
+${matchPairs.length ? sectionCard('Section E – Match the Following', matchBody) : ''}
+${
+  mcqAnswers.length || shortAnswers.length
+    ? sectionCard('Answer Key', answerBody, '#059669')
+    : ''
+}
 
-${secA.length ? `<h3>Section A – Multiple Choice Questions</h3>${mcqRows}` : ''}
-${secB.length ? `<h3>Section B – Fill in the Blanks</h3>${fitbRows}` : ''}
-${secC.length ? `<h3>Section C – True / False</h3>${tfRows}` : ''}
-${secD.length ? `<h3>Section D – Short Answer Questions</h3>${shortRows}` : ''}
-${matchPairs.length ? `<h3>Section E – Match the Following</h3><div class="match-grid"><div class="match-col">${matchLeft}</div><div class="match-col">${matchRight}</div></div>` : ''}
-
+<script>
+(function() {
+  function run() {
+    if (typeof renderMathInElement === 'function') {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false },
+          { left: '\\\\(', right: '\\\\)', display: false },
+          { left: '\\\\[', right: '\\\\]', display: true }
+        ],
+        throwOnError: false
+      });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
+<\/script>
 </body></html>`;
 }
 
-export default function WorksheetScreen({ route, navigation: _navigation }: any) {
+export default function WorksheetScreen({ route, navigation }: any) {
   const rawParam = route?.params?.worksheetData;
   const decodedInitial = normalizeWorksheetResult(rawParam);
   const initialMode: ScreenMode = decodedInitial || rawParam ? 'view' : 'create';
@@ -189,10 +323,15 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
   const schoolId = useUserStore((s) => s.schoolId);
 
   const [mode, setMode] = useState<ScreenMode>(initialMode);
+  /** True when user generated a worksheet on this screen (create → view). Back returns to form. */
+  const [generatedLocally, setGeneratedLocally] = useState(false);
   const [worksheetResult, setWorksheetResult] = useState<any>(initialData);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [printing, setPrinting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
 
   const [form, setForm] = useState<WorksheetFormState>({
     classId: '',
@@ -206,6 +345,46 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
   // Find class/subject name helpers
   const findClass = (id: string) =>
     (classes as any[]).find((c) => String(c.id) === String(id));
+
+  const wsDataForTitle = worksheetResult?.WorksheetData || worksheetResult;
+  const viewTitle =
+    wsDataForTitle?.Metadata?.Subject ||
+    String(route?.params?.title || '').trim() ||
+    'Worksheet';
+
+  const handleBackToCreate = useCallback(() => {
+    setMode('create');
+  }, []);
+
+  useLayoutEffect(() => {
+    if (mode === 'view' && generatedLocally) {
+      navigation.setOptions({
+        title: viewTitle,
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={handleBackToCreate}
+            style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        ),
+      });
+    } else {
+      navigation.setOptions({
+        title: mode === 'view' ? viewTitle : 'Create Worksheet',
+        headerLeft: undefined,
+      });
+    }
+  }, [mode, generatedLocally, viewTitle, handleBackToCreate, navigation, colors.primary]);
+
+  useEffect(() => {
+    if (mode !== 'view' || !generatedLocally) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setMode('create');
+      return true;
+    });
+    return () => sub.remove();
+  }, [mode, generatedLocally]);
 
   const handleGenerate = async () => {
     if (!form.classId) { setError('Please select a class.'); return; }
@@ -235,6 +414,7 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
       });
 
       setWorksheetResult(result);
+      setGeneratedLocally(true);
       setMode('view');
 
       // Save to history as a Worksheet source entry
@@ -271,11 +451,10 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
 
   const handlePrint = async () => {
     const wsData = worksheetResult?.WorksheetData || worksheetResult;
-    const meta = wsData?.Metadata || {};
     const worksheet = wsData?.Worksheet || {};
     const answerKey = wsData?.AnswerKey || {};
 
-    const html = buildHtml(meta, worksheet, answerKey);
+    const html = buildHtml(worksheet, answerKey, colors);
     try {
       setPrinting(true);
       if (Platform.OS === 'web') {
@@ -293,13 +472,17 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
     }
   };
 
-  const handleShare = async () => {
-    const wsData = worksheetResult?.WorksheetData || worksheetResult;
-    const meta = wsData?.Metadata || {};
-    const title = `${meta.Subject || 'Worksheet'} – ${meta.Lesson || ''}`;
-    try {
-      await Share.share({ message: title, title });
-    } catch {/* ignore */ }
+  const handleShare = () => {
+    if (!worksheetResult) {
+      Alert.alert('Error', 'No worksheet to share.');
+      return;
+    }
+    setShowShareModal(true);
+  };
+
+  const handleShareSuccess = (url: string) => {
+    setShareUrl(url);
+    setShowShareOptionsModal(true);
   };
 
   // ──────────────────────────────────────────────────────
@@ -333,18 +516,10 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
     const meta = wsData?.Metadata || {};
     const worksheet = wsData?.Worksheet || {};
     const answerKey = wsData?.AnswerKey || {};
+    const worksheetForShare = { WorksheetData: wsData };
+    const shareQuestionCount = countWorksheetQuestions(worksheetForShare);
 
-    const secA: any[] = worksheet?.Section_A_MCQ || [];
-    const secD: any[] = worksheet?.Section_D_Short_Questions || [];
-    const secC: any[] = worksheet?.Section_C_True_False || [];
-    const secB: any[] = worksheet?.Section_B_Fill_in_the_Blank || [];
-    const secE = worksheet?.Section_E_Matching || {};
-    const matchPairs: any[] = secE?.Pairs || [];
-
-    const mcqAnswers: any[] = answerKey?.Section_A_MCQ || [];
-    const shortAnswers: any[] = answerKey?.Section_D_Short_Questions || [];
-    const hasContent =
-      secA.length + secB.length + secC.length + secD.length + matchPairs.length > 0;
+    const viewHtml = buildHtml(worksheet, answerKey, colors);
 
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -372,99 +547,52 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={[styles.viewContent, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
-          {!hasContent && (
-            <View style={styles.emptyView}>
-              <Ionicons name="document-outline" size={40} color={colors.textSecondary} />
-              <Text style={[styles.emptyViewText, { color: colors.textSecondary }]}>
-                This worksheet has no displayable sections.
-              </Text>
-            </View>
-          )}
+        {/* Single KaTeX WebView — same rich math pipeline as quiz MathRenderer / print */}
+        <View style={[styles.webviewWrap, { paddingBottom: Math.max(8, insets.bottom) }]}>
+          <WebView
+            source={{ html: viewHtml }}
+            style={styles.webview}
+            originWhitelist={['*']}
+            javaScriptEnabled
+            domStorageEnabled={false}
+            scalesPageToFit={false}
+            setSupportMultipleWindows={false}
+            showsVerticalScrollIndicator
+            androidLayerType="hardware"
+          />
+        </View>
 
-          {/* MCQ section */}
-          {secA.length > 0 && (
-            <Section label="Section A – Multiple Choice Questions">
-              {secA.map((q: any, i: number) => (
-                <View key={i} style={styles.questionBlock}>
-                  <Text style={[styles.questionText, { color: colors.text }]}>{i + 1}. {q.question}</Text>
-                  {(q.options || []).map((opt: string, oi: number) => (
-                    <Text key={oi} style={[styles.optionText, { color: colors.textSecondary }]}>
-                      {String.fromCharCode(65 + oi)}. {opt}
-                    </Text>
-                  ))}
-                </View>
-              ))}
-            </Section>
-          )}
+        <ShareQuizModal
+          visible={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          assessmentType="worksheet"
+          quizData={{
+            title: worksheetShareTopic(worksheetForShare),
+            class: meta.Class,
+            subject: meta.Subject,
+            difficulty: meta.Difficulty,
+            questionsCount: shareQuestionCount,
+            questions: buildWorksheetShareQuestions(worksheetForShare),
+            thread_slug: `worksheet_${Date.now()}`,
+          }}
+          quizMetadata={{
+            lesson: meta.Lesson,
+            subject: meta.Subject,
+            difficulty_level: meta.Difficulty,
+            question_count: shareQuestionCount,
+            additional_instructions: meta.Focus_Instructions || '',
+          }}
+          onShareSuccess={handleShareSuccess}
+        />
 
-          {/* Fill in blanks */}
-          {secB.length > 0 && (
-            <Section label="Section B – Fill in the Blanks">
-              {secB.map((q: any, i: number) => (
-                <Text key={i} style={[styles.questionText, { color: colors.text }]}>{i + 1}. {q.question || q}</Text>
-              ))}
-            </Section>
-          )}
-
-          {/* True/False */}
-          {secC.length > 0 && (
-            <Section label="Section C – True / False">
-              {secC.map((q: any, i: number) => (
-                <Text key={i} style={[styles.questionText, { color: colors.text }]}>
-                  {i + 1}. {q.statement || q.question || q}
-                </Text>
-              ))}
-            </Section>
-          )}
-
-          {/* Short questions */}
-          {secD.length > 0 && (
-            <Section label="Section D – Short Answer Questions">
-              {secD.map((q: any, i: number) => (
-                <View key={i} style={styles.questionBlock}>
-                  <Text style={[styles.questionText, { color: colors.text }]}>{i + 1}. {q.question || q}</Text>
-                  <View style={[styles.answerLine, { borderBottomColor: colors.border }]} />
-                </View>
-              ))}
-            </Section>
-          )}
-
-          {/* Matching */}
-          {matchPairs.length > 0 && (
-            <Section label="Section E – Match the Following">
-              <View style={styles.matchGrid}>
-                <View style={{ flex: 1 }}>
-                  {matchPairs.map((p: any, i: number) => (
-                    <Text key={i} style={[styles.questionText, { color: colors.text }]}>{i + 1}. {p.left}</Text>
-                  ))}
-                </View>
-                <View style={{ flex: 1 }}>
-                  {matchPairs.map((p: any, i: number) => (
-                    <Text key={i} style={[styles.questionText, { color: colors.text }]}>{String.fromCharCode(65 + i)}. {p.right}</Text>
-                  ))}
-                </View>
-              </View>
-            </Section>
-          )}
-
-          {/* Answer Key */}
-          {(mcqAnswers.length > 0 || shortAnswers.length > 0) && (
-            <Section label="✅ Answer Key" accent="#059669">
-              {mcqAnswers.map((a: any, i: number) => (
-                <Text key={i} style={[styles.answerText, { color: colors.text }]}>
-                  {i + 1}. {a.correctAnswer}
-                </Text>
-              ))}
-              {shortAnswers.map((a: any, i: number) => (
-                <View key={i} style={styles.questionBlock}>
-                  <Text style={[styles.questionText, { color: colors.text }]}>{secD[i]?.question || `Q${i + 1}`}</Text>
-                  <Text style={[styles.answerText, { color: '#059669' }]}>{a.modelAnswer}</Text>
-                </View>
-              ))}
-            </Section>
-          )}
-        </ScrollView>
+        {shareUrl ? (
+          <ShareOptionsModal
+            visible={showShareOptionsModal}
+            onClose={() => setShowShareOptionsModal(false)}
+            shareUrl={shareUrl}
+            shareKind="worksheet"
+          />
+        ) : null}
       </View>
     );
   }
@@ -473,31 +601,33 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
   // CREATE MODE – worksheet configuration form
   // ──────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScroll}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.formScroll, { paddingBottom: 180 + insets.bottom }]}
+      >
         <View style={styles.formWrap}>
           <Text style={[styles.pageTitle, { color: colors.text }]}>Create Worksheet</Text>
           <Text style={[styles.pageSubtitle, { color: colors.textSecondary }]}>
             Generate a printable worksheet for your students
           </Text>
 
-          {/* Class */}
-          <View style={styles.fieldBlock}>
-            <Text style={[styles.label, { color: colors.text }]}>Class *</Text>
-            <View style={[styles.pickerWrap, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Picker
-                selectedValue={form.classId}
-                onValueChange={(v) => setForm((p) => ({ ...p, classId: String(v) }))}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.textSecondary}
-              >
-                <Picker.Item label="Select class..." value="" color={colors.textSecondary} />
-                {(classes as any[]).map((c) => (
-                  <Picker.Item key={c.id} label={c.name || c.label} value={String(c.id)} color={colors.text} />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          <ModalDropdownField
+            label="Class"
+            value={form.classId}
+            onChange={(v) => setForm((p) => ({ ...p, classId: v }))}
+            items={(classes as any[]).map((c) => ({
+              id: String(c.id),
+              name: c.name || c.label,
+            }))}
+            placeholder="Select class..."
+            required
+          />
 
           {/* Subject */}
           <View style={styles.fieldBlock}>
@@ -523,22 +653,13 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
             />
           </View>
 
-          {/* Level */}
-          <View style={styles.fieldBlock}>
-            <Text style={[styles.label, { color: colors.text }]}>Difficulty Level</Text>
-            <View style={[styles.pickerWrap, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Picker
-                selectedValue={form.level}
-                onValueChange={(v) => setForm((p) => ({ ...p, level: String(v) }))}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.textSecondary}
-              >
-                {LEVELS.map((l) => (
-                  <Picker.Item key={l.id} label={l.name} value={l.id} color={colors.text} />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          <ModalDropdownField
+            label="Difficulty Level"
+            value={form.level}
+            onChange={(v) => setForm((p) => ({ ...p, level: v || 'beginner' }))}
+            items={LEVELS.map((l) => ({ id: l.id, name: l.name }))}
+            placeholder="Select difficulty..."
+          />
 
           {/* Number of Questions */}
           <View style={styles.fieldBlock}>
@@ -576,7 +697,16 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { borderTopColor: colors.border, paddingBottom: Math.max(16, insets.bottom + 8) }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            borderTopColor: colors.border,
+            backgroundColor: colors.background,
+            paddingBottom: Math.max(16, insets.bottom + 8),
+          },
+        ]}
+      >
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <TouchableOpacity
           style={[styles.generateBtn, { backgroundColor: colors.primary }, loading && { opacity: 0.6 }]}
@@ -591,35 +721,10 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
           )}
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
-function Section({ label, accent = '#0891B2', children }: { label: string; accent?: string; children: React.ReactNode }) {
-  const { theme } = useTheme();
-  return (
-    <View style={[sectionStyles.wrap, { backgroundColor: theme.colors.card }]}>
-      <Text style={[sectionStyles.label, { color: accent }]}>{label}</Text>
-      {children}
-    </View>
-  );
-}
-
-const sectionStyles = StyleSheet.create({
-  wrap: {
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    gap: 6,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -641,15 +746,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewContent: {
-    padding: 12,
+  webviewWrap: {
+    flex: 1,
   },
-  questionBlock: { marginBottom: 10, gap: 2 },
-  questionText: { fontSize: 14 },
-  optionText: { fontSize: 13, marginLeft: 14 },
-  answerLine: { height: 28, borderBottomWidth: 1, marginTop: 4 },
-  answerText: { fontSize: 13, fontStyle: 'italic' },
-  matchGrid: { flexDirection: 'row', gap: 16 },
+  webview: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   emptyView: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -661,17 +764,12 @@ const styles = StyleSheet.create({
   emptyViewText: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
 
   // create mode
-  formScroll: { paddingBottom: 140 },
+  formScroll: { flexGrow: 1 },
   formWrap: { paddingHorizontal: 14, paddingTop: 12 },
   pageTitle: { fontSize: 22, fontWeight: '700', marginBottom: 4 },
   pageSubtitle: { fontSize: 13, marginBottom: 16 },
   fieldBlock: { marginBottom: 12 },
   label: { fontSize: 12, fontWeight: '600', marginBottom: 5 },
-  pickerWrap: {
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
   input: {
     borderWidth: 1,
     borderRadius: 8,

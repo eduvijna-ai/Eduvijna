@@ -32,25 +32,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isStudent = user?.role === 'student';
   const isAdmin = user?.role === 'admin';
 
-  // Load user data from token storage
+  // Sync AuthContext when zustand session exists (keeps legacy consumers consistent)
   useEffect(() => {
-    const loadUser = async () => {
+    const syncFromStorage = async () => {
       try {
         const accessToken = await TokenStorage.getAccessToken();
         const userData = await TokenStorage.getUserData();
-        
         if (accessToken && userData) {
           setToken(accessToken);
-          // Parse userData if it's a string
           const parsedUser = typeof userData === 'string' ? JSON.parse(userData) : userData;
           setUser(parsedUser as unknown as User);
         }
-      } catch (error) {
-        console.error('Failed to load user data:', error);
+      } catch {
+        // Non-blocking
       }
     };
-
-    loadUser();
+    void syncFromStorage();
   }, []);
 
   /**

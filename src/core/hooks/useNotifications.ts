@@ -11,10 +11,10 @@ import {
   markAllAsRead,
   Notification,
 } from '../api/notifications.api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '@core/hooks/useAuth';
 
 export default function useNotifications() {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -30,7 +30,7 @@ export default function useNotifications() {
     
     /* DISABLED CODE:
     // Only fetch if user is authenticated
-    if (!user || !token) {
+    if (!user) {
       return;
     }
 
@@ -51,7 +51,7 @@ export default function useNotifications() {
       setLoading(false);
     }
     */
-  }, [user, token]);
+  }, [user]);
 
   /**
    * Fetch only unread count (lighter API call)
@@ -63,7 +63,7 @@ export default function useNotifications() {
     
     /* DISABLED CODE:
     // Only fetch if user is authenticated
-    if (!user || !token) {
+    if (!user) {
       return;
     }
 
@@ -75,7 +75,7 @@ export default function useNotifications() {
       console.error('Failed to fetch unread count:', errorMsg);
     }
     */
-  }, [user, token]);
+  }, [user]);
 
   /**
    * Mark a notification as read
@@ -137,7 +137,7 @@ export default function useNotifications() {
     
     /* DISABLED CODE:
     // Only setup notifications if user is authenticated
-    if (!user || !token) {
+    if (!user) {
       // Clear notifications when logged out
       setNotifications([]);
       setUnreadCount(0);
@@ -153,7 +153,7 @@ export default function useNotifications() {
 
     return () => clearInterval(interval);
     */
-  }, [fetchNotifications, fetchUnreadCount, user, token]);
+  }, [fetchNotifications, fetchUnreadCount, user]);
 
   return {
     notifications,

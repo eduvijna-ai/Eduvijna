@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from './LoadingSpinner';
-import { Picker } from '@react-native-picker/picker';
+import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useDropdowns } from '../context/DropdownContext';
 import { searchDropdown } from '../core/services/dropdown';
@@ -67,7 +67,9 @@ export interface QuizFormFieldsProps {
   onQuestionCountChange?: (value: string) => void;
   questionCountError?: string;
   questionCountOptions?: string[];
+  /** @deprecated Use useModalForQuestionCount — name kept for backward compatibility */
   usePickerForCount?: boolean;
+  useModalForQuestionCount?: boolean;
   
   // Lesson/Topic field
   showLesson?: boolean;
@@ -135,6 +137,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     questionCountError = '',
     questionCountOptions = ['3', '5', '10', '15', '20'],
     usePickerForCount = true,
+    useModalForQuestionCount,
     
     showLesson = false,
     lessonValue = '',
@@ -152,6 +155,8 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
     compact = false,
   } = props;
+
+  const useModalQuestionCount = useModalForQuestionCount ?? usePickerForCount;
 
   // Use prop data if provided, otherwise use context data (loaded once for entire app)
   const rawClasses = propClasses || contextClasses;
@@ -637,34 +642,27 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
 
       {/* Student Level Field (alternative to class/subject) */}
       {showStudentLevel && (
-        <View style={[styles.field, compact && styles.fieldCompact]}>
-          <Text style={styles.label}>Student Level *</Text>
-          {isLoadingStudentLevels ? (
+        isLoadingStudentLevels ? (
+          <View style={[styles.field, compact && styles.fieldCompact]}>
+            <Text style={styles.label}>Student Level *</Text>
             <View style={styles.loadingContainer}>
               <LoadingSpinner size={20} />
               <Text style={styles.loadingText}>Loading levels...</Text>
             </View>
-          ) : (
-            <View style={[styles.pickerContainer, compact && styles.pickerContainerCompact]}>
-              <Picker
-                selectedValue={studentLevelValue}
-                onValueChange={onStudentLevelChange}
-                style={[styles.picker, compact && styles.pickerCompact]}
-                dropdownIconColor={colors.primary}
-                mode="dropdown"
-              >
-                <Picker.Item label="Select student level..." value="" />
-                {studentLevels.map((level) => (
-                  <Picker.Item
-                    key={level.id}
-                    label={level.label || level.name}
-                    value={level.id}
-                  />
-                ))}
-              </Picker>
-            </View>
-          )}
-        </View>
+          </View>
+        ) : (
+          <ModalDropdownField
+            label="Student Level"
+            value={studentLevelValue}
+            onChange={(v) => onStudentLevelChange?.(v)}
+            items={studentLevels.map((level) => ({
+              id: level.id,
+              name: level.label || level.name,
+            }))}
+            placeholder="Select student level..."
+            required
+          />
+        )
       )}
 
       {/* Lesson/Topic Field */}
@@ -766,7 +764,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {showQuestionCount && (
         <View style={[styles.field, compact && styles.fieldCompact]}>
           <Text style={styles.label}>Number of Questions *</Text>
-          {usePickerForCount ? (
+          {useModalQuestionCount ? (
             <View style={styles.dropdownContainer}>
               <TouchableOpacity
                 style={[styles.dropdownButton, compact && styles.dropdownButtonCompact]}
@@ -805,7 +803,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       )}
 
       {/* Number of Questions Dropdown Modal */}
-      {showQuestionCount && usePickerForCount && (
+      {showQuestionCount && useModalQuestionCount && (
         <Modal
           visible={showQuestionCountModal}
           transparent={true}
@@ -907,24 +905,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     fontSize: 14,
-  },
-  pickerContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  pickerContainerCompact: {
-    borderRadius: 8,
-  },
-  picker: {
-    height: 52,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  pickerCompact: {
-    height: 44,
   },
   loadingContainer: {
     flexDirection: 'row',
