@@ -54,6 +54,9 @@ import MobileLoginScreen from './src/platforms/mobile/screens/Login';
 import WebLoginScreen from './src/platforms/web/screens/Login';
 import { useAppFonts } from './src/theme/useAppFonts';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import { installGlobalErrorHandlers } from './src/core/services/errorLogger';
+
+installGlobalErrorHandlers();
 
 function AppContent() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();

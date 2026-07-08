@@ -13,6 +13,7 @@ G:\Eduvijna\
 ├── App.tsx                      # ⭐ Main entry point with platform detection
 ├── README.md                    # Project documentation
 ├── ARCHITECTURE.md              # ⭐ Complete architecture guide
+├── MOBILE_UI_REFERENCE.md       # ⭐ Mobile UI patterns, forms, dropdowns, error handling
 │
 ├── src/
 │   ├── core/                    # ⭐ PLATFORM-AGNOSTIC BUSINESS LOGIC

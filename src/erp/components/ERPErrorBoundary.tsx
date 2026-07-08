@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { logError } from '@core/services/errorLogger';
 import { COLORS } from './common';
 
 interface State {
@@ -28,7 +29,7 @@ export default class ERPErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('[ERP Error Boundary]', error, info.componentStack);
+    void logError(error, 'ERPErrorBoundary', { componentStack: info.componentStack ?? undefined });
   }
 
   handleRetry = () => {

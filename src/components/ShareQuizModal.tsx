@@ -10,8 +10,8 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import {Picker} from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient, API_BASE_URL } from '@core/api/config';
@@ -61,6 +61,29 @@ interface Classroom {
   total_count?: number;
   students?: any[];
 }
+
+const SHARE_SUBJECT_OPTIONS = [
+  { id: 'math', name: 'Mathematics' },
+  { id: 'science', name: 'Science' },
+  { id: 'english', name: 'English' },
+  { id: 'history', name: 'History' },
+  { id: 'general', name: 'General' },
+];
+
+const SHARE_DURATION_OPTIONS = [
+  { id: '15', name: '15 minutes' },
+  { id: '30', name: '30 minutes' },
+  { id: '45', name: '45 minutes' },
+  { id: '60', name: '60 minutes' },
+  { id: '90', name: '90 minutes' },
+  { id: '120', name: '120 minutes' },
+];
+
+const SHARE_STATUS_OPTIONS = [
+  { id: 'active', name: 'Active' },
+  { id: 'inactive', name: 'Inactive' },
+  { id: 'draft', name: 'Draft' },
+];
 
 const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   visible,
@@ -617,19 +640,21 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Classroom {!isPublic && <Text style={styles.required}>*</Text>}</Text>
               <Text style={[styles.helperText, { color: colors.textSecondary }]}>{isPublic ? 'Optional - select to send push notifications to students' : 'Required for private quizzes'}</Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker 
-                  selectedValue={selectedClassroom} 
-                  onValueChange={setSelectedClassroom} 
-                  style={[styles.picker, { color: colors.text }]}
-                  enabled={user?.role !== 'student'}
-                >
-                  <Picker.Item label={user?.role === 'student' ? 'Not available for students' : (isPublic ? 'Select a classroom (Optional)' : 'Select a classroom (Required)')} value="" />
-                  {classrooms.map((classroom) => (
-                    <Picker.Item key={classroom.classroom_id} label={classroom.classroom_name} value={classroom.classroom_id} />
-                  ))}
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Classroom"
+                hideLabel
+                value={selectedClassroom}
+                onChange={setSelectedClassroom}
+                items={classrooms.map((c) => ({ id: c.classroom_id, name: c.classroom_name }))}
+                placeholder={
+                  user?.role === 'student'
+                    ? 'Not available for students'
+                    : isPublic
+                      ? 'Select a classroom (Optional)'
+                      : 'Select a classroom (Required)'
+                }
+                disabled={user?.role === 'student'}
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -654,15 +679,15 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Subject <Text style={styles.required}>*</Text></Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={subject} onValueChange={setSubject} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="Mathematics" value="math" />
-                  <Picker.Item label="Science" value="science" />
-                  <Picker.Item label="English" value="english" />
-                  <Picker.Item label="History" value="history" />
-                  <Picker.Item label="General" value="general" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Subject"
+                hideLabel
+                value={subject}
+                onChange={setSubject}
+                items={SHARE_SUBJECT_OPTIONS}
+                placeholder="Select subject..."
+                required
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -703,16 +728,15 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Duration (minutes) <Text style={styles.required}>*</Text></Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={duration} onValueChange={setDuration} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="15 minutes" value="15" />
-                  <Picker.Item label="30 minutes" value="30" />
-                  <Picker.Item label="45 minutes" value="45" />
-                  <Picker.Item label="60 minutes" value="60" />
-                  <Picker.Item label="90 minutes" value="90" />
-                  <Picker.Item label="120 minutes" value="120" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Duration"
+                hideLabel
+                value={duration}
+                onChange={setDuration}
+                items={SHARE_DURATION_OPTIONS}
+                placeholder="Select duration..."
+                required
+              />
             </View>
 
             <View style={styles.formGroup}>
@@ -785,13 +809,14 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>Status</Text>
-              <View style={[styles.pickerContainer, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                <Picker selectedValue={status} onValueChange={setStatus} style={[styles.picker, { color: colors.text }]}>
-                  <Picker.Item label="Active" value="active" />
-                  <Picker.Item label="Inactive" value="inactive" />
-                  <Picker.Item label="Draft" value="draft" />
-                </Picker>
-              </View>
+              <ModalDropdownField
+                label="Status"
+                hideLabel
+                value={status}
+                onChange={setStatus}
+                items={SHARE_STATUS_OPTIONS}
+                placeholder="Select status..."
+              />
             </View>
           </ScrollView>
           <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
@@ -926,8 +951,6 @@ const styles = StyleSheet.create({
   input: {borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16},
   inputDisabled: {opacity: 0.6},
   textArea: {minHeight: 100, textAlignVertical: 'top'},
-  pickerContainer: {borderWidth: 1, borderRadius: 8, overflow: 'hidden'},
-  picker: {height: 50},
   radioGroup: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
   radioOption: {flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, minWidth: 120},
   radioCircle: {width: 20, height: 20, borderRadius: 10, borderWidth: 2, marginRight: 8, justifyContent: 'center', alignItems: 'center'},

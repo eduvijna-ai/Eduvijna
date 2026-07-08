@@ -7,8 +7,8 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ModalDropdownField from '../components/ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import useNotifications from '@core/hooks/useNotifications';
@@ -535,7 +535,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     }
   };
 
-  const renderPicker = (
+  const renderDropdown = (
     label: string,
     value: string,
     onChange: (value: string) => void,
@@ -544,35 +544,22 @@ export default function CreateAIQuizScreen({ navigation }: any) {
     required = false,
     disabled = false,
   ) => (
-    <View style={styles.fieldBlock}>
-      <Text style={styles.fieldLabel}>{label}{required ? ' *' : ''}</Text>
-      <View style={[styles.pickerWrap, disabled && styles.disabledField]}>
-        <Picker
-          enabled={!disabled}
-          selectedValue={value}
-          onValueChange={(val) => onChange(String(val))}
-          style={styles.picker}
-          dropdownIconColor={theme.colors.textSecondary}
-        >
-          <Picker.Item label={placeholder} value="" color={theme.colors.textSecondary} />
-          {items.map((item) => (
-            <Picker.Item
-              key={String(item.id)}
-              label={item.name || item.label || String(item.id)}
-              value={String(item.id)}
-              color={theme.colors.text}
-            />
-          ))}
-        </Picker>
-      </View>
-    </View>
+    <ModalDropdownField
+      label={label}
+      value={value}
+      onChange={onChange}
+      items={items}
+      placeholder={placeholder}
+      required={required}
+      disabled={disabled}
+    />
   );
 
   const renderGeneral = () => (
     <>
       <Text style={styles.sectionCaption}>ACADEMIC CONTEXT</Text>
-      {renderPicker('Class', general.classId, (v) => setGeneral((p) => ({ ...p, classId: v, subjectId: '' })), classes as any, 'Select class...', true)}
-      {renderPicker('Subject', general.subjectId, (v) => setGeneral((p) => ({ ...p, subjectId: v })), generalSubjects as any, 'Select subject...', true, !general.classId)}
+      {renderDropdown('Class', general.classId, (v) => setGeneral((p) => ({ ...p, classId: v, subjectId: '' })), classes as any, 'Select class...', true)}
+      {renderDropdown('Subject', general.subjectId, (v) => setGeneral((p) => ({ ...p, subjectId: v })), generalSubjects as any, 'Select subject...', true, !general.classId)}
 
       <View style={styles.fieldBlock}>
         <Text style={styles.fieldLabel}>Lesson *</Text>
@@ -607,8 +594,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         />
       </View>
 
-      {renderPicker('Language', general.language, (v) => setGeneral((p) => ({ ...p, language: v })), LANGUAGES.map((x) => ({ id: x.value, name: x.label })), 'Select language...')}
-      {renderPicker('Difficulty Level', general.levelId, (v) => setGeneral((p) => ({ ...p, levelId: v })), difficultyLevels as any, 'Select difficulty...', true)}
+      {renderDropdown('Language', general.language, (v) => setGeneral((p) => ({ ...p, language: v })), LANGUAGES.map((x) => ({ id: x.value, name: x.label })), 'Select language...')}
+      {renderDropdown('Difficulty Level', general.levelId, (v) => setGeneral((p) => ({ ...p, levelId: v })), difficultyLevels as any, 'Select difficulty...', true)}
 
       <View style={styles.fieldBlock}>
         <Text style={styles.fieldLabel}>Number of Questions</Text>
@@ -643,10 +630,10 @@ export default function CreateAIQuizScreen({ navigation }: any) {
   const renderCompetitive = () => (
     <>
       <Text style={styles.sectionCaption}>COMPETITIVE EXAM CONTEXT</Text>
-      {renderPicker('Stream', competitive.streamId, (v) => setCompetitive((p) => ({ ...p, streamId: v, examId: '', subjectId: '' })), streams as any, 'Select stream...', true)}
-      {renderPicker('Exam', competitive.examId, (v) => setCompetitive((p) => ({ ...p, examId: v, subjectId: '' })), exams as any, 'Select exam...', true, !competitive.streamId)}
-      {renderPicker('Category', competitive.categoryId, (v) => setCompetitive((p) => ({ ...p, categoryId: v })), categories as any, 'Select category...', true)}
-      {renderPicker('Subject', competitive.subjectId, (v) => setCompetitive((p) => ({ ...p, subjectId: v })), examSubjects as any, 'Select subject...', true, !competitive.examId)}
+      {renderDropdown('Stream', competitive.streamId, (v) => setCompetitive((p) => ({ ...p, streamId: v, examId: '', subjectId: '' })), streams as any, 'Select stream...', true)}
+      {renderDropdown('Exam', competitive.examId, (v) => setCompetitive((p) => ({ ...p, examId: v, subjectId: '' })), exams as any, 'Select exam...', true, !competitive.streamId)}
+      {renderDropdown('Category', competitive.categoryId, (v) => setCompetitive((p) => ({ ...p, categoryId: v })), categories as any, 'Select category...', true)}
+      {renderDropdown('Subject', competitive.subjectId, (v) => setCompetitive((p) => ({ ...p, subjectId: v })), examSubjects as any, 'Select subject...', true, !competitive.examId)}
 
       <View style={styles.fieldBlock}>
         <Text style={styles.fieldLabel}>Topic *</Text>
@@ -659,8 +646,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         />
       </View>
 
-      {renderPicker('Language', competitive.language, (v) => setCompetitive((p) => ({ ...p, language: v })), LANGUAGES.map((x) => ({ id: x.value, name: x.label })), 'Select language...')}
-      {renderPicker('Difficulty Level', competitive.levelId, (v) => setCompetitive((p) => ({ ...p, levelId: v })), difficultyLevels as any, 'Select difficulty...', true)}
+      {renderDropdown('Language', competitive.language, (v) => setCompetitive((p) => ({ ...p, language: v })), LANGUAGES.map((x) => ({ id: x.value, name: x.label })), 'Select language...')}
+      {renderDropdown('Difficulty Level', competitive.levelId, (v) => setCompetitive((p) => ({ ...p, levelId: v })), difficultyLevels as any, 'Select difficulty...', true)}
 
       <View style={styles.fieldBlock}>
         <Text style={styles.fieldLabel}>Number of Questions</Text>
@@ -809,7 +796,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         lesson={summaryContext.lesson}
         difficulty={summaryContext.difficulty}
         additionalInstructions={summaryContext.additionalInstructions}
-        autoGenerate
+        autoGenerate={summaryModalOpen}
       />
     </View>
   );
@@ -882,20 +869,6 @@ const createStyles = (colors: any) =>
       fontSize: 12,
       fontWeight: '600',
       color: colors.text,
-    },
-    pickerWrap: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      backgroundColor: colors.cardBackground,
-      overflow: 'hidden',
-    },
-    picker: {
-      color: colors.text,
-      minHeight: 48,
-    },
-    disabledField: {
-      opacity: 0.6,
     },
     textInput: {
       borderWidth: 1,

@@ -15,8 +15,8 @@ import {
   Platform,
   Share,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ModalDropdownField from '../components/ModalDropdownField';
 import * as Print from 'expo-print';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
@@ -481,23 +481,17 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
             Generate a printable worksheet for your students
           </Text>
 
-          {/* Class */}
-          <View style={styles.fieldBlock}>
-            <Text style={[styles.label, { color: colors.text }]}>Class *</Text>
-            <View style={[styles.pickerWrap, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Picker
-                selectedValue={form.classId}
-                onValueChange={(v) => setForm((p) => ({ ...p, classId: String(v) }))}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.textSecondary}
-              >
-                <Picker.Item label="Select class..." value="" color={colors.textSecondary} />
-                {(classes as any[]).map((c) => (
-                  <Picker.Item key={c.id} label={c.name || c.label} value={String(c.id)} color={colors.text} />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          <ModalDropdownField
+            label="Class"
+            value={form.classId}
+            onChange={(v) => setForm((p) => ({ ...p, classId: v }))}
+            items={(classes as any[]).map((c) => ({
+              id: String(c.id),
+              name: c.name || c.label,
+            }))}
+            placeholder="Select class..."
+            required
+          />
 
           {/* Subject */}
           <View style={styles.fieldBlock}>
@@ -523,22 +517,13 @@ export default function WorksheetScreen({ route, navigation: _navigation }: any)
             />
           </View>
 
-          {/* Level */}
-          <View style={styles.fieldBlock}>
-            <Text style={[styles.label, { color: colors.text }]}>Difficulty Level</Text>
-            <View style={[styles.pickerWrap, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Picker
-                selectedValue={form.level}
-                onValueChange={(v) => setForm((p) => ({ ...p, level: String(v) }))}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.textSecondary}
-              >
-                {LEVELS.map((l) => (
-                  <Picker.Item key={l.id} label={l.name} value={l.id} color={colors.text} />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          <ModalDropdownField
+            label="Difficulty Level"
+            value={form.level}
+            onChange={(v) => setForm((p) => ({ ...p, level: v || 'beginner' }))}
+            items={LEVELS.map((l) => ({ id: l.id, name: l.name }))}
+            placeholder="Select difficulty..."
+          />
 
           {/* Number of Questions */}
           <View style={styles.fieldBlock}>
@@ -667,11 +652,6 @@ const styles = StyleSheet.create({
   pageSubtitle: { fontSize: 13, marginBottom: 16 },
   fieldBlock: { marginBottom: 12 },
   label: { fontSize: 12, fontWeight: '600', marginBottom: 5 },
-  pickerWrap: {
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
   input: {
     borderWidth: 1,
     borderRadius: 8,
