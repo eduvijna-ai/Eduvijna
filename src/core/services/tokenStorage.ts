@@ -215,8 +215,12 @@ export async function clearAuthData(): Promise<void> {
         KEYS.USER_DATA,
       ]);
 
-      // Clear SecureStore
-      await SecureStore.deleteItemAsync(KEYS.REFRESH_TOKEN);
+      // Clear SecureStore (ignore missing-item errors on fresh installs)
+      try {
+        await SecureStore.deleteItemAsync(KEYS.REFRESH_TOKEN);
+      } catch {
+        // Item may not exist
+      }
     }
   } catch (error) {
     console.error('Failed to clear auth data:', error);

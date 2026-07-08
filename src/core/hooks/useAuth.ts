@@ -35,6 +35,18 @@ function extractSchoolId(user: UserProfile | null): number | null {
   );
 }
 
+function formatAuthError(err: unknown): string {
+  const anyErr = err as { response?: { data?: { detail?: string; message?: string } }; message?: string };
+  const detail = anyErr?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail.map((d) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d))).join(', ');
+  }
+  if (typeof anyErr?.response?.data?.message === 'string') return anyErr.response.data.message;
+  if (typeof anyErr?.message === 'string' && anyErr.message.trim()) return anyErr.message;
+  return 'Login failed. Please check your credentials and try again.';
+}
+
 function isSuperAdminUser(user: UserProfile | null): boolean {
   if (!user) return false;
   const anyUser = user as any;
@@ -79,7 +91,11 @@ interface UseAuthReturn {
   // State
   user: UserProfile | null;
   isAuthenticated: boolean;
+  /** Splash gate — first auth check on app launch only */
+  isInitializing: boolean;
+  /** @deprecated Use isLoggingIn for login button; kept for compatibility */
   isLoading: boolean;
+  isLoggingIn: boolean;
   error: string | null;
   
   // Actions
@@ -101,15 +117,18 @@ export function useAuth(): UseAuthReturn {
   const {
     user,
     isAuthenticated,
+    isInitializing,
     isLoading,
     setUser,
     setAuthenticated,
+    setInitializing,
     setLoading,
     setSchoolId,
     logout: logoutStore,
   } = useUserStore();
   
   const [error, setError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   /**
    * Check if user is authenticated on mount
@@ -124,6 +143,7 @@ export function useAuth(): UseAuthReturn {
     hasCheckedAuth = true;
     
     try {
+      setInitializing(true);
       setLoading(true);
       setError(null);
 
@@ -135,6 +155,7 @@ export function useAuth(): UseAuthReturn {
         console.log('No access token found - showing login');
         setAuthenticated(false);
         setUser(null);
+        setInitializing(false);
         setLoading(false);
         isCheckingAuth = false;
         return;
@@ -162,6 +183,7 @@ export function useAuth(): UseAuthReturn {
           await TokenStorage.clearAuthData();
           setAuthenticated(false);
           setUser(null);
+          setInitializing(false);
           setLoading(false);
           isCheckingAuth = false;
           return;
@@ -198,18 +220,19 @@ export function useAuth(): UseAuthReturn {
       setUser(null);
       // Don't clear tokens here - might be network issue
     } finally {
+      setInitializing(false);
       setLoading(false);
       isCheckingAuth = false;
       console.log('Auth check complete');
     }
-  }, [setUser, setAuthenticated, setLoading]);
+  }, [setUser, setAuthenticated, setInitializing, setLoading, setSchoolId]);
 
   /**
    * Login with credentials
    */
   const login = useCallback(async (credentials: LoginCredentials) => {
     try {
-      setLoading(true);
+      setIsLoggingIn(true);
       setError(null);
 
       // Validate credentials
@@ -220,22 +243,22 @@ export function useAuth(): UseAuthReturn {
       // Call login API (tokens are stored automatically in auth.api.ts)
       const response = await AuthAPI.login(credentials);
 
-      // Update store
+      // Update store — do NOT toggle global isInitializing / app splash here
       const enrichedUser = await enrichUserWithSchoolName(response.user);
       setUser(enrichedUser);
       setAuthenticated(true);
-      // Centrally store school_id for all API calls
       setSchoolId(extractSchoolId(enrichedUser));
-      // NO automatic data loading - dashboard will load its own data when mounted
     } catch (err) {
       console.error('Login failed:', err);
+      const message = formatAuthError(err);
+      setError(message);
       setAuthenticated(false);
       setUser(null);
       throw err;
     } finally {
-      setLoading(false);
+      setIsLoggingIn(false);
     }
-  }, [setUser, setAuthenticated, setLoading, setSchoolId]);
+  }, [setUser, setAuthenticated, setSchoolId]);
 
   /**
    * Logout user
@@ -285,7 +308,9 @@ export function useAuth(): UseAuthReturn {
   return {
     user,
     isAuthenticated,
+    isInitializing,
     isLoading,
+    isLoggingIn,
     error,
     login,
     logout,

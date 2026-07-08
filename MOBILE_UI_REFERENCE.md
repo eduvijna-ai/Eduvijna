@@ -383,8 +383,23 @@ Screen / Component
 
 ---
 
+## Login screen
+
+| Rule | Detail |
+|------|--------|
+| Do **not** use global `isLoading` to hide the whole app during login | Unmounts `NavigationContainer` and can crash Android production builds |
+| Use `isInitializing` | App splash — first auth check only (`App.tsx`) |
+| Use `isLoggingIn` | Sign-in button spinner (`Login.tsx`) |
+| Show API errors | `useAuth.login` sets `error` string for wrong password / network |
+| Log failures | `logError(e, 'LoginScreen.onLogin')` |
+
+**Files:** `src/platforms/mobile/screens/Login.tsx` · `src/core/hooks/useAuth.ts` · `App.tsx`
+
+---
+
 ## Changelog
 
 | Date | Change |
 |------|--------|
+| Jul 2026 | Login fix: do not unmount NavigationContainer during submit; use `isInitializing` vs `isLoggingIn` |
 | Jul 2026 | Initial doc: native Picker removal, `ModalDropdownField` standard, error logger, assessment module map, ESLint guard |

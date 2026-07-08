@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { getClasses, getSubjects, getDifficultyLevels, type DropdownResponse } from '../core/services/dropdown';
-import { useAuth } from '../core/context/AuthContext';
+import { useAuth } from '@core/hooks/useAuth';
 
 export interface ClassItem {
   id: string;
@@ -60,7 +60,7 @@ interface DropdownProviderProps {
 }
 
 export function DropdownProvider({ children }: DropdownProviderProps) {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const wasAuthenticatedRef = useRef(false);
 
   const resolvedSchoolId = React.useMemo(() => {
@@ -155,7 +155,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
 
   // Auto-load dropdown data on mount and when auth status changes
   useEffect(() => {
-    const isAuthenticated = Boolean(user || token);
+    const isAuthenticated = Boolean(user);
 
     if (!isAuthenticated) {
       if (wasAuthenticatedRef.current) {
@@ -177,7 +177,7 @@ export function DropdownProvider({ children }: DropdownProviderProps) {
     loadSubjects();
     loadDifficulty();
     wasAuthenticatedRef.current = true;
-  }, [user, token, loadClasses, loadSubjects, loadDifficulty]);
+  }, [user, loadClasses, loadSubjects, loadDifficulty]);
 
   // Refresh functions
   const refreshClasses = useCallback(async () => {

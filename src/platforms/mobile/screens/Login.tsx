@@ -11,13 +11,18 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
+import { logError } from '@core/services/errorLogger';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function Login() {
-  const { login, isLoading, error, clearError } = useAuth();
+  const { login, isLoggingIn, error, clearError } = useAuth();
   const { theme } = useTheme();
   const colors = theme.colors;
   const [email, setEmail] = useState('');
@@ -25,63 +30,79 @@ export default function Login() {
 
   const onLogin = async () => {
     clearError();
-    
+
     try {
       await login({ email: email.trim(), password });
-    } catch (e: any) {
-      // Error is handled by the useAuth hook
-      console.log('Login error:', e);
+    } catch (e: unknown) {
+      void logError(e, 'LoginScreen.onLogin');
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Image source={require('../../../../assets/eduvijna.png')} style={styles.logo} />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      
-      <TextInput 
-        placeholder="Email or Username" 
-        placeholderTextColor={colors.textSecondary}
-        style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]} 
-        value={email} 
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={!isLoading}
-      />
-      
-      <TextInput 
-        placeholder="Password" 
-        placeholderTextColor={colors.textSecondary}
-        secureTextEntry 
-        style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]} 
-        value={password} 
-        onChangeText={setPassword}
-        autoCapitalize="none"
-        editable={!isLoading}
-      />
-      
-      <TouchableOpacity 
-        style={[styles.button, { backgroundColor: colors.primary }, isLoading && styles.buttonDisabled]} 
-        onPress={onLogin} 
-        disabled={isLoading}
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {isLoading ? (
-          <LoadingSpinner size={24} />
-        ) : (
-          <Text style={styles.buttonText}>Sign in</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Image source={require('../../../../assets/eduvijna.png')} style={styles.logo} />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <TextInput
+            placeholder="Email or Username"
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="username"
+            editable={!isLoggingIn}
+          />
+
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor={colors.textSecondary}
+            secureTextEntry
+            style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
+            value={password}
+            onChangeText={setPassword}
+            autoCapitalize="none"
+            textContentType="password"
+            editable={!isLoggingIn}
+            onSubmitEditing={onLogin}
+          />
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors.primary }, isLoggingIn && styles.buttonDisabled]}
+            onPress={onLogin}
+            disabled={isLoggingIn}
+          >
+            {isLoggingIn ? (
+              <LoadingSpinner size={24} />
+            ) : (
+              <Text style={styles.buttonText}>Sign in</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    padding: 16 
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  container: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
   },
   logo: { 
     width: 150, 

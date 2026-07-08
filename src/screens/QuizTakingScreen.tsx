@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -165,8 +165,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       return;
     }
 
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
     navigation.navigate('Main', { screen: 'Dashboard' });
   };
+
+  const leaveQuizScreen = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    navigation.navigate('Main', { screen: 'Dashboard' });
+  }, [navigation]);
   
   // Use useMemo to stabilize quizSource object reference and prevent infinite loops
   const quizSource = useMemo(() => {
@@ -284,23 +297,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const currentQuizData = quiz;
   const setCurrentQuizData = setQuiz;
 
-  // Handle Android hardware back button - navigate to Dashboard
+  // Handle Android hardware back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (Platform.OS === 'android') {
-        if (source === 'image' || source === 'handwritten') {
-          navigation.goBack();
-          return true;
-        }
-
-        navigation.navigate('Main', { screen: 'Dashboard' });
+        leaveQuizScreen();
         return true;
       }
       return false;
     });
 
     return () => backHandler.remove();
-  }, [navigation, source]);
+  }, [leaveQuizScreen]);
 
   // Determine quiz type from normalized data
   // Teacher-assigned quiz must meet ALL these criteria:
@@ -553,15 +561,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   }
 
   const handleHeaderBack = () => {
-    navigation.goBack();
+    leaveQuizScreen();
   };
 
   const handleHeaderClose = () => {
-    if (source === 'image' || source === 'handwritten') {
-      navigation.goBack();
-      return;
-    }
-    navigation.goBack();
+    leaveQuizScreen();
   };
 
   if (!quiz.questions || !Array.isArray(quiz.questions) || quiz.questions.length === 0) {
