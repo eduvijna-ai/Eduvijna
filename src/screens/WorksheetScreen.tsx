@@ -1,7 +1,7 @@
 /**
  * Worksheet Screen
  * - Create mode: form to configure and generate a worksheet
- * - View mode: display the generated worksheet with print/share support
+ * - View mode: interactive worksheet (answer, submit, evaluate) with print/share
  */
 import React, { useState, useLayoutEffect, useCallback, useEffect } from 'react';
 import {
@@ -16,7 +16,6 @@ import {
   KeyboardAvoidingView,
   BackHandler,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalDropdownField from '../components/ModalDropdownField';
 import * as Print from 'expo-print';
@@ -26,6 +25,7 @@ import { useDropdowns } from '../context/DropdownContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
+import InteractiveWorksheetView from '../components/InteractiveWorksheetView';
 import { generateWorksheet, saveUserAssessment } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
 import {
@@ -332,6 +332,10 @@ export default function WorksheetScreen({ route, navigation }: any) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showShareOptionsModal, setShowShareOptionsModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
+  const [savedAssessmentId, setSavedAssessmentId] = useState<number | null>(
+    typeof rawParam?.id === 'number' ? rawParam.id : null,
+  );
+  const savedResponses = rawParam?.responses as Record<string, string> | undefined;
 
   const [form, setForm] = useState<WorksheetFormState>({
     classId: '',
@@ -421,7 +425,7 @@ export default function WorksheetScreen({ route, navigation }: any) {
       const wsData = result?.WorksheetData;
       if (wsData) {
         const marker = '__WS_DATA__';
-        await saveUserAssessment({
+        const saved = await saveUserAssessment({
           title: `${wsData.Metadata?.Subject || 'Worksheet'} – ${wsData.Metadata?.Lesson || form.lesson}`,
           subject: wsData.Metadata?.Subject,
           class_name: wsData.Metadata?.Class,
@@ -441,6 +445,7 @@ export default function WorksheetScreen({ route, navigation }: any) {
             },
           ],
         });
+        if (saved?.id) setSavedAssessmentId(saved.id);
       }
     } catch (err: any) {
       setError(normalizeErrorMessage(err, 'Worksheet generation failed.'));
@@ -514,12 +519,9 @@ export default function WorksheetScreen({ route, navigation }: any) {
 
     const wsData = worksheetResult?.WorksheetData || worksheetResult;
     const meta = wsData?.Metadata || {};
-    const worksheet = wsData?.Worksheet || {};
-    const answerKey = wsData?.AnswerKey || {};
     const worksheetForShare = { WorksheetData: wsData };
     const shareQuestionCount = countWorksheetQuestions(worksheetForShare);
-
-    const viewHtml = buildHtml(worksheet, answerKey, colors);
+    const assessmentId = savedAssessmentId ?? (typeof rawParam?.id === 'number' ? rawParam.id : null);
 
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -540,27 +542,20 @@ export default function WorksheetScreen({ route, navigation }: any) {
             <Ionicons name="share-social-outline" size={18} color={colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => { setMode('create'); setWorksheetResult(null); }}
+            onPress={() => { setMode('create'); setWorksheetResult(null); setSavedAssessmentId(null); }}
             style={[styles.headerBtn, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
           >
             <Ionicons name="add" size={18} color={colors.text} />
           </TouchableOpacity>
         </View>
 
-        {/* Single KaTeX WebView — same rich math pipeline as quiz MathRenderer / print */}
-        <View style={[styles.webviewWrap, { paddingBottom: Math.max(8, insets.bottom) }]}>
-          <WebView
-            source={{ html: viewHtml }}
-            style={styles.webview}
-            originWhitelist={['*']}
-            javaScriptEnabled
-            domStorageEnabled={false}
-            scalesPageToFit={false}
-            setSupportMultipleWindows={false}
-            showsVerticalScrollIndicator
-            androidLayerType="hardware"
-          />
-        </View>
+        <InteractiveWorksheetView
+          worksheetData={wsData}
+          colors={colors}
+          assessmentId={assessmentId}
+          savedResponses={savedResponses}
+          bottomInset={insets.bottom}
+        />
 
         <ShareQuizModal
           visible={showShareModal}

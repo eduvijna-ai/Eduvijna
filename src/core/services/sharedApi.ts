@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../api/config';
+import type { WorksheetDataShape } from '../types/worksheet.types';
 
 // ============================================================================
 // QUIZ ATTEMPTS
@@ -581,6 +582,43 @@ export async function updateQuestionExplanation(
  * Generate a worksheet
  * POST /api/v1/worksheet/generate
  */
+export interface WorksheetEvaluateResult {
+  success: boolean;
+  results: Array<{
+    id: number;
+    section: string;
+    isCorrect: boolean;
+    marksObtained: number;
+    maxMarks: number;
+    feedback?: string;
+  }>;
+  totalMarks: number;
+  maxMarks: number;
+  percentage: number;
+  message: string;
+  processing_time_ms?: number;
+}
+
+/**
+ * Evaluate worksheet answers using LLM grading
+ * POST /api/v1/worksheet/evaluate
+ */
+export async function evaluateWorksheet(
+  worksheetData: WorksheetDataShape,
+  answers: Record<string, Array<{ id: number; answer: string }>>,
+): Promise<WorksheetEvaluateResult> {
+  const response = await apiClient.post<WorksheetEvaluateResult>('/api/v1/worksheet/evaluate', {
+    worksheetData,
+    answers,
+  });
+
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || 'Worksheet evaluation failed');
+  }
+
+  return response.data;
+}
+
 export async function generateWorksheet(data: {
   class: string;
   subject: string;
