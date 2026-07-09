@@ -10,6 +10,7 @@ import {
   TextInput,
   StatusBar,
   Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -520,7 +521,10 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.colors.background} />
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        {...(Platform.OS === 'ios' ? { backgroundColor: theme.colors.background } : {})}
+      />
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card }]}>
