@@ -23,7 +23,7 @@ import PushNotificationService from '@core/services/PushNotificationService';
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
 import { SchoolsTabEntry } from '../../../erp_schools/navigation/SchoolsTabEntry';
-// import AnalyticsScreen from '../screens/Analytics';
+import AnalyticsHubScreen from '@screens/AnalyticsHubScreen';
 import ProfileScreen from '../screens/Profile';
 import NotificationsScreen from '@screens/Notifications';
 import TeacherDashboard from '@screens/TeacherDashboard';
@@ -689,7 +689,7 @@ function BottomTabNavigator() {
     >
       <Tab.Screen
         name="Analytics"
-        component={ClassesList}
+        component={AnalyticsHubScreen}
         options={{ title: 'Analytics' }}
       />
       <Tab.Screen

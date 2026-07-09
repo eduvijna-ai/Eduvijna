@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import MathRenderer from './MathRenderer';
+import WorksheetMcqCard from './WorksheetMcqCard';
 import { evaluateWorksheet, updateAssessmentResponses } from '../core/services/sharedApi';
 import {
   buildAnswersPayload,
@@ -20,7 +21,6 @@ import {
   encodeWorksheetSubmissionState,
   WORKSHEET_SUBMISSION_KEY,
 } from '../core/utils/worksheetShareUtils';
-import { normalizeMcqOptionText } from '../core/utils/optionLabelUtils';
 import type {
   WorksheetAnswers,
   WorksheetDataShape,
@@ -183,11 +183,11 @@ export default function InteractiveWorksheetView({
     return (
       <View style={styles.answerKeyBox}>
         <Text style={styles.answerKeyLabel}>{label}: </Text>
-        <MathRenderer text={value} colors={colors} inline />
+        <MathRenderer text={value} colors={colors} />
         {explanation ? (
           <View style={styles.explanationRow}>
             <Text style={styles.answerKeyLabel}>Explanation: </Text>
-            <MathRenderer text={explanation} colors={colors} inline />
+            <MathRenderer text={explanation} colors={colors} />
           </View>
         ) : null}
       </View>
@@ -263,41 +263,15 @@ export default function InteractiveWorksheetView({
                 { borderColor, backgroundColor: colors.card, borderLeftWidth: isSubmitted && result ? 4 : 1 },
               ]}
             >
-              <View style={styles.questionHeader}>
-                <Text style={[styles.questionNum, { color: colors.text }]}>Q{idx + 1}. </Text>
-                <View style={styles.questionTextWrap}>
-                  <MathRenderer text={q.question} colors={colors} />
-                </View>
-              </View>
-              <View style={styles.optionsWrap}>
-                {q.options.map((opt, oIdx) => {
-                  const letter = String.fromCharCode(65 + oIdx);
-                  const normalized = normalizeMcqOptionText(opt, oIdx, 'prefixed');
-                  const isSelected = selected === letter;
-                  return (
-                    <TouchableOpacity
-                      key={oIdx}
-                      style={[
-                        styles.optionRow,
-                        isSelected && { backgroundColor: '#eff6ff', borderColor: '#93c5fd' },
-                      ]}
-                      onPress={() => !isSubmitted && setAnswer('Section_A_MCQ', q.id, letter)}
-                      disabled={isSubmitted}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.radioOuter, isSelected && { borderColor: colors.primary }]}>
-                        {isSelected ? (
-                          <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />
-                        ) : null}
-                      </View>
-                      <Text style={[styles.optionLetter, { color: colors.text }]}>{letter}. </Text>
-                      <View style={styles.optionTextWrap}>
-                        <MathRenderer text={normalized} colors={colors} inline />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <WorksheetMcqCard
+                questionNumber={idx + 1}
+                question={q.question}
+                options={q.options}
+                selected={selected}
+                onSelect={(letter) => setAnswer('Section_A_MCQ', q.id, letter)}
+                disabled={isSubmitted}
+                colors={colors}
+              />
               {renderResultBadge('Section_A_MCQ', q.id)}
               {renderAnswerKey('Answer', answer?.correctAnswer || '', explanation?.explanation)}
             </View>
@@ -329,13 +303,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <View style={styles.questionHeader}>
-                <Text style={[styles.questionNum, { color: colors.text }]}>Q{idx + 1}. </Text>
-                <View style={styles.questionTextWrap}>
-                  <MathRenderer text={q.question} colors={colors} />
-                </View>
-              </View>
-              {renderTextInput('Section_B_Fill_in_the_Blank', q.id, 44, 'Type your answer')}
+              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
               {renderResultBadge('Section_B_Fill_in_the_Blank', q.id)}
               {renderAnswerKey('Answer', answer?.correctAnswer || '', explanation?.explanation)}
             </View>
@@ -368,12 +336,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <View style={styles.questionHeader}>
-                <Text style={[styles.questionNum, { color: colors.text }]}>Q{idx + 1}. </Text>
-                <View style={styles.questionTextWrap}>
-                  <MathRenderer text={q.question} colors={colors} />
-                </View>
-              </View>
+              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
               <View style={styles.optionsWrap}>
                 {renderRadioOption('Section_C_True_False', q.id, 'True', 'True', selected)}
                 {renderRadioOption('Section_C_True_False', q.id, 'False', 'False', selected)}
@@ -409,12 +372,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <View style={styles.questionHeader}>
-                <Text style={[styles.questionNum, { color: colors.text }]}>Q{idx + 1}. </Text>
-                <View style={styles.questionTextWrap}>
-                  <MathRenderer text={q.question} colors={colors} />
-                </View>
-              </View>
+              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
               {renderTextInput('Section_D_Short_Questions', q.id, 70, 'Type your short answer…')}
               {renderResultBadge('Section_D_Short_Questions', q.id)}
               {renderAnswerKey('Model Answer', answer?.modelAnswer || '', explanation?.explanation)}
@@ -447,12 +405,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <View style={styles.questionHeader}>
-                <Text style={[styles.questionNum, { color: colors.text }]}>Q{idx + 1}. </Text>
-                <View style={styles.questionTextWrap}>
-                  <MathRenderer text={q.question} colors={colors} />
-                </View>
-              </View>
+              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
               {renderTextInput('Section_F_Long_Questions', q.id, 120, 'Type your detailed answer…')}
               {renderResultBadge('Section_F_Long_Questions', q.id)}
               {renderAnswerKey('Model Answer', answer?.modelAnswer || '', explanation?.explanation)}
@@ -488,10 +441,10 @@ export default function InteractiveWorksheetView({
               ]}
             >
               <View style={styles.matchCell}>
-                <MathRenderer text={pair.term || pair.left || ''} colors={colors} inline />
+                <MathRenderer text={pair.term || pair.left || ''} colors={colors} />
               </View>
               <View style={styles.matchCell}>
-                <MathRenderer text={pair.definition || pair.right || ''} colors={colors} inline />
+                <MathRenderer text={pair.definition || pair.right || ''} colors={colors} />
               </View>
             </View>
           ))}
