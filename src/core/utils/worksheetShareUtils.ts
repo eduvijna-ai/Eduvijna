@@ -1,6 +1,14 @@
 /**
- * Worksheet share helpers — mirrors Quiz-React worksheetShareUtils.
+ * Worksheet share + interactive helpers — mirrors Quiz-React worksheetShareUtils.
  */
+
+import type {
+  WorksheetAnswers,
+  WorksheetQuestionResult,
+  WorksheetSectionKey,
+} from '../types/worksheet.types';
+
+export const WORKSHEET_SUBMISSION_KEY = '__worksheet_submission__';
 
 export interface WorksheetResponseShape {
   WorksheetData?: {
@@ -52,4 +60,52 @@ export function worksheetShareTopic(worksheet: WorksheetResponseShape): string {
   const meta = worksheet.WorksheetData?.Metadata;
   if (!meta) return 'Worksheet';
   return [meta.Subject, meta.Lesson].filter(Boolean).join(' — ') || 'Worksheet';
+}
+
+export function encodeWorksheetSubmissionState(
+  answers: WorksheetAnswers,
+  evaluation: {
+    results: WorksheetQuestionResult[];
+    totalMarks: number;
+    maxMarks: number;
+    percentage: number;
+  },
+): Record<string, string> {
+  return {
+    [WORKSHEET_SUBMISSION_KEY]: JSON.stringify({ answers, evaluation }),
+  };
+}
+
+export function decodeWorksheetSubmissionState(
+  responses?: Record<string, string> | null,
+): {
+  answers: WorksheetAnswers;
+  evaluation: {
+    results: WorksheetQuestionResult[];
+    totalMarks: number;
+    maxMarks: number;
+    percentage: number;
+  };
+} | null {
+  if (!responses?.[WORKSHEET_SUBMISSION_KEY]) return null;
+  try {
+    return JSON.parse(responses[WORKSHEET_SUBMISSION_KEY]);
+  } catch {
+    return null;
+  }
+}
+
+export function buildAnswersPayload(
+  answers: WorksheetAnswers,
+): Record<WorksheetSectionKey, Array<{ id: number; answer: string }>> {
+  const payload = {} as Record<WorksheetSectionKey, Array<{ id: number; answer: string }>>;
+  (Object.entries(answers) as [WorksheetSectionKey, Record<number, string>][]).forEach(
+    ([section, sectionAnswers]) => {
+      const items = Object.entries(sectionAnswers)
+        .filter(([, val]) => val.trim())
+        .map(([id, answer]) => ({ id: Number(id), answer }));
+      if (items.length) payload[section] = items;
+    },
+  );
+  return payload;
 }
