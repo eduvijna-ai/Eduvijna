@@ -37,6 +37,7 @@ import {
   deleteServerBook,
   uploadBookWithMetadata,
   fetchBookPageImage,
+  DOCUMENT_FILE_MIME_TYPES,
   type ServerBook,
   type BookFilterOptions,
 } from '@core/services/documentUploadApi';
@@ -202,7 +203,7 @@ export default function DocumentLibraryScreen({ navigation }: any) {
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
-        type: ['application/pdf', 'image/*'],
+        type: [...DOCUMENT_FILE_MIME_TYPES],
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
@@ -215,7 +216,7 @@ export default function DocumentLibraryScreen({ navigation }: any) {
 
   const submitUpload = async () => {
     if (!uploadFile) {
-      setUploadError('Please choose a PDF or image file.');
+      setUploadError('Please choose a PDF or Word document (1 file).');
       return;
     }
     if (!uTitle.trim()) {

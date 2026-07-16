@@ -28,6 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
+import { MAX_IMAGE_UPLOADS } from '../core/services/documentUploadApi';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
 import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
@@ -96,7 +97,7 @@ const DIFFICULTY_OPTIONS = [
 ] as const;
 
 const FLOW_STEPS = [
-  'Upload clear photos of handwritten notes (max 5 images)',
+  'Capture or pick handwritten page photos (max 5)',
   'Extract text with OCR',
   'Set class, subject, and quiz options',
   'Generate assessment and start the quiz',
@@ -177,7 +178,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const [subject, setSubject] = useState('');
   const [lesson, setLesson] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [questionCount, setQuestionCount] = useState<number>(5);
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
@@ -213,11 +214,17 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
 
   const handlePickFromGallery = async () => {
     try {
+      const remaining = MAX_IMAGE_UPLOADS - pickedImages.length;
+      if (remaining <= 0) {
+        Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         quality: 0.85,
-        selectionLimit: 5,
+        selectionLimit: remaining,
       });
 
       if (!result.canceled && result.assets) {
@@ -231,13 +238,11 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
             };
           }),
         );
-        const combined = [...pickedImages, ...newImages];
-        if (combined.length > 5) {
-          Alert.alert('Limit Reached', 'Maximum 5 images allowed.');
-          setPickedImages(combined.slice(0, 5));
-        } else {
-          setPickedImages(combined);
+        const combined = [...pickedImages, ...newImages].slice(0, MAX_IMAGE_UPLOADS);
+        if (pickedImages.length + newImages.length > MAX_IMAGE_UPLOADS) {
+          Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         }
+        setPickedImages(combined);
         setError('');
       }
     } catch {
@@ -247,8 +252,8 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
 
   const handlePickFromCamera = async () => {
     try {
-      if (pickedImages.length >= 5) {
-        Alert.alert('Limit Reached', 'Maximum 5 images allowed.');
+      if (pickedImages.length >= MAX_IMAGE_UPLOADS) {
+        Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         return;
       }
       const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
@@ -373,6 +378,8 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           level: difficulty,
           lesson: resolvedLesson,
           assessment_type: 'web-quiz',
+          // Web HandwrittenWorkspace OCR/instant path — source Handwritten
+          // so History under handwritten module matches mobile.
           source: 'Handwritten',
           school_id: schoolId ?? null,
           questions: questions.map((q) => ({
@@ -486,7 +493,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
 
         <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Step 1 · Upload Images ({pickedImages.length}/5)
+            Step 1 · Upload Images ({pickedImages.length}/{MAX_IMAGE_UPLOADS})
           </Text>
 
           <View style={styles.uploadButtonRow}>
@@ -494,10 +501,10 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
               style={[
                 styles.uploadButton,
                 { backgroundColor: colors.primary + '18', borderColor: colors.primary },
-                (isProcessing || pickedImages.length >= 5) && styles.uploadButtonDisabled,
+                (isProcessing || pickedImages.length >= MAX_IMAGE_UPLOADS) && styles.uploadButtonDisabled,
               ]}
               onPress={handlePickFromGallery}
-              disabled={isProcessing || pickedImages.length >= 5}
+              disabled={isProcessing || pickedImages.length >= MAX_IMAGE_UPLOADS}
             >
               <Ionicons name="images" size={20} color={colors.primary} />
               <Text style={[styles.uploadButtonText, { color: colors.primary }]}>Gallery</Text>
@@ -507,10 +514,10 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
               style={[
                 styles.uploadButton,
                 { backgroundColor: colors.primary + '18', borderColor: colors.primary },
-                (isProcessing || pickedImages.length >= 5) && styles.uploadButtonDisabled,
+                (isProcessing || pickedImages.length >= MAX_IMAGE_UPLOADS) && styles.uploadButtonDisabled,
               ]}
               onPress={handlePickFromCamera}
-              disabled={isProcessing || pickedImages.length >= 5}
+              disabled={isProcessing || pickedImages.length >= MAX_IMAGE_UPLOADS}
             >
               <Ionicons name="camera" size={20} color={colors.primary} />
               <Text style={[styles.uploadButtonText, { color: colors.primary }]}>Camera</Text>

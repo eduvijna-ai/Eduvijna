@@ -27,7 +27,7 @@ const defaultAiSettings: WorkspaceAiSettings = {
   subject: '',
   lesson: '',
   difficulty: 'medium',
-  questionCount: 20,
+  questionCount: 5,
   additionalInstructions: '',
 };
 

@@ -26,7 +26,10 @@ import {
   resolveServerBook,
   createCameraSessionBook,
   appendCameraPage,
+  mergeCameraSessionPages,
   MAX_QUIZ_PAGES,
+  MAX_IMAGE_UPLOADS,
+  DOCUMENT_FILE_MIME_TYPES,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
 import {
@@ -113,13 +116,15 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   );
 
   useEffect(() => {
-    const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'search' | undefined;
+    const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'gallery' | 'search' | undefined;
     if (!autoAction) return;
 
     if (autoAction === 'upload') {
       void handleUploadTilePress();
     } else if (autoAction === 'camera') {
       void handleCameraTilePress();
+    } else if (autoAction === 'gallery') {
+      void handleGalleryTilePress();
     } else if (autoAction === 'search') {
       setActiveTab('search');
     }
@@ -144,16 +149,11 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       setError('');
       setSuccess('');
 
+      // One document file only (PDF/DOC/…). Images use Gallery / Camera (up to 5).
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
-        type: [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain',
-          'image/*',
-        ],
+        type: [...DOCUMENT_FILE_MIME_TYPES],
       });
 
       if (result.canceled || !result.assets?.length) return;
@@ -294,6 +294,72 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const handleUploadTilePress = async () => {
     setUploading(true);
     await pickAndUpload();
+  };
+
+  const handleGalleryTilePress = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      setCapturing(true);
+
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Photo library permission is required to pick images.');
+        return;
+      }
+
+      const existingCount =
+        selectedBook?.isCameraSession ? selectedBook.pages?.length || 0 : 0;
+      const remaining = MAX_IMAGE_UPLOADS - existingCount;
+      if (remaining <= 0) {
+        setError(`You can upload up to ${MAX_IMAGE_UPLOADS} images.`);
+        return;
+      }
+
+      const galleryResult = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        selectionLimit: remaining,
+        quality: 0.9,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      });
+
+      if (galleryResult.canceled || !galleryResult.assets?.length) return;
+
+      const pages = [];
+      for (let i = 0; i < galleryResult.assets.length; i += 1) {
+        const asset = galleryResult.assets[i];
+        const compressedUri = await compressCameraImage(asset.uri);
+        pages.push({
+          pageNumber: i + 1,
+          fileUri: compressedUri,
+          fileName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
+          mimeType: asset.mimeType || 'image/jpeg',
+          thumbnailUri: compressedUri,
+        });
+      }
+
+      const title = (bookName || 'Gallery Document').trim();
+      const next = mergeCameraSessionPages(
+        selectedBook?.isCameraSession ? selectedBook : null,
+        pages,
+        title,
+      );
+
+      if ((next.pages?.length || 0) > MAX_IMAGE_UPLOADS) {
+        setError(`You can upload up to ${MAX_IMAGE_UPLOADS} images.`);
+        return;
+      }
+
+      await upsertDocumentUploadBook(next);
+      setSelectedBook(next);
+      setBookName(next.title);
+      await loadBooks();
+      navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to pick images from gallery.'));
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const handleCameraTilePress = async () => {
@@ -518,8 +584,21 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           >
             {uploading ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-attach-outline" size={18} color={colors.primary} />}
             <Text style={styles.sourceTileText}>{uploading ? 'Opening...' : 'Upload File'}</Text>
+            <Text style={styles.sourceTileHint}>1 PDF / DOC</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
+            onPress={handleGalleryTilePress}
+            disabled={uploading || capturing}
+          >
+            {capturing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="images-outline" size={18} color={colors.primary} />}
+            <Text style={styles.sourceTileText}>Gallery</Text>
+            <Text style={styles.sourceTileHint}>Up to {MAX_IMAGE_UPLOADS} images</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.sourceTile, (uploading || capturing) && styles.disabledBtn]}
             onPress={() => navigation.navigate('DocumentLibraryScreen')}
@@ -535,7 +614,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
             disabled={uploading || capturing}
           >
             {capturing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="camera-outline" size={18} color={colors.primary} />}
-            <Text style={styles.sourceTileText}>{capturing ? 'Opening...' : 'Camera / OCR'}</Text>
+            <Text style={styles.sourceTileText}>{capturing ? 'Opening...' : 'Camera'}</Text>
+            <Text style={styles.sourceTileHint}>Up to {MAX_IMAGE_UPLOADS} photos</Text>
           </TouchableOpacity>
         </View>
 
@@ -747,6 +827,12 @@ const makeStyles = (colors: any) =>
       fontWeight: '700',
       fontSize: 11,
       textAlign: 'center',
+    },
+    sourceTileHint: {
+      color: colors.textSecondary,
+      fontSize: 10,
+      textAlign: 'center',
+      marginTop: -4,
     },
     secondaryBtn: {
       flex: 1,

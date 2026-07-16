@@ -26,6 +26,8 @@ import {
   getLocalPageUri,
   isPdfAsset,
   MAX_QUIZ_PAGES,
+  MAX_IMAGE_UPLOADS,
+  mergeCameraSessionPages,
   remapPageSelectionAfterDelete,
   removeCameraPage,
   resolveServerBook,
@@ -95,6 +97,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const schoolId = useUserStore((s) => s.schoolId);
 
   const book: DocumentUploadBook | undefined = route?.params?.book;
+  const assessmentSource: 'Document' | 'Handwritten' =
+    route?.params?.assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document';
   const restoredForm = route?.params?.previewFormState as
     | {
         selectedPages?: number[];
@@ -111,13 +115,21 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
-  const [classValue, setClassValue] = useState(restoredForm?.classValue ?? '');
-  const [subject, setSubject] = useState(restoredForm?.subject ?? '');
-  const [lesson, setLesson] = useState(restoredForm?.lesson ?? '');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
-    restoredForm?.difficulty ?? 'medium',
+  const [classValue, setClassValue] = useState(
+    restoredForm?.classValue ?? route?.params?.presetClass ?? '',
   );
-  const [questionCount, setQuestionCount] = useState<number>(restoredForm?.questionCount ?? 5);
+  const [subject, setSubject] = useState(
+    restoredForm?.subject ?? route?.params?.presetSubject ?? '',
+  );
+  const [lesson, setLesson] = useState(
+    restoredForm?.lesson ?? route?.params?.presetLesson ?? '',
+  );
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
+    restoredForm?.difficulty ?? route?.params?.presetDifficulty ?? 'medium',
+  );
+  const [questionCount, setQuestionCount] = useState<number>(
+    restoredForm?.questionCount ?? route?.params?.presetQuestionCount ?? 5,
+  );
   const [selectedPages, setSelectedPages] = useState<Set<number>>(
     () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
   );
@@ -174,8 +186,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   }, [navigation]);
 
   const resolvedClass = classValue.trim() || 'Class 10';
-  const resolvedSubject = subject.trim() || 'Document';
-  const resolvedLesson = lesson.trim() || bookState?.title || bookState?.originalName || 'Document Lesson';
+  const resolvedSubject =
+    subject.trim() || (assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document');
+  const resolvedLesson =
+    lesson.trim() ||
+    bookState?.title ||
+    bookState?.originalName ||
+    (assessmentSource === 'Handwritten' ? 'Handwritten Notes' : 'Document Lesson');
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
     const book = bookOverride ?? bookState;
@@ -274,8 +291,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const handleAddCameraPage = async () => {
     if (!bookState?.isCameraSession) return;
-    if ((bookState.pages?.length || 0) >= MAX_QUIZ_PAGES) {
-      setError(`You can capture up to ${MAX_QUIZ_PAGES} pages.`);
+    if ((bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) {
+      setError(`You can capture up to ${MAX_IMAGE_UPLOADS} pages.`);
       return;
     }
 
@@ -327,6 +344,58 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
+  const handleAddGalleryPages = async () => {
+    if (!bookState?.isCameraSession) return;
+    const existingCount = bookState.pages?.length || 0;
+    const remaining = MAX_IMAGE_UPLOADS - existingCount;
+    if (remaining <= 0) {
+      setError(`You can upload up to ${MAX_IMAGE_UPLOADS} images.`);
+      return;
+    }
+
+    try {
+      setError('');
+      setCapturingPage(true);
+
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setError('Photo library permission is required to pick images.');
+        return;
+      }
+
+      const galleryResult = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        selectionLimit: remaining,
+        quality: 0.9,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      });
+
+      if (galleryResult.canceled || !galleryResult.assets?.length) return;
+
+      const pages = [];
+      for (let i = 0; i < galleryResult.assets.length; i += 1) {
+        const asset = galleryResult.assets[i];
+        const compressedUri = await compressCameraImage(asset.uri);
+        pages.push({
+          pageNumber: existingCount + i + 1,
+          fileUri: compressedUri,
+          fileName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
+          mimeType: asset.mimeType || 'image/jpeg',
+          thumbnailUri: compressedUri,
+        });
+      }
+
+      const next = mergeCameraSessionPages(bookState, pages);
+      await persistBook(next);
+      setPage(next.totalPages);
+      setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to add gallery images.'));
     } finally {
       setCapturingPage(false);
     }
@@ -499,7 +568,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         level: difficulty,
         lesson: resolvedLesson,
         assessment_type: 'web-quiz',
-        source: 'Document',
+        source: assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document',
         school_id: schoolId,
         questions: questions.map((q) => ({
           quiz: {
@@ -553,6 +622,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           subject: resolvedSubject,
           lesson: resolvedLesson,
         },
+        source: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
+        showShareButton: true,
+        showActionButtons: true,
       });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
@@ -756,7 +828,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         <View style={styles.selectionBar}>
           <Text style={styles.thumbHint} numberOfLines={2}>
             {isCameraSession
-              ? `Tap thumbnails to preview. Use ✓ to select pages and ✗ to remove (max ${MAX_QUIZ_PAGES}).`
+              ? `Tap thumbnails to preview. Use ✓ to select pages and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
               : `Tap thumbnails to preview, use the check icon to include pages (max ${MAX_QUIZ_PAGES})`}
           </Text>
           <View style={styles.selectionMetaRow}>
@@ -765,23 +837,40 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             </Text>
             <View style={styles.selectionActions}>
               {isCameraSession && (
-                <TouchableOpacity
-                  style={[
-                    styles.compactActionBtn,
-                    (capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES) && styles.disabled,
-                  ]}
-                  onPress={handleAddCameraPage}
-                  disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_QUIZ_PAGES}
-                >
-                  {capturingPage ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="camera-outline" size={14} color={colors.primary} />
-                  )}
-                  <Text style={styles.compactActionText}>
-                    {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_QUIZ_PAGES})`}
-                  </Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.compactActionBtn,
+                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
+                    ]}
+                    onPress={handleAddGalleryPages}
+                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
+                  >
+                    {capturingPage ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="images-outline" size={14} color={colors.primary} />
+                    )}
+                    <Text style={styles.compactActionText}>Gallery</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.compactActionBtn,
+                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
+                    ]}
+                    onPress={handleAddCameraPage}
+                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
+                  >
+                    {capturingPage ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="camera-outline" size={14} color={colors.primary} />
+                    )}
+                    <Text style={styles.compactActionText}>
+                      {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`}
+                    </Text>
+                  </TouchableOpacity>
+                </>
               )}
               <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
                 <Text style={styles.selectAllText}>{selectedPages.size > 0 ? 'Clear' : 'Select All'}</Text>

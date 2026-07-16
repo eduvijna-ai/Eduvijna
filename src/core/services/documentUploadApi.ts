@@ -10,6 +10,20 @@ export type DocumentUploadDifficulty = 'easy' | 'medium' | 'hard';
  */
 export const MAX_QUIZ_PAGES = 5;
 
+/** Max images from gallery or camera for Document / Handwritten capture sessions. */
+export const MAX_IMAGE_UPLOADS = MAX_QUIZ_PAGES;
+
+/**
+ * Document file picker types — one multi-page file (PDF/DOC/etc.), not images.
+ * Images must go through Gallery / Camera (up to MAX_IMAGE_UPLOADS).
+ */
+export const DOCUMENT_FILE_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+] as const;
+
 export type BookPageImageSize = 'mini' | 'thumbnail' | 'medium' | 'full';
 
 export interface DocumentCameraPage {
@@ -108,6 +122,38 @@ export function appendCameraPage(book: DocumentUploadBook, page: DocumentCameraP
     extractedText: undefined,
     extractedPageNumbers: undefined,
   };
+}
+
+/** Build or extend a local image session from one or more gallery/camera pages (capped at MAX_IMAGE_UPLOADS). */
+export function mergeCameraSessionPages(
+  existing: DocumentUploadBook | null | undefined,
+  newPages: DocumentCameraPage[],
+  title?: string,
+): DocumentUploadBook {
+  if (!newPages.length) {
+    if (existing?.isCameraSession) return existing;
+    throw new Error('No images to add.');
+  }
+
+  let book: DocumentUploadBook;
+  if (existing?.isCameraSession && (existing.pages?.length || 0) > 0) {
+    book = existing;
+    for (const page of newPages) {
+      if ((book.pages?.length || 0) >= MAX_IMAGE_UPLOADS) break;
+      book = appendCameraPage(book, page);
+    }
+  } else {
+    const [first, ...rest] = newPages.slice(0, MAX_IMAGE_UPLOADS);
+    book = createCameraSessionBook(first, title);
+    for (const page of rest) {
+      book = appendCameraPage(book, page);
+    }
+  }
+
+  if (title?.trim()) {
+    book = { ...book, title: title.trim() };
+  }
+  return book;
 }
 
 /** Remove one camera page and renumber remaining pages. Returns null when no pages left. */
