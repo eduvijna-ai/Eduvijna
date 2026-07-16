@@ -30,7 +30,7 @@ import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
-import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
 
 interface PickedImage {
   uri: string;
@@ -350,7 +350,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         throw new Error('Assessment generation returned no questions. Please try again.');
       }
 
-      const questions = sanitizeQuizQuestions(
+      const questions = normalizeDocumentQuizQuestions(
         quizData.quiz.map((item, idx) => ({
           id: `hw-q-${idx}`,
           question: item.question,
@@ -358,6 +358,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           correctAnswer: item.correctAnswer,
           answer: item.correctAnswer,
         })),
+        true,
       );
 
       if (questions.length === 0) {

@@ -304,6 +304,7 @@ export default function InteractiveWorksheetView({
               ]}
             >
               <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
+              {renderTextInput('Section_B_Fill_in_the_Blank', q.id, 44, 'Type your answer')}
               {renderResultBadge('Section_B_Fill_in_the_Blank', q.id)}
               {renderAnswerKey('Answer', answer?.correctAnswer || '', explanation?.explanation)}
             </View>
