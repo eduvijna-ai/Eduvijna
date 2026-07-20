@@ -21,7 +21,8 @@ import {
   generateAIQuiz,
   updateAssessmentResponses,
   generateWorksheet,
-  saveUserAssessment
+  saveUserAssessment,
+  getQuizExplanation,
 } from '../core/services/sharedApi';
 import { useUserStore } from '../core/store/user.store';
 import { clearCacheEntry } from '../core/services/cacheService';
@@ -32,6 +33,15 @@ import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
 import MathRenderer from '../components/MathRenderer';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import {
+  isQuizAnswerCorrect,
+  isOptionTheCorrectAnswer,
+  normalizeDocumentQuizQuestions,
+  normalizeSelectedAnswer,
+  reconcileResultsWithExplanations,
+  withAuthoritativeCorrectAnswer,
+  type PlayableQuizQuestion,
+} from '@core/utils/answerMappingUtils';
 import { regenerateDocumentUploadQuiz } from '../core/services/documentUploadApi';
 
 interface QuizQuestion {
@@ -276,6 +286,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   }, [selectedAnswers, savedAssessmentId, showResults]);
 
   const [questionResults, setQuestionResults] = useState<{ [key: number]: boolean }>({});
+  const [authoritativeCorrectAnswers, setAuthoritativeCorrectAnswers] = useState<Record<number, string>>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
   const [quizStartTime] = useState(new Date().toISOString());
@@ -357,6 +368,12 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     return { message: 'Need Improvement! 📚', color: '#F44336' };
   };
 
+  const getEffectiveQuestion = useCallback(
+    (question: QuizQuestion, index: number): QuizQuestion =>
+      withAuthoritativeCorrectAnswer(question, authoritativeCorrectAnswers[index]) as QuizQuestion,
+    [authoritativeCorrectAnswers],
+  );
+
   // Calculate results helper function
   const calculateResults = () => {
     let correctCount = 0;
@@ -368,16 +385,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     currentQuizData.questions.forEach((question: QuizQuestion, index: number) => {
       if (!selectedAnswers[index]) {
         unansweredCount++;
+      } else if (isQuizAnswerCorrect(selectedAnswers[index], getEffectiveQuestion(question, index))) {
+        correctCount++;
       } else {
-        const selectedOption = selectedAnswers[index];
-        const selectedIndex = question.options.indexOf(selectedOption);
-        const selectedLetter = String.fromCharCode(65 + selectedIndex);
-        const isCorrect = selectedLetter === (question.correctAnswer || question.answer);
-        if (isCorrect) {
-          correctCount++;
-        } else {
-          incorrectCount++;
-        }
+        incorrectCount++;
       }
     });
 
@@ -390,59 +401,15 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   // QuizTakingScreen assumes quiz is ALREADY VALIDATED by handleOpenQuiz
   // It only needs to load and display the normalized quiz data
 
-  // Fisher-Yates shuffle helper
-  const shuffleArray = <T,>(arr: T[]): T[] => {
-    const result = [...arr];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
+  const normalizeQuestions = (questions: any[]): any[] => {
+    const sanitized = sanitizeQuizQuestions(questions);
+    const alreadyNormalized =
+      sanitized.length > 0 && sanitized.every((q) => q.optionsNormalized === true);
+    if (alreadyNormalized) {
+      return sanitized;
     }
-    return result;
+    return normalizeDocumentQuizQuestions(sanitized as PlayableQuizQuestion[], true);
   };
-
-  // Strip embedded "A. "/"B. "/"C. "/"D. " label prefixes that the API
-  // sometimes includes inside the option text itself (e.g. "A. runs" → "runs").
-  // The UI always generates its own positional labels (A/B/C/D from index),
-  // so leaving these in causes doubled / mismatched labels after shuffling.
-  const stripOptionLabel = (opt: string): string =>
-    opt.replace(/^[A-Da-d]\.\.?\s*/, '').trim();
-
-  // Normalize questions: strip option label prefixes, resolve correctAnswer to a letter,
-  // and shuffle options so the correct answer isn't always at the same position.
-  const normalizeQuestions = (questions: any[]): any[] =>
-    sanitizeQuizQuestions(questions).map((q) => {
-      const cleanOptions = (q.options || []).map(stripOptionLabel);
-
-      // Resolve correctAnswer — the API may return it as:
-      //   • A single letter: "A", "B", "C", "D"
-      //   • The full option text: "handwritten%20questions-4.jpg"
-      //   • A prefixed text: "A. handwritten%20questions-4.jpg"
-      const rawCorrect: string = (q.correctAnswer || q.answer || '').trim();
-      let correctText: string;
-      if (rawCorrect.length === 1 && /^[A-D]$/i.test(rawCorrect)) {
-        // It's a letter — look up the clean option text by index
-        correctText = cleanOptions[rawCorrect.toUpperCase().charCodeAt(0) - 65] ?? cleanOptions[0] ?? '';
-      } else {
-        // It's the full option text (possibly with prefix) — strip the prefix
-        correctText = stripOptionLabel(rawCorrect);
-      }
-
-      // Shuffle options so the correct answer lands at a random position
-      const shuffledOptions = shuffleArray(cleanOptions);
-
-      // Recompute the correct-answer letter after shuffling
-      const newIdx = shuffledOptions.findIndex(
-        (opt) => opt.trim().toLowerCase() === correctText.trim().toLowerCase()
-      );
-      const correctLetter = newIdx >= 0 ? String.fromCharCode(65 + newIdx) : 'A';
-
-      return {
-        ...q,
-        options: shuffledOptions,
-        correctAnswer: correctLetter,
-        answer: correctLetter,
-      };
-    });
 
   useEffect(() => {
     if (quizSource) {
@@ -479,6 +446,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setSelectedAnswers({});
       setShowResults(false);
       setQuestionResults({});
+      setAuthoritativeCorrectAnswers({});
       setIsLoading(false);
       
       console.log('✅ Quiz loaded into state:', {
@@ -597,6 +565,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       </View>
     );
   }
+
+  const effectiveCurrentQuestion = getEffectiveQuestion(currentQuestion, currentQuestionIndex);
 
   // Centralized regeneration function for all quiz types
   const handleRegenerateQuiz = async () => {
@@ -861,25 +831,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setSubmitting(true);
     
     try {
-      // Calculate results
-      let correctCount = 0;
-      const results: { [key: number]: boolean } = {};
+      const reconciled = await reconcileResultsWithExplanations(
+        quiz.questions,
+        selectedAnswers,
+        async ({ questionId, questionText, options, selectedAnswer }) =>
+          getQuizExplanation({
+            question_id: questionId,
+            question_text: questionText,
+            options,
+            selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
+          }),
+      );
 
-      quiz.questions.forEach((question: QuizQuestion, index: number) => {
-        const selectedAnswer = selectedAnswers[index];
-        if (selectedAnswer) {
-          const selectedIndex = question.options.indexOf(selectedAnswer);
-          const selectedLetter = ['A', 'B', 'C', 'D'][selectedIndex];
-          const isCorrect = selectedLetter === (question.correctAnswer || question.answer);
-          results[index] = isCorrect;
-          
-          if (isCorrect) {
-            correctCount++;
-          }
-        } else {
-          results[index] = false;
-        }
-      });
+      const results = reconciled.questionResults;
+      const correctCount = Object.values(results).filter(Boolean).length;
+      setAuthoritativeCorrectAnswers(reconciled.authoritativeCorrectAnswers);
 
       const score = Math.round((correctCount / totalQuestions) * 100);
       const completedAt = new Date().toISOString();
@@ -1296,7 +1262,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             {currentQuestion.options.map((option: string, index: number) => {
               const isSelected = selectedAnswers[currentQuestionIndex] === option;
               const optionLetter = String.fromCharCode(65 + index);
-              const isCorrectAnswer = showResults && optionLetter === (currentQuestion.correctAnswer || currentQuestion.answer);
+              const isCorrectAnswer =
+                showResults && isOptionTheCorrectAnswer(option, effectiveCurrentQuestion);
               const isWrongSelection = showResults && isSelected && !isCorrectAnswer;
 
               return (
@@ -1364,6 +1331,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             questionText={currentQuestion.question}
             options={currentQuestion.options}
             selectedAnswer={selectedAnswers[currentQuestionIndex] || ''}
+            correctAnswer={effectiveCurrentQuestion.correctAnswer || effectiveCurrentQuestion.answer}
             clearTrigger={!showResults}
             colors={colors}
           />

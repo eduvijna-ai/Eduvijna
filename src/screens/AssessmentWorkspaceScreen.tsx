@@ -51,18 +51,19 @@ const WS_LEVELS = ['easy', 'medium', 'hard', 'advanced'] as const;
 
 const DOCUMENT_SOURCE_OPTIONS = [
   { key: 'file', icon: 'document-attach-outline', label: 'Upload File' },
+  { key: 'gallery', icon: 'images-outline', label: 'Gallery' },
   { key: 'library', icon: 'library-outline', label: 'Document Library' },
-  { key: 'camera', icon: 'camera-outline', label: 'Camera / OCR' },
+  { key: 'camera', icon: 'camera-outline', label: 'Camera' },
 ] as const;
 
 const HANDWRITTEN_FLOW_STEPS = [
-  'Capture or upload handwritten page photos (max 5)',
+  'Capture or pick handwritten page photos (max 5)',
   'OCR extracts text from your images',
   'Set class, subject, and quiz options, then generate',
 ] as const;
 
 const DOCUMENT_FLOW_STEPS = [
-  'Upload, pick from library, or capture your document',
+  'Upload 1 PDF/DOC, pick up to 5 images from gallery/camera, or use the library',
   'Preview pages and select up to 5 to include',
   'Set quiz options and generate assessment or worksheet',
 ] as const;
@@ -150,7 +151,8 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
         return;
       }
 
-      // Handwritten mode: only assessments saved from the handwritten flow.
+      // Handwritten mode: only handwritten-tagged assessments (matches
+      // GET .../user-assessments?assessment_type=web-quiz&source=Handwritten).
       const [handwrittenQuizzes, handwrittenWorksheets] = await Promise.all([
         listUserAssessments('web-quiz', 'Handwritten'),
         listUserAssessments('worksheet', 'Handwritten'),
@@ -456,7 +458,7 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
       return;
     }
     navigation.navigate('DocumentUploadHomeScreen', {
-      autoAction: key === 'file' ? 'upload' : 'camera',
+      autoAction: key === 'file' ? 'upload' : key === 'gallery' ? 'gallery' : 'camera',
     });
   }
 

@@ -8,6 +8,7 @@ import {
 import MathRenderer from './MathRenderer';
 import LoadingSpinner from './LoadingSpinner';
 import { getQuizExplanation } from '../core/services/sharedApi';
+import { normalizeSelectedAnswer } from '@core/utils/answerMappingUtils';
 
 // Types for the API request and response
 interface ExplanationRequest {
@@ -33,28 +34,16 @@ interface QuizExplanationAccordionProps {
   questionText: string;
   options: string[];
   selectedAnswer: string;
+  correctAnswer?: string;
   clearTrigger: boolean; // Changes when a new quiz starts — triggers state reset
   colors: any; // Theme colors
 }
-
-/**
- * Normalizes the selected answer to ensure it's the full option string
- * Handles cases where answer might be "A", "B", etc. or the full text
- */
-const normalizeSelectedAnswer = (selectedAnswer: string, options: string[]): string => {
-  // If it's a letter (A, B, C, D), convert to the actual option text
-  if (selectedAnswer.length === 1 && /[A-D]/i.test(selectedAnswer)) {
-    const index = selectedAnswer.toUpperCase().charCodeAt(0) - 'A'.charCodeAt(0);
-    return options[index] || selectedAnswer;
-  }
-  return selectedAnswer;
-};
-
 const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
   questionId,
   questionText,
   options,
   selectedAnswer,
+  correctAnswer,
   clearTrigger,
   colors,
 }) => {
@@ -148,6 +137,10 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
   };
 
   const currentExplanation = explanations[questionId];
+  const displayedCorrectAnswer =
+    (correctAnswer && correctAnswer.trim().length > 0)
+      ? correctAnswer
+      : currentExplanation?.correct_answer;
 
   return (
     <View style={styles.container}>
@@ -187,9 +180,11 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
           {/* Correct Answer */}
           <View style={styles.correctAnswerSection}>
             <Text style={styles.correctAnswerHeader}>✅ Correct Answer</Text>
-            <View style={styles.mathBlock}>
-              <MathRenderer text={currentExplanation.correct_answer} colors={{ text: '#065f46', card: '#dcfce7' }} />
-            </View>
+            {displayedCorrectAnswer ? (
+              <View style={styles.mathBlock}>
+                <MathRenderer text={displayedCorrectAnswer} colors={{ text: '#065f46', card: '#dcfce7' }} />
+              </View>
+            ) : null}
             <View style={styles.mathBlock}>
               <MathRenderer text={currentExplanation.explanation.correct_reason} colors={{ text: '#065f46', card: '#dcfce7' }} />
             </View>

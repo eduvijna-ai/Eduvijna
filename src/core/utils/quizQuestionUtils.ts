@@ -10,6 +10,8 @@ export interface SanitizedQuizQuestion {
   correctAnswer: string;
   answer: string;
   explanation: string | null;
+  /** Set when options were shuffled/normalized at generation time (web parity). */
+  optionsNormalized?: boolean;
 }
 
 /** Unwrap nested { quiz: { question, options, answer } } history format. */
@@ -62,6 +64,7 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
         : raw.explanation != null
           ? String(raw.explanation)
           : null,
+    optionsNormalized: raw.optionsNormalized === true,
   };
 }
 

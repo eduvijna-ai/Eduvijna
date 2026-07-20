@@ -16,6 +16,11 @@ import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { updateQuestionExplanation } from '@core/services/sharedApi';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
+import {
+  isQuizAnswerCorrect,
+  isOptionTheCorrectAnswer,
+  isOptionTheUserAnswer,
+} from '@core/utils/answerMappingUtils';
 
 interface QuizResultsScreenProps {
   route: any;
@@ -247,9 +252,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     const questions = Array.isArray(quizData?.questions) ? quizData.questions : [];
     let correct = 0;
     questions.forEach((q: any, index: number) => {
-      const correctAnswer = q.correctAnswer || q.answer;
-      const userAnswer = userAnswers?.[index];
-      if (correctAnswer === userAnswer) correct++;
+      if (isQuizAnswerCorrect(userAnswers?.[index], q)) correct++;
     });
     return {
       correct,
@@ -276,9 +279,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   const renderQuestion = (question: any, index: number) => {
     const questionText = question.question || '';
     const options = question.options || [];
-    const correctAnswer = question.correctAnswer || question.answer || '';
     const userAnswer = userAnswers[index] || '';
-    const isCorrect = correctAnswer === userAnswer;
+    const isCorrect = isQuizAnswerCorrect(userAnswer, question);
 
     return (
       <View
@@ -324,8 +326,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         <View style={styles.optionsList}>
           {options.map((option: string, optIndex: number) => {
             const optionLabel = String.fromCharCode(65 + optIndex);
-            const isUserAnswer = userAnswer === optionLabel;
-            const isCorrectAnswer = correctAnswer === optionLabel;
+            const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options);
+            const isCorrectAnswer = isOptionTheCorrectAnswer(option, question);
 
             let optBg = theme.colors.surfaceAlt;
             let optBorder = theme.colors.border;
