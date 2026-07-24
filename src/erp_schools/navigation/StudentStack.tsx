@@ -34,7 +34,9 @@ import ExamResultsScreen from '../screens/student/exams/ExamResultsScreen';
 
 // fees, library, events
 import FeeDashboardScreen from '../screens/student/fees/FeeDashboardScreen';
-import LibraryScreen from '../screens/student/library/LibraryScreen';
+import LibraryScreen from '../screens/shared/LibraryScreen';
+import CreateBookScreen from '../screens/shared/CreateBookScreen';
+import CreateLibraryTransactionScreen from '../screens/shared/CreateLibraryTransactionScreen';
 import NoticesScreen from '../screens/student/notices/NoticesScreen';
 import EventsScreen from '../screens/student/events/EventsScreen';
 
@@ -47,6 +49,8 @@ import AIQuizScreen from '../screens/student/ai/AIQuizScreen';
 import StudentProfileScreen from '../screens/student/profile/StudentProfileScreen';
 import NotificationsScreen from '../screens/student/settings/NotificationsScreen';
 import SettingsScreen from '../screens/student/settings/SettingsScreen';
+import HolidayCalendarScreen from '../screens/shared/HolidayCalendarScreen';
+import CreateHolidayScreen from '../screens/shared/CreateHolidayScreen';
 
 const Stack = createNativeStackNavigator<StudentStackParamList>();
 
@@ -73,6 +77,11 @@ export function StudentStack() {
 
       <Stack.Screen name={STUDENT_ROUTES.FEE_DASHBOARD} component={FeeDashboardScreen} />
       <Stack.Screen name={STUDENT_ROUTES.LIBRARY} component={LibraryScreen} />
+      <Stack.Screen name={STUDENT_ROUTES.CREATE_BOOK} component={CreateBookScreen} />
+      <Stack.Screen
+        name={STUDENT_ROUTES.CREATE_LIBRARY_TRANSACTION}
+        component={CreateLibraryTransactionScreen}
+      />
       <Stack.Screen name={STUDENT_ROUTES.NOTICES} component={NoticesScreen} />
       <Stack.Screen name={STUDENT_ROUTES.EVENTS} component={EventsScreen} />
 
@@ -83,6 +92,8 @@ export function StudentStack() {
       <Stack.Screen name={STUDENT_ROUTES.PROFILE} component={StudentProfileScreen} />
       <Stack.Screen name={STUDENT_ROUTES.NOTIFICATIONS} component={NotificationsScreen} />
       <Stack.Screen name={STUDENT_ROUTES.SETTINGS} component={SettingsScreen} />
+      <Stack.Screen name={STUDENT_ROUTES.HOLIDAY_CALENDAR} component={HolidayCalendarScreen} />
+      <Stack.Screen name={STUDENT_ROUTES.CREATE_HOLIDAY} component={CreateHolidayScreen} />
     </Stack.Navigator>
   );
 }

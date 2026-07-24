@@ -43,4 +43,8 @@ export const STUDENT_ROUTES = {
   PROFILE: 'StudentProfile',
   NOTIFICATIONS: 'StudentNotifications',
   SETTINGS: 'StudentSettings',
+  HOLIDAY_CALENDAR: 'HolidayCalendar',
+  CREATE_HOLIDAY: 'CreateHoliday',
+  CREATE_BOOK: 'CreateBook',
+  CREATE_LIBRARY_TRANSACTION: 'CreateLibraryTransaction',
 } as const;

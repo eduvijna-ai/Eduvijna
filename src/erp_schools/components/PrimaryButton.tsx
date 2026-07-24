@@ -19,6 +19,8 @@ interface PrimaryButtonProps {
   onPress: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
   variant?: 'solid' | 'gradient' | 'outline';
+  /** Compact auto-width CTA (e.g. “Add Guardian”) — avoids clipped label text. */
+  size?: 'default' | 'compact';
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -29,26 +31,41 @@ export function PrimaryButton({
   onPress,
   icon,
   variant = 'solid',
+  size = 'default',
   loading = false,
   disabled = false,
   style,
 }: PrimaryButtonProps) {
   const theme = useTeacherTheme();
   const isOutline = variant === 'outline';
+  const isCompact = size === 'compact';
   const contentColor = isOutline ? theme.colors.primary : theme.colors.textInverse;
 
   const inner = (
-    <View style={styles.content}>
+    <View style={[styles.content, isCompact && styles.contentCompact]}>
       {loading ? (
         <ActivityIndicator size="small" color={contentColor} />
       ) : (
         <>
-          {icon ? <Ionicons name={icon} size={18} color={contentColor} /> : null}
-          <Text style={[styles.label, { color: contentColor }]}>{label}</Text>
+          {icon ? (
+            <Ionicons name={icon} size={isCompact ? 16 : 18} color={contentColor} />
+          ) : null}
+          <Text
+            style={[
+              styles.label,
+              isCompact && styles.labelCompact,
+              { color: contentColor },
+            ]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
         </>
       )}
     </View>
   );
+
+  const sizeStyle = isCompact ? styles.compact : styles.base;
 
   if (variant === 'gradient') {
     return (
@@ -56,18 +73,27 @@ export function PrimaryButton({
         onPress={onPress}
         disabled={disabled || loading}
         activeOpacity={0.85}
-        style={[{ opacity: disabled ? 0.6 : 1 }, style]}
+        style={[
+          sizeStyle,
+          !isCompact && styles.stretchPressable,
+          {
+            borderRadius: theme.radius.button,
+            overflow: 'hidden',
+            opacity: disabled ? 0.6 : 1,
+          },
+          isCompact && styles.compactWrap,
+          style,
+        ]}
         accessibilityRole="button"
         accessibilityLabel={label}
       >
         <Gradient
           colors={theme.gradients.hero}
           direction="horizontal"
-          borderRadius={theme.radius.button}
-          style={styles.base}
-        >
-          {inner}
-        </Gradient>
+          borderRadius={0}
+          style={StyleSheet.absoluteFillObject}
+        />
+        {inner}
       </TouchableOpacity>
     );
   }
@@ -78,7 +104,8 @@ export function PrimaryButton({
       disabled={disabled || loading}
       activeOpacity={0.85}
       style={[
-        styles.base,
+        sizeStyle,
+        !isCompact && styles.stretchPressable,
         {
           borderRadius: theme.radius.button,
           backgroundColor: isOutline ? 'transparent' : theme.colors.primary,
@@ -86,6 +113,7 @@ export function PrimaryButton({
           borderColor: theme.colors.primary,
           opacity: disabled ? 0.6 : 1,
         },
+        isCompact && styles.compactWrap,
         style,
       ]}
       accessibilityRole="button"
@@ -97,7 +125,35 @@ export function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
-  base: { height: 52, alignItems: 'center', justifyContent: 'center' },
-  content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  label: { fontSize: 16, fontWeight: '700' },
+  // TouchableOpacity defaults to alignItems:'center', which shrinks gradient children
+  // to content width — override so CTAs fill the footer.
+  stretchPressable: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  base: {
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  compact: {
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  compactWrap: {
+    alignSelf: 'flex-start',
+  },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  contentCompact: { gap: 6 },
+  label: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  labelCompact: { fontSize: 14, fontWeight: '700', letterSpacing: 0.3 },
 });

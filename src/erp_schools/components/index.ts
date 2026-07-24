@@ -24,5 +24,6 @@ export { ProgressBar, type ProgressSegment } from './ProgressBar';
 export { DonutChart, type DonutSegment } from './DonutChart';
 export { BarChart, type BarDatum } from './BarChart';
 export { EmptyState } from './EmptyState';
+export { ScreenLoader } from './ScreenLoader';
 export { InfoBanner } from './InfoBanner';
 export { FormField, TextField, SelectField } from './FormField';

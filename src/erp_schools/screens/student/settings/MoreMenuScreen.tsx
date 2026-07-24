@@ -46,6 +46,7 @@ const SECTIONS: MenuSection[] = [
       { label: 'Library', icon: 'book-outline', accent: 'blue', route: 'Library' },
       { label: 'Events', icon: 'calendar-outline', accent: 'pink', route: 'Events' },
       { label: 'Fee Details', icon: 'wallet-outline', accent: 'green', route: 'FeeDashboard' },
+      { label: 'Holidays', icon: 'calendar-number-outline', accent: 'orange', route: 'HolidayCalendar' },
     ],
   },
   {

@@ -37,6 +37,11 @@ export const ADMIN_ROUTES = {
   ATTENDANCE_DASHBOARD: 'AttendanceDashboard',
   LIBRARY_DASHBOARD: 'LibraryDashboard',
   BOOK_MANAGEMENT: 'BookManagement',
+  LIBRARY: 'Library',
+  CREATE_BOOK: 'CreateBook',
+  CREATE_LIBRARY_TRANSACTION: 'CreateLibraryTransaction',
+  ENGAGEMENT: 'Engagement',
+  CREATE_ENGAGEMENT: 'CreateEngagement',
   TRANSPORT_DASHBOARD: 'TransportDashboard',
   VEHICLE_MANAGEMENT: 'VehicleManagement',
   ROUTE_MANAGEMENT: 'RouteManagement',
@@ -48,6 +53,9 @@ export const ADMIN_ROUTES = {
   EXPENSE_ANALYTICS: 'ExpenseAnalytics',
 
   ANNOUNCEMENTS: 'Announcements',
+
+  HOLIDAY_CALENDAR: 'HolidayCalendar',
+  CREATE_HOLIDAY: 'CreateHoliday',
 
   PROFILE: 'AdminProfile',
   NOTIFICATIONS: 'AdminNotifications',

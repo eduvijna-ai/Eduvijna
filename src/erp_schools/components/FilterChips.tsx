@@ -13,10 +13,24 @@ interface FilterChipsProps {
   options: ChipOption[];
   activeKey: string;
   onChange: (key: string) => void;
+  /** sm = status filters · md = default · lg = module tabs */
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export function FilterChips({ options, activeKey, onChange }: FilterChipsProps) {
+export function FilterChips({
+  options,
+  activeKey,
+  onChange,
+  size = 'md',
+}: FilterChipsProps) {
   const theme = useTeacherTheme();
+  const dims =
+    size === 'lg'
+      ? { height: 40, padH: 18, font: 14, weight: '700' as const }
+      : size === 'sm'
+        ? { height: 32, padH: 12, font: 12, weight: '600' as const }
+        : { height: 34, padH: 14, font: 13, weight: '600' as const };
+
   return (
     <ScrollView
       horizontal
@@ -32,6 +46,8 @@ export function FilterChips({ options, activeKey, onChange }: FilterChipsProps) 
             style={[
               styles.chip,
               {
+                height: dims.height,
+                paddingHorizontal: dims.padH,
                 backgroundColor: active ? theme.colors.primary : theme.colors.surface,
                 borderColor: active ? theme.colors.primary : theme.colors.border,
               },
@@ -41,10 +57,11 @@ export function FilterChips({ options, activeKey, onChange }: FilterChipsProps) 
             accessibilityLabel={option.label}
           >
             <Text
-              style={[
-                styles.text,
-                { color: active ? theme.colors.textInverse : theme.colors.textSecondary },
-              ]}
+              style={{
+                fontSize: dims.font,
+                fontWeight: dims.weight,
+                color: active ? theme.colors.textInverse : theme.colors.textSecondary,
+              }}
             >
               {option.label}
             </Text>
@@ -56,14 +73,11 @@ export function FilterChips({ options, activeKey, onChange }: FilterChipsProps) 
 }
 
 const styles = StyleSheet.create({
-  row: { gap: 8, paddingVertical: 2, paddingRight: 16 },
+  row: { gap: 8, paddingVertical: 2, paddingRight: 8 },
   chip: {
-    paddingHorizontal: 14,
-    height: 34,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { fontSize: 13, fontWeight: '600' },
 });

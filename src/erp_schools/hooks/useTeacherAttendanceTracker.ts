@@ -1,0 +1,721 @@
+/**
+ * useTeacherAttendanceTracker — web AttendanceTab tracker seam for instructors.
+ * APIs: studentsByUserApi, attendanceSettingsApi, attendanceRecordsApi
+ * Rules: subject required to edit; teacher can edit today only; P/A/L cycle.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  attendanceRecordsApi,
+  attendanceSettingsApi,
+  studentsByUserApi,
+} from '@core/api/erp.api';
+import { USE_MOCK_DATA } from '../config';
+import { useAcademicYear } from '../contexts/AcademicYearContext';
+import {
+  extractErrorMessage,
+  pickNumber,
+  pickString,
+  safeList,
+  toLocalDateStr,
+  type LoadStatus,
+} from '../utils/apiHelpers';
+import { useSchoolsSession } from './useSchoolsSession';
+
+export type AttStatus = 'present' | 'absent' | 'late' | '';
+export type ViewPeriod =
+  | 'month'
+  | 'current-week'
+  | 'last-week'
+  | 'quarter'
+  | 'half-year'
+  | 'full-year';
+
+export type AttStudent = {
+  studentId: number;
+  name: string;
+  admissionNo: string;
+  gender: string;
+  classId: number;
+  className: string;
+  sectionId: number;
+  sectionName: string;
+  subjectId: number;
+  subjectName: string;
+};
+
+export type AttMetrics = {
+  total: number;
+  male: number;
+  female: number;
+  presentToday: number;
+  absentToday: number;
+  lateToday: number;
+  presentTodayM: number;
+  presentTodayF: number;
+  absentTodayM: number;
+  absentTodayF: number;
+  lateTodayM: number;
+  lateTodayF: number;
+  avgPresent: number;
+  avgAbsent: number;
+  avgLate: number;
+  workingDays: number;
+};
+
+const NEXT: Record<string, AttStatus> = {
+  '': 'present',
+  present: 'absent',
+  absent: 'late',
+  late: 'present',
+};
+
+const DOW_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+function getDateRange(
+  viewPeriod: ViewPeriod,
+  month: number,
+  year: number,
+  ayStart?: string,
+  ayEnd?: string,
+): { from: string; to: string } {
+  const today = new Date();
+  const todayStr = toLocalDateStr(today);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const clamp = (s: string) => (s > todayStr ? todayStr : s);
+
+  switch (viewPeriod) {
+    case 'current-week': {
+      const dow = today.getDay();
+      const mon = new Date(today);
+      mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+      const fri = new Date(mon);
+      fri.setDate(mon.getDate() + 4);
+      return { from: toLocalDateStr(mon), to: clamp(toLocalDateStr(fri)) };
+    }
+    case 'last-week': {
+      const dow = today.getDay();
+      const thisMon = new Date(today);
+      thisMon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+      const lastMon = new Date(thisMon);
+      lastMon.setDate(thisMon.getDate() - 7);
+      const lastFri = new Date(lastMon);
+      lastFri.setDate(lastMon.getDate() + 4);
+      return { from: toLocalDateStr(lastMon), to: toLocalDateStr(lastFri) };
+    }
+    case 'quarter': {
+      const from = new Date(today);
+      from.setMonth(today.getMonth() - 3);
+      return { from: toLocalDateStr(from), to: todayStr };
+    }
+    case 'half-year': {
+      const from = new Date(today);
+      from.setMonth(today.getMonth() - 6);
+      return { from: toLocalDateStr(from), to: todayStr };
+    }
+    case 'full-year': {
+      const from = ayStart || `${year}-04-01`;
+      const to = ayEnd ? clamp(ayEnd.slice(0, 10)) : todayStr;
+      return { from: from.slice(0, 10), to };
+    }
+    default: {
+      const lastDay = new Date(year, month, 0).getDate();
+      return {
+        from: `${year}-${pad(month)}-01`,
+        to: clamp(`${year}-${pad(month)}-${pad(lastDay)}`),
+      };
+    }
+  }
+}
+
+function buildWorkingDates(
+  from: string,
+  to: string,
+  workingDayNames: Set<string>,
+): string[] {
+  const out: string[] = [];
+  const cur = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  while (cur <= end) {
+    const key = DOW_KEYS[cur.getDay()];
+    if (workingDayNames.has(key) || key === 'sat') {
+      out.push(toLocalDateStr(cur));
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+function buildWeekGroups(dates: string[]): Array<{ label: string; dates: string[] }> {
+  const groups: Array<{ label: string; dates: string[] }> = [];
+  let curKey = '';
+  dates.forEach((ds) => {
+    const d = new Date(`${ds}T00:00:00`);
+    const dow = d.getDay();
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    const key = toLocalDateStr(mon);
+    if (key !== curKey) {
+      curKey = key;
+      groups.push({ label: `Week ${groups.length + 1}`, dates: [] });
+    }
+    groups[groups.length - 1].dates.push(ds);
+  });
+  return groups;
+}
+
+const MONTH_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+function buildMonthGroups(
+  dates: string[],
+): Array<{ key: string; label: string; dates: string[] }> {
+  const groups: Array<{ key: string; label: string; dates: string[] }> = [];
+  let curMonth = '';
+  dates.forEach((ds) => {
+    const m = ds.slice(0, 7);
+    if (m !== curMonth) {
+      curMonth = m;
+      const d = new Date(`${ds}T00:00:00`);
+      groups.push({
+        key: m,
+        label: `${MONTH_SHORT[d.getMonth()]} ${d.getFullYear()}`,
+        dates: [],
+      });
+    }
+    groups[groups.length - 1].dates.push(ds);
+  });
+  return groups;
+}
+
+function mapStudent(r: Record<string, unknown>): AttStudent {
+  return {
+    studentId: pickNumber(r.user_id, r.student_id, r.id),
+    name: pickString(r.name, r.username, 'Student'),
+    admissionNo: pickString(r.admission_number, '—'),
+    gender: pickString(r.gender).toLowerCase(),
+    classId: pickNumber(r.class_id),
+    className: pickString(r.class_name, r.class_code, 'Class'),
+    sectionId: pickNumber(r.section_id),
+    sectionName: pickString(r.section_name, '—'),
+    subjectId: pickNumber(r.subject_id),
+    subjectName: pickString(r.subject_name, '—'),
+  };
+}
+
+export function useTeacherAttendanceTracker(initialClassId?: string | number) {
+  const session = useSchoolsSession();
+  const { selectedYearId, selectedYear } = useAcademicYear();
+  const schoolId = session.schoolId ?? undefined;
+  const todayStr = toLocalDateStr();
+
+  const [status, setStatus] = useState<LoadStatus>(USE_MOCK_DATA ? 'ready' : 'idle');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [allStudents, setAllStudents] = useState<AttStudent[]>([]);
+  const [viewPeriod, setViewPeriod] = useState<ViewPeriod>('month');
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [classId, setClassId] = useState<number | undefined>(
+    initialClassId != null ? Number(initialClassId) : undefined,
+  );
+  const [sectionId, setSectionId] = useState<number | undefined>();
+  const [subjectId, setSubjectId] = useState<number | undefined>();
+  const [query, setQuery] = useState('');
+
+  const [workingDates, setWorkingDates] = useState<string[]>([]);
+  const [baseAttendance, setBaseAttendance] = useState<
+    Record<number, Record<string, AttStatus>>
+  >({});
+  const [baseRecordIds, setBaseRecordIds] = useState<Record<string, number>>({});
+  const [localEdits, setLocalEdits] = useState<Record<number, Record<string, AttStatus>>>(
+    {},
+  );
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
+
+  const isViewOnly = !subjectId;
+  const canEditDate = useCallback((date: string) => date === todayStr, [todayStr]);
+
+  const classOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    allStudents.forEach((s) => {
+      if (s.classId) map.set(s.classId, s.className);
+    });
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [allStudents]);
+
+  const sectionOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    allStudents
+      .filter((s) => !classId || s.classId === classId)
+      .forEach((s) => {
+        if (s.sectionId) map.set(s.sectionId, s.sectionName);
+      });
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [allStudents, classId]);
+
+  const subjectOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    allStudents
+      .filter(
+        (s) =>
+          (!classId || s.classId === classId) &&
+          (!sectionId || s.sectionId === sectionId),
+      )
+      .forEach((s) => {
+        if (s.subjectId) map.set(s.subjectId, s.subjectName);
+      });
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [allStudents, classId, sectionId]);
+
+  /* Web: subject scopes records only — roster stays all students in class/section. */
+  const roster = useMemo(() => {
+    const seen = new Map<number, AttStudent>();
+    allStudents.forEach((s) => {
+      if (classId && s.classId !== classId) return;
+      if (sectionId && s.sectionId !== sectionId) return;
+      if (!seen.has(s.studentId)) seen.set(s.studentId, s);
+    });
+    let rows = [...seen.values()];
+    const q = query.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.admissionNo.toLowerCase().includes(q),
+      );
+    }
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
+  }, [allStudents, classId, sectionId, query]);
+
+  const getStatus = useCallback(
+    (studentId: number, date: string): AttStatus => {
+      const edit = localEdits[studentId]?.[date];
+      if (edit !== undefined) return edit;
+      return baseAttendance[studentId]?.[date] || '';
+    },
+    [localEdits, baseAttendance],
+  );
+
+  const loadRoster = useCallback(async () => {
+    if (USE_MOCK_DATA) return;
+    try {
+      const raw = await studentsByUserApi.getAll({
+        academic_year_id: selectedYearId ?? undefined,
+        school_id: schoolId,
+        per_page: 500,
+      });
+      const mapped = safeList<Record<string, unknown>>(raw).map(mapStudent);
+      setAllStudents(mapped);
+      if (!classId && mapped.length > 0) {
+        const first = mapped[0];
+        setClassId(first.classId || undefined);
+        setSectionId(first.sectionId || undefined);
+      }
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to load students'));
+    }
+  }, [selectedYearId, schoolId, classId]);
+
+  const loadGrid = useCallback(async () => {
+    if (USE_MOCK_DATA || !classId) {
+      setStatus('ready');
+      return;
+    }
+    setStatus('loading');
+    setError(null);
+    try {
+      const range = getDateRange(
+        viewPeriod,
+        month,
+        year,
+        selectedYear?.start_date,
+        selectedYear?.end_date,
+      );
+
+      const [settingsRaw, recordsRaw] = await Promise.all([
+        attendanceSettingsApi.get({ school_id: schoolId }).catch(() => null),
+        attendanceRecordsApi.getAll({
+          class_id: classId,
+          date_from: range.from,
+          date_to: range.to,
+          school_id: schoolId,
+          per_page: 10000,
+        }),
+      ]);
+
+      const settingsObj = (settingsRaw && typeof settingsRaw === 'object'
+        ? ((settingsRaw as { data?: unknown }).data ?? settingsRaw)
+        : null) as Record<string, unknown> | null;
+      setSettings(settingsObj);
+
+      const workingCsv = pickString(settingsObj?.working_days, 'mon,tue,wed,thu,fri,sat');
+      const workingNames = new Set(
+        workingCsv.split(',').map((d) => d.trim().toLowerCase()).filter(Boolean),
+      );
+      if (!workingNames.has('sat')) workingNames.add('sat');
+      const dates = buildWorkingDates(range.from, range.to, workingNames);
+      setWorkingDates(dates);
+
+      let records = safeList<Record<string, unknown>>(recordsRaw);
+      if (subjectId) {
+        records = records.filter((r) => Number(r.subject_id) === subjectId);
+      }
+
+      const nextBase: Record<number, Record<string, AttStatus>> = {};
+      const nextIds: Record<string, number> = {};
+      const STATUS_PRIORITY: Record<string, number> = {
+        absent: 3,
+        late: 2,
+        present: 1,
+      };
+
+      records.forEach((r) => {
+        const sid = pickNumber(r.student_id, r.user_id);
+        const date = pickString(r.date).slice(0, 10);
+        const st = pickString(r.status).toLowerCase() as AttStatus;
+        if (!sid || !date) return;
+        if (st !== 'present' && st !== 'absent' && st !== 'late') return;
+        const subjKey = subjectId ? subjectId : pickNumber(r.subject_id);
+        const key = `${sid}|${date}|${subjKey || 0}|0`;
+        const id = pickNumber(r.id);
+        if (id) nextIds[key] = id;
+
+        if (!nextBase[sid]) nextBase[sid] = {};
+        if (!subjectId) {
+          const cur = nextBase[sid][date];
+          const curP = cur ? STATUS_PRIORITY[cur] || 0 : 0;
+          const newP = STATUS_PRIORITY[st] || 0;
+          if (newP >= curP) nextBase[sid][date] = st;
+        } else {
+          nextBase[sid][date] = st;
+        }
+      });
+
+      setBaseAttendance(nextBase);
+      setBaseRecordIds(nextIds);
+      setLocalEdits({});
+      setStatus('ready');
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to load attendance'));
+      setStatus('error');
+    }
+  }, [
+    classId,
+    viewPeriod,
+    month,
+    year,
+    selectedYear?.start_date,
+    selectedYear?.end_date,
+    schoolId,
+    subjectId,
+  ]);
+
+  useEffect(() => {
+    void loadRoster();
+  }, [loadRoster]);
+
+  useEffect(() => {
+    if (initialClassId != null) setClassId(Number(initialClassId));
+  }, [initialClassId]);
+
+  useEffect(() => {
+    if (classId && sectionOptions.length === 1 && !sectionId) {
+      setSectionId(sectionOptions[0].id);
+    }
+  }, [classId, sectionOptions, sectionId]);
+
+  useEffect(() => {
+    if (!subjectId) return;
+    if (!subjectOptions.some((s) => s.id === subjectId)) setSubjectId(undefined);
+  }, [subjectOptions, subjectId]);
+
+  useEffect(() => {
+    void loadGrid();
+  }, [loadGrid]);
+
+  const toggleCell = useCallback(
+    (studentId: number, date: string) => {
+      if (isViewOnly || !canEditDate(date)) return;
+      setLocalEdits((prev) => {
+        const current =
+          prev[studentId]?.[date] ?? baseAttendance[studentId]?.[date] ?? '';
+        const next = NEXT[current] ?? 'present';
+        return {
+          ...prev,
+          [studentId]: { ...(prev[studentId] || {}), [date]: next },
+        };
+      });
+    },
+    [isViewOnly, canEditDate, baseAttendance],
+  );
+
+  const applyBulk = useCallback(
+    (date: string, attStatus: AttStatus) => {
+      if (isViewOnly || !canEditDate(date) || !attStatus) return;
+      setLocalEdits((prev) => {
+        const next = { ...prev };
+        roster.forEach((s) => {
+          next[s.studentId] = { ...(next[s.studentId] || {}), [date]: attStatus };
+        });
+        return next;
+      });
+    },
+    [isViewOnly, canEditDate, roster],
+  );
+
+  const resetToday = useCallback(() => {
+    setLocalEdits((prev) => {
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([sid, edits]) => {
+        const rest = { ...edits };
+        delete rest[todayStr];
+        if (Object.keys(rest).length > 0) next[Number(sid)] = rest;
+      });
+      return next;
+    });
+  }, [todayStr]);
+
+  const hasEdits = useMemo(
+    () =>
+      Object.values(localEdits).some((edits) => Object.keys(edits).length > 0),
+    [localEdits],
+  );
+
+  const saveChanges = useCallback(async () => {
+    if (!classId || isViewOnly) return false;
+    setSaving(true);
+    setError(null);
+    try {
+      const dateMap: Record<string, Array<{ student_id: number; status: string }>> =
+        {};
+      Object.entries(localEdits).forEach(([sid, edits]) => {
+        Object.entries(edits).forEach(([date, st]) => {
+          if (!st) return;
+          const base = baseAttendance[Number(sid)]?.[date];
+          if (base === st) return;
+          if (!dateMap[date]) dateMap[date] = [];
+          dateMap[date].push({ student_id: Number(sid), status: st });
+        });
+      });
+
+      const subjKey = subjectId ? Number(subjectId) : 0;
+      await Promise.all(
+        Object.entries(dateMap).map(async ([date, records]) => {
+          const updates: Promise<unknown>[] = [];
+          const toCreate: Array<{ student_id: number; status: string }> = [];
+          records.forEach((rec) => {
+            const key = `${rec.student_id}|${date}|${subjKey}|0`;
+            const recordId = baseRecordIds[key];
+            if (recordId) {
+              updates.push(attendanceRecordsApi.update(recordId, { status: rec.status }));
+            } else {
+              toCreate.push(rec);
+            }
+          });
+          if (updates.length) await Promise.all(updates);
+          if (toCreate.length === 0) return;
+          await attendanceRecordsApi.bulkUpsert({
+            school_id: schoolId,
+            class_id: classId,
+            section_id: sectionId,
+            subject_id: subjectId,
+            date,
+            records: toCreate,
+          });
+        }),
+      );
+      await loadGrid();
+      return true;
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Save failed'));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    classId,
+    isViewOnly,
+    localEdits,
+    baseAttendance,
+    subjectId,
+    baseRecordIds,
+    schoolId,
+    sectionId,
+    loadGrid,
+  ]);
+
+  const metrics: AttMetrics = useMemo(() => {
+    const todayInRange = workingDates.includes(todayStr);
+    let presentToday = 0;
+    let absentToday = 0;
+    let lateToday = 0;
+    let presentTodayM = 0;
+    let presentTodayF = 0;
+    let absentTodayM = 0;
+    let absentTodayF = 0;
+    let lateTodayM = 0;
+    let lateTodayF = 0;
+    let sumP = 0;
+    let sumA = 0;
+    let sumL = 0;
+    let daysWithData = 0;
+
+    workingDates.forEach((d) => {
+      let dayP = 0;
+      let dayA = 0;
+      let dayL = 0;
+      let any = false;
+      roster.forEach((s) => {
+        const st = getStatus(s.studentId, d);
+        if (!st) return;
+        any = true;
+        const male = s.gender.startsWith('m');
+        const female = s.gender.startsWith('f');
+        if (st === 'present') {
+          dayP += 1;
+          if (d === todayStr) {
+            presentToday += 1;
+            if (male) presentTodayM += 1;
+            if (female) presentTodayF += 1;
+          }
+        } else if (st === 'absent') {
+          dayA += 1;
+          if (d === todayStr) {
+            absentToday += 1;
+            if (male) absentTodayM += 1;
+            if (female) absentTodayF += 1;
+          }
+        } else if (st === 'late') {
+          dayL += 1;
+          if (d === todayStr) {
+            lateToday += 1;
+            if (male) lateTodayM += 1;
+            if (female) lateTodayF += 1;
+          }
+        }
+      });
+      if (any) {
+        daysWithData += 1;
+        sumP += dayP;
+        sumA += dayA;
+        sumL += dayL;
+      }
+    });
+
+    const male = roster.filter((s) => s.gender.startsWith('m')).length;
+    const female = roster.filter((s) => s.gender.startsWith('f')).length;
+
+    return {
+      total: roster.length,
+      male,
+      female,
+      presentToday: todayInRange ? presentToday : 0,
+      absentToday: todayInRange ? absentToday : 0,
+      lateToday: todayInRange ? lateToday : 0,
+      presentTodayM,
+      presentTodayF,
+      absentTodayM,
+      absentTodayF,
+      lateTodayM,
+      lateTodayF,
+      avgPresent: daysWithData ? Math.round(sumP / daysWithData) : 0,
+      avgAbsent: daysWithData ? Math.round(sumA / daysWithData) : 0,
+      avgLate: daysWithData ? Math.round(sumL / daysWithData) : 0,
+      workingDays: workingDates.length,
+    };
+  }, [workingDates, todayStr, roster, getStatus]);
+
+  const studentSummaries = useMemo(() => {
+    return roster.map((s) => {
+      let p = 0;
+      let a = 0;
+      let l = 0;
+      workingDates.forEach((d) => {
+        const st = getStatus(s.studentId, d);
+        if (st === 'present') p += 1;
+        else if (st === 'absent') a += 1;
+        else if (st === 'late') l += 1;
+      });
+      const denom = workingDates.length || 1;
+      const pct = Math.round(((p + l) / denom) * 1000) / 10;
+      const risk =
+        workingDates.length === 0
+          ? 'OK'
+          : pct < 45
+            ? 'Critical'
+            : pct < 75
+              ? 'Low Attendance'
+              : 'OK';
+      return {
+        ...s,
+        present: p,
+        absent: a,
+        late: l,
+        pct,
+        risk,
+        todayStatus: getStatus(s.studentId, todayStr),
+      };
+    });
+  }, [roster, workingDates, getStatus, todayStr]);
+
+  const weekGroups = useMemo(() => buildWeekGroups(workingDates), [workingDates]);
+  const monthGroups = useMemo(() => buildMonthGroups(workingDates), [workingDates]);
+  const useMonthSummary = ['quarter', 'half-year', 'full-year'].includes(viewPeriod);
+  const todayInRange = workingDates.includes(todayStr);
+
+  return {
+    status,
+    error,
+    saving,
+    todayStr,
+    viewPeriod,
+    setViewPeriod,
+    month,
+    setMonth,
+    year,
+    setYear,
+    classId,
+    setClassId,
+    sectionId,
+    setSectionId,
+    subjectId,
+    setSubjectId,
+    query,
+    setQuery,
+    classOptions,
+    sectionOptions,
+    subjectOptions,
+    roster,
+    workingDates,
+    weekGroups,
+    monthGroups,
+    useMonthSummary,
+    todayInRange,
+    metrics,
+    studentSummaries,
+    isViewOnly,
+    canEditDate,
+    getStatus,
+    toggleCell,
+    applyBulk,
+    resetToday,
+    hasEdits,
+    saveChanges,
+    refetch: loadGrid,
+    settings,
+  };
+}

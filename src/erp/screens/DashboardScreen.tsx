@@ -58,7 +58,7 @@ export default function DashboardScreen() {
 
       // Always fetch: dashboard summary, class KPIs, notices
       const [dashData, classKpiData, noticesData] = await Promise.all([
-        erpDashboardApi.get(7, schoolId).catch(() => null),
+        erpDashboardApi.get(7, schoolId, selectedYearId ?? undefined).catch(() => null),
         classOverviewApi.getKPIs(kpiParams).catch(() => null),
         noticesApi.getAll({ per_page: 5, ...params }).catch(() => null),
       ]);

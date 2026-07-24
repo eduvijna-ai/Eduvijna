@@ -31,7 +31,7 @@ export default function ParentCommunicationScreen() {
 
   const actions: QuickAction[] = [
     { key: 'message', icon: 'chatbubble-ellipses-outline', label: 'Send Message', accent: 'green', onPress: () => navigation.navigate('BroadcastMessage') },
-    { key: 'announce', icon: 'megaphone-outline', label: 'Announcement', accent: 'purple', onPress: () => navigation.navigate('CreateNotice', { scope: 'class' }) },
+    { key: 'announce', icon: 'megaphone-outline', label: 'Announcement', accent: 'purple', onPress: () => navigation.navigate('CreateNotice', {}) },
     { key: 'group', icon: 'people-outline', label: 'Group Message', accent: 'orange', onPress: () => navigation.navigate('BroadcastMessage') },
     { key: 'history', icon: 'mail-outline', label: 'Message History', accent: 'blue', onPress: () => undefined },
   ];

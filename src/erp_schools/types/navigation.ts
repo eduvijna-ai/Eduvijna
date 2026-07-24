@@ -35,22 +35,24 @@ export type TeacherStackParamList = {
   PayslipDetails: { payslipId: string };
   SalaryHistory: undefined;
   LeaveDashboard: undefined;
-  ApplyLeave: undefined;
+  ApplyLeave: { leaveId?: number };
   LeaveHistory: undefined;
 
   // classes & students
   ClassDetails: { classId: string };
-  StudentProfile: { studentId: string };
+  StudentProfile: { studentId: string; openEdit?: boolean };
   StudentAttendance: { studentId: string };
 
   // class attendance
-  MarkAttendance: { classId: string };
-  AttendanceReport: { classId: string };
+  MarkAttendance: { classId?: string };
+  AttendanceReport: { classId?: string };
+  TeacherAttendance: { classId?: string; tab?: string };
 
   // assessments
   GradeStudents: { classId?: string };
   AssessmentList: { classId?: string };
   AssessmentDetails: { assessmentId: string };
+  Exams: undefined;
 
   // assignments
   AssignmentDashboard: undefined;
@@ -62,6 +64,11 @@ export type TeacherStackParamList = {
   UploadMaterial: undefined;
   ResourceLibrary: undefined;
 
+  // library (web LibraryTab parity)
+  Library: undefined;
+  CreateBook: { bookId?: number };
+  CreateLibraryTransaction: { transactionId?: number };
+
   // timetable
   Timetable: { classId?: string };
 
@@ -70,9 +77,11 @@ export type TeacherStackParamList = {
   ParentChat: { conversationId: string };
   BroadcastMessage: undefined;
 
-  // notices
+  // notices (web NoticesTab parity)
   NoticeBoard: { classId?: string };
-  CreateNotice: { scope?: 'class' | 'group' | 'school' };
+  CreateNotice: { noticeId?: number };
+  NoticeDetail: { noticeId: number };
+  /** @deprecated mock — kept for future; not linked from Notice Board UI */
   ScheduledNotice: undefined;
 
   // reports / analytics
@@ -84,6 +93,19 @@ export type TeacherStackParamList = {
 
   // ai
   AITeacherAssistant: undefined;
+
+  HolidayCalendar: undefined;
+  CreateHoliday: { holidayId?: number };
+
+  // engagement (web StudentEngagementTab parity)
+  Engagement: undefined;
+  CreateEngagement: {
+    kind: 'councils' | 'members' | 'grievances' | 'events' | 'registrations' | 'gallery';
+    recordId?: number;
+  };
+
+  // fees (web Fees tab — instructor)
+  TeacherFees: undefined;
 };
 
 /** Student bottom-tab routes (the persistent 5-item bar). */
@@ -134,6 +156,14 @@ export type StudentStackParamList = {
   StudentProfile: undefined;
   StudentNotifications: undefined;
   StudentSettings: undefined;
+
+  HolidayCalendar: undefined;
+  CreateHoliday: { holidayId?: number };
+
+  // library (web LibraryTab parity — replaces mock student library UI)
+  Library: undefined;
+  CreateBook: { bookId?: number };
+  CreateLibraryTransaction: { transactionId?: number };
 };
 
 /** Admin bottom-tab routes (the persistent 5-item bar). */
@@ -189,6 +219,22 @@ export type AdminStackParamList = {
 
   // communication
   Announcements: undefined;
+
+  // library (web LibraryTab parity)
+  Library: undefined;
+  CreateBook: { bookId?: number };
+  CreateLibraryTransaction: { transactionId?: number };
+
+  // calendar
+  HolidayCalendar: undefined;
+  CreateHoliday: { holidayId?: number };
+
+  // engagement (web StudentEngagementTab parity)
+  Engagement: undefined;
+  CreateEngagement: {
+    kind: 'councils' | 'members' | 'grievances' | 'events' | 'registrations' | 'gallery';
+    recordId?: number;
+  };
 
   // profile / system
   AdminProfile: undefined;

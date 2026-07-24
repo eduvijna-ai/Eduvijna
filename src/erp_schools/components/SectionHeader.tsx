@@ -19,7 +19,13 @@ export function SectionHeader({ title, icon, actionLabel, onAction }: SectionHea
     <View style={styles.row}>
       <View style={styles.left}>
         {icon ? <Ionicons name={icon} size={18} color={theme.colors.primary} /> : null}
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
+        <Text
+          style={[styles.title, { color: theme.colors.textPrimary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {title}
+        </Text>
       </View>
       {actionLabel && onAction ? (
         <TouchableOpacity
@@ -42,10 +48,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 12,
   },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  title: { fontSize: 18, fontWeight: '700' },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  left: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  title: { fontSize: 18, fontWeight: '700', flexShrink: 1 },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 0,
+    paddingLeft: 4,
+  },
   actionText: { fontSize: 13, fontWeight: '600' },
 });

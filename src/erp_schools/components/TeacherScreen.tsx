@@ -39,12 +39,14 @@ export function TeacherScreen({
 }: TeacherScreenProps) {
   const theme = useTeacherTheme();
   const insets = useSafeAreaInsets();
+  // Always clear the home-indicator / gesture bar so sticky CTAs aren't clipped
+  const footerBottom = Math.max(insets.bottom, 16) + 12;
 
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[
-        { paddingBottom: theme.spacing.xl + insets.bottom },
+        { paddingBottom: theme.spacing.xl + (footer ? 8 : insets.bottom) },
         contentStyle,
       ]}
       showsVerticalScrollIndicator={false}
@@ -79,7 +81,7 @@ export function TeacherScreen({
             {
               backgroundColor: theme.colors.surface,
               borderTopColor: theme.colors.border,
-              paddingBottom: theme.spacing.sm + insets.bottom,
+              paddingBottom: footerBottom,
             },
           ]}
         >
@@ -93,8 +95,13 @@ export function TeacherScreen({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   footer: {
+    width: '100%',
+    alignItems: 'stretch',
     paddingHorizontal: 16,
     paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+    // Keep the full CTA visible above system gesture / home bar
+    zIndex: 2,
+    elevation: 8,
   },
 });

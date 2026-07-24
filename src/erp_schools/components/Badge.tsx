@@ -38,7 +38,10 @@ export type PillStatus =
   | 'active'
   | 'closed'
   | 'scheduled'
-  | 'draft';
+  | 'draft'
+  | 'cancelled'
+  | 'processing'
+  | 'generated';
 
 const STATUS_META: Record<PillStatus, { accent: AccentKey; icon: keyof typeof Ionicons.glyphMap; label: string }> = {
   present: { accent: 'green', icon: 'checkmark-circle', label: 'Present' },
@@ -55,7 +58,10 @@ const STATUS_META: Record<PillStatus, { accent: AccentKey; icon: keyof typeof Io
   active: { accent: 'green', icon: 'ellipse', label: 'Active' },
   closed: { accent: 'teal', icon: 'lock-closed', label: 'Closed' },
   scheduled: { accent: 'blue', icon: 'calendar', label: 'Scheduled' },
-  draft: { accent: 'orange', icon: 'create', label: 'Draft' },
+  draft: { accent: 'purple', icon: 'create', label: 'Draft' },
+  cancelled: { accent: 'red', icon: 'close-circle', label: 'Cancelled' },
+  processing: { accent: 'blue', icon: 'time', label: 'Processing' },
+  generated: { accent: 'teal', icon: 'document-text', label: 'Generated' },
 };
 
 interface StatusPillProps {

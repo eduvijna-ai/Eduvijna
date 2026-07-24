@@ -37,20 +37,34 @@ export function FormField({ label, required, children, hint }: FormFieldProps) {
 
 interface TextFieldProps {
   value: string;
-  onChangeText: (text: string) => void;
+  onChangeText?: (text: string) => void;
   placeholder?: string;
   multiline?: boolean;
   keyboardType?: KeyboardTypeOptions;
+  editable?: boolean;
 }
 
-export function TextField({ value, onChangeText, placeholder, multiline, keyboardType }: TextFieldProps) {
+export function TextField({
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  keyboardType,
+  editable = true,
+}: TextFieldProps) {
   const theme = useTeacherTheme();
   return (
     <TextInput
       style={[
         styles.input,
         multiline && styles.inputMultiline,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.input, color: theme.colors.textPrimary },
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.input,
+          color: theme.colors.textPrimary,
+          opacity: editable ? 1 : 0.75,
+        },
       ]}
       value={value}
       onChangeText={onChangeText}
@@ -58,6 +72,7 @@ export function TextField({ value, onChangeText, placeholder, multiline, keyboar
       placeholderTextColor={theme.colors.textSecondary}
       multiline={multiline}
       keyboardType={keyboardType}
+      editable={editable}
     />
   );
 }

@@ -243,11 +243,19 @@ export function useAuth(): UseAuthReturn {
       // Call login API (tokens are stored automatically in auth.api.ts)
       const response = await AuthAPI.login(credentials);
 
-      // Update store — do NOT toggle global isInitializing / app splash here
-      const enrichedUser = await enrichUserWithSchoolName(response.user);
+      // Web AuthContext: after login, loadProfile() from /auth/profile (has full_name)
+      let profileUser = response.user;
+      try {
+        profileUser = await AuthAPI.fetchAuthProfile();
+      } catch {
+        // Keep login payload if profile fetch fails
+      }
+
+      const enrichedUser = await enrichUserWithSchoolName(profileUser);
       setUser(enrichedUser);
       setAuthenticated(true);
       setSchoolId(extractSchoolId(enrichedUser));
+      await TokenStorage.storeUserData(JSON.stringify(enrichedUser));
     } catch (err) {
       console.error('Login failed:', err);
       const message = formatAuthError(err);

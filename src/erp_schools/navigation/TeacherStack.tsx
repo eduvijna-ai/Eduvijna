@@ -37,11 +37,13 @@ import StudentAttendanceScreen from '../screens/teacher/attendance/StudentAttend
 // class attendance
 import MarkAttendanceScreen from '../screens/teacher/attendance/MarkAttendanceScreen';
 import AttendanceReportScreen from '../screens/teacher/attendance/AttendanceReportScreen';
+import TeacherAttendanceScreen from '../screens/teacher/attendance/TeacherAttendanceScreen';
 
 // assessments
 import GradeStudentsScreen from '../screens/teacher/assessments/GradeStudentsScreen';
 import AssessmentListScreen from '../screens/teacher/assessments/AssessmentListScreen';
 import AssessmentDetailsScreen from '../screens/teacher/assessments/AssessmentDetailsScreen';
+import TeacherExamsScreen from '../screens/teacher/exams/TeacherExamsScreen';
 
 // assignments
 import AssignmentDashboardScreen from '../screens/teacher/assignments/AssignmentDashboardScreen';
@@ -64,6 +66,7 @@ import BroadcastMessageScreen from '../screens/teacher/communication/BroadcastMe
 // notices
 import NoticeBoardScreen from '../screens/teacher/notices/NoticeBoardScreen';
 import CreateNoticeScreen from '../screens/teacher/notices/CreateNoticeScreen';
+import NoticeDetailScreen from '../screens/teacher/notices/NoticeDetailScreen';
 import ScheduledNoticeScreen from '../screens/teacher/notices/ScheduledNoticeScreen';
 
 // reports / analytics
@@ -75,6 +78,14 @@ import ReportsDashboardScreen from '../screens/teacher/reports/ReportsDashboardS
 
 // ai
 import AITeacherAssistantScreen from '../screens/teacher/ai/AITeacherAssistantScreen';
+import HolidayCalendarScreen from '../screens/shared/HolidayCalendarScreen';
+import CreateHolidayScreen from '../screens/shared/CreateHolidayScreen';
+import LibraryScreen from '../screens/shared/LibraryScreen';
+import CreateBookScreen from '../screens/shared/CreateBookScreen';
+import CreateLibraryTransactionScreen from '../screens/shared/CreateLibraryTransactionScreen';
+import EngagementHubScreen from '../screens/shared/EngagementHubScreen';
+import CreateEngagementScreen from '../screens/shared/CreateEngagementScreen';
+import TeacherFeesScreen from '../screens/teacher/fees/TeacherFeesScreen';
 
 const Stack = createNativeStackNavigator<TeacherStackParamList>();
 
@@ -103,10 +114,12 @@ export function TeacherStack() {
 
       <Stack.Screen name={TEACHER_ROUTES.MARK_ATTENDANCE} component={MarkAttendanceScreen} />
       <Stack.Screen name={TEACHER_ROUTES.ATTENDANCE_REPORT} component={AttendanceReportScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.TEACHER_ATTENDANCE} component={TeacherAttendanceScreen} />
 
       <Stack.Screen name={TEACHER_ROUTES.GRADE_STUDENTS} component={GradeStudentsScreen} />
       <Stack.Screen name={TEACHER_ROUTES.ASSESSMENT_LIST} component={AssessmentListScreen} />
       <Stack.Screen name={TEACHER_ROUTES.ASSESSMENT_DETAILS} component={AssessmentDetailsScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAMS} component={TeacherExamsScreen} />
 
       <Stack.Screen name={TEACHER_ROUTES.ASSIGNMENT_DASHBOARD} component={AssignmentDashboardScreen} />
       <Stack.Screen name={TEACHER_ROUTES.CREATE_ASSIGNMENT} component={CreateAssignmentScreen} />
@@ -124,6 +137,8 @@ export function TeacherStack() {
 
       <Stack.Screen name={TEACHER_ROUTES.NOTICE_BOARD} component={NoticeBoardScreen} />
       <Stack.Screen name={TEACHER_ROUTES.CREATE_NOTICE} component={CreateNoticeScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.NOTICE_DETAIL} component={NoticeDetailScreen} />
+      {/* ScheduledNotice kept registered but not linked from UI (no web equivalent) */}
       <Stack.Screen name={TEACHER_ROUTES.SCHEDULED_NOTICE} component={ScheduledNoticeScreen} />
 
       <Stack.Screen name={TEACHER_ROUTES.ATTENDANCE_ANALYTICS} component={AttendanceAnalyticsScreen} />
@@ -133,6 +148,17 @@ export function TeacherStack() {
       <Stack.Screen name={TEACHER_ROUTES.REPORTS_DASHBOARD} component={ReportsDashboardScreen} />
 
       <Stack.Screen name={TEACHER_ROUTES.AI_ASSISTANT} component={AITeacherAssistantScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.HOLIDAY_CALENDAR} component={HolidayCalendarScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.CREATE_HOLIDAY} component={CreateHolidayScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.LIBRARY} component={LibraryScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.CREATE_BOOK} component={CreateBookScreen} />
+      <Stack.Screen
+        name={TEACHER_ROUTES.CREATE_LIBRARY_TRANSACTION}
+        component={CreateLibraryTransactionScreen}
+      />
+      <Stack.Screen name={TEACHER_ROUTES.ENGAGEMENT} component={EngagementHubScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.CREATE_ENGAGEMENT} component={CreateEngagementScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.TEACHER_FEES} component={TeacherFeesScreen} />
     </Stack.Navigator>
   );
 }

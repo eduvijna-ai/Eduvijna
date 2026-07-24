@@ -3,27 +3,33 @@
  * Schools tab is focused. Unmounting on blur resets navigation so each visit
  * opens the persona's home screen.
  *
- * Role-based routing (single source of truth = useTeacherSession().persona,
- * which reads the existing auth/user store):
- *   • admin (role 'admin'/'super_admin' or role_id 1/2) → AdminStack
- *   • student → StudentStack
- *   • teacher → TeacherStack
- *   • others  → TeacherStack (existing behaviour preserved)
+ * Wrapped in AcademicYearProvider so all persona stacks share school year context.
  */
 
 import React from 'react';
 import { useIsFocused } from '@react-navigation/native';
-import { useTeacherSession } from '../hooks/useTeacherSession';
+import { AcademicYearProvider } from '../contexts/AcademicYearContext';
+import { useSchoolsSession } from '../hooks/useSchoolsSession';
 import { TeacherStack } from './TeacherStack';
 import { StudentStack } from './StudentStack';
 import { AdminStack } from './AdminStack';
 
-export function SchoolsTabEntry() {
-  const isFocused = useIsFocused();
-  const { persona } = useTeacherSession();
-
-  if (!isFocused) return null;
-  if (persona === 'admin') return <AdminStack />;
+function PersonaNavigator() {
+  const { persona } = useSchoolsSession();
+  if (persona === 'admin' || persona === 'principal') return <AdminStack />;
   if (persona === 'student') return <StudentStack />;
   return <TeacherStack />;
+}
+
+export function SchoolsTabEntry() {
+  const isFocused = useIsFocused();
+  const { schoolId } = useSchoolsSession();
+
+  if (!isFocused) return null;
+
+  return (
+    <AcademicYearProvider schoolId={schoolId}>
+      <PersonaNavigator />
+    </AcademicYearProvider>
+  );
 }

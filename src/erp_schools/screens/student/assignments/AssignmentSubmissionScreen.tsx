@@ -19,21 +19,36 @@ import {
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useStudentNavigation } from '../../../hooks/useStudentNavigation';
 import { useStudentData } from '../../../hooks/useStudentData';
+import { useStudentAssignmentActions } from '../../../hooks/useStudentAssignmentActions';
 import type { StudentStackParamList } from '../../../types/navigation';
 
 export default function AssignmentSubmissionScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
   const route = useRoute<RouteProp<StudentStackParamList, 'AssignmentSubmission'>>();
-  const { profile, getAssignmentById } = useStudentData();
+  const { profile, getAssignmentById, refetch } = useStudentData();
+  const { submitAssignment, submitting } = useStudentAssignmentActions();
   const assignment = getAssignmentById(route.params?.assignmentId);
   const [answer, setAnswer] = useState('');
   const [attached, setAttached] = useState(false);
 
-  const handleSubmit = () => {
-    Alert.alert('Submitted', 'Your assignment has been submitted successfully (demo).', [
-      { text: 'OK', onPress: () => navigation.goBack() },
-    ]);
+  const handleSubmit = async () => {
+    if (!assignment?.id) {
+      Alert.alert('Error', 'Assignment not found.');
+      return;
+    }
+    const ok = await submitAssignment(assignment.id, {
+      content: answer,
+      remarks: attached ? 'attachment_indicated' : undefined,
+    });
+    if (ok) {
+      await refetch();
+      Alert.alert('Submitted', 'Your assignment has been submitted successfully.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } else {
+      Alert.alert('Submit failed', 'Could not submit. Please try again.');
+    }
   };
 
   return (
@@ -47,7 +62,15 @@ export default function AssignmentSubmissionScreen() {
         />
       }
       contentStyle={styles.content}
-      footer={<PrimaryButton label="Submit" icon="checkmark" variant="gradient" disabled={answer.trim().length === 0 && !attached} onPress={handleSubmit} />}
+      footer={
+        <PrimaryButton
+          label={submitting ? 'Submitting…' : 'Submit'}
+          icon="checkmark"
+          variant="gradient"
+          disabled={submitting || (answer.trim().length === 0 && !attached)}
+          onPress={handleSubmit}
+        />
+      }
     >
       <SurfaceCard>
         <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{assignment?.title}</Text>

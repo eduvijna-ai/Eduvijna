@@ -8,24 +8,32 @@ import {
   SurfaceCard,
   SectionHeader,
   ListItem,
-  Badge,
+  StatusPill,
   PrimaryButton,
   InfoBanner,
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { accentColors } from '../../../theme/accents';
 import { useTeacherNavigation } from '../../../hooks/useTeacherNavigation';
-import { leaveBalances, leaveHistory } from '../../../data';
+import { useTeacherHrData } from '../../../hooks/useTeacherHrData';
 
 export default function LeaveDashboardScreen() {
   const theme = useTeacherTheme();
   const navigation = useTeacherNavigation();
+  const { leaveBalances, leaveHistory } = useTeacherHrData();
 
   return (
     <TeacherScreen
       header={<ScreenHeader title="Leave" trailingIcon="time-outline" onTrailingPress={() => navigation.navigate('LeaveHistory')} />}
       contentStyle={styles.content}
-      footer={<PrimaryButton label="Apply Leave" icon="add-circle-outline" variant="gradient" onPress={() => navigation.navigate('ApplyLeave')} />}
+      footer={
+        <PrimaryButton
+          label="Apply Leave"
+          icon="add-circle-outline"
+          variant="gradient"
+          onPress={() => navigation.navigate('ApplyLeave', {})}
+        />
+      }
     >
       <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>Leave Balance</Text>
       <SurfaceCard>
@@ -33,7 +41,7 @@ export default function LeaveDashboardScreen() {
           {leaveBalances.map((balance) => {
             const accent = accentColors(theme.colors, balance.accent);
             return (
-              <View key={balance.type} style={styles.balanceItem}>
+              <View key={balance.id} style={styles.balanceItem}>
                 <View style={[styles.balanceIcon, { backgroundColor: accent.bg }]}>
                   <Text style={[styles.balanceType, { color: accent.fg }]}>{balance.type}</Text>
                 </View>
@@ -55,7 +63,15 @@ export default function LeaveDashboardScreen() {
             title={record.typeLabel}
             subtitle={record.dateRange}
             divider={index < 2}
-            trailing={<Badge label="Approved" accent="green" />}
+            trailing={
+              <StatusPill
+                status={
+                  record.status === 'cancelled'
+                    ? 'cancelled'
+                    : (record.status as 'approved' | 'pending' | 'rejected')
+                }
+              />
+            }
           />
         ))}
       </SurfaceCard>

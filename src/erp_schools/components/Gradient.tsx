@@ -36,8 +36,13 @@ export function Gradient({
   const gradientId = React.useId();
 
   return (
-    <View style={[{ overflow: 'hidden', borderRadius }, style]}>
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+    <View style={[{ overflow: 'hidden', borderRadius, position: 'relative' }, style]}>
+      <Svg
+        style={StyleSheet.absoluteFillObject}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="none"
+      >
         <Defs>
           <SvgLinearGradient id={gradientId} x1={coords.x1} y1={coords.y1} x2={coords.x2} y2={coords.y2}>
             {colors.map((color, index) => (
