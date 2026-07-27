@@ -54,6 +54,17 @@ export type TeacherStackParamList = {
   AssessmentDetails: { assessmentId: string };
   Exams: undefined;
 
+  // exams (web ExamsTab / ExamGroupsSubView parity)
+  CreateExamGroup: { groupId?: number };
+  ExamGroupDetail: { groupId: number };
+  CreateExamItem: { groupId: number; itemId?: number };
+  ExamSubjects: { groupId: number; itemId: number };
+  ExamStudents: { groupId: number; itemId: number };
+  ExamGrades: { groupId: number };
+  ExamMarksEntry: { groupId: number; itemId: number };
+  ExamResultsManage: { groupId: number; itemId: number };
+  ExamReportCards: { itemId: number; groupId: number; examName?: string };
+
   // assignments
   AssignmentDashboard: undefined;
   CreateAssignment: undefined;

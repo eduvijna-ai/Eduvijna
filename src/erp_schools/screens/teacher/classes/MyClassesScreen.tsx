@@ -238,6 +238,7 @@ export default function MyClassesScreen() {
         ))
       )}
 
+      {/* Hidden for now — no request-class flow yet
       <SurfaceCard style={styles.requestCard}>
         <View style={styles.requestRow}>
           <View style={[styles.requestIcon, { backgroundColor: theme.colors.tintTeal }]}>
@@ -254,11 +255,12 @@ export default function MyClassesScreen() {
           <PrimaryButton
             label="Request Class"
             variant="outline"
+            size="compact"
             onPress={() => undefined}
-            style={styles.requestBtn}
           />
         </View>
       </SurfaceCard>
+      */}
 
       <InfoBanner
         tone="tip"
@@ -559,10 +561,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  requestText: { flex: 1 },
+  requestText: { flex: 1, minWidth: 0 },
   requestTitle: { fontSize: 13, fontWeight: '700' },
   requestSub: { fontSize: 11, marginTop: 2 },
-  requestBtn: { height: 40, paddingHorizontal: 12 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

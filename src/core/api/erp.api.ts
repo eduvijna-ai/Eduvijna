@@ -129,6 +129,15 @@ export const classesApi = {
   softDelete: (id: number | string) => api.del(`/api/v1/erp/sis/classes/${id}`),
 };
 
+/** Web ExamsTab Marks/Results classroom filter — /api/v1/erp/academic/classes */
+export const academicClassesApi = {
+  list: (schoolId?: number | string) =>
+    api.get(
+      '/api/v1/erp/academic/classes',
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
+};
+
 // ============================================================
 // Academic
 // ============================================================
@@ -359,90 +368,211 @@ export const postalReceiveApi = {
 };
 
 // ============================================================
-// Exams
+// Exams — web ExamsTab / ExamGroupsSubView parity
+// Active model: groups → items → subjects/students/marks/results
 // ============================================================
 
+const examQs = (schoolId?: number | string, extra?: Record<string, unknown>) => {
+  const q: Record<string, unknown> = { ...extra };
+  if (schoolId != null) q.school_id = schoolId;
+  return Object.keys(q).length ? q : undefined;
+};
+
+const examPathQs = (path: string, schoolId?: number | string) =>
+  schoolId != null ? `${path}?school_id=${schoolId}` : path;
+
+const EXAM_GROUPS = '/api/v1/erp/exams/groups';
+const EXAM_ITEMS = '/api/v1/erp/exams/items';
+const EXAM_BASE = '/api/v1/erp/exams';
+
 export const examGroupsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/groups', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/exams/groups/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/exams/groups', data),
-  update: (id: number | string, data: any) => api.put(`/api/v1/erp/exams/groups/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/exams/groups/${id}`),
+  list: (params?: any) => api.get(EXAM_GROUPS, params),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_GROUPS}/${id}`, examQs(schoolId)),
+  create: (data: any) => api.post(EXAM_GROUPS, data),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(examPathQs(`${EXAM_GROUPS}/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(examPathQs(`${EXAM_GROUPS}/${id}`, schoolId)),
 };
 
 export const examGroupItemsApi = {
   list: (groupId: number | string, params?: any) =>
-    api.get(`/api/v1/erp/exams/groups/${groupId}/items`, params),
+    api.get(`${EXAM_GROUPS}/${groupId}/items`, params),
+  get: (groupId: number | string, itemId: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_GROUPS}/${groupId}/items/${itemId}`, examQs(schoolId)),
   create: (groupId: number | string, data: any) =>
-    api.post(`/api/v1/erp/exams/groups/${groupId}/items`, data),
-  update: (groupId: number | string, itemId: number | string, data: any) =>
-    api.put(`/api/v1/erp/exams/groups/${groupId}/items/${itemId}`, data),
-  softDelete: (groupId: number | string, itemId: number | string) =>
-    api.del(`/api/v1/erp/exams/groups/${groupId}/items/${itemId}`),
+    api.post(`${EXAM_GROUPS}/${groupId}/items`, data),
+  update: (
+    groupId: number | string,
+    itemId: number | string,
+    data: any,
+    schoolId?: number | string,
+  ) => api.put(examPathQs(`${EXAM_GROUPS}/${groupId}/items/${itemId}`, schoolId), data),
+  softDelete: (
+    groupId: number | string,
+    itemId: number | string,
+    schoolId?: number | string,
+  ) => api.del(examPathQs(`${EXAM_GROUPS}/${groupId}/items/${itemId}`, schoolId)),
+};
+
+/** Item subjects (= schedule papers). Web: examSubjectsApi */
+export const examSubjectsApi = {
+  list: (itemId: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_ITEMS}/${itemId}/subjects`, examQs(schoolId)),
+  create: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/subjects`, schoolId), data),
+  update: (
+    itemId: number | string,
+    entryId: number | string,
+    data: any,
+    schoolId?: number | string,
+  ) => api.put(examPathQs(`${EXAM_ITEMS}/${itemId}/subjects/${entryId}`, schoolId), data),
+  softDelete: (
+    itemId: number | string,
+    entryId: number | string,
+    schoolId?: number | string,
+  ) => api.del(examPathQs(`${EXAM_ITEMS}/${itemId}/subjects/${entryId}`, schoolId)),
+  importFromClass: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/subjects/import-class`, schoolId), data),
+  getByClass: (classId: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/exams/subjects-by-class/${classId}`, examQs(schoolId)),
 };
 
 export const examGradesApi = {
-  list: (groupId: number | string, params?: any) =>
-    api.get(`/api/v1/erp/exams/groups/${groupId}/grades`, params),
-  create: (groupId: number | string, data: any) =>
-    api.post(`/api/v1/erp/exams/groups/${groupId}/grades`, data),
-  update: (groupId: number | string, gradeId: number | string, data: any) =>
-    api.put(`/api/v1/erp/exams/groups/${groupId}/grades/${gradeId}`, data),
-  softDelete: (groupId: number | string, gradeId: number | string) =>
-    api.del(`/api/v1/erp/exams/groups/${groupId}/grades/${gradeId}`),
+  list: (groupId: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_GROUPS}/${groupId}/grades`, examQs(schoolId)),
+  create: (groupId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_GROUPS}/${groupId}/grades`, schoolId), data),
+  update: (
+    groupId: number | string,
+    gradeId: number | string,
+    data: any,
+    schoolId?: number | string,
+  ) => api.put(examPathQs(`${EXAM_GROUPS}/${groupId}/grades/${gradeId}`, schoolId), data),
+  softDelete: (
+    groupId: number | string,
+    gradeId: number | string,
+    schoolId?: number | string,
+  ) => api.del(examPathQs(`${EXAM_GROUPS}/${groupId}/grades/${gradeId}`, schoolId)),
+  bulkSave: (groupId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_GROUPS}/${groupId}/grades/bulk-save`, schoolId), data),
+  applyTemplate: (groupId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_GROUPS}/${groupId}/grades/apply-template`, schoolId), data),
+  getTemplates: () => api.get('/api/v1/erp/exams/grade-templates'),
 };
 
+/** Assigned students on an exam ITEM (not group). */
 export const examStudentsApi = {
-  list: (groupId: number | string, params?: any) =>
-    api.get(`/api/v1/erp/exams/groups/${groupId}/students`, params),
-};
-
-export const examSubjectsApi = {
-  getByClass: (classId: number | string, params?: any) =>
-    api.get(`/api/v1/erp/exams/subjects-by-class/${classId}`, params),
+  list: (itemId: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_ITEMS}/${itemId}/students`, examQs(schoolId)),
+  assign: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/students/assign`, schoolId), data),
+  bulkAssign: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/students/bulk-assign`, schoolId), data),
+  bulkRemove: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/students/bulk-remove`, schoolId), data),
+  removeAll: (itemId: number | string, schoolId?: number | string) =>
+    api.del(examPathQs(`${EXAM_ITEMS}/${itemId}/students`, schoolId)),
+  softDelete: (
+    itemId: number | string,
+    entryId: number | string,
+    schoolId?: number | string,
+  ) => api.del(examPathQs(`${EXAM_ITEMS}/${itemId}/students/${entryId}`, schoolId)),
+  studentsByClass: (
+    itemId: number | string,
+    classId: number | string,
+    params?: { section_id?: number | string; school_id?: number | string },
+  ) => api.get(`${EXAM_ITEMS}/${itemId}/students-by-class/${classId}`, params),
 };
 
 export const examSectionsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/sections', params),
+  list: (schoolId?: number | string) =>
+    api.get(`${EXAM_BASE}/sections`, examQs(schoolId)),
 };
 
 export const examAllItemsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/all-items', params),
+  list: (schoolId?: number | string) =>
+    api.get(`${EXAM_BASE}/all-items`, examQs(schoolId)),
   mySchedule: (params?: { school_id?: number | string }) =>
-    api.get('/api/v1/erp/exams/my-schedule', params),
+    api.get(`${EXAM_BASE}/my-schedule`, params),
   mySubjectPerformance: (params?: { school_id?: number | string }) =>
-    api.get('/api/v1/erp/exams/my-subject-performance', params),
+    api.get(`${EXAM_BASE}/my-subject-performance`, params),
 };
 
+/** Legacy exams CRUD (unused by web ExamsTab; kept for older ERP screens). */
 export const examsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/exams/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/exams', data),
-  update: (id: number | string, data: any) => api.put(`/api/v1/erp/exams/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/exams/${id}`),
+  list: (params?: any) => api.get(EXAM_BASE, params),
+  get: (id: number | string) => api.get(`${EXAM_BASE}/${id}`),
+  create: (data: any) => api.post(EXAM_BASE, data),
+  update: (id: number | string, data: any) => api.put(`${EXAM_BASE}/${id}`, data),
+  softDelete: (id: number | string) => api.del(`${EXAM_BASE}/${id}`),
 };
 
+/** Legacy schedules (unused by web ExamsTab — schedules = exam subjects). */
 export const examSchedulesApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/schedules', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/exams/schedules/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/exams/schedules', data),
+  list: (params?: any) => api.get(`${EXAM_BASE}/schedules`, params),
+  get: (id: number | string) => api.get(`${EXAM_BASE}/schedules/${id}`),
+  create: (data: any) => api.post(`${EXAM_BASE}/schedules`, data),
   update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/exams/schedules/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/exams/schedules/${id}`),
+    api.put(`${EXAM_BASE}/schedules/${id}`, data),
+  softDelete: (id: number | string) => api.del(`${EXAM_BASE}/schedules/${id}`),
 };
 
 export const examMarksApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/marks/list', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/exams/marks/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/exams/marks', data),
-  update: (id: number | string, data: any) => api.put(`/api/v1/erp/exams/marks/${id}`, data),
-  bulkUpsert: (data: any) => api.post('/api/v1/erp/exams/marks/bulk', data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/exams/marks/${id}`),
+  // Legacy gradebook paths (class details / progress analytics)
+  list: (params?: any) => api.get(`${EXAM_BASE}/marks/list`, params),
+  get: (id: number | string) => api.get(`${EXAM_BASE}/marks/${id}`),
+  create: (data: any) => api.post(`${EXAM_BASE}/marks`, data),
+  update: (id: number | string, data: any) => api.put(`${EXAM_BASE}/marks/${id}`, data),
+  bulkUpsert: (data: any) => api.post(`${EXAM_BASE}/marks/bulk`, data),
+  softDelete: (id: number | string) => api.del(`${EXAM_BASE}/marks/${id}`),
+  // Web ExamsTab item-based marks
+  getGrid: (
+    itemId: number | string,
+    examSubjectId: number | string,
+    schoolId?: number | string,
+  ) =>
+    api.get(
+      `${EXAM_ITEMS}/${itemId}/marks/grid/${examSubjectId}`,
+      examQs(schoolId),
+    ),
+  bulkSave: (
+    itemId: number | string,
+    examSubjectId: number | string,
+    data: any,
+    schoolId?: number | string,
+  ) =>
+    api.post(
+      examPathQs(`${EXAM_ITEMS}/${itemId}/marks/bulk-save/${examSubjectId}`, schoolId),
+      data,
+    ),
+  getProgress: (itemId: number | string, schoolId?: number | string) =>
+    api.get(`${EXAM_ITEMS}/${itemId}/marks/progress`, examQs(schoolId)),
+  getTemplate: (
+    itemId: number | string,
+    schoolId?: number | string,
+    filters?: { class_id?: number; section_id?: number },
+  ) =>
+    api.get(`${EXAM_ITEMS}/${itemId}/marks/template`, examQs(schoolId, filters)),
+  csvUpload: (itemId: number | string, data: any, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/marks/csv-upload`, schoolId), data),
 };
 
 export const examResultsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/exams/results', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/exams/results/${id}`),
+  // Legacy
+  list: (params?: any) => api.get(`${EXAM_BASE}/results`, params),
+  get: (id: number | string) => api.get(`${EXAM_BASE}/results/${id}`),
+  // Web ExamsTab item-based results
+  view: (
+    itemId: number | string,
+    schoolId?: number | string,
+    filters?: { class_id?: number; section_id?: number },
+  ) => api.get(`${EXAM_ITEMS}/${itemId}/results`, examQs(schoolId, filters)),
+  generate: (itemId: number | string, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/results/generate`, schoolId), {}),
+  publish: (itemId: number | string, schoolId?: number | string) =>
+    api.post(examPathQs(`${EXAM_ITEMS}/${itemId}/results/publish`, schoolId), {}),
 };
 
 // ============================================================
