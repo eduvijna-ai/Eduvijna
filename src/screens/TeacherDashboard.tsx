@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useAuth } from '@core/hooks/useAuth';
+import { getDisplayName } from '@core/types';
 import LoadingSpinner from '@components/LoadingSpinner';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
 import { FONT_FAMILY } from '../theme/fonts';
@@ -42,14 +43,8 @@ export default function TeacherDashboard({ navigation, onNavigate, route: _route
     refresh,
   } = useTeacherDashboard();
 
-  // Build a friendly display name: first name from full_name, or name, or username
-  const displayName = (() => {
-    const fullName = (user as any)?.full_name || (user as any)?.name || '';
-    if (fullName.trim()) {
-      return fullName.trim().split(' ')[0]; // first name only
-    }
-    return (user as any)?.username || 'there';
-  })();
+  // Web AuthContext: full_name || username (humanized if needed)
+  const displayName = getDisplayName(user).split(/\s+/)[0] || 'there';
 
   // Role label and subtitle
   const isAdmin = user?.role === 'admin' || (user as any)?.role_name === 'super_admin';
@@ -385,9 +380,21 @@ const styles = StyleSheet.create({
   hero: { width: '100%', minHeight: 120, paddingBottom: HERO_OVERLAP + 16, position: 'relative' },
   heroWatermark: { position: 'absolute', right: -28, top: -12, width: 220, height: 220, opacity: 0.12 },
   heroTextWrap: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 4, paddingRight: 100 },
-  heroGreeting: { color: '#FFFFFF', fontSize: 24, lineHeight: 30 },
-  heroLead: { fontFamily: FONT_FAMILY.medium, fontWeight: '500' },
-  heroBold: { fontFamily: FONT_FAMILY.bold, fontWeight: '700' },
+  heroGreeting: { color: '#FFFFFF', fontSize: 28, lineHeight: 34 },
+  heroLead: {
+    fontFamily: FONT_FAMILY.medium,
+    fontWeight: '500',
+    fontSize: 28,
+    lineHeight: 34,
+    color: '#FFFFFF',
+  },
+  heroBold: {
+    fontFamily: FONT_FAMILY.bold,
+    fontWeight: '700',
+    fontSize: 28,
+    lineHeight: 34,
+    color: '#FFFFFF',
+  },
   heroSub: { color: 'rgba(255,255,255,0.88)', fontSize: 13, marginTop: 6, lineHeight: 18 },
 
   statsWrap: { marginTop: -HERO_OVERLAP, paddingHorizontal: 16, marginBottom: 4 },

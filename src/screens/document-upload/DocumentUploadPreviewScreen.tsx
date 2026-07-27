@@ -33,6 +33,7 @@ import {
   resolveServerBook,
   runBatchOcrOnImages,
   aggregateOcrText,
+  saveImagePagesAsLibraryBook,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
 import {
@@ -510,6 +511,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       }> = [];
       let cameraOcrText = '';
 
+      let libraryDocId: string | undefined;
+
       if (isCameraSession) {
         setProcessingStatus('Extracting text from images…');
         cameraOcrText = await extractCameraTextForSelectedPages();
@@ -561,6 +564,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         return;
       }
 
+      // After a successful quiz: combine selected gallery/camera pages into one PDF
+      // and persist to Document Library (web Upload Book parity).
+      if (isCameraSession) {
+        const selectedPageObjs = (bookState.pages || [])
+          .filter((p) => selectedPages.has(p.pageNumber))
+          .sort((a, b) => a.pageNumber - b.pageNumber);
+        if (selectedPageObjs.length > 0) {
+          setProcessingStatus('Saving combined PDF to document library…');
+          try {
+            const uploaded = await saveImagePagesAsLibraryBook({
+              imageUris: selectedPageObjs.map((p) => p.fileUri),
+              mimeTypes: selectedPageObjs.map((p) => p.mimeType || 'image/jpeg'),
+              title: bookState.title || defaultCameraLessonTitle(bookState),
+              gradeLevel: resolvedClass,
+              subject: resolvedSubject,
+              lessonTitle: resolvedLesson || bookState.title || defaultCameraLessonTitle(bookState),
+            });
+            libraryDocId = uploaded.docId || undefined;
+          } catch {
+            // Quiz still proceeds if library save fails.
+          }
+        }
+      }
+
       await saveUserAssessment({
         title: bookState.title || bookState.originalName,
         subject: resolvedSubject,
@@ -587,7 +614,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
       navigation.navigate('DocumentUploadQuizScreen', {
         quizData: {
-          id: bookState.docId || bookState.id,
+          id: libraryDocId || bookState.docId || bookState.id,
           title: bookState.title || bookState.originalName,
           class: resolvedClass,
           subject: resolvedSubject,
@@ -606,10 +633,10 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             isCameraSession,
             ocrText: isCameraSession ? cameraOcrText : undefined,
             itext: isCameraSession ? cameraOcrText : undefined,
-            docId: useServerBook ? bookState.docId : undefined,
-            useServerBook: !!useServerBook,
+            docId: useServerBook ? bookState.docId : libraryDocId,
+            useServerBook: !!useServerBook || !!libraryDocId,
             fileUri: !isCameraSession && !useServerBook ? bookState.fileUri : undefined,
-            mimeType: bookState.mimeType,
+            mimeType: libraryDocId ? 'application/pdf' : bookState.mimeType,
           },
         },
         previewBook: bookState,
@@ -917,7 +944,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           </Text>
           <Text style={styles.sectionSub}>
             {isCameraSession
-              ? 'Configure options, then generate — text is extracted automatically from selected pages'
+              ? 'Configure options, then generate — text is extracted from selected pages and a combined PDF is saved to the document library'
               : 'Configure options, then generate from selected pages'}
           </Text>
 

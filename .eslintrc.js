@@ -147,6 +147,34 @@ module.exports = {
       },
     },
 
+    // ERP Schools hooks + mappers: may call @core/api (screens still banned)
+    {
+      files: [
+        'src/erp_schools/hooks/**/*.{ts,tsx}',
+        'src/erp_schools/mappers/**/*.{ts,tsx}',
+        'src/erp_schools/contexts/**/*.{ts,tsx}',
+        'src/erp_schools/services/**/*.{ts,tsx}',
+      ],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: ['**/erp/**', '**/src/erp/**'],
+                message:
+                  '🚫 ERP Schools: Do not import legacy src/erp/. Use @core/api and erp_schools locals only.',
+              },
+              {
+                group: ['axios', 'fetch'],
+                message: '🚫 ERP Schools: No direct HTTP. Use @core/api.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+
     // Domain logic: Can ONLY import types and other domain logic
     {
       files: ['src/core/domain/**/*.ts'],

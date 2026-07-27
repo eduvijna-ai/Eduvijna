@@ -34,17 +34,51 @@ export const classOverviewApi = {
   getKPIs: (params?: any) => api.get('/api/v1/erp/sis/class-overview-kpis', params),
 };
 
+/** Web: studentProfilesApi — `/api/v1/erp/sis/students` */
 export const studentProfilesApi = {
-  list: (params?: any) => api.get('/api/v1/erp/sis/student-profiles', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/sis/student-profiles/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/sis/student-profiles', data),
-  update: (id: number | string, data: any) => api.put(`/api/v1/erp/sis/student-profiles/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/sis/student-profiles/${id}`),
+  list: (params?: any) => api.get('/api/v1/erp/sis/students', params),
+  get: (id: number | string, params?: { school_id?: number | string; academic_year_id?: number | string }) =>
+    api.get(`/api/v1/erp/sis/students/${id}`, params),
+  getById: (id: number | string, schoolId?: number | string, academicYearId?: number | string) =>
+    api.get(`/api/v1/erp/sis/students/${id}`, {
+      school_id: schoolId,
+      academic_year_id: academicYearId,
+    }),
+  create: (data: any, academicYearId?: number | string) =>
+    api.post(
+      academicYearId != null
+        ? `/api/v1/erp/sis/students?academic_year_id=${academicYearId}`
+        : '/api/v1/erp/sis/students',
+      data,
+    ),
+  update: (
+    id: number | string,
+    data: any,
+    schoolId?: number | string,
+    academicYearId?: number | string,
+  ) => {
+    const qs = [
+      schoolId != null ? `school_id=${schoolId}` : '',
+      academicYearId != null ? `academic_year_id=${academicYearId}` : '',
+    ]
+      .filter(Boolean)
+      .join('&');
+    return api.put(`/api/v1/erp/sis/students/${id}${qs ? `?${qs}` : ''}`, data);
+  },
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/sis/students/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/sis/students/${id}`,
+    ),
 };
 
 export const guardiansApi = {
   list: (params?: any) => api.get('/api/v1/erp/sis/guardians', params),
   get: (id: number | string) => api.get(`/api/v1/erp/sis/guardians/${id}`),
+  /** Web: guardiansApi.getByStudent */
+  getByStudent: (studentId: number | string, params?: any) =>
+    api.get(`/api/v1/erp/sis/students/${studentId}/guardians`, params),
   create: (data: any) => api.post('/api/v1/erp/sis/guardians', data),
   update: (id: number | string, data: any) => api.put(`/api/v1/erp/sis/guardians/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/sis/guardians/${id}`),
@@ -53,6 +87,12 @@ export const guardiansApi = {
 export const medicalApi = {
   list: (params?: any) => api.get('/api/v1/erp/sis/medical', params),
   get: (id: number | string) => api.get(`/api/v1/erp/sis/medical/${id}`),
+  /** Web: medicalApi.getByStudent */
+  getByStudent: (studentId: number | string) =>
+    api.get(`/api/v1/erp/sis/students/${studentId}/medical`),
+  /** Web: medicalApi.upsert */
+  upsert: (studentId: number | string, data: any) =>
+    api.post(`/api/v1/erp/sis/students/${studentId}/medical`, data),
   create: (data: any) => api.post('/api/v1/erp/sis/medical', data),
   update: (id: number | string, data: any) => api.put(`/api/v1/erp/sis/medical/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/sis/medical/${id}`),
@@ -61,6 +101,9 @@ export const medicalApi = {
 export const documentsApi = {
   list: (params?: any) => api.get('/api/v1/erp/sis/documents', params),
   get: (id: number | string) => api.get(`/api/v1/erp/sis/documents/${id}`),
+  /** Web: documentsApi.getByStudent */
+  getByStudent: (studentId: number | string, params?: any) =>
+    api.get(`/api/v1/erp/sis/students/${studentId}/documents`, params),
   create: (data: any) => api.post('/api/v1/erp/sis/documents', data),
   update: (id: number | string, data: any) => api.put(`/api/v1/erp/sis/documents/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/sis/documents/${id}`),
@@ -69,6 +112,11 @@ export const documentsApi = {
 export const uploadApi = {
   upload: (formData: FormData) =>
     apiClient.post('/api/v1/erp/sis/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data),
+  /** Web: uploadApi.uploadDocument */
+  uploadDocument: (formData: FormData) =>
+    apiClient.post('/api/v1/erp/sis/upload/document', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then((r) => r.data),
 };
@@ -124,6 +172,7 @@ export const erpAcademicYearsApi = {
 export const attendanceSettingsApi = {
   get: (params?: any) => api.get('/api/v1/erp/attendance/settings', params),
   update: (data: any) => api.put('/api/v1/erp/attendance/settings', data),
+  upsert: (data: any) => api.post('/api/v1/erp/attendance/settings', data),
 };
 
 export const attendanceRecordsApi = {
@@ -133,6 +182,9 @@ export const attendanceRecordsApi = {
   monthlyGrid: (params?: any) => api.get('/api/v1/erp/attendance/monthly-grid', params),
   // Student summary for My Attendance (student role)
   studentSummary: (params?: any) => api.get('/api/v1/erp/attendance/reports/student-summary', params),
+  /** Logged-in student attendance summary (web StudentERPDashboard). */
+  mySummary: (params?: { date_from?: string; date_to?: string; school_id?: number | string }) =>
+    api.get('/api/v1/erp/attendance/my-summary', params),
   bulkUpsert: (data: any) => api.post('/api/v1/erp/attendance/records/upsert', data),
   get: (id: number | string) => api.get(`/api/v1/erp/attendance/records/${id}`),
   create: (data: any) => api.post('/api/v1/erp/attendance/records', data),
@@ -149,8 +201,20 @@ export const staffAttendanceApi = {
   update: (id: number | string, data: any) => api.put(`/api/v1/erp/staff-attendance/records/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/staff-attendance/records/${id}`),
   pendingApprovals: (params?: any) => api.get('/api/v1/erp/staff-attendance/pending-approvals', params),
-  approveRecord: (recordId: number | string, action: 'approved' | 'rejected', params?: any) =>
-    api.post(`/api/v1/erp/staff-attendance/records/${recordId}/approve`, { action, ...params }),
+  approveRecord: (
+    recordId: number | string,
+    action: 'approved' | 'rejected',
+    schoolId?: number | string | Record<string, unknown>,
+  ) => {
+    const sid =
+      typeof schoolId === 'object' && schoolId != null
+        ? (schoolId as { school_id?: number | string }).school_id
+        : schoolId;
+    const qs = sid != null ? `?school_id=${sid}` : '';
+    return api.post(`/api/v1/erp/staff-attendance/records/${recordId}/approve${qs}`, {
+      action,
+    });
+  },
   summary: (params?: any) => api.get('/api/v1/erp/staff-attendance/reports/summary', params),
 };
 
@@ -161,10 +225,22 @@ export const staffAttendanceApi = {
 export const noticesApi = {
   list: (params?: any) => api.get('/api/v1/erp/notices', params),
   getAll: (params?: any) => api.get('/api/v1/erp/notices', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/notices/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/notices/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/notices', data),
-  update: (id: number | string, data: any) => api.put(`/api/v1/erp/notices/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/notices/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/notices/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/notices/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/notices/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/notices/${id}`,
+    ),
 };
 
 // ============================================================
@@ -172,8 +248,17 @@ export const noticesApi = {
 // ============================================================
 
 export const erpDashboardApi = {
-  get: (days: number = 7, schoolId?: number | string) =>
-    api.get('/api/v1/erp/dashboard/summary', { days, school_id: schoolId }),
+  /** Mirrors web erpDashboardApi.get — `/api/v1/erp/dashboard` (not /summary). */
+  get: (
+    days: number = 7,
+    schoolId?: number | string,
+    academicYearId?: number | string,
+  ) =>
+    api.get('/api/v1/erp/dashboard', {
+      days,
+      school_id: schoolId,
+      academic_year_id: academicYearId,
+    }),
 };
 
 // ============================================================
@@ -323,6 +408,10 @@ export const examSectionsApi = {
 
 export const examAllItemsApi = {
   list: (params?: any) => api.get('/api/v1/erp/exams/all-items', params),
+  mySchedule: (params?: { school_id?: number | string }) =>
+    api.get('/api/v1/erp/exams/my-schedule', params),
+  mySubjectPerformance: (params?: { school_id?: number | string }) =>
+    api.get('/api/v1/erp/exams/my-subject-performance', params),
 };
 
 export const examsApi = {
@@ -376,6 +465,18 @@ export const timetableSlotsApi = {
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/timetable/slots/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/timetable/slots/${id}`),
+  /** Web: timetableSlotsApi.myTeacherTimetable(schoolId) */
+  myTeacherTimetable: (schoolId?: number | string) =>
+    api.get(
+      '/api/v1/erp/timetable/teacher-timetable',
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
+  /** Web: timetableSlotsApi.myStudentTimetable(schoolId) */
+  myStudentTimetable: (schoolId?: number | string) =>
+    api.get(
+      '/api/v1/erp/timetable/student-timetable',
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
 };
 
 // ============================================================
@@ -428,6 +529,13 @@ export const feeCollectionsApi = {
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/finance/collections/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/finance/collections/${id}`),
+  /** Web alias — school_id as query */
+  remove: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/finance/collections/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/finance/collections/${id}`,
+    ),
 };
 
 export const feeReceiptsApi = {
@@ -452,10 +560,23 @@ export const feeReportsApi = {
   defaulters: (params?: any) => api.get('/api/v1/erp/finance/defaulters', params),
   trend: (params?: any) => api.get('/api/v1/erp/finance/trend', params),
   register: (params?: any) => api.get('/api/v1/erp/finance/register', params),
+  /** Web: feeReportsApi.outstandingDues */
+  outstandingDues: (params?: {
+    school_id?: number | string;
+    class_ids?: string;
+    academic_year_id?: number | string;
+  }) => api.get('/api/v1/erp/finance/outstanding-dues', params),
 };
 
 export const studentsLookupApi = {
   search: (params?: any) => api.get('/api/v1/erp/finance/students-lookup', params),
+  /** Web: studentsLookupApi.list(schoolId, q, classId) */
+  list: (schoolId?: number | string, q?: string, classId?: number | string) =>
+    api.get('/api/v1/erp/finance/students-lookup', {
+      school_id: schoolId,
+      q,
+      class_id: classId,
+    }),
 };
 
 export const studentFeeAssignmentsApi = {
@@ -466,6 +587,24 @@ export const studentFeeAssignmentsApi = {
     api.put(`/api/v1/erp/finance/student-fee-assignments/${id}`, data),
   softDelete: (id: number | string) =>
     api.del(`/api/v1/erp/finance/student-fee-assignments/${id}`),
+  /** Web alias */
+  remove: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/finance/student-fee-assignments/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/finance/student-fee-assignments/${id}`,
+    ),
+};
+
+/** Student self-service fees (web studentFeesApi). */
+export const studentFeesApi = {
+  myPayments: (params?: { academic_year_id?: number; school_id?: number | string }) =>
+    api.get('/api/v1/erp/finance/my-payments', params),
+  myReceipts: (params?: {
+    school_id?: number | string;
+    page?: number;
+    per_page?: number;
+  }) => api.get('/api/v1/erp/finance/my-receipts', params),
 };
 
 export const feeTermSchedulesApi = {
@@ -475,11 +614,33 @@ export const feeTermSchedulesApi = {
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/finance/term-schedules/${id}`, data),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/finance/term-schedules/${id}`),
+  /** Web: feeTermSchedulesApi.generate */
+  generate: (
+    data: {
+      assignment_id: number;
+      school_id?: number;
+      frequency?: string;
+      start_date?: string;
+      total_fee?: number;
+    },
+    schoolId?: number | string,
+  ) => {
+    const sid = schoolId ?? data.school_id;
+    const qs = sid != null ? `?school_id=${sid}` : '';
+    return api.post(`/api/v1/erp/finance/term-schedules/generate${qs}`, data);
+  },
 };
 
 export const demandBillApi = {
+  /** Web: demandBillApi.get({ month, year, class_id, school_id }) */
+  get: (params: {
+    month: number;
+    year: number;
+    class_id?: number | string;
+    academic_year_id?: number | string;
+    school_id?: number | string;
+  }) => api.get('/api/v1/erp/finance/demand-bill', params),
   list: (params?: any) => api.get('/api/v1/erp/finance/demand-bill', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/finance/demand-bill/${id}`),
   create: (data: any) => api.post('/api/v1/erp/finance/demand-bill', data),
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/finance/demand-bill/${id}`, data),
@@ -488,6 +649,22 @@ export const demandBillApi = {
 export const feeNotificationsApi = {
   list: (params?: any) => api.get('/api/v1/erp/finance/notifications', params),
   create: (data: any) => api.post('/api/v1/erp/finance/notifications', data),
+  /** Web: feeNotificationsApi.send */
+  send: (
+    data: {
+      school_id: number;
+      student_ids: number[];
+      channel: 'sms' | 'whatsapp';
+      month: number;
+      year: number;
+      custom_message?: string;
+    },
+    schoolId?: number | string,
+  ) => {
+    const sid = schoolId ?? data.school_id;
+    const qs = sid != null ? `?school_id=${sid}` : '';
+    return api.post(`/api/v1/erp/finance/notifications/send${qs}`, data);
+  },
 };
 
 // ============================================================
@@ -498,10 +675,24 @@ export const staffProfilesApi = {
   list: (params?: any) => api.get('/api/v1/erp/hr/staff-profiles', params),
   get: (id: number | string) => api.get(`/api/v1/erp/hr/staff-profiles/${id}`),
   getSelf: () => api.get('/api/v1/erp/hr/staff-profiles/me'),
+  /** Web: staffProfilesApi.getMyProfile → `/hr/staff/me` */
+  getMyProfile: (schoolId?: number | string) =>
+    api.get(
+      '/api/v1/erp/hr/staff/me',
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/hr/staff-profiles', data),
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/hr/staff-profiles/${id}`, data),
   updateSelf: (data: any) => api.put('/api/v1/erp/hr/staff-profiles/me', data),
+  /** Web: staffProfilesApi.updateMyProfile → `/hr/staff/me` */
+  updateMyProfile: (data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/hr/staff/me?school_id=${schoolId}`
+        : '/api/v1/erp/hr/staff/me',
+      data,
+    ),
   softDelete: (id: number | string) => api.del(`/api/v1/erp/hr/staff-profiles/${id}`),
 };
 
@@ -516,23 +707,59 @@ export const leaveTypesApi = {
 
 export const leaveApplicationsApi = {
   list: (params?: any) => api.get('/api/v1/erp/hr/leave-applications', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/hr/leave-applications/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(
+      `/api/v1/erp/hr/leave-applications/${id}`,
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/hr/leave-applications', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/hr/leave-applications/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/hr/leave-applications/${id}`),
-  approve: (id: number | string, data: { status: 'approved' | 'rejected'; remarks?: string }) =>
-    api.post(`/api/v1/erp/hr/leave-applications/${id}/approve`, data),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/hr/leave-applications/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/hr/leave-applications/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/hr/leave-applications/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/hr/leave-applications/${id}`,
+    ),
+  approve: (
+    id: number | string,
+    data: { status: 'approved' | 'rejected'; remarks?: string },
+    schoolId?: number | string,
+  ) =>
+    api.post(
+      schoolId != null
+        ? `/api/v1/erp/hr/leave-applications/${id}/approve?school_id=${schoolId}`
+        : `/api/v1/erp/hr/leave-applications/${id}/approve`,
+      data,
+    ),
 };
 
 export const payslipsApi = {
   list: (params?: any) => api.get('/api/v1/erp/hr/payslips', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/hr/payslips/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(
+      `/api/v1/erp/hr/payslips/${id}`,
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/hr/payslips', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/hr/payslips/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/hr/payslips/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/hr/payslips/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/hr/payslips/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/hr/payslips/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/hr/payslips/${id}`,
+    ),
 };
 
 // ============================================================
@@ -541,21 +768,48 @@ export const payslipsApi = {
 
 export const booksApi = {
   list: (params?: any) => api.get('/api/v1/erp/library/books', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/library/books/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(
+      `/api/v1/erp/library/books/${id}`,
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/library/books', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/library/books/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/library/books/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/library/books/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/library/books/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/library/books/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/library/books/${id}`,
+    ),
 };
 
 export const libraryTransactionsApi = {
   list: (params?: any) => api.get('/api/v1/erp/library/transactions', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/library/transactions/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(
+      `/api/v1/erp/library/transactions/${id}`,
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/library/transactions', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/library/transactions/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/library/transactions/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/library/transactions/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/library/transactions/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/library/transactions/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/library/transactions/${id}`,
+    ),
 };
 
 // ============================================================
@@ -657,67 +911,77 @@ export const stockMovementsApi = {
 };
 
 // ============================================================
-// Engagement
+// Engagement — web StudentEngagementTab parity
+// Base: /api/v1/erp/engagement
 // ============================================================
+
+const withSchool = (path: string, schoolId?: number | string) =>
+  schoolId != null ? `${path}?school_id=${schoolId}` : path;
 
 export const studentCouncilsApi = {
   list: (params?: any) => api.get('/api/v1/erp/engagement/councils', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/engagement/councils/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/councils/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/engagement/councils', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/councils/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/engagement/councils/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/councils/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/councils/${id}`, schoolId)),
 };
 
 export const councilMembersApi = {
-  list: (params?: any) => api.get('/api/v1/erp/engagement/members', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/engagement/members/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/engagement/members', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/members/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/engagement/members/${id}`),
+  list: (params?: any) => api.get('/api/v1/erp/engagement/council-members', params),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/council-members/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
+  create: (data: any) => api.post('/api/v1/erp/engagement/council-members', data),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/council-members/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/council-members/${id}`, schoolId)),
 };
 
 export const studentGrievancesApi = {
   list: (params?: any) => api.get('/api/v1/erp/engagement/grievances', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/engagement/grievances/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/grievances/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/engagement/grievances', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/grievances/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/engagement/grievances/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/grievances/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/grievances/${id}`, schoolId)),
 };
 
 export const eventsApi = {
   list: (params?: any) => api.get('/api/v1/erp/engagement/events', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/engagement/events/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/events/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/engagement/events', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/events/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/engagement/events/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/events/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/events/${id}`, schoolId)),
 };
 
 export const eventRegistrationsApi = {
-  list: (params?: any) => api.get('/api/v1/erp/engagement/registrations', params),
-  get: (id: number | string) =>
-    api.get(`/api/v1/erp/engagement/registrations/${id}`),
-  create: (data: any) => api.post('/api/v1/erp/engagement/registrations', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/registrations/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/engagement/registrations/${id}`),
+  list: (params?: any) => api.get('/api/v1/erp/engagement/event-registrations', params),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/event-registrations/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
+  create: (data: any) => api.post('/api/v1/erp/engagement/event-registrations', data),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/event-registrations/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/event-registrations/${id}`, schoolId)),
 };
 
 export const galleryApi = {
   list: (params?: any) => api.get('/api/v1/erp/engagement/gallery', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/engagement/gallery/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/engagement/gallery/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/engagement/gallery', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/engagement/gallery/${id}`, data),
-  softDelete: (id: number | string) =>
-    api.del(`/api/v1/erp/engagement/gallery/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(withSchool(`/api/v1/erp/engagement/gallery/${id}`, schoolId), data),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(withSchool(`/api/v1/erp/engagement/gallery/${id}`, schoolId)),
 };
 
 // ============================================================
@@ -836,11 +1100,25 @@ export const dashboardWidgetsApi = {
 export const holidaysApi = {
   list: (params?: any) => api.get('/api/v1/erp/holidays', params),
   getAll: (params?: any) => api.get('/api/v1/erp/holidays', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/holidays/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(
+      `/api/v1/erp/holidays/${id}`,
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
   create: (data: any) => api.post('/api/v1/erp/holidays', data),
-  update: (id: number | string, data: any) =>
-    api.put(`/api/v1/erp/holidays/${id}`, data),
-  softDelete: (id: number | string) => api.del(`/api/v1/erp/holidays/${id}`),
+  update: (id: number | string, data: any, schoolId?: number | string) =>
+    api.put(
+      schoolId != null
+        ? `/api/v1/erp/holidays/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/holidays/${id}`,
+      data,
+    ),
+  softDelete: (id: number | string, schoolId?: number | string) =>
+    api.del(
+      schoolId != null
+        ? `/api/v1/erp/holidays/${id}?school_id=${schoolId}`
+        : `/api/v1/erp/holidays/${id}`,
+    ),
 };
 
 // ============================================================

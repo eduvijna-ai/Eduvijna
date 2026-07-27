@@ -47,7 +47,7 @@ const SECTIONS: MenuSection[] = [
     links: [
       { label: 'Attendance Dashboard', icon: 'stats-chart-outline', accent: 'teal', route: 'AttendanceDashboard' },
       { label: 'Library Dashboard', icon: 'library-outline', accent: 'orange', route: 'LibraryDashboard' },
-      { label: 'Book Management', icon: 'book-outline', accent: 'blue', route: 'BookManagement' },
+      { label: 'Library', icon: 'book-outline', accent: 'blue', route: 'Library' },
       { label: 'Transport Dashboard', icon: 'bus-outline', accent: 'green', route: 'TransportDashboard' },
       { label: 'Vehicle Management', icon: 'car-outline', accent: 'purple', route: 'VehicleManagement' },
       { label: 'Route Management', icon: 'map-outline', accent: 'pink', route: 'RouteManagement' },
@@ -61,6 +61,8 @@ const SECTIONS: MenuSection[] = [
       { label: 'School Overview', icon: 'business-outline', accent: 'teal', route: 'SchoolOverview' },
       { label: 'Reports Dashboard', icon: 'document-text-outline', accent: 'blue', route: 'ReportsDashboard' },
       { label: 'Announcements', icon: 'megaphone-outline', accent: 'pink', route: 'Announcements' },
+      { label: 'Engagement', icon: 'heart-outline', accent: 'purple', route: 'Engagement' },
+      { label: 'Holidays', icon: 'calendar-outline', accent: 'orange', route: 'HolidayCalendar' },
     ],
   },
 ];

@@ -594,7 +594,9 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           >
             {capturing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="images-outline" size={18} color={colors.primary} />}
             <Text style={styles.sourceTileText}>Gallery</Text>
-            <Text style={styles.sourceTileHint}>Up to {MAX_IMAGE_UPLOADS} images</Text>
+            <Text style={styles.sourceTileHint}>
+              Up to {MAX_IMAGE_UPLOADS} images · saved to library on generate
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -615,7 +617,9 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           >
             {capturing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="camera-outline" size={18} color={colors.primary} />}
             <Text style={styles.sourceTileText}>{capturing ? 'Opening...' : 'Camera'}</Text>
-            <Text style={styles.sourceTileHint}>Up to {MAX_IMAGE_UPLOADS} photos</Text>
+            <Text style={styles.sourceTileHint}>
+              Up to {MAX_IMAGE_UPLOADS} photos · saved to library on generate
+            </Text>
           </TouchableOpacity>
         </View>
 

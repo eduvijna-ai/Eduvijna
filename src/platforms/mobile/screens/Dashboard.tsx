@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useDashboard, useCurrentUser } from '@core/hooks/useDashboard';
 import type { TeacherDashboardStats, StudentDashboardStats } from '@core/types';
+import { getDisplayName } from '@core/types';
 import { useTeacherTheme } from '../../../erp_schools/theme/useTeacherTheme';
 
 export default function DashboardScreen() {
@@ -72,7 +73,9 @@ export default function DashboardScreen() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <Text style={[styles.greeting, { color: 'rgba(255,255,255,0.80)' }]}>Welcome back,</Text>
-        <Text style={[styles.userName, { color: theme.colors.textInverse }]}>{user?.name} 👋</Text>
+        <Text style={[styles.userName, { color: theme.colors.textInverse }]}>
+          {getDisplayName(user)} 👋
+        </Text>
       </View>
 
       {user?.role === 'instructor' ? (
@@ -304,8 +307,8 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 32,
   },
-  greeting: { fontSize: 14, marginBottom: 4 },
-  userName: { fontSize: 24, fontWeight: '700' },
+  greeting: { fontSize: 16, marginBottom: 4, fontWeight: '500' },
+  userName: { fontSize: 28, fontWeight: '800', lineHeight: 34 },
 
   statsGrid: {
     flexDirection: 'row',

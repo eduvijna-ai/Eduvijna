@@ -84,6 +84,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   const [previewImages, setPreviewImages] = useState<Record<number, string>>({});
   const [loadingImages, setLoadingImages] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
+  const [zoom, setZoom] = useState(100);
   const requestedImages = useRef<Set<string>>(new Set());
 
   const docId = book?.docId;
@@ -335,12 +336,60 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Focused page preview */}
+        {/* Focused page preview (+ zoom, same as Document Upload assessment preview) */}
+        <View style={styles.previewToolbar}>
+          <View style={styles.pageNavRow}>
+            <TouchableOpacity
+              style={[styles.navBtn, previewPage <= 1 && styles.navBtnDisabled]}
+              onPress={() => setPreviewPage((p) => Math.max(1, p - 1))}
+              disabled={previewPage <= 1 || busy}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={16}
+                color={previewPage <= 1 ? colors.textSecondary : colors.text}
+              />
+            </TouchableOpacity>
+            <Text style={styles.pageNavText}>
+              Page {previewPage} of {totalPages}
+            </Text>
+            <TouchableOpacity
+              style={[styles.navBtn, previewPage >= totalPages && styles.navBtnDisabled]}
+              onPress={() => setPreviewPage((p) => Math.min(totalPages, p + 1))}
+              disabled={previewPage >= totalPages || busy}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={previewPage >= totalPages ? colors.textSecondary : colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.zoomRow}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setZoom((z) => Math.max(60, z - 20))}
+              disabled={busy}
+            >
+              <Ionicons name="remove" size={16} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.zoomText}>{zoom}%</Text>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setZoom((z) => Math.min(200, z + 20))}
+              disabled={busy}
+            >
+              <Ionicons name="add" size={16} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.previewWrap}>
           {previewImages[previewPage] || thumbImages[previewPage] ? (
             <Image
               source={{ uri: previewImages[previewPage] || thumbImages[previewPage] }}
-              style={styles.previewImage}
+              style={[styles.previewImage, { transform: [{ scale: zoom / 100 }] }]}
               resizeMode="contain"
             />
           ) : (
@@ -530,6 +579,44 @@ const makeStyles = (colors: any) =>
     sectionTitle: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 4 },
     sectionHint: { fontSize: 12, color: colors.textSecondary, marginBottom: 10 },
 
+    previewToolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+      gap: 8,
+    },
+    pageNavRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+    pageNavText: { color: colors.text, fontWeight: '700', fontSize: 13 },
+    navBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    navBtnDisabled: { opacity: 0.45 },
+    zoomRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    zoomText: {
+      color: colors.text,
+      fontWeight: '700',
+      fontSize: 13,
+      minWidth: 40,
+      textAlign: 'center',
+    },
+    iconBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     previewWrap: {
       borderWidth: 1,
       borderColor: colors.border,

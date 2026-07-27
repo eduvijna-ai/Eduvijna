@@ -1,6 +1,7 @@
 import { apiClient, API_BASE_URL } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import * as FileSystem from 'expo-file-system/legacy';
+import { combineImagesToPdf } from './documentImageUtils';
 
 export type DocumentUploadDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -751,6 +752,44 @@ const mapServerBook = (f: any, idPreference: 'file_id' | 'doc_id' = 'file_id'): 
   processingStatus: f?.status || f?.processing_status || 'completed',
   createdAt: f?.created_at || undefined,
 });
+
+/**
+ * Build a multi-page PDF from gallery/camera session pages and upload it to the
+ * document library (same endpoint as web Upload Book / mobile Upload File).
+ */
+export async function saveImagePagesAsLibraryBook(params: {
+  imageUris: string[];
+  mimeTypes?: string[];
+  title: string;
+  gradeLevel?: string;
+  subject?: string;
+  lessonTitle?: string;
+  subLesson?: string;
+}): Promise<ServerBook> {
+  const pdfUri = await combineImagesToPdf({
+    imageUris: params.imageUris,
+    mimeTypes: params.mimeTypes,
+  });
+
+  const safeTitle = (params.title || 'Gallery Document').trim() || 'Gallery Document';
+  const slug =
+    safeTitle
+      .replace(/[^\w\-]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 60) || 'gallery-document';
+
+  return uploadBookWithMetadata({
+    fileUri: pdfUri,
+    fileName: `${slug}.pdf`,
+    mimeType: 'application/pdf',
+    title: safeTitle,
+    gradeLevel: params.gradeLevel,
+    subject: params.subject,
+    lessonTitle: params.lessonTitle || safeTitle,
+    subLesson: params.subLesson,
+  });
+}
 
 /**
  * Upload a book to the server library with full metadata.

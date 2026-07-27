@@ -28,6 +28,23 @@ export interface ClassInfo {
   periodsPerWeek: number;
   /** Tint key for the avatar bubble. */
   accent: 'teal' | 'blue' | 'green' | 'orange' | 'purple' | 'pink' | 'red';
+  /** Web Class Overview assignment fields */
+  className?: string;
+  sectionName?: string;
+  teacherName?: string;
+  classTeacherName?: string;
+  classId?: number;
+  sectionId?: number | null;
+  subjectId?: number | null;
+}
+
+/** Web Class Overview KPI tile values (filter-reactive). */
+export interface ClassOverviewKpis {
+  classes: number;
+  students: number;
+  teachers: number;
+  subjects: number;
+  weeklyPeriods: number;
 }
 
 export interface StudentInfo {
@@ -42,6 +59,20 @@ export interface StudentInfo {
   averageScore?: number;
   guardianName?: string;
   guardianRelation?: string;
+  /** Web students-by-user fields */
+  profileId?: number | null;
+  userId?: number | null;
+  className?: string;
+  sectionName?: string;
+  subjectName?: string;
+  classId?: number | null;
+  sectionId?: number | null;
+  gender?: string;
+  admissionNumber?: string;
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  city?: string;
+  apaarId?: string;
 }
 
 export interface SchedulePeriod {
@@ -129,16 +160,40 @@ export interface StudyMaterialItem {
 
 export type NoticeScope = 'class' | 'group' | 'school';
 
+/** Web NoticesTab categories. */
+export type NoticeCategory =
+  | 'general'
+  | 'academic'
+  | 'fee'
+  | 'event'
+  | 'exam'
+  | 'holiday';
+
+export const NOTICE_CATEGORIES: NoticeCategory[] = [
+  'general',
+  'academic',
+  'fee',
+  'event',
+  'exam',
+  'holiday',
+];
+
 export interface Notice {
   id: string;
+  /** Numeric ERP notice id for update/delete */
+  noticeId: number;
   scope: NoticeScope;
+  category: NoticeCategory | string;
   title: string;
   body: string;
   date: string;
+  publishDate?: string;
+  expiryDate?: string;
   author: string;
   audience: string;
   pinned?: boolean;
   scheduled?: boolean;
+  isActive?: boolean;
 }
 
 export interface Conversation {
@@ -169,10 +224,36 @@ export interface CalendarDayMark {
 
 export interface PayslipSummary {
   id: string;
+  /** Numeric ERP payslip id */
+  payslipId: number;
   monthLabel: string;
+  month?: number;
+  year?: number;
   paidOn: string;
   netSalary: number;
-  status: 'paid' | 'pending' | 'processing';
+  grossSalary?: number;
+  basicSalary?: number;
+  status: 'paid' | 'pending' | 'processing' | 'draft' | 'generated' | 'approved' | 'cancelled';
+  paymentMethod?: string;
+  employeeCode?: string;
+  staffName?: string;
+  department?: string;
+  designation?: string;
+  /** Full line items for detail view */
+  earnings?: {
+    basic: number;
+    hra: number;
+    da: number;
+    ta: number;
+    otherAllowances: number;
+    total: number;
+  };
+  deductions?: {
+    pf: number;
+    tax: number;
+    other: number;
+    total: number;
+  };
 }
 
 export interface SalaryBreakdown {
@@ -185,20 +266,31 @@ export interface SalaryBreakdown {
 export type LeaveType = 'CL' | 'ML' | 'EL' | 'CO';
 
 export interface LeaveBalance {
+  /** Stable unique id for list keys (leave type id from API). */
+  id: string;
   type: LeaveType;
   label: string;
   daysLeft: number;
+  maxDays?: number;
   accent: ClassInfo['accent'];
 }
 
 export interface LeaveRecord {
   id: string;
+  leaveId: number;
+  leaveTypeId?: number;
   type: LeaveType;
   typeLabel: string;
   dateRange: string;
+  fromDate: string;
+  toDate: string;
   days: number;
-  status: 'approved' | 'pending' | 'rejected';
+  reason?: string;
+  halfDay?: 'first' | 'second' | null;
+  applyDate?: string;
+  status: 'approved' | 'pending' | 'rejected' | 'cancelled';
   decisionLabel: string;
+  isActive?: boolean;
 }
 
 export interface NotificationItem {

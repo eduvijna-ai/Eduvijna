@@ -31,4 +31,8 @@ export const dashboardOverview = {
   classes: 6,
   assignments: 18,
   avgAttendance: 92,
+  todayAttendance: 92,
+  avgAttPct: 92,
+  todayClasses: 3,
+  feesOverdue: 0,
 };

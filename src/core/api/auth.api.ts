@@ -70,28 +70,36 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * Get current authenticated user
- * Returns cached user data if available, otherwise fetches from API
- * 
+ * Fetch fresh user profile from API (web loadProfile parity).
+ * GET /api/v1/auth/profile
+ */
+export async function fetchAuthProfile(): Promise<UserProfile> {
+  const user = await get<UserProfile>('/api/v1/auth/profile');
+  await TokenStorage.storeUserData(JSON.stringify(user));
+  return user;
+}
+
+/**
+ * Get current authenticated user.
+ * Always refreshes from /auth/profile when online so full_name matches web.
+ * Falls back to cached user only if the network request fails.
+ *
  * GET /api/v1/auth/profile
  */
 export async function getCurrentUser(): Promise<UserProfile> {
-  // Try to get cached user data first
-  const cachedUserData = await TokenStorage.getUserData();
-  
-  if (cachedUserData) {
-    try {
-      return JSON.parse(cachedUserData) as UserProfile;
-    } catch {
-      // Invalid cached data, fetch from API
+  try {
+    return await fetchAuthProfile();
+  } catch (err) {
+    const cachedUserData = await TokenStorage.getUserData();
+    if (cachedUserData) {
+      try {
+        return JSON.parse(cachedUserData) as UserProfile;
+      } catch {
+        // fall through
+      }
     }
+    throw err;
   }
-  
-  // Fetch from API and cache (Backend uses /api/v1/auth/profile)
-  const user = await get<UserProfile>('/api/v1/auth/profile');
-  await TokenStorage.storeUserData(JSON.stringify(user));
-  
-  return user;
 }
 
 /**

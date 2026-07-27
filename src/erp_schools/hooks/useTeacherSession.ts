@@ -12,6 +12,7 @@
 
 import { useMemo } from 'react';
 import { useUserStore } from '@core/store/user.store';
+import { resolveDisplayName, resolveFirstName } from '../utils/displayName';
 
 export type ERPSchoolsPersona =
   | 'teacher'
@@ -52,20 +53,13 @@ export function useTeacherSession(): TeacherSession {
     const roleId = user?.role_id != null ? Number(user.role_id) : null;
     const persona = toPersona(role, roleId);
 
-    const displayName =
-      user?.name?.trim() ||
-      user?.full_name?.trim() ||
-      user?.username?.trim() ||
-      'Teacher';
-    const firstName = displayName.split(' ')[0] ?? displayName;
-
     return {
       isAuthenticated,
       persona,
       isTeacher: persona === 'teacher',
       schoolId: schoolId ?? null,
-      displayName,
-      firstName,
+      displayName: resolveDisplayName(user, 'Teacher'),
+      firstName: resolveFirstName(user, 'Teacher'),
     };
   }, [user, isAuthenticated, schoolId]);
 }

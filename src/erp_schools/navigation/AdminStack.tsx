@@ -38,7 +38,6 @@ import ApprovalWorkflowScreen from '../screens/admin/admissions/ApprovalWorkflow
 // operations
 import AttendanceDashboardScreen from '../screens/admin/attendance/AttendanceDashboardScreen';
 import LibraryDashboardScreen from '../screens/admin/library/LibraryDashboardScreen';
-import BookManagementScreen from '../screens/admin/library/BookManagementScreen';
 import TransportDashboardScreen from '../screens/admin/transport/TransportDashboardScreen';
 import VehicleManagementScreen from '../screens/admin/transport/VehicleManagementScreen';
 import RouteManagementScreen from '../screens/admin/transport/RouteManagementScreen';
@@ -52,6 +51,13 @@ import ExpenseAnalyticsScreen from '../screens/admin/finance/ExpenseAnalyticsScr
 
 // communication
 import AnnouncementsScreen from '../screens/admin/communication/AnnouncementsScreen';
+import HolidayCalendarScreen from '../screens/shared/HolidayCalendarScreen';
+import CreateHolidayScreen from '../screens/shared/CreateHolidayScreen';
+import LibraryScreen from '../screens/shared/LibraryScreen';
+import CreateBookScreen from '../screens/shared/CreateBookScreen';
+import CreateLibraryTransactionScreen from '../screens/shared/CreateLibraryTransactionScreen';
+import EngagementHubScreen from '../screens/shared/EngagementHubScreen';
+import CreateEngagementScreen from '../screens/shared/CreateEngagementScreen';
 
 // profile / system
 import AdminProfileScreen from '../screens/admin/profile/AdminProfileScreen';
@@ -86,7 +92,13 @@ export function AdminStack() {
 
       <Stack.Screen name={ADMIN_ROUTES.ATTENDANCE_DASHBOARD} component={AttendanceDashboardScreen} />
       <Stack.Screen name={ADMIN_ROUTES.LIBRARY_DASHBOARD} component={LibraryDashboardScreen} />
-      <Stack.Screen name={ADMIN_ROUTES.BOOK_MANAGEMENT} component={BookManagementScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.BOOK_MANAGEMENT} component={LibraryScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.LIBRARY} component={LibraryScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.CREATE_BOOK} component={CreateBookScreen} />
+      <Stack.Screen
+        name={ADMIN_ROUTES.CREATE_LIBRARY_TRANSACTION}
+        component={CreateLibraryTransactionScreen}
+      />
       <Stack.Screen name={ADMIN_ROUTES.TRANSPORT_DASHBOARD} component={TransportDashboardScreen} />
       <Stack.Screen name={ADMIN_ROUTES.VEHICLE_MANAGEMENT} component={VehicleManagementScreen} />
       <Stack.Screen name={ADMIN_ROUTES.ROUTE_MANAGEMENT} component={RouteManagementScreen} />
@@ -98,6 +110,10 @@ export function AdminStack() {
       <Stack.Screen name={ADMIN_ROUTES.EXPENSE_ANALYTICS} component={ExpenseAnalyticsScreen} />
 
       <Stack.Screen name={ADMIN_ROUTES.ANNOUNCEMENTS} component={AnnouncementsScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.HOLIDAY_CALENDAR} component={HolidayCalendarScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.CREATE_HOLIDAY} component={CreateHolidayScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.ENGAGEMENT} component={EngagementHubScreen} />
+      <Stack.Screen name={ADMIN_ROUTES.CREATE_ENGAGEMENT} component={CreateEngagementScreen} />
 
       <Stack.Screen name={ADMIN_ROUTES.PROFILE} component={AdminProfileScreen} />
       <Stack.Screen name={ADMIN_ROUTES.NOTIFICATIONS} component={NotificationsScreen} />

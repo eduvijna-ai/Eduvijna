@@ -785,10 +785,24 @@ export function isAdmin(user: UserProfile): boolean {
 }
 
 /**
- * Get display name from user profile
+ * Get display name from user profile (web AuthContext parity).
+ * Prefer full_name; avoid showing raw username when a real name exists.
  */
-export function getDisplayName(user: UserProfile): string {
-  return user.full_name || user.username;
+export function getDisplayName(user: UserProfile | null | undefined): string {
+  if (!user) return 'User';
+  const full = (user.full_name || '').trim();
+  if (full) return full;
+  const username = (user.username || '').trim();
+  const alt = (user.name || '').trim();
+  if (alt && (!username || alt.toLowerCase() !== username.toLowerCase())) return alt;
+  if (username) {
+    const parts = username.split(/[._\s-]+/).filter(Boolean);
+    const skip = /^(demo|test|user|admin|tmp|temp)$/i;
+    const meaningful = parts.filter((p) => !skip.test(p));
+    const pick = (meaningful.length ? meaningful : parts).pop() || username;
+    return pick.charAt(0).toUpperCase() + pick.slice(1).toLowerCase();
+  }
+  return 'User';
 }
 
 /**
