@@ -3,7 +3,7 @@
  *
  * Isolated from the Teacher tabs and the host/ERP navigators: all route names
  * are Student*-prefixed (see StudentTabParamList) so there are no collisions.
- * Tabs: Dashboard · Academics · Home (main app) · AI Test · More.
+ * Tabs: Dashboard · Subjects · Home (main app) · AI Test · More.
  */
 
 import React from 'react';
@@ -49,13 +49,14 @@ export function StudentTabs() {
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarIcon: ({ focused, color, size }) => {
-          const icon = ICONS[route.name];
+          const icon = ICONS[route.name as keyof typeof ICONS];
+          if (!icon) return null;
           return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
         },
       })}
     >
       <Tab.Screen name={STUDENT_TABS.HOME} component={StudentHomeScreen} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name={STUDENT_TABS.ACADEMICS} component={AcademicsScreen} options={{ title: 'Academics' }} />
+      <Tab.Screen name={STUDENT_TABS.ACADEMICS} component={AcademicsScreen} options={{ title: 'Subjects' }} />
       <Tab.Screen
         name={STUDENT_TABS.DASHBOARD}
         component={MainDashboardTabPlaceholder}

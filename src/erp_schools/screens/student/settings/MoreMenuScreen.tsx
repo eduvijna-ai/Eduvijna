@@ -14,6 +14,8 @@ import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useStudentNavigation } from '../../../hooks/useStudentNavigation';
 import { useMainAppNavigation } from '../../../hooks/useMainAppNavigation';
 import { useStudentData } from '../../../hooks/useStudentData';
+import { useOpenStudentTimetable } from '../../../hooks/useOpenStudentTimetable';
+import { STUDENT_ROUTES } from '../../../navigation/studentRoutes';
 import type { StudentStackParamList } from '../../../types/navigation';
 import type { AccentKey } from '../../../theme/accents';
 
@@ -37,7 +39,7 @@ const SECTIONS: MenuSection[] = [
       { label: 'Progress Report', icon: 'trending-up-outline', accent: 'teal', route: 'ProgressReport' },
       { label: 'Exam Schedule', icon: 'calendar-number-outline', accent: 'blue', route: 'ExamSchedule' },
       { label: 'Exam Results', icon: 'ribbon-outline', accent: 'orange', route: 'ExamResults' },
-      { label: 'Timetable', icon: 'time-outline', accent: 'purple', route: 'Timetable' },
+      { label: 'Timetable', icon: 'time-outline', accent: 'purple', route: 'StudentTimetable' },
     ],
   },
   {
@@ -61,6 +63,7 @@ const SECTIONS: MenuSection[] = [
 export default function MoreMenuScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
+  const openTimetable = useOpenStudentTimetable();
   const { goToMainDashboard } = useMainAppNavigation();
   const { profile } = useStudentData();
   const auth = useAuth();
@@ -92,7 +95,11 @@ export default function MoreMenuScreen() {
                 title={link.label}
                 divider={index < section.links.length - 1}
                 showChevron
-                onPress={() => navigation.navigate(link.route as 'MarksReport')}
+                onPress={() =>
+                  link.route === 'StudentTimetable'
+                    ? openTimetable()
+                    : navigation.navigate(link.route as 'MarksReport')
+                }
               />
             ))}
           </SurfaceCard>

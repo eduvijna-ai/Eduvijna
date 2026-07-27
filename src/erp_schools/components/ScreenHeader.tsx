@@ -71,9 +71,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 52,
-    paddingHorizontal: 12,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
   side: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700' },
+  title: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', paddingHorizontal: 4 },
 });

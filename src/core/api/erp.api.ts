@@ -610,8 +610,22 @@ export const timetableSlotsApi = {
 };
 
 // ============================================================
-// LMS
+// LMS / Class Management (student enrollments)
 // ============================================================
+
+/** Web: lmsEnrollmentsApi.myClassrooms — StudentERPDashboard "My Subjects". */
+export const lmsEnrollmentsApi = {
+  myClassrooms: (schoolId?: number | string) =>
+    api.get(
+      '/api/v1/class-management/my-enrolled-classrooms',
+      schoolId != null ? { school_id: schoolId } : undefined,
+    ),
+  list: (params?: any) => api.get('/api/v1/class-management/lms-enrollments', params),
+};
+
+export const lmsClassroomsApi = {
+  list: (params?: any) => api.get('/api/v1/class-management/lms-classrooms', params),
+};
 
 export const assignmentsApi = {
   list: (params?: any) => api.get('/api/v1/erp/lms/assignments', params),

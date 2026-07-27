@@ -133,7 +133,7 @@ export type StudentStackParamList = {
   StudentTabs: NavigatorScreenParams<StudentTabParamList> | undefined;
 
   // academics
-  SubjectDetails: { subjectId: string };
+  SubjectDetails: { subjectId: string }; // enrollment class_id key
   MarksReport: undefined;
   ProgressReport: undefined;
 
@@ -148,7 +148,7 @@ export type StudentStackParamList = {
   AssignmentPerformance: undefined;
 
   // timetable & exams
-  Timetable: undefined;
+  StudentTimetable: undefined;
   ExamSchedule: undefined;
   ExamResults: undefined;
 

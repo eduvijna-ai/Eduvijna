@@ -45,7 +45,9 @@ export default function AttendanceDetailsScreen() {
   const theme = useTeacherTheme();
   const route = useRoute<RouteProp<StudentStackParamList, 'AttendanceDetails'>>();
   const { profile, attendance } = useStudentData();
-  const [tab, setTab] = useState<string>(route.params?.mode ?? 'daily');
+  const initialMode = route.params?.mode === 'monthly' ? 'monthly' : 'daily';
+  const [tab, setTab] = useState<string>(initialMode);
+  const recent = Array.isArray(attendance?.recent) ? attendance.recent : [];
 
   return (
     <TeacherScreen
@@ -65,25 +67,42 @@ export default function AttendanceDetailsScreen() {
         <View style={styles.section}>
           <SectionHeader title="Daily Log" icon="list-outline" />
           <SurfaceCard padded={false} style={styles.listCard}>
-            {attendance.recent.map((day, index) => (
-              <View
-                key={day.id}
-                style={[
-                  styles.row,
-                  index < attendance.recent.length - 1 && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
-                ]}
-              >
-                <View style={[styles.dateBadge, { backgroundColor: theme.colors.surfaceAlt }]}>
-                  <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day.day}</Text>
-                  <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]}>{day.month}</Text>
+            {recent.length === 0 ? (
+              <Text style={[styles.empty, { color: theme.colors.textSecondary }]}>
+                No attendance records yet.
+              </Text>
+            ) : (
+              recent.map((day, index) => (
+                <View
+                  key={day.id ?? `day-${index}`}
+                  style={[
+                    styles.row,
+                    index < recent.length - 1 && {
+                      borderBottomColor: theme.colors.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <View style={[styles.dateBadge, { backgroundColor: theme.colors.surfaceAlt }]}>
+                    <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day.day}</Text>
+                    <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]}>
+                      {day.month}
+                    </Text>
+                  </View>
+                  <View style={styles.info}>
+                    <Text style={[styles.weekday, { color: theme.colors.textPrimary }]}>
+                      {day.weekday}
+                    </Text>
+                    {day.note ? (
+                      <Text style={[styles.note, { color: theme.colors.textSecondary }]}>
+                        {day.note}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <StatusPill status={PILL[day.status] ?? 'pending'} />
                 </View>
-                <View style={styles.info}>
-                  <Text style={[styles.weekday, { color: theme.colors.textPrimary }]}>{day.weekday}</Text>
-                  {day.note ? <Text style={[styles.note, { color: theme.colors.textSecondary }]}>{day.note}</Text> : null}
-                </View>
-                <StatusPill status={PILL[day.status]} />
-              </View>
-            ))}
+              ))
+            )}
           </SurfaceCard>
         </View>
       ) : (
@@ -136,4 +155,5 @@ const styles = StyleSheet.create({
   monthPct: { fontSize: 12, fontWeight: '600' },
   tipCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
   tipText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  empty: { fontSize: 13, paddingVertical: 16, paddingHorizontal: 4 },
 });

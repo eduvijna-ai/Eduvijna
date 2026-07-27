@@ -71,7 +71,7 @@ interface StatusPillProps {
 }
 
 export function StatusPill({ status, label, showIcon = true }: StatusPillProps) {
-  const meta = STATUS_META[status];
+  const meta = STATUS_META[status] ?? STATUS_META.pending;
   return <Badge label={label ?? meta.label} accent={meta.accent} icon={showIcon ? meta.icon : undefined} />;
 }
 
