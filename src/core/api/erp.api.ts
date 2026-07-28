@@ -623,6 +623,15 @@ export const lmsEnrollmentsApi = {
   list: (params?: any) => api.get('/api/v1/class-management/lms-enrollments', params),
 };
 
+/**
+ * Web: dropdownEntitiesApi.subjectsApi — master subject labels/codes.
+ * Used by StudentAttendancePanel to resolve subject_id → English / 7-english.
+ */
+export const classManagementSubjectsApi = {
+  list: (params?: any) => api.get('/api/v1/class-management/subjects', params),
+  getById: (id: number | string) => api.get(`/api/v1/class-management/subjects/${id}`),
+};
+
 export const lmsClassroomsApi = {
   list: (params?: any) => api.get('/api/v1/class-management/lms-classrooms', params),
 };
@@ -668,7 +677,11 @@ export const feeStructuresApi = {
 
 export const feeCollectionsApi = {
   list: (params?: any) => api.get('/api/v1/erp/finance/collections', params),
-  get: (id: number | string) => api.get(`/api/v1/erp/finance/collections/${id}`),
+  get: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/finance/collections/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
+  /** Web alias */
+  getById: (id: number | string, schoolId?: number | string) =>
+    api.get(`/api/v1/erp/finance/collections/${id}`, schoolId != null ? { school_id: schoolId } : undefined),
   create: (data: any) => api.post('/api/v1/erp/finance/collections', data),
   update: (id: number | string, data: any) =>
     api.put(`/api/v1/erp/finance/collections/${id}`, data),

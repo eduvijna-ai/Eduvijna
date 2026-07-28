@@ -15,6 +15,7 @@ import {
   ProgressBar,
   DonutChart,
   ScreenLoader,
+  AcademicYearPill,
   type PillStatus,
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
@@ -22,6 +23,7 @@ import { useTeacherSession } from '../../../hooks/useTeacherSession';
 import { useStudentNavigation } from '../../../hooks/useStudentNavigation';
 import { useOpenStudentTimetable } from '../../../hooks/useOpenStudentTimetable';
 import { useStudentData } from '../../../hooks/useStudentData';
+import { useAcademicYear } from '../../../contexts/AcademicYearContext';
 import { FONT_FAMILY } from '../../../../theme/fonts';
 import {
   buildMonthCells,
@@ -34,6 +36,10 @@ import { toLocalDateStr } from '../../../utils/apiHelpers';
 
 const HERO_OVERLAP = 56;
 const HERO_TOP_RADIUS = 24;
+
+function shortYearLabel(name: string): string {
+  return name.replace(/^Academic Year\s*/i, '').trim() || name;
+}
 
 const SUBJECT_COLORS = [
   { bg: '#ecfeff', fg: '#0e7490' },
@@ -132,6 +138,41 @@ export default function StudentHomeScreen() {
     status,
     refetch,
   } = useStudentData();
+  const { academicYears, selectedYear, selectedYearId, setSelectedYearId } =
+    useAcademicYear();
+
+  const yearPill = useMemo(() => {
+    if (!selectedYear || academicYears.length === 0) {
+      if (profile.academicYear) {
+        return (
+          <AcademicYearPill
+            value={shortYearLabel(profile.academicYear)}
+            options={[shortYearLabel(profile.academicYear)]}
+            onChange={() => undefined}
+          />
+        );
+      }
+      return null;
+    }
+    return (
+      <AcademicYearPill
+        value={shortYearLabel(selectedYear.name)}
+        options={academicYears.map((y) => shortYearLabel(y.name))}
+        onChange={(label) => {
+          const match = academicYears.find(
+            (y) => shortYearLabel(y.name) === label || y.name === label,
+          );
+          if (match && match.id !== selectedYearId) setSelectedYearId(match.id);
+        }}
+      />
+    );
+  }, [
+    academicYears,
+    profile.academicYear,
+    selectedYear,
+    selectedYearId,
+    setSelectedYearId,
+  ]);
 
   const refetchRef = useRef(refetch);
   refetchRef.current = refetch;
@@ -269,17 +310,7 @@ export default function StudentHomeScreen() {
                 </View>
               ) : null}
             </View>
-            <TouchableOpacity
-              style={[styles.profileBtn, { borderColor: theme.colors.border }]}
-              onPress={() => navigation.navigate('StudentProfile')}
-              accessibilityRole="button"
-              accessibilityLabel="View Profile"
-            >
-              <Ionicons name="person-outline" size={14} color={theme.colors.textSecondary} />
-              <Text style={[styles.profileBtnText, { color: theme.colors.textSecondary }]}>
-                Profile
-              </Text>
-            </TouchableOpacity>
+            {yearPill}
           </View>
         </SurfaceCard>
       </View>
@@ -392,7 +423,11 @@ export default function StudentHomeScreen() {
           }}
           onPress={() => navigation.navigate('FeeDashboard')}
         >
-          <Text style={[styles.cardTitleSm, { color: theme.colors.textPrimary }]}>Pending Fees</Text>
+          <SectionHeader
+            title="Pending Fees"
+            actionLabel="View All"
+            onAction={() => navigation.navigate('FeeDashboard')}
+          />
           <Text
             style={[
               styles.feeAmount,
@@ -426,7 +461,11 @@ export default function StudentHomeScreen() {
       {/* Attendance Overview */}
       <View style={styles.section}>
         <SurfaceCard onPress={() => navigation.navigate('Attendance')}>
-          <SectionHeader title="Attendance Overview" />
+          <SectionHeader
+            title="Attendance Overview"
+            actionLabel="View All"
+            onAction={() => navigation.navigate('Attendance')}
+          />
           {att.isFutureYear ? (
             <Text style={[styles.emptyInline, { color: theme.colors.textSecondary }]}>
               Academic year has not started yet.
@@ -908,16 +947,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   rollChipText: { fontSize: 11, fontWeight: '600' },
-  profileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  profileBtnText: { fontSize: 11, fontWeight: '600' },
 
   kpiGrid: {
     marginTop: 12,

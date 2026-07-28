@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   IconTabs,
   SearchBar,
   SurfaceCard,
@@ -38,7 +38,7 @@ const CATEGORY_BADGE: Record<NoticeCategory, { label: string; accent: 'red' | 'g
 
 export default function NoticesScreen() {
   const theme = useTeacherTheme();
-  const { profile, notices } = useStudentData();
+  const { notices } = useStudentData();
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
 
@@ -52,14 +52,7 @@ export default function NoticesScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
-          title="Notices"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-          admissionNo={profile.admissionNo}
-          trailingIcon="megaphone-outline"
-        />
+        <StudentModuleHeader title="Notices" trailingIcon="megaphone-outline" />
       }
       contentStyle={styles.content}
     >

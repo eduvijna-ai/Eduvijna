@@ -8,7 +8,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SearchBar,
   SurfaceCard,
   SectionHeader,
@@ -51,7 +51,7 @@ function BookCover({ book }: { book: LibraryBook }) {
 
 export default function LibraryScreen() {
   const theme = useTeacherTheme();
-  const { profile, library, academicYears } = useStudentData();
+  const { library, academicYears } = useStudentData();
   const academicYear = useStudentUIStore((s) => s.academicYear);
   const setAcademicYear = useStudentUIStore((s) => s.setAcademicYear);
   const [query, setQuery] = useState('');
@@ -59,13 +59,15 @@ export default function LibraryScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
+        <StudentModuleHeader
           title="Library"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-          admissionNo={profile.admissionNo}
-          rightSlot={<AcademicYearPill value={academicYear} options={academicYears} onChange={setAcademicYear} />}
+          rightSlot={
+            <AcademicYearPill
+              value={academicYear}
+              options={academicYears}
+              onChange={setAcademicYear}
+            />
+          }
         />
       }
       contentStyle={styles.content}

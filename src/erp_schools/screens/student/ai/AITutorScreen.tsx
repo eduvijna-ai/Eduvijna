@@ -5,11 +5,10 @@
 
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   HeroCard,
   SurfaceCard,
   SectionHeader,
@@ -20,7 +19,6 @@ import {
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useStudentNavigation } from '../../../hooks/useStudentNavigation';
-import { STUDENT_TABS } from '../../../navigation/studentRoutes';
 
 const RECENT = [
   { id: 'c1', title: 'Explain Photosynthesis', subtitle: 'Science • 2h ago', icon: 'flask-outline' as const, accent: 'green' as const },
@@ -31,15 +29,11 @@ const RECENT = [
 export default function AITutorScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
-  const route = useRoute();
   const [prompt, setPrompt] = useState('');
 
   const handleBack = () => {
-    if (route.name === STUDENT_TABS.AI_TEST) {
-      navigation.navigate('StudentTabs', { screen: STUDENT_TABS.HOME });
-    } else {
-      navigation.goBack();
-    }
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('StudentTabs', { screen: 'StudentHome' });
   };
 
   const actions: QuickAction[] = [
@@ -50,7 +44,10 @@ export default function AITutorScreen() {
   ];
 
   return (
-    <TeacherScreen header={<ScreenHeader title="AI Tutor" onBack={handleBack} />} contentStyle={styles.content}>
+    <TeacherScreen
+      header={<StudentModuleHeader title="AI Tutor" onBack={handleBack} />}
+      contentStyle={styles.content}
+    >
       <HeroCard>
         <View style={styles.heroHead}>
           <View style={styles.heroIcon}>

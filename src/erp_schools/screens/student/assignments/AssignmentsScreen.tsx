@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   SegmentedControl,
@@ -68,7 +68,7 @@ function AssignmentCard({ item, onPress }: { item: StudentAssignment; onPress: (
 export default function AssignmentsScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
-  const { profile, assignments } = useStudentData();
+  const { assignments } = useStudentData();
   const [tab, setTab] = useState('all');
 
   const stats = [
@@ -92,14 +92,7 @@ export default function AssignmentsScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
-          title="Assignments"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-          admissionNo={profile.admissionNo}
-          trailingIcon="document-text-outline"
-        />
+        <StudentModuleHeader title="Assignments" trailingIcon="document-text-outline" />
       }
       contentStyle={styles.content}
     >

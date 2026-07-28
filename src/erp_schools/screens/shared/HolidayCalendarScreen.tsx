@@ -1,25 +1,29 @@
 /**
- * Holidays — web HolidayCalendarTab / HolidayListPanel parity.
- * Year selector, type filters, month calendar, summary, next holiday, CRUD.
+ * Holidays — web HolidayCalendarTab / HolidayListPanel parity (all personas).
+ * Students: read-only. Staff: Add / Edit / Delete.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Modal,
+  Pressable,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   TeacherScreen,
   ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
+  SectionHeader,
   FilterChips,
-  ListItem,
   EmptyState,
   ScreenLoader,
   InfoBanner,
@@ -27,6 +31,7 @@ import {
   type ChipOption,
 } from '../../components';
 import { useTeacherTheme } from '../../theme/useTeacherTheme';
+import { useSchoolsSession } from '../../hooks/useSchoolsSession';
 import {
   useHolidayCalendarData,
   type HolidayItem,
@@ -54,6 +59,7 @@ const MONTH_NAMES = [
   'November',
   'December',
 ];
+const PAGE_SIZE = 10;
 
 type Nav = NativeStackNavigationProp<{
   HolidayCalendar: undefined;
@@ -68,18 +74,20 @@ function dateKey(y: number, m: number, d: number) {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
-function buildHolidayDateMap(holidays: HolidayItem[]): Map<string, HolidayItem> {
-  const map = new Map<string, HolidayItem>();
+function buildHolidayDateMap(holidays: HolidayItem[]): Map<string, HolidayItem[]> {
+  const map = new Map<string, HolidayItem[]>();
   for (const h of holidays) {
     if (!h.startDate) continue;
     const start = new Date(`${h.startDate}T00:00:00`);
-    const end = new Date(`${(h.endDate || h.startDate)}T00:00:00`);
+    const end = new Date(`${h.endDate || h.startDate}T00:00:00`);
     if (Number.isNaN(start.getTime())) continue;
     const cursor = new Date(start);
     const last = Number.isNaN(end.getTime()) ? start : end;
     while (cursor <= last) {
       const key = dateKey(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
-      if (!map.has(key)) map.set(key, h);
+      const list = map.get(key) || [];
+      list.push(h);
+      map.set(key, list);
       cursor.setDate(cursor.getDate() + 1);
     }
   }
@@ -98,10 +106,26 @@ function TypeBadge({ type }: { type: string }) {
 export default function HolidayCalendarScreen() {
   const theme = useTeacherTheme();
   const navigation = useNavigation<Nav>();
+  const { isStudent } = useSchoolsSession();
   const m = useHolidayCalendarData();
   const today = new Date();
-  const [calMonth, setCalMonth] = useState(today.getMonth()); // 0-based
+  const [calMonth, setCalMonth] = useState(today.getMonth());
   const [calYear, setCalYear] = useState(today.getFullYear());
+  const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState<HolidayItem | null>(null);
+
+  const refetchRef = useRef(m.refetch);
+  refetchRef.current = m.refetch;
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchRef.current();
+    }, []),
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [m.filter, m.year]);
 
   const filterChips: ChipOption[] = HOLIDAY_FILTERS.map((f) => ({
     key: f.key,
@@ -119,6 +143,16 @@ export default function HolidayCalendarScreen() {
     while (out.length % 7 !== 0) out.push(null);
     return out;
   }, [calMonth, calYear]);
+
+  const totalPages = Math.max(1, Math.ceil(m.filtered.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, totalPages);
+  const pageSlice = useMemo(() => {
+    const start = (pageSafe - 1) * PAGE_SIZE;
+    return m.filtered.slice(start, start + PAGE_SIZE);
+  }, [m.filtered, pageSafe]);
+
+  const showingFrom = m.filtered.length === 0 ? 0 : (pageSafe - 1) * PAGE_SIZE + 1;
+  const showingTo = Math.min(pageSafe * PAGE_SIZE, m.filtered.length);
 
   const goPrevMonth = () => {
     if (calMonth === 0) {
@@ -152,7 +186,15 @@ export default function HolidayCalendarScreen() {
 
   if (m.loading && m.holidays.length === 0) {
     return (
-      <TeacherScreen header={<ScreenHeader title="Holidays" />}>
+      <TeacherScreen
+        header={
+          isStudent ? (
+            <StudentModuleHeader title="Holidays" />
+          ) : (
+            <ScreenHeader title="Holidays" />
+          )
+        }
+      >
         <ScreenLoader message="Loading holidays…" />
       </TeacherScreen>
     );
@@ -164,15 +206,23 @@ export default function HolidayCalendarScreen() {
   return (
     <TeacherScreen
       header={
-        <ScreenHeader
-          title="Holidays"
-          trailingIcon={m.canManage ? 'add' : undefined}
-          onTrailingPress={
-            m.canManage
-              ? () => navigation.navigate('CreateHoliday', {})
-              : undefined
-          }
-        />
+        isStudent ? (
+          <StudentModuleHeader
+            title="Holidays"
+            trailingIcon="refresh-outline"
+            onTrailingPress={() => void m.refetch()}
+          />
+        ) : (
+          <ScreenHeader
+            title="Holidays"
+            trailingIcon={m.canManage ? 'add' : 'refresh-outline'}
+            onTrailingPress={
+              m.canManage
+                ? () => navigation.navigate('CreateHoliday', {})
+                : () => void m.refetch()
+            }
+          />
+        )
       }
       contentStyle={styles.content}
       refreshing={m.status === 'loading'}
@@ -188,11 +238,25 @@ export default function HolidayCalendarScreen() {
         ) : undefined
       }
     >
+      <View style={styles.heroBlock}>
+        <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>Academic Calendar</Text>
+        <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
+          {m.canManage
+            ? 'Manage school holidays, festivals, and academic breaks for the year.'
+            : 'View school holidays, festivals, and academic breaks for the year.'}
+        </Text>
+      </View>
+
       {/* Year selector */}
       <View style={styles.yearRow}>
-        <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
-          Holiday List ({m.year})
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+            Holiday List ({m.year})
+          </Text>
+          <Text style={[styles.sectionSub, { color: theme.colors.textSecondary }]}>
+            Stay updated with all the holidays and breaks.
+          </Text>
+        </View>
         <View style={styles.yearStepper}>
           <TouchableOpacity
             onPress={() => m.setYear(m.year - 1)}
@@ -221,9 +285,7 @@ export default function HolidayCalendarScreen() {
           { key: 'to', label: 'Total', value: m.summary.total, bg: '#dbeafe', fg: '#1d4ed8' },
         ].map((card) => (
           <View key={card.key} style={[styles.summaryCard, { backgroundColor: card.bg }]}>
-            <Text style={[styles.summaryValue, { color: card.fg }]}>
-              {pad2(card.value)}
-            </Text>
+            <Text style={[styles.summaryValue, { color: card.fg }]}>{pad2(card.value)}</Text>
             <Text style={[styles.summaryLabel, { color: card.fg }]}>{card.label}</Text>
           </View>
         ))}
@@ -231,7 +293,7 @@ export default function HolidayCalendarScreen() {
 
       {/* Next holiday */}
       {next ? (
-        <SurfaceCard style={styles.nextCard}>
+        <SurfaceCard style={styles.nextCard} onPress={() => setDetail(next)}>
           <Text style={[styles.nextEyebrow, { color: theme.colors.primary }]}>NEXT HOLIDAY</Text>
           <Text style={[styles.nextName, { color: theme.colors.textPrimary }]}>{next.name}</Text>
           <Text style={[styles.nextDate, { color: theme.colors.textSecondary }]}>
@@ -269,19 +331,23 @@ export default function HolidayCalendarScreen() {
           {cells.map((day, index) => {
             if (day === null) return <View key={`b-${index}`} style={styles.cell} />;
             const iso = dateKey(calYear, calMonth + 1, day);
-            const hol = holidayDates.get(iso);
+            const hols = holidayDates.get(iso) || [];
+            const hol = hols[0];
             const meta = hol ? holidayTypeMeta(hol.holidayType) : null;
             const isToday = iso === m.todayStr;
             return (
-              <View key={iso} style={styles.cell}>
+              <TouchableOpacity
+                key={iso}
+                style={styles.cell}
+                disabled={!hol}
+                onPress={() => hol && setDetail(hol)}
+                activeOpacity={hol ? 0.75 : 1}
+              >
                 <View
                   style={[
                     styles.dayWrap,
                     meta && { backgroundColor: meta.bg },
-                    isToday && {
-                      borderWidth: 2,
-                      borderColor: '#818cf8',
-                    },
+                    isToday && { borderWidth: 2, borderColor: '#818cf8' },
                     !meta && isToday && { backgroundColor: '#eef2ff' },
                   ]}
                 >
@@ -300,7 +366,7 @@ export default function HolidayCalendarScreen() {
                     {day}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -328,13 +394,11 @@ export default function HolidayCalendarScreen() {
         onChange={(k) => m.setFilter(k as HolidayFilterKey)}
       />
 
-      <Text style={[styles.count, { color: theme.colors.textSecondary }]}>
-        {m.filtered.length} holiday{m.filtered.length === 1 ? '' : 's'}
-      </Text>
-
       {m.error ? (
         <Text style={[styles.error, { color: theme.colors.danger }]}>{m.error}</Text>
       ) : null}
+
+      <SectionHeader title="Holidays" />
 
       {m.filtered.length === 0 ? (
         <EmptyState
@@ -352,77 +416,193 @@ export default function HolidayCalendarScreen() {
         />
       ) : (
         <SurfaceCard padded={false} style={styles.listCard}>
-          {m.filtered.map((item, index) => (
-            <ListItem
+          {pageSlice.map((item, index) => (
+            <TouchableOpacity
               key={item.id}
-              icon="calendar-outline"
-              iconAccent={
-                item.holidayType === 'academic'
-                  ? 'orange'
-                  : item.holidayType === 'religious' || item.holidayType === 'cultural'
-                    ? 'purple'
-                    : item.holidayType === 'national'
-                      ? 'green'
-                      : 'blue'
-              }
-              title={item.name}
-              subtitle={
-                item.description
-                  ? `${weekdayName(item.startDate)} · ${item.description}`
-                  : weekdayName(item.startDate)
-              }
-              divider={index < m.filtered.length - 1}
-              onPress={
-                m.canManage
-                  ? () => navigation.navigate('CreateHoliday', { holidayId: item.holidayId })
-                  : undefined
-              }
-              trailing={
-                <View style={styles.trailing}>
-                  <Text style={[styles.dateText, { color: theme.colors.textSecondary }]}>
-                    {item.rangeLabel}
+              style={[
+                styles.row,
+                index < pageSlice.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+              onPress={() => setDetail(item)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.rowDate}>
+                <Text style={[styles.rowDateText, { color: theme.colors.primary }]}>
+                  {item.rangeLabel}
+                </Text>
+                <Text style={[styles.rowDay, { color: theme.colors.textSecondary }]}>
+                  {weekdayName(item.startDate)}
+                </Text>
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={[styles.rowName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <TypeBadge type={item.holidayType} />
+                {item.description ? (
+                  <Text
+                    style={[styles.rowDesc, { color: theme.colors.textSecondary }]}
+                    numberOfLines={2}
+                  >
+                    {item.description}
                   </Text>
-                  <TypeBadge type={item.holidayType} />
-                  {m.canManage ? (
-                    <View style={styles.actions}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          navigation.navigate('CreateHoliday', { holidayId: item.holidayId })
-                        }
-                        hitSlop={8}
-                      >
-                        <Text style={{ color: theme.colors.info, fontSize: 12, fontWeight: '700' }}>
-                          Edit
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => onDelete(item)} hitSlop={8}>
-                        <Text style={{ color: theme.colors.danger, fontSize: 12, fontWeight: '700' }}>
-                          Delete
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
+                ) : null}
+              </View>
+              {m.canManage ? (
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('CreateHoliday', { holidayId: item.holidayId })
+                    }
+                    hitSlop={8}
+                  >
+                    <Text style={{ color: theme.colors.info, fontSize: 12, fontWeight: '700' }}>
+                      Edit
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => onDelete(item)} hitSlop={8}>
+                    <Text style={{ color: theme.colors.danger, fontSize: 12, fontWeight: '700' }}>
+                      Delete
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              }
-            />
+              ) : (
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+              )}
+            </TouchableOpacity>
           ))}
         </SurfaceCard>
       )}
 
+      {m.filtered.length > 0 ? (
+        <View style={styles.pager}>
+          <Text style={[styles.pagerMeta, { color: theme.colors.textSecondary }]}>
+            Showing {showingFrom} to {showingTo} of {m.filtered.length} holidays
+          </Text>
+          <View style={styles.pagerBtns}>
+            <TouchableOpacity
+              style={[styles.pageBtn, { borderColor: theme.colors.border, opacity: pageSafe <= 1 ? 0.4 : 1 }]}
+              disabled={pageSafe <= 1}
+              onPress={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <Text style={[styles.pageBtnText, { color: theme.colors.primary }]}>Previous</Text>
+            </TouchableOpacity>
+            <Text style={[styles.pageNum, { color: theme.colors.textPrimary }]}>
+              {pageSafe}/{totalPages}
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.pageBtn,
+                { borderColor: theme.colors.border, opacity: pageSafe >= totalPages ? 0.4 : 1 },
+              ]}
+              disabled={pageSafe >= totalPages}
+              onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <Text style={[styles.pageBtnText, { color: theme.colors.primary }]}>Next</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <InfoBanner text="Holiday dates are subject to change. Please check notices for updates." />
+
+      {/* Detail sheet */}
+      <Modal
+        visible={!!detail}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetail(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setDetail(null)}>
+          <Pressable
+            style={[styles.sheet, { backgroundColor: theme.colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.sheetHandle} />
+            {detail ? (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>
+                  {detail.name}
+                </Text>
+                <View style={{ marginVertical: 8 }}>
+                  <TypeBadge type={detail.holidayType} />
+                </View>
+                {(
+                  [
+                    ['Date', detail.rangeLabel],
+                    ['Day', weekdayName(detail.startDate)],
+                    ['Description', detail.description || '—'],
+                  ] as const
+                ).map(([label, value]) => (
+                  <View key={label} style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: theme.colors.textSecondary }]}>
+                      {label}
+                    </Text>
+                    <Text style={[styles.detailValue, { color: theme.colors.textPrimary }]}>
+                      {value}
+                    </Text>
+                  </View>
+                ))}
+                {m.canManage ? (
+                  <View style={styles.sheetActions}>
+                    <TouchableOpacity
+                      style={[styles.sheetBtn, { backgroundColor: theme.colors.tintBlue }]}
+                      onPress={() => {
+                        setDetail(null);
+                        navigation.navigate('CreateHoliday', { holidayId: detail.holidayId });
+                      }}
+                    >
+                      <Text style={[styles.sheetBtnText, { color: theme.colors.info }]}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.sheetBtn, { backgroundColor: theme.colors.tintRed }]}
+                      onPress={() => {
+                        setDetail(null);
+                        onDelete(detail);
+                      }}
+                    >
+                      <Text style={[styles.sheetBtnText, { color: theme.colors.danger }]}>
+                        Delete
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[styles.closeBtn, { backgroundColor: theme.colors.primary }]}
+                  onPress={() => setDetail(null)}
+                >
+                  <Text style={styles.closeBtnText}>Close</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </TeacherScreen>
   );
 }
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 12, paddingBottom: 24 },
+  heroBlock: { gap: 2 },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  heroSub: { fontSize: 13, lineHeight: 18 },
   yearRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
   },
-  sectionTitle: { fontSize: 17, fontWeight: '700', flex: 1 },
+  sectionTitle: { fontSize: 17, fontWeight: '700' },
+  sectionSub: { fontSize: 12, marginTop: 2 },
   yearStepper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   yearBtn: {
     width: 32,
@@ -468,7 +648,13 @@ const styles = StyleSheet.create({
   weekRow: { flexDirection: 'row', marginBottom: 4 },
   weekLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: '14.28%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', padding: 2 },
+  cell: {
+    width: '14.28%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 2,
+  },
   dayWrap: {
     width: '100%',
     height: '100%',
@@ -488,12 +674,85 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontSize: 11, fontWeight: '600' },
-  count: { fontSize: 12, fontWeight: '600' },
   error: { fontSize: 13 },
-  listCard: { paddingHorizontal: 14 },
-  trailing: { alignItems: 'flex-end', gap: 4, maxWidth: 140 },
-  dateText: { fontSize: 11, fontWeight: '600', textAlign: 'right' },
-  badge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  listCard: { paddingHorizontal: 0 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  rowDate: { width: 88 },
+  rowDateText: { fontSize: 12, fontWeight: '800' },
+  rowDay: { fontSize: 11, marginTop: 2 },
+  rowBody: { flex: 1, gap: 4, minWidth: 0 },
+  rowName: { fontSize: 14, fontWeight: '700' },
+  rowDesc: { fontSize: 11, lineHeight: 15 },
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
   badgeText: { fontSize: 10, fontWeight: '700' },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  actions: { gap: 8, alignItems: 'flex-end' },
+  pager: { gap: 8 },
+  pagerMeta: { fontSize: 12, fontWeight: '600' },
+  pagerBtns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  pageBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  pageBtnText: { fontSize: 13, fontWeight: '700' },
+  pageNum: { fontSize: 13, fontWeight: '800', minWidth: 40, textAlign: 'center' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    maxHeight: '70%',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CBD5E1',
+    marginBottom: 14,
+  },
+  sheetTitle: { fontSize: 20, fontWeight: '800' },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
+  },
+  detailLabel: { fontSize: 13, fontWeight: '600' },
+  detailValue: { fontSize: 13, fontWeight: '700', flex: 1, textAlign: 'right' },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  sheetBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  sheetBtnText: { fontSize: 14, fontWeight: '700' },
+  closeBtn: {
+    marginTop: 14,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  closeBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

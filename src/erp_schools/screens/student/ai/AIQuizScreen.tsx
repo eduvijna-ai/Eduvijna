@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   ProgressBar,
   PrimaryButton,
@@ -63,7 +63,7 @@ export default function AIQuizScreen() {
   if (finished) {
     const pct = Math.round((score / QUESTIONS.length) * 100);
     return (
-      <TeacherScreen header={<ScreenHeader title="AI Quiz" />} contentStyle={styles.content}>
+      <TeacherScreen header={<StudentModuleHeader title="AI Quiz" />} contentStyle={styles.content}>
         <SurfaceCard style={styles.resultCard}>
           <DonutChart
             size={150}
@@ -89,7 +89,7 @@ export default function AIQuizScreen() {
 
   return (
     <TeacherScreen
-      header={<ScreenHeader title="AI Quiz" />}
+      header={<StudentModuleHeader title="AI Quiz" />}
       contentStyle={styles.content}
       footer={<PrimaryButton label={index === QUESTIONS.length - 1 ? 'Finish' : 'Next'} icon="arrow-forward" variant="gradient" disabled={selected == null} onPress={handleNext} />}
     >

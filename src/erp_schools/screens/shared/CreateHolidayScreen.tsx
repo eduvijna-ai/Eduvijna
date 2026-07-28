@@ -41,7 +41,7 @@ export default function CreateHolidayScreen() {
   const theme = useTeacherTheme();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<Params, 'CreateHoliday'>>();
-  const { createHoliday, updateHoliday, getHoliday, saving, year } =
+  const { createHoliday, updateHoliday, getHoliday, saving, year, canManage } =
     useHolidayCalendarData();
 
   const editingId = route.params?.holidayId;
@@ -56,7 +56,14 @@ export default function CreateHolidayScreen() {
   const [color, setColor] = useState('');
 
   useEffect(() => {
-    if (!isEdit || !editingId) return;
+    if (!canManage) {
+      Alert.alert('Holidays', 'Students can view holidays but cannot add or edit them.');
+      navigation.goBack();
+    }
+  }, [canManage, navigation]);
+
+  useEffect(() => {
+    if (!canManage || !isEdit || !editingId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -75,7 +82,7 @@ export default function CreateHolidayScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isEdit, editingId, getHoliday]);
+  }, [canManage, isEdit, editingId, getHoliday]);
 
   const previewColor =
     (color && isValidHexColor(color.startsWith('#') ? color : `#${color}`)
@@ -124,6 +131,14 @@ export default function CreateHolidayScreen() {
     }
     navigation.goBack();
   };
+
+  if (!canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title="Holiday" showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
 
   if (loading) {
     return (

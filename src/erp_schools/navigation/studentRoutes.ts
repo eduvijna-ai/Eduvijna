@@ -8,7 +8,8 @@ export const STUDENT_TABS = {
   HOME: 'StudentHome',
   ACADEMICS: 'StudentAcademics',
   DASHBOARD: 'StudentDashboard',
-  AI_TEST: 'StudentAITest',
+  /** Tab host for timetable — distinct from stack route `StudentTimetable`. */
+  TIMETABLE: 'StudentTimetableTab',
   MORE: 'StudentMore',
 } as const;
 

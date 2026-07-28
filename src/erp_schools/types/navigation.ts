@@ -124,7 +124,7 @@ export type StudentTabParamList = {
   StudentHome: undefined;
   StudentAcademics: undefined;
   StudentDashboard: undefined;
-  StudentAITest: undefined;
+  StudentTimetableTab: undefined;
   StudentMore: undefined;
 };
 

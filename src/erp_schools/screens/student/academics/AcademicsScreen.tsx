@@ -8,7 +8,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-nativ
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   ProgressBar,
@@ -89,22 +89,19 @@ export default function AcademicsScreen() {
   return (
     <TeacherScreen
       header={
-        <ScreenHeader
-          title="Subject Overview"
+        <StudentModuleHeader
+          title="Subjects"
           showBack
           onBack={onBack}
+          trailingIcon="refresh-outline"
+          onTrailingPress={onRefresh}
+          trailingAccessibilityLabel="Refresh subjects"
         />
       }
       contentStyle={styles.content}
       refreshing={data.status === 'loading'}
       onRefresh={onRefresh}
     >
-      <Text style={[styles.yearHint, { color: theme.colors.textSecondary }]}>
-        {data.overall.yearLabel
-          ? `Overall academic class summary · ${data.overall.yearLabel}`
-          : 'Overall academic class summary and enrolled subject analytics'}
-      </Text>
-
       {/* Overall class banner */}
       <SurfaceCard style={[styles.banner, { backgroundColor: theme.colors.tintTeal }]}>
         <Text style={[styles.bannerTitle, { color: theme.colors.textPrimary }]}>
@@ -514,13 +511,12 @@ export default function AcademicsScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 4,
     gap: 12,
   },
-  yearHint: { fontSize: 12, lineHeight: 18, marginBottom: 4 },
   banner: { marginBottom: 0 },
-  bannerTitle: { fontSize: 18, fontWeight: '800' },
-  bannerStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 },
+  bannerTitle: { fontSize: 17, fontWeight: '800' },
+  bannerStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 },
   bannerStat: { fontSize: 12 },
 
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 0 },

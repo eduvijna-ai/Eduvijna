@@ -9,7 +9,7 @@ import { useRoute, type RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   ProgressBar,
@@ -20,6 +20,7 @@ import {
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useStudentNavigation } from '../../../hooks/useStudentNavigation';
+import { useOpenStudentTimetable } from '../../../hooks/useOpenStudentTimetable';
 import { useStudentSubjectsData } from '../../../hooks/useStudentSubjectsData';
 import type { StudentStackParamList } from '../../../types/navigation';
 import { pickNumber, pickString } from '../../../utils/apiHelpers';
@@ -46,6 +47,7 @@ function fmtPct(n: number): string {
 export default function SubjectDetailsScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
+  const openTimetable = useOpenStudentTimetable();
   const route = useRoute<RouteProp<StudentStackParamList, 'SubjectDetails'>>();
   const subjectId = route.params?.subjectId;
   const data = useStudentSubjectsData();
@@ -237,7 +239,13 @@ export default function SubjectDetailsScreen() {
   if (!row) {
     return (
       <TeacherScreen
-        header={<ScreenHeader title="Subject" showBack onBack={() => navigation.goBack()} />}
+        header={
+          <StudentModuleHeader
+            title="Subject"
+            showBack
+            onBack={() => navigation.goBack()}
+          />
+        }
         contentStyle={styles.content}
       >
         <Text style={{ color: theme.colors.textSecondary }}>
@@ -252,8 +260,8 @@ export default function SubjectDetailsScreen() {
   return (
     <TeacherScreen
       header={
-        <ScreenHeader
-          title={row.classroomName}
+        <StudentModuleHeader
+          title={row.classroomName || row.subject || 'Subject'}
           showBack
           onBack={() => navigation.goBack()}
         />
@@ -738,14 +746,16 @@ export default function SubjectDetailsScreen() {
         <View style={styles.actions}>
           {[
             { label: 'Attendance', icon: 'calendar-outline' as const, route: 'Attendance' as const },
-            { label: 'Exams', icon: 'ribbon-outline' as const, route: 'ExamResults' as const },
+            { label: 'Exams', icon: 'calendar-number-outline' as const, route: 'ExamSchedule' as const },
             { label: 'Timetable', icon: 'time-outline' as const, route: 'StudentTimetable' as const },
             { label: 'Notices', icon: 'megaphone-outline' as const, route: 'Notices' as const },
           ].map((a) => (
             <TouchableOpacity
               key={a.label}
               style={[styles.actionBtn, { backgroundColor: theme.colors.surfaceAlt }]}
-              onPress={() => navigation.navigate(a.route)}
+              onPress={() =>
+                a.route === 'StudentTimetable' ? openTimetable() : navigation.navigate(a.route)
+              }
               activeOpacity={0.85}
             >
               <Ionicons name={a.icon} size={18} color={theme.colors.primary} />

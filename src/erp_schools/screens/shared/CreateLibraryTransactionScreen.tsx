@@ -46,6 +46,21 @@ export default function CreateLibraryTransactionScreen() {
   const [remarks, setRemarks] = useState('');
 
   useEffect(() => {
+    if (!lib.canManage) {
+      Alert.alert('Library', 'Students can view issues but cannot create or edit them.');
+      navigation.goBack();
+    }
+  }, [lib.canManage, navigation]);
+
+  if (!lib.canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title="Transaction" showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
+
+  useEffect(() => {
     if (!isEdit || !editingId) return;
     let cancelled = false;
     (async () => {

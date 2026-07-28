@@ -18,6 +18,7 @@ export { FilterChips, type ChipOption } from './FilterChips';
 export { SegmentedControl, type Segment } from './SegmentedControl';
 export { IconTabs, type IconTab } from './IconTabs';
 export { StudentIdentityHeader } from './StudentIdentityHeader';
+export { StudentModuleHeader } from './StudentModuleHeader';
 export { AcademicYearPill } from './AcademicYearPill';
 export { PrimaryButton } from './PrimaryButton';
 export { ProgressBar, type ProgressSegment } from './ProgressBar';

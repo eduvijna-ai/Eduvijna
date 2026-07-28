@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SurfaceCard,
   FormField,
   TextField,
@@ -26,7 +26,7 @@ export default function AssignmentSubmissionScreen() {
   const theme = useTeacherTheme();
   const navigation = useStudentNavigation();
   const route = useRoute<RouteProp<StudentStackParamList, 'AssignmentSubmission'>>();
-  const { profile, getAssignmentById, refetch } = useStudentData();
+  const { getAssignmentById, refetch } = useStudentData();
   const { submitAssignment, submitting } = useStudentAssignmentActions();
   const assignment = getAssignmentById(route.params?.assignmentId);
   const [answer, setAnswer] = useState('');
@@ -53,14 +53,7 @@ export default function AssignmentSubmissionScreen() {
 
   return (
     <TeacherScreen
-      header={
-        <StudentIdentityHeader
-          title="Submit Assignment"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-        />
-      }
+      header={<StudentModuleHeader title="Submit Assignment" />}
       contentStyle={styles.content}
       footer={
         <PrimaryButton

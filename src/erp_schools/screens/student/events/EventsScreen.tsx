@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   IconTabs,
   SearchBar,
   SurfaceCard,
@@ -69,7 +69,7 @@ function EventCard({ event }: { event: StudentEvent }) {
 }
 
 export default function EventsScreen() {
-  const { profile, events, academicYears } = useStudentData();
+  const { events, academicYears } = useStudentData();
   const academicYear = useStudentUIStore((s) => s.academicYear);
   const setAcademicYear = useStudentUIStore((s) => s.setAcademicYear);
   const [tab, setTab] = useState('all');
@@ -84,14 +84,16 @@ export default function EventsScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
+        <StudentModuleHeader
           title="Events"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-          admissionNo={profile.admissionNo}
           trailingIcon="calendar-outline"
-          rightSlot={<AcademicYearPill value={academicYear} options={academicYears} onChange={setAcademicYear} />}
+          rightSlot={
+            <AcademicYearPill
+              value={academicYear}
+              options={academicYears}
+              onChange={setAcademicYear}
+            />
+          }
         />
       }
       contentStyle={styles.content}

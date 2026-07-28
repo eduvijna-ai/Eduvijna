@@ -13,9 +13,10 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRoute } from '@react-navigation/native';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   FilterChips,
@@ -25,6 +26,7 @@ import {
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { accentColors } from '../../../theme/accents';
 import { useAcademicYear } from '../../../contexts/AcademicYearContext';
+import { STUDENT_TABS } from '../../../navigation/studentRoutes';
 import {
   useStudentTimetable,
   fmtSlotTime,
@@ -45,6 +47,8 @@ function teacherRoomLabel(slot: StudentTimetableSlot): string {
 
 export default function TimetableScreen() {
   const theme = useTeacherTheme();
+  const route = useRoute();
+  const isTab = route.name === STUDENT_TABS.TIMETABLE;
   const { selectedYear } = useAcademicYear();
   const tt = useStudentTimetable();
   const [downloading, setDownloading] = useState(false);
@@ -85,11 +89,12 @@ export default function TimetableScreen() {
   return (
     <TeacherScreen
       header={
-        <ScreenHeader
-          title="Student Timetable"
-          showBack
+        <StudentModuleHeader
+          title="Timetable"
+          showBack={!isTab}
           trailingIcon="refresh-outline"
           onTrailingPress={onRefresh}
+          trailingAccessibilityLabel="Refresh timetable"
         />
       }
       contentStyle={styles.content}

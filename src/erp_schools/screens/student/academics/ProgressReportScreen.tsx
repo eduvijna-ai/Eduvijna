@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   BarChart,
@@ -29,7 +29,10 @@ export default function ProgressReportScreen() {
   const improvement = Math.round((last - first) * 10) / 10;
 
   return (
-    <TeacherScreen header={<ScreenHeader title="Progress Report" trailingIcon="download-outline" />} contentStyle={styles.content}>
+    <TeacherScreen
+      header={<StudentModuleHeader title="Progress Report" trailingIcon="download-outline" />}
+      contentStyle={styles.content}
+    >
       <SurfaceCard style={[styles.heroCard, { backgroundColor: theme.colors.tintGreen }]}>
         <Ionicons name="trending-up" size={28} color={theme.colors.success} />
         <Text style={[styles.heroValue, { color: theme.colors.success }]}>↑ {improvement}%</Text>
