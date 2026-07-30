@@ -488,11 +488,18 @@ export default function LibraryScreen() {
                           </Text>
                         </View>
                         {!lib.isStudent ? (
-                          <Text
-                            style={[styles.meta, { color: theme.colors.textSecondary }]}
-                          >
-                            Due {tx.dueDate || '—'}
-                          </Text>
+                          <>
+                            <Text
+                              style={[styles.meta, { color: theme.colors.textSecondary }]}
+                            >
+                              Issue {tx.issueDate || '—'}
+                            </Text>
+                            <Text
+                              style={[styles.meta, { color: theme.colors.textSecondary }]}
+                            >
+                              Due {tx.dueDate || '—'}
+                            </Text>
+                          </>
                         ) : (
                           <Text
                             style={[styles.meta, { color: theme.colors.textSecondary }]}

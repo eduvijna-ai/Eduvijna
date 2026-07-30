@@ -87,9 +87,16 @@ interface SelectFieldProps {
   value: string | null;
   onChange: (value: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export function SelectField({ options, value, onChange, placeholder = 'Select…' }: SelectFieldProps) {
+export function SelectField({
+  options,
+  value,
+  onChange,
+  placeholder = 'Select…',
+  disabled = false,
+}: SelectFieldProps) {
   const theme = useTeacherTheme();
   const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value);
@@ -97,9 +104,22 @@ export function SelectField({ options, value, onChange, placeholder = 'Select…
   return (
     <>
       <TouchableOpacity
-        style={[styles.input, styles.selectTrigger, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.input }]}
-        onPress={() => setOpen(true)}
+        style={[
+          styles.input,
+          styles.selectTrigger,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.input,
+            opacity: disabled ? 0.6 : 1,
+          },
+        ]}
+        onPress={() => {
+          if (!disabled) setOpen(true);
+        }}
+        disabled={disabled}
         accessibilityRole="button"
+        accessibilityState={{ disabled }}
         accessibilityLabel={selected?.label ?? placeholder}
       >
         <Text style={{ color: selected ? theme.colors.textPrimary : theme.colors.textSecondary, fontSize: 15 }}>

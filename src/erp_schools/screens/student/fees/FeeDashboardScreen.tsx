@@ -34,6 +34,7 @@ import {
   type StudentFeeTerm,
 } from '../../../hooks/useStudentFeesData';
 import type { FeeReceiptPdfInput } from '../../../utils/studentFeeReceiptPdf';
+import { downloadStudentFeeReceiptPdf } from '../../../utils/studentFeeReceiptPdf';
 const TABS: Segment[] = [
   { key: 'my_payments', label: 'My Fees', icon: 'wallet-outline' },
   { key: 'receipts', label: 'Receipts', icon: 'receipt-outline' },
@@ -322,9 +323,6 @@ export default function FeeDashboardScreen() {
       if (openingId) return;
       setOpeningId(receipt.id);
       try {
-        const { downloadStudentFeeReceiptPdf } = await import(
-          '../../../utils/studentFeeReceiptPdf'
-        );
         await downloadStudentFeeReceiptPdf(receiptInput(receipt));
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Could not create receipt PDF.';

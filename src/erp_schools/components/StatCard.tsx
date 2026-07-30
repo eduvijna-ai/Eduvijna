@@ -1,7 +1,7 @@
 /** StatCard + StatGrid — tinted metric tiles (DESIGN.md "Overview Metrics"). */
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTeacherTheme } from '../theme/useTeacherTheme';
 import { accentColors, type AccentKey } from '../theme/accents';
@@ -16,6 +16,7 @@ export interface StatItem {
   trend?: Trend;
   /** When true the icon sits in a filled bubble (overview-metric look). */
   filledIcon?: boolean;
+  onPress?: () => void;
 }
 
 interface StatCardProps {
@@ -31,19 +32,8 @@ export function StatCard({ item, columns = 4, variant = 'plain' }: StatCardProps
   const trendColor =
     item.trend?.direction === 'down' ? theme.colors.danger : theme.colors.success;
 
-  return (
-    <View
-      style={[
-        styles.card,
-        theme.shadow.light,
-        {
-          backgroundColor: variant === 'tinted' ? accent.bg : theme.colors.surface,
-          borderColor: theme.colors.border,
-          borderRadius: theme.radius.card,
-          width: `${100 / columns - 2}%` as `${number}%`,
-        },
-      ]}
-    >
+  const content = (
+    <>
       <View
         style={[
           styles.iconWrap,
@@ -70,8 +60,35 @@ export function StatCard({ item, columns = 4, variant = 'plain' }: StatCardProps
           </Text>
         </View>
       ) : null}
-    </View>
+    </>
   );
+
+  const cardStyle = [
+    styles.card,
+    theme.shadow.light,
+    {
+      backgroundColor: variant === 'tinted' ? accent.bg : theme.colors.surface,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.card,
+      width: `${100 / columns - 2}%` as `${number}%`,
+    },
+  ];
+
+  if (item.onPress) {
+    return (
+      <TouchableOpacity
+        style={cardStyle}
+        onPress={item.onPress}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={cardStyle}>{content}</View>;
 }
 
 interface StatGridProps {

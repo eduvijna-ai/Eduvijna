@@ -93,12 +93,13 @@ function mapEvent(r: Record<string, unknown>, i: number): EngRow {
 function mapRegistration(r: Record<string, unknown>, i: number): EngRow {
   const numericId = pickNumber(r.id, i + 1);
   const attended = r.attendance_marked === true;
+  const regDate = pickString(r.registration_date).slice(0, 10);
   return {
     id: String(numericId),
     numericId,
     title: `Event #${pickNumber(r.event_id)}`,
-    subtitle: `Student #${pickNumber(r.student_id)}`,
-    meta: attended ? 'Attendance marked' : 'Not marked',
+    subtitle: `Student #${pickNumber(r.student_id)}${regDate ? ` · ${regDate}` : ''}`,
+    meta: attended ? 'Attended ✓' : '—',
     status: attended ? 'completed' : 'submitted',
     isActive: r.is_active !== false,
     raw: r,

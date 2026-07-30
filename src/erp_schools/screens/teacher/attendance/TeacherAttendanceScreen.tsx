@@ -1,9 +1,10 @@
 /**
- * Teacher Attendance Hub — web AttendanceTab for instructors.
- * Tabs: Student Attendance | My Attendance | Class Report | Student Report | Settings
+ * Attendance Hub — web AttendanceTab parity.
+ * Teacher: Student | My | Class Report | Student Report | Settings
+ * Admin (role="admin"): + Staff Attendance; edit any date; calendar/day mark UX
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +14,6 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from '@react-navigation/native';
 import {
   TeacherScreen,
@@ -43,6 +43,10 @@ import {
   type StaffAttRecord,
 } from '../../../hooks/useTeacherMyAttendance';
 import {
+  useAdminStaffAttendance,
+  type HalfStatus,
+} from '../../../hooks/useAdminStaffAttendance';
+import {
   attendanceRecordsApi,
   attendanceSettingsApi,
   studentsByUserApi,
@@ -61,17 +65,34 @@ import { useTeacherStaffProfile } from '../../../hooks/useTeacherStaffProfile';
 type HubTab =
   | 'tracker'
   | 'my-attendance'
+  | 'staff-attendance'
   | 'class-report'
   | 'student-report'
   | 'settings';
 
-const HUB_TABS: Array<{ key: HubTab; title: string; subtitle: string }> = [
+const TEACHER_HUB_TABS: Array<{ key: HubTab; title: string; subtitle: string }> = [
   { key: 'tracker', title: 'Student Attendance', subtitle: 'Mark & view class attendance grid.' },
   { key: 'my-attendance', title: 'My Attendance', subtitle: 'Your staff attendance & self-mark.' },
   { key: 'class-report', title: 'Class Report', subtitle: 'Class-wise attendance summary.' },
   { key: 'student-report', title: 'Student Report', subtitle: 'Individual student summary.' },
   { key: 'settings', title: 'Settings', subtitle: 'Working days & attendance rules.' },
 ];
+
+const ADMIN_HUB_TABS: Array<{ key: HubTab; title: string; subtitle: string }> = [
+  { key: 'tracker', title: 'Student Attendance', subtitle: 'Mark & view class attendance.' },
+  { key: 'my-attendance', title: 'My Attendance', subtitle: 'Your staff attendance & self-mark.' },
+  { key: 'staff-attendance', title: 'Staff Attendance', subtitle: 'Mark all staff (1H / 2H).' },
+  { key: 'class-report', title: 'Class Report', subtitle: 'Class-wise attendance summary.' },
+  { key: 'student-report', title: 'Student Report', subtitle: 'Individual student summary.' },
+  { key: 'settings', title: 'Settings', subtitle: 'Working days & attendance rules.' },
+];
+
+export type AttendanceHubProps = {
+  /** Admin: edit any date + Staff Attendance tab. */
+  role?: 'teacher' | 'admin';
+  /** Tab roots should pass false so the back chevron is hidden. */
+  showBack?: boolean;
+};
 
 const PERIODS: ChipOption[] = [
   { key: 'month', label: 'Monthly' },
@@ -104,51 +125,54 @@ const STATUS_STYLE: Record<
   '': { bg: '#F1F5F9', fg: '#94A3B8', label: '—' },
 };
 
-export default function TeacherAttendanceScreen() {
+export default function TeacherAttendanceScreen({
+  role = 'teacher',
+  showBack = true,
+}: AttendanceHubProps) {
+  const isAdmin = role === 'admin';
   const theme = useTeacherTheme();
   const route = useRoute();
   const params = route.params as { classId?: string; tab?: string } | undefined;
   const initialClassId = params?.classId;
+  const hubTabs = isAdmin ? ADMIN_HUB_TABS : TEACHER_HUB_TABS;
+  const validTabs = new Set(hubTabs.map((t) => t.key));
   const initialTab: HubTab =
-    params?.tab === 'my-attendance' ||
-    params?.tab === 'class-report' ||
-    params?.tab === 'student-report' ||
-    params?.tab === 'settings' ||
-    params?.tab === 'tracker'
+    params?.tab && validTabs.has(params.tab as HubTab)
       ? (params.tab as HubTab)
       : 'tracker';
   const [tab, setTab] = useState<HubTab>(initialTab);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (
-      params?.tab === 'my-attendance' ||
-      params?.tab === 'class-report' ||
-      params?.tab === 'student-report' ||
-      params?.tab === 'settings' ||
-      params?.tab === 'tracker'
-    ) {
+    if (params?.tab && validTabs.has(params.tab as HubTab)) {
       setTab(params.tab as HubTab);
     }
-  }, [params?.tab]);
+  }, [params?.tab, isAdmin]);
 
   return (
     <TeacherScreen
       header={
         <ScreenHeader
           title="Attendance"
+          showBack={showBack}
           trailingIcon="refresh-outline"
           onTrailingPress={() => setRefreshKey((k) => k + 1)}
         />
       }
       contentStyle={styles.content}
     >
+      <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>Daily Operations</Text>
+      <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>Attendance</Text>
+      <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
+        Track student and staff attendance, run reports, and configure settings.
+      </Text>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabRail}
       >
-        {HUB_TABS.map((t) => {
+        {hubTabs.map((t) => {
           const active = tab === t.key;
           return (
             <TouchableOpacity
@@ -189,9 +213,16 @@ export default function TeacherAttendanceScreen() {
       </ScrollView>
 
       {tab === 'tracker' ? (
-        <TrackerPanel key={`tracker-${refreshKey}`} initialClassId={initialClassId} />
+        <TrackerPanel
+          key={`tracker-${refreshKey}`}
+          initialClassId={initialClassId}
+          isAdmin={isAdmin}
+        />
       ) : null}
       {tab === 'my-attendance' ? <MyAttendancePanel key={`my-${refreshKey}`} /> : null}
+      {tab === 'staff-attendance' && isAdmin ? (
+        <StaffAttendancePanel key={`staff-${refreshKey}`} />
+      ) : null}
       {tab === 'class-report' ? <ClassReportPanel key={`class-${refreshKey}`} /> : null}
       {tab === 'student-report' ? (
         <StudentReportPanel key={`student-${refreshKey}`} />
@@ -203,10 +234,20 @@ export default function TeacherAttendanceScreen() {
 
 /* ════════ Student Attendance Tracker ════════ */
 
-function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) {
+function TrackerPanel({
+  initialClassId,
+  isAdmin = false,
+}: {
+  initialClassId?: string | number;
+  isAdmin?: boolean;
+}) {
   const theme = useTeacherTheme();
-  const t = useTeacherAttendanceTracker(initialClassId);
+  const t = useTeacherAttendanceTracker(
+    initialClassId,
+    isAdmin ? { canEditAnyDate: true, allowClearOnCycle: true } : undefined,
+  );
   const [bulkStatus, setBulkStatus] = useState<AttStatus>('present');
+  const markDate = isAdmin ? t.selectedDate : t.todayStr;
 
   const metricItems: StatItem[] = useMemo(() => {
     const base: StatItem[] = [
@@ -382,7 +423,11 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
       ) : (
         <InfoBanner
           title="Editing"
-          text={`Subject selected — you can mark attendance for today (${t.todayStr}) only.`}
+          text={
+            isAdmin
+              ? `Subject selected — tap a day, then mark students (P → A → L → clear). Selected: ${markDate}`
+              : `Subject selected — you can mark attendance for today (${t.todayStr}) only.`
+          }
         />
       )}
 
@@ -390,10 +435,10 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
         <StatGrid items={metricItems} columns={3} variant="tinted" />
       ) : null}
 
-      {!t.isViewOnly && !t.useMonthSummary ? (
+      {!t.isViewOnly && !t.useMonthSummary && t.canEditDate(markDate) ? (
         <SurfaceCard style={styles.bulkBar}>
           <Text style={[styles.bulkTitle, { color: theme.colors.textPrimary }]}>
-            Bulk Mark · Today
+            Bulk Mark · {isAdmin ? markDate : 'Today'}
           </Text>
           <View style={styles.bulkRow}>
             {(['present', 'absent', 'late'] as AttStatus[]).map((st) => {
@@ -425,7 +470,7 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
             })}
             <TouchableOpacity
               style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
-              onPress={() => t.applyBulk(t.todayStr, bulkStatus)}
+              onPress={() => t.applyBulk(markDate, bulkStatus)}
             >
               <Text style={styles.applyText}>Apply to All</Text>
             </TouchableOpacity>
@@ -435,7 +480,11 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
 
       {t.hasEdits && !t.useMonthSummary ? (
         <View style={styles.toolbarRow}>
-          <CompactBtn label="Reset Today" outline onPress={t.resetToday} />
+          <CompactBtn
+            label={isAdmin ? 'Discard' : 'Reset Today'}
+            outline
+            onPress={isAdmin ? t.clearEdits : t.resetToday}
+          />
           <CompactBtn
             label={t.saving ? 'Saving…' : 'Update'}
             onPress={() => void onSave()}
@@ -458,6 +507,8 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
         />
       ) : t.useMonthSummary ? (
         <MonthSummaryGrid t={t} />
+      ) : isAdmin ? (
+        <AdminStudentDayMark t={t} />
       ) : (
         <DailyAttendanceGrid t={t} />
       )}
@@ -466,6 +517,135 @@ function TrackerPanel({ initialClassId }: { initialClassId?: string | number }) 
 }
 
 type Tracker = ReturnType<typeof useTeacherAttendanceTracker>;
+
+/** Admin mobile: calendar day chips + per-student status list for selected day. */
+function AdminStudentDayMark({ t }: { t: Tracker }) {
+  const theme = useTeacherTheme();
+  const dc = t.dayCounts[t.selectedDate];
+
+  return (
+    <View style={{ gap: 12 }}>
+      <SurfaceCard style={styles.filterCard}>
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>
+          Working days
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.calRow}>
+            {t.workingDates.map((ds) => {
+              const d = new Date(`${ds}T00:00:00`);
+              const counts = t.dayCounts[ds];
+              const active = ds === t.selectedDate;
+              const isToday = ds === t.todayStr;
+              const tone =
+                !counts || counts.marked === 0
+                  ? '#CBD5E1'
+                  : counts.absent > counts.present
+                    ? '#FCA5A5'
+                    : counts.late > 0
+                      ? '#FDBA74'
+                      : '#86EFAC';
+              return (
+                <TouchableOpacity
+                  key={ds}
+                  onPress={() => t.setSelectedDate(ds)}
+                  style={[
+                    styles.calChip,
+                    {
+                      borderColor: active ? theme.colors.primary : tone,
+                      backgroundColor: active ? theme.colors.primary : '#FFF',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '600',
+                      color: active ? 'rgba(255,255,255,0.85)' : '#94A3B8',
+                    }}
+                  >
+                    {DAY_ABBR[d.getDay()]}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '800',
+                      color: active ? '#FFF' : theme.colors.textPrimary,
+                    }}
+                  >
+                    {d.getDate()}
+                  </Text>
+                  {isToday ? (
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: '800',
+                        color: active ? '#FFF' : '#0F766E',
+                      }}
+                    >
+                      TODAY
+                    </Text>
+                  ) : null}
+                  <View style={[styles.calDot, { backgroundColor: tone }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+        {dc ? (
+          <Text style={{ fontSize: 12, color: theme.colors.textSecondary, fontWeight: '600' }}>
+            {t.selectedDate} · P {dc.present} · A {dc.absent} · L {dc.late} · marked{' '}
+            {dc.marked}/{t.roster.length}
+          </Text>
+        ) : null}
+      </SurfaceCard>
+
+      <SurfaceCard padded={false} style={styles.listCard}>
+        {t.studentSummaries.map((s, idx) => {
+          const st = s.selectedStatus;
+          const meta = STATUS_STYLE[st || ''];
+          const editable = !t.isViewOnly && t.canEditDate(t.selectedDate);
+          return (
+            <View
+              key={s.studentId}
+              style={[
+                styles.dayMarkRow,
+                {
+                  borderBottomWidth: idx < t.studentSummaries.length - 1 ? StyleSheet.hairlineWidth : 0,
+                  borderBottomColor: theme.colors.border,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontWeight: '700', color: theme.colors.textPrimary }} numberOfLines={1}>
+                  {s.name}
+                  {s.gender.startsWith('m') ? ' ♂' : s.gender.startsWith('f') ? ' ♀' : ''}
+                </Text>
+                <Text style={{ fontSize: 11, color: theme.colors.textSecondary }} numberOfLines={1}>
+                  {s.admissionNo || '—'} · P{s.present} A{s.absent} L{s.late} · {s.pct.toFixed(0)}%
+                </Text>
+              </View>
+              <TouchableOpacity
+                disabled={!editable}
+                onPress={() => t.toggleCell(s.studentId, t.selectedDate)}
+                style={[
+                  styles.statusChip,
+                  {
+                    backgroundColor: meta.bg,
+                    borderColor: meta.fg,
+                    opacity: editable || st ? 1 : 0.55,
+                    minWidth: 44,
+                  },
+                ]}
+              >
+                <Text style={[styles.statusChipText, { color: meta.fg }]}>{meta.label || '—'}</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </SurfaceCard>
+    </View>
+  );
+}
 
 function DailyAttendanceGrid({ t }: { t: Tracker }) {
   const theme = useTeacherTheme();
@@ -823,6 +1003,383 @@ function MonthSummaryGrid({ t }: { t: Tracker }) {
         </View>
       </ScrollView>
     </SurfaceCard>
+  );
+}
+
+/* ════════ Staff Attendance (admin) ════════ */
+
+function StaffAttendancePanel() {
+  const theme = useTeacherTheme();
+  const s = useAdminStaffAttendance();
+
+  const monthOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => ({
+        label: new Date(2000, i, 1).toLocaleString('en', { month: 'long' }),
+        value: String(i + 1),
+      })),
+    [],
+  );
+  const yearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    return [y - 1, y, y + 1].map((v) => ({ label: String(v), value: String(v) }));
+  }, []);
+
+  const metricItems: StatItem[] = useMemo(
+    () => [
+      {
+        key: 'tot',
+        icon: 'people-outline',
+        value: s.metrics.totalStaff,
+        label: 'Total Staff',
+        accent: 'teal',
+      },
+      {
+        key: 'p',
+        icon: 'checkmark-circle-outline',
+        value: s.metrics.presentToday,
+        label: 'Present Today',
+        accent: 'green',
+      },
+      {
+        key: 'h',
+        icon: 'remove-circle-outline',
+        value: s.metrics.halfDayToday,
+        label: 'Half Day Today',
+        accent: 'orange',
+      },
+      {
+        key: 'a',
+        icon: 'close-circle-outline',
+        value: s.metrics.absentToday,
+        label: 'Absent Today',
+        accent: 'red',
+      },
+      {
+        key: 'wd',
+        icon: 'calendar-outline',
+        value: s.metrics.workingDays,
+        label: 'Working Days',
+        accent: 'blue',
+      },
+    ],
+    [s.metrics],
+  );
+
+  const onSave = async () => {
+    const ok = await s.saveChanges();
+    if (ok) Alert.alert('Saved', 'Staff attendance updated.');
+    else Alert.alert('Save failed', s.error || 'Could not save.');
+  };
+
+  const halfChip = (
+    value: HalfStatus,
+    active: boolean,
+    onPress: () => void,
+  ) => (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.bulkChip,
+        {
+          backgroundColor: active
+            ? value === 'present'
+              ? '#16A34A'
+              : '#DC2626'
+            : value === 'present'
+              ? '#DCFCE7'
+              : '#FEE2E2',
+          borderColor: value === 'present' ? '#16A34A' : '#DC2626',
+        },
+      ]}
+    >
+      <Text
+        style={{
+          fontWeight: '800',
+          color: active ? '#FFF' : value === 'present' ? '#16A34A' : '#DC2626',
+          fontSize: 12,
+        }}
+      >
+        {value === 'present' ? 'P' : 'A'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.sectionGap}>
+      {s.pending.length > 0 ? (
+        <SurfaceCard style={{ gap: 10, backgroundColor: '#FFFBEB', borderColor: '#FCD34D' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontWeight: '800', fontSize: 14, color: '#92400E', flex: 1 }}>
+              Pending Approvals ({s.pending.length})
+            </Text>
+            <TouchableOpacity
+              disabled={s.approvingAll}
+              onPress={() => void s.approveAll()}
+              style={[styles.pendingBtn, { backgroundColor: '#DCFCE7' }]}
+            >
+              <Text style={{ color: '#16A34A', fontWeight: '800', fontSize: 11 }}>
+                {s.approvingAll ? '…' : 'Approve All'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {s.pending.slice(0, 8).map((p) => (
+            <View key={p.id} style={styles.pendingCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', color: theme.colors.textPrimary }} numberOfLines={1}>
+                  {p.staffName}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>
+                  {p.date} · 1H {p.firstHalf === 'present' ? 'P' : 'A'} · 2H{' '}
+                  {p.secondHalf === 'present' ? 'P' : 'A'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => void s.approveOne(p.id, 'approved')}
+                style={[styles.pendingBtn, { backgroundColor: '#DCFCE7' }]}
+              >
+                <Text style={{ color: '#16A34A', fontWeight: '800', fontSize: 11 }}>OK</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void s.approveOne(p.id, 'rejected')}
+                style={[styles.pendingBtn, { backgroundColor: '#FEE2E2' }]}
+              >
+                <Text style={{ color: '#DC2626', fontWeight: '800', fontSize: 11 }}>X</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </SurfaceCard>
+      ) : null}
+
+      <SurfaceCard style={styles.filterCard}>
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>Filters</Text>
+        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>View Period</Text>
+        <FilterChips
+          size="sm"
+          options={PERIODS}
+          activeKey={s.viewPeriod}
+          onChange={(k) => s.setViewPeriod(k as ViewPeriod)}
+        />
+        {s.viewPeriod === 'month' ? (
+          <View style={styles.row2}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Month</Text>
+              <SelectField
+                options={monthOptions}
+                value={String(s.month)}
+                onChange={(v) => s.setMonth(Number(v))}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Year</Text>
+              <SelectField
+                options={yearOptions}
+                value={String(s.year)}
+                onChange={(v) => s.setYear(Number(v))}
+              />
+            </View>
+          </View>
+        ) : null}
+        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Department</Text>
+        <SelectField
+          options={[
+            { label: 'All departments', value: 'all' },
+            ...s.departmentOptions.map((d) => ({ label: d, value: d })),
+          ]}
+          value={s.department || 'all'}
+          onChange={(v) => s.setDepartment(v || 'all')}
+        />
+        <SearchBar value={s.query} onChangeText={s.setQuery} placeholder="Name or employee code…" />
+      </SurfaceCard>
+
+      <StatGrid items={metricItems} columns={3} variant="tinted" />
+
+      <SurfaceCard style={styles.bulkBar}>
+        <Text style={[styles.bulkTitle, { color: theme.colors.textPrimary }]}>
+          Bulk Mark · {s.selectedDate}
+        </Text>
+        <View style={styles.bulkRow}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary }}>1H</Text>
+          {halfChip('present', s.bulkFirst === 'present', () => s.setBulkFirst('present'))}
+          {halfChip('absent', s.bulkFirst === 'absent', () => s.setBulkFirst('absent'))}
+          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary }}>2H</Text>
+          {halfChip('present', s.bulkSecond === 'present', () => s.setBulkSecond('present'))}
+          {halfChip('absent', s.bulkSecond === 'absent', () => s.setBulkSecond('absent'))}
+          <TouchableOpacity
+            style={[styles.applyBtn, { backgroundColor: theme.colors.primary }]}
+            onPress={() => s.applyBulk(s.selectedDate)}
+          >
+            <Text style={styles.applyText}>Apply to All</Text>
+          </TouchableOpacity>
+        </View>
+      </SurfaceCard>
+
+      {s.hasEdits ? (
+        <View style={styles.toolbarRow}>
+          <CompactBtn label="Discard" outline onPress={s.clearEdits} />
+          <CompactBtn label={s.saving ? 'Saving…' : 'Update'} onPress={() => void onSave()} />
+        </View>
+      ) : null}
+
+      {s.status === 'loading' ? (
+        <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 16 }} />
+      ) : null}
+      {s.error ? (
+        <Text style={{ color: theme.colors.danger, fontSize: 13 }}>{s.error}</Text>
+      ) : null}
+
+      <SurfaceCard style={styles.filterCard}>
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>Working days</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.calRow}>
+            {s.workingDates.map((ds) => {
+              const d = new Date(`${ds}T00:00:00`);
+              const counts = s.dayCounts[ds];
+              const active = ds === s.selectedDate;
+              const isToday = ds === s.todayStr;
+              const tone =
+                !counts
+                  ? '#CBD5E1'
+                  : counts.absent > counts.present
+                    ? '#FCA5A5'
+                    : counts.half > 0
+                      ? '#FDBA74'
+                      : '#86EFAC';
+              return (
+                <TouchableOpacity
+                  key={ds}
+                  onPress={() => s.setSelectedDate(ds)}
+                  style={[
+                    styles.calChip,
+                    {
+                      borderColor: active ? theme.colors.primary : tone,
+                      backgroundColor: active ? theme.colors.primary : '#FFF',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontWeight: '600',
+                      color: active ? 'rgba(255,255,255,0.85)' : '#94A3B8',
+                    }}
+                  >
+                    {DAY_ABBR[d.getDay()]}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: '800',
+                      color: active ? '#FFF' : theme.colors.textPrimary,
+                    }}
+                  >
+                    {d.getDate()}
+                  </Text>
+                  {isToday ? (
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        fontWeight: '800',
+                        color: active ? '#FFF' : '#0F766E',
+                      }}
+                    >
+                      TODAY
+                    </Text>
+                  ) : null}
+                  <View style={[styles.calDot, { backgroundColor: tone }]} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </SurfaceCard>
+
+      {s.staffSummaries.length === 0 && s.status !== 'loading' ? (
+        <EmptyState icon="people-outline" title="No staff" message="No active staff match filters." />
+      ) : (
+        <SurfaceCard padded={false} style={styles.listCard}>
+          {s.staffSummaries.map((row, idx) => {
+            const cell = row.selected;
+            return (
+              <View
+                key={row.userId}
+                style={[
+                  styles.dayMarkRow,
+                  {
+                    borderBottomWidth:
+                      idx < s.staffSummaries.length - 1 ? StyleSheet.hairlineWidth : 0,
+                    borderBottomColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={{ fontWeight: '700', color: theme.colors.textPrimary }}
+                    numberOfLines={1}
+                  >
+                    {row.name}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: theme.colors.textSecondary }} numberOfLines={1}>
+                    {row.employeeCode || '—'} · {row.department || row.designation || 'Staff'} ·{' '}
+                    {row.pct.toFixed(0)}%
+                  </Text>
+                </View>
+                <View style={{ gap: 4, alignItems: 'flex-end' }}>
+                  <View style={styles.halfRow}>
+                    <TouchableOpacity
+                      onPress={() => s.toggleHalf(row.userId, s.selectedDate, 'first_half')}
+                      style={[
+                        styles.miniHalf,
+                        {
+                          backgroundColor:
+                            cell.first_half === 'present' ? '#DCFCE7' : '#FEE2E2',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '800',
+                          color: cell.first_half === 'present' ? '#16A34A' : '#DC2626',
+                        }}
+                      >
+                        1H {cell.first_half === 'present' ? 'P' : 'A'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => s.toggleHalf(row.userId, s.selectedDate, 'second_half')}
+                      style={[
+                        styles.miniHalf,
+                        {
+                          backgroundColor:
+                            cell.second_half === 'present' ? '#DCFCE7' : '#FEE2E2',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '800',
+                          color: cell.second_half === 'present' ? '#16A34A' : '#DC2626',
+                        }}
+                      >
+                        2H {cell.second_half === 'present' ? 'P' : 'A'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Badge
+                    label={row.risk === 'Low Attendance' ? 'Low' : row.risk}
+                    accent={
+                      row.risk === 'OK' ? 'green' : row.risk === 'Critical' ? 'red' : 'orange'
+                    }
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </SurfaceCard>
+      )}
+    </View>
   );
 }
 
@@ -1799,6 +2356,16 @@ function StudentReportPanel() {
 
 /* ════════ Settings ════════ */
 
+const WD_OPTS = [
+  { key: 'sun', label: 'Sun' },
+  { key: 'mon', label: 'Mon' },
+  { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' },
+  { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' },
+  { key: 'sat', label: 'Sat' },
+];
+
 function SettingsPanel() {
   const theme = useTeacherTheme();
   const session = useSchoolsSession();
@@ -1810,6 +2377,25 @@ function SettingsPanel() {
     late_threshold_minutes: '15',
   });
   const [loading, setLoading] = useState(false);
+
+  const selectedDays = useMemo(
+    () =>
+      new Set(
+        form.working_days
+          .split(',')
+          .map((d) => d.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    [form.working_days],
+  );
+
+  const toggleDay = (key: string) => {
+    const next = new Set(selectedDays);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    const ordered = WD_OPTS.map((d) => d.key).filter((k) => next.has(k));
+    setForm((f) => ({ ...f, working_days: ordered.join(',') }));
+  };
 
   useEffect(() => {
     void attendanceSettingsApi
@@ -1858,12 +2444,38 @@ function SettingsPanel() {
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>
           Attendance Settings
         </Text>
-        <FormField label="Working days (csv)">
-          <TextField
-            value={form.working_days}
-            onChangeText={(working_days) => setForm((f) => ({ ...f, working_days }))}
-          />
-        </FormField>
+        <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>
+          Working days
+        </Text>
+        <View style={styles.bulkRow}>
+          {WD_OPTS.map((d) => {
+            const on = selectedDays.has(d.key);
+            return (
+              <TouchableOpacity
+                key={d.key}
+                onPress={() => toggleDay(d.key)}
+                style={[
+                  styles.bulkChip,
+                  {
+                    width: 44,
+                    backgroundColor: on ? theme.colors.primary : '#F8FAFC',
+                    borderColor: on ? theme.colors.primary : theme.colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontWeight: '800',
+                    fontSize: 11,
+                    color: on ? '#FFF' : theme.colors.textSecondary,
+                  }}
+                >
+                  {d.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
         <FormField label="Periods per day">
           <TextField
             value={form.periods_per_day}
@@ -1949,6 +2561,14 @@ function CompactBtn({
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14, paddingBottom: 32 },
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  heroTitle: { fontSize: 26, fontWeight: '800', letterSpacing: -0.3 },
+  heroSub: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
   tabRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
   tabCard: {
     width: 168,
@@ -1986,6 +2606,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   applyText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  calRow: { flexDirection: 'row', gap: 8, paddingVertical: 4, paddingRight: 8 },
+  calChip: {
+    width: 52,
+    minHeight: 68,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    gap: 2,
+  },
+  calDot: { width: 8, height: 8, borderRadius: 4, marginTop: 2 },
+  dayMarkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
   kpiStrip: { flexDirection: 'row' },
   kpiSlider: { gap: 10, paddingVertical: 2, paddingRight: 8 },
   kpiSlideCard: {

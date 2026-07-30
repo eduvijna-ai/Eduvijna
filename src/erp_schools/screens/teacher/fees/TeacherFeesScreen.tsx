@@ -1,6 +1,7 @@
 /**
- * Teacher Fees — polished instructor Fees UI (web FeesTab parity).
- * Tabs: Fee Assignment | Fees Register | Demand Bill | Collections
+ * Fees hub — web FeesTab parity.
+ * Teacher: Assignment | Register | Demand | Collections (class-scoped)
+ * Admin: + Fee Structure | Receipts (school-wide)
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -32,6 +33,7 @@ import {
   TextField,
   SelectField,
   SearchBar,
+  ProgressBar,
   type ChipOption,
   type StatItem,
 } from '../../../components';
@@ -48,23 +50,50 @@ import {
   type FeeStudentOption,
   type FeeRegisterRow,
   type DemandBillRow,
+  type FeeStructureRow,
+  type FeeReceiptRow,
 } from '../../../hooks/useTeacherFeesData';
+import { downloadStudentFeeReceiptPdf } from '../../../utils/studentFeeReceiptPdf';
+import { downloadDemandBillPdf } from '../../../utils/demandBillPdf';
 
-type FeeSub = 'assignment' | 'register' | 'demand' | 'collections';
+type FeeSub =
+  | 'structures'
+  | 'assignment'
+  | 'register'
+  | 'demand'
+  | 'collections'
+  | 'receipts';
 
-const FEE_TABS: Array<{ key: FeeSub; title: string; subtitle: string }> = [
+const TEACHER_FEE_TABS: Array<{ key: FeeSub; title: string; subtitle: string }> = [
   { key: 'assignment', title: 'Fee Assignment', subtitle: 'Assign fees to individual students.' },
   { key: 'register', title: 'Fees Register', subtitle: 'View consolidated fee register and balances.' },
   { key: 'demand', title: 'Demand Bill', subtitle: 'Generate and print demand bills.' },
   { key: 'collections', title: 'Collections', subtitle: 'Record and track fee collections.' },
 ];
 
+const ADMIN_FEE_TABS: Array<{ key: FeeSub; title: string; subtitle: string }> = [
+  { key: 'structures', title: 'Fee Structure', subtitle: 'Define fee heads and billing structures.' },
+  { key: 'assignment', title: 'Fee Assignment', subtitle: 'Assign fees to individual students.' },
+  { key: 'register', title: 'Fees Register', subtitle: 'View consolidated fee register and balances.' },
+  { key: 'demand', title: 'Demand Bill', subtitle: 'Generate and print demand bills.' },
+  { key: 'collections', title: 'Collections', subtitle: 'Record and track fee collections.' },
+  { key: 'receipts', title: 'Receipts', subtitle: 'Issue and manage payment receipts.' },
+];
+
 const STATUS_CHIPS: ChipOption[] = [
   { key: '', label: 'All' },
-  ...COLLECTION_STATUSES.filter((s) =>
-    ['pending', 'partial', 'paid', 'overdue'].includes(s),
-  ).map((s) => ({ key: s, label: s })),
+  ...COLLECTION_STATUSES.map((s) => ({ key: s, label: s })),
 ];
+
+const PAYMENT_METHODS = [
+  'cash',
+  'card',
+  'upi',
+  'bank_transfer',
+  'cheque',
+  'online',
+  'wallet',
+] as const;
 
 const currency = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -90,10 +119,16 @@ function toYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export default function TeacherFeesScreen() {
+export type TeacherFeesProps = {
+  role?: 'teacher' | 'admin';
+};
+
+export default function TeacherFeesScreen({ role = 'teacher' }: TeacherFeesProps) {
+  const isAdmin = role === 'admin';
   const theme = useTeacherTheme();
-  const fees = useTeacherFeesData();
-  const [sub, setSub] = useState<FeeSub>('register');
+  const fees = useTeacherFeesData({ scope: isAdmin ? 'school' : 'teacher' });
+  const feeTabs = isAdmin ? ADMIN_FEE_TABS : TEACHER_FEE_TABS;
+  const [sub, setSub] = useState<FeeSub>(isAdmin ? 'structures' : 'register');
   const [assignQuery, setAssignQuery] = useState('');
 
   const [assignModal, setAssignModal] = useState(false);
@@ -108,8 +143,110 @@ export default function TeacherFeesScreen() {
   const [registerDetail, setRegisterDetail] = useState<FeeRegisterRow | null>(null);
   const [demandSelected, setDemandSelected] = useState<Set<number>>(new Set());
   const [demandSlip, setDemandSlip] = useState<DemandBillRow | null>(null);
+  const [demandViewMode, setDemandViewMode] = useState<'list' | 'slips'>('list');
   const [assignMenu, setAssignMenu] = useState<FeeAssignmentRow | null>(null);
   const [collectionMenu, setCollectionMenu] = useState<FeeCollectionRow | null>(null);
+  const [receiptDownloadingId, setReceiptDownloadingId] = useState<number | null>(null);
+  const [collLookup, setCollLookup] = useState<{
+    studentName: string;
+    admissionNo: string;
+    amountDue: number;
+    amount: number;
+    status: string;
+  } | null>(null);
+  const [collLookupError, setCollLookupError] = useState('');
+  const [collLookupBusy, setCollLookupBusy] = useState(false);
+
+  const [structureModal, setStructureModal] = useState(false);
+  const [editingStructure, setEditingStructure] = useState<FeeStructureRow | null>(null);
+  const [feeTypesModal, setFeeTypesModal] = useState(false);
+  const [newFeeTypeName, setNewFeeTypeName] = useState('');
+  const [structureForm, setStructureForm] = useState({
+    name: '',
+    feeTypeId: '',
+    amount: '0',
+    frequency: 'yearly',
+    dueDay: '10',
+    lateFeePerDay: '0',
+    classIds: [] as number[],
+    description: '',
+    classSearch: '',
+  });
+
+  const [receiptModal, setReceiptModal] = useState(false);
+  const [editingReceipt, setEditingReceipt] = useState<FeeReceiptRow | null>(null);
+  const [receiptForm, setReceiptForm] = useState({
+    collectionId: '',
+    receiptNumber: '',
+    amount: '0',
+    paymentMethod: 'cash',
+    paymentDate: toYmd(new Date()),
+    remarks: '',
+  });
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (sub === 'structures') {
+      void fees.loadFeeTypes();
+      void fees.loadStructures();
+    }
+    if (sub === 'receipts') void fees.loadReceipts();
+  }, [
+    isAdmin,
+    sub,
+    fees.loadFeeTypes,
+    fees.loadStructures,
+    fees.loadReceipts,
+    fees.structureClassId,
+    fees.structureFeeTypeId,
+  ]);
+
+  // Web DemandBillView auto-fetches when the tab opens
+  useEffect(() => {
+    if (sub !== 'demand' || fees.status !== 'ready') return;
+    setDemandSelected(new Set());
+    void fees.loadDemandBill();
+  }, [sub, fees.status, fees.loadDemandBill]);
+
+  // Auto-fetch collection details when typing Collection ID (web ReceiptsView parity)
+  useEffect(() => {
+    if (!receiptModal) return;
+    const raw = receiptForm.collectionId.trim();
+    const num = Number(raw);
+    setCollLookup(null);
+    setCollLookupError('');
+    if (!raw || !Number.isFinite(num) || num <= 0) return;
+    setCollLookupBusy(true);
+    const t = setTimeout(() => {
+      void (async () => {
+        const info = await fees.lookupCollection(num);
+        setCollLookupBusy(false);
+        if (!info) {
+          setCollLookupError('Collection not found or invalid ID');
+          setCollLookup(null);
+          return;
+        }
+        setCollLookup({
+          studentName: info.studentName,
+          admissionNo: info.admissionNo,
+          amountDue: info.amountDue,
+          amount: info.amount,
+          status: info.status,
+        });
+        setCollLookupError('');
+        setReceiptForm((f) => ({
+          ...f,
+          amount: String(info.amount || f.amount),
+          paymentMethod: info.paymentMethod || f.paymentMethod,
+          paymentDate: info.paymentDate || f.paymentDate || toYmd(new Date()),
+        }));
+      })();
+    }, 500);
+    return () => {
+      clearTimeout(t);
+      setCollLookupBusy(false);
+    };
+  }, [receiptModal, receiptForm.collectionId, fees.lookupCollection]);
 
   const shellKpis: StatItem[] = [
     {
@@ -192,8 +329,21 @@ export default function TeacherFeesScreen() {
   );
   const yearOptions = useMemo(() => {
     const y = new Date().getFullYear();
-    return [y - 1, y, y + 1, y + 2].map((v) => ({ label: String(v), value: String(v) }));
+    return [y - 2, y - 1, y, y + 1]
+      .filter((v, i, arr) => arr.indexOf(v) === i)
+      .map((v) => ({ label: String(v), value: String(v) }));
   }, []);
+
+  const demandNotifyCount =
+    demandSelected.size > 0 ? demandSelected.size : fees.demandRows.length;
+
+  const demandPrintItems = useMemo(() => {
+    const rows =
+      demandSelected.size > 0
+        ? fees.demandRows.filter((r) => demandSelected.has(r.studentId))
+        : fees.demandRows;
+    return rows;
+  }, [fees.demandRows, demandSelected]);
 
   const demandTotals = useMemo(() => {
     const rows =
@@ -243,13 +393,109 @@ export default function TeacherFeesScreen() {
       {/* Shell KPIs — tinted tiles only, no white wrapper (mobile) */}
       <StatGrid items={shellKpis} columns={3} variant="tinted" />
 
+      {/* 30-day collection snapshot — list/summary instead of dense bar chart */}
+      {fees.trend.length > 0 ? (
+        <SurfaceCard>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>
+            Last 30 Days Collection
+          </Text>
+          {(() => {
+            const activeDays = fees.trend.filter((p) => p.amount > 0);
+            const periodTotal = fees.trend.reduce((s, p) => s + p.amount, 0);
+            const peak = activeDays.reduce(
+              (best, p) => (p.amount > best.amount ? p : best),
+              activeDays[0] ?? { date: '', amount: 0 },
+            );
+            const rate = Math.max(0, Math.min(100, fees.kpis.collectionRate || 0));
+            return (
+              <View style={styles.trendSnap}>
+                <View style={styles.trendStatRow}>
+                  <View style={styles.trendStat}>
+                    <Text style={[styles.trendStatValue, { color: theme.colors.primary }]}>
+                      {currency(periodTotal)}
+                    </Text>
+                    <Text style={[styles.trendStatLabel, { color: theme.colors.textSecondary }]}>
+                      Period total
+                    </Text>
+                  </View>
+                  <View style={styles.trendStat}>
+                    <Text style={[styles.trendStatValue, { color: theme.colors.textPrimary }]}>
+                      {activeDays.length}
+                    </Text>
+                    <Text style={[styles.trendStatLabel, { color: theme.colors.textSecondary }]}>
+                      Days with collections
+                    </Text>
+                  </View>
+                  <View style={styles.trendStat}>
+                    <Text style={[styles.trendStatValue, { color: theme.colors.success }]}>
+                      {peak.amount > 0 ? currency(peak.amount) : '—'}
+                    </Text>
+                    <Text style={[styles.trendStatLabel, { color: theme.colors.textSecondary }]}>
+                      {peak.date ? `Peak · ${peak.date.slice(5) || peak.date}` : 'Peak day'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>
+                  Overall collection rate
+                </Text>
+                <ProgressBar percent={rate} height={8} color={theme.colors.primary} />
+                <Text
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: theme.colors.textPrimary,
+                  }}
+                >
+                  {rate}%
+                </Text>
+                {activeDays.length > 0 ? (
+                  <View style={styles.trendDayList}>
+                    {activeDays
+                      .slice()
+                      .sort((a, b) => b.amount - a.amount)
+                      .slice(0, 5)
+                      .map((p) => (
+                        <View key={p.date} style={styles.trendDayRow}>
+                          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                            {p.date}
+                          </Text>
+                          <Text
+                            style={{
+                              color: theme.colors.success,
+                              fontSize: 13,
+                              fontWeight: '700',
+                            }}
+                          >
+                            {currency(p.amount)}
+                          </Text>
+                        </View>
+                      ))}
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      color: theme.colors.textSecondary,
+                      fontSize: 13,
+                    }}
+                  >
+                    No collection days in the last 30 days yet.
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
+        </SurfaceCard>
+      ) : null}
+
       {/* Module tabs — web ERPSubTabRail style */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabRail}
       >
-        {FEE_TABS.map((tab) => {
+        {feeTabs.map((tab) => {
           const active = sub === tab.key;
           return (
             <TouchableOpacity
@@ -293,6 +539,128 @@ export default function TeacherFeesScreen() {
           );
         })}
       </ScrollView>
+
+      {/* ════════ Fee Structure (admin) ════════ */}
+      {sub === 'structures' && isAdmin ? (
+        <View style={styles.sectionGap}>
+          {fees.academicYearLabel ? (
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+              Academic Year: {fees.academicYearLabel}
+            </Text>
+          ) : null}
+          <SurfaceCard style={styles.filterCard}>
+            <SearchBar
+              value={fees.structureQuery}
+              onChangeText={fees.setStructureQuery}
+              placeholder="Search structures…"
+            />
+            <View style={styles.toolbarRow}>
+              <View style={{ flex: 1 }}>
+                <SelectField
+                  options={classSelectOptions}
+                  value={fees.structureClassId != null ? String(fees.structureClassId) : ''}
+                  onChange={(v) => fees.setStructureClassId(v ? Number(v) : undefined)}
+                  placeholder="Class"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <SelectField
+                  options={[
+                    { label: 'All Fee Types', value: '' },
+                    ...fees.feeTypes.map((t) => ({ label: t.name, value: String(t.id) })),
+                  ]}
+                  value={fees.structureFeeTypeId != null ? String(fees.structureFeeTypeId) : ''}
+                  onChange={(v) => fees.setStructureFeeTypeId(v ? Number(v) : undefined)}
+                />
+              </View>
+            </View>
+            <View style={styles.toolbarRow}>
+              <CompactButton
+                label="Search"
+                outline
+                icon="search"
+                onPress={() => void fees.loadStructures()}
+              />
+              <CompactButton
+                label="New Structure"
+                onPress={() => {
+                  setEditingStructure(null);
+                  setStructureForm({
+                    name: '',
+                    feeTypeId: fees.feeTypes[0] ? String(fees.feeTypes[0].id) : '',
+                    amount: '0',
+                    frequency: 'yearly',
+                    dueDay: '10',
+                    lateFeePerDay: '0',
+                    classIds: [],
+                    description: '',
+                    classSearch: '',
+                  });
+                  setStructureModal(true);
+                }}
+              />
+              <CompactButton label="Fee Types" outline onPress={() => setFeeTypesModal(true)} />
+            </View>
+          </SurfaceCard>
+          {fees.structuresLoading ? (
+            <ActivityIndicator color={theme.colors.primary} />
+          ) : fees.structures.length === 0 ? (
+            <EmptyState icon="layers-outline" title="No structures" message="Create a fee structure to get started." />
+          ) : (
+            fees.structures.map((s) => (
+              <SurfaceCard key={s.id} style={styles.listCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+                    {s.name}
+                  </Text>
+                  <Badge label={s.feeTypeName} accent="purple" />
+                </View>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                  {s.className} · {s.frequency.replace(/_/g, ' ')} · Due day {s.dueDay}
+                </Text>
+                <Text style={{ color: theme.colors.primary, fontWeight: '800', marginTop: 6 }}>
+                  {currency(s.amount)}
+                </Text>
+                <View style={styles.toolbarRow}>
+                  <CompactButton
+                    label="Edit"
+                    outline
+                    onPress={() => {
+                      setEditingStructure(s);
+                      setStructureForm({
+                        name: s.name,
+                        feeTypeId: s.feeTypeId != null ? String(s.feeTypeId) : '',
+                        amount: String(s.amount),
+                        frequency: s.frequency,
+                        dueDay: String(s.dueDay),
+                        lateFeePerDay: String(s.lateFeePerDay),
+                        classIds: s.classId ? [s.classId] : [],
+                        description: s.description,
+                        classSearch: '',
+                      });
+                      setStructureModal(true);
+                    }}
+                  />
+                  <CompactButton
+                    label="Deactivate"
+                    outline
+                    onPress={() => {
+                      Alert.alert('Deactivate?', s.name, [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Deactivate',
+                          style: 'destructive',
+                          onPress: () => void fees.removeStructure(s.structureId),
+                        },
+                      ]);
+                    }}
+                  />
+                </View>
+              </SurfaceCard>
+            ))
+          )}
+        </View>
+      ) : null}
 
       {/* ════════ Fee Assignment ════════ */}
       {sub === 'assignment' ? (
@@ -522,26 +890,38 @@ export default function TeacherFeesScreen() {
             />
             <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Class</Text>
             <SelectField
-              options={fees.classOptions.map((c) => ({
-                label: c.name,
-                value: String(c.id),
-              }))}
-              value={fees.demandClassId != null ? String(fees.demandClassId) : null}
-              onChange={(v) => fees.setDemandClassId(Number(v))}
-              placeholder="Select class"
+              options={[
+                { label: 'All Classes', value: '' },
+                ...fees.classOptions.map((c) => ({
+                  label: c.name,
+                  value: String(c.id),
+                })),
+              ]}
+              value={fees.demandClassId != null ? String(fees.demandClassId) : ''}
+              onChange={(v) => fees.setDemandClassId(v ? Number(v) : undefined)}
+              placeholder="All Classes"
             />
             <PrimaryButton
               label="Generate"
               icon="document-text-outline"
               loading={fees.demandLoading}
-              onPress={() => void fees.loadDemandBill()}
+              onPress={() => {
+                setDemandSelected(new Set());
+                void fees.loadDemandBill();
+              }}
               style={{ marginTop: 8 }}
             />
           </SurfaceCard>
 
           <View style={styles.toolbarRow}>
             <CompactButton
-              label="SMS"
+              label={demandViewMode === 'list' ? 'Slip View' : 'List View'}
+              icon={demandViewMode === 'list' ? 'receipt-outline' : 'list-outline'}
+              outline
+              onPress={() => setDemandViewMode((m) => (m === 'list' ? 'slips' : 'list'))}
+            />
+            <CompactButton
+              label={`SMS (${demandNotifyCount})`}
               icon="chatbubble-outline"
               outline
               onPress={() => {
@@ -549,6 +929,10 @@ export default function TeacherFeesScreen() {
                   demandSelected.size > 0
                     ? [...demandSelected]
                     : fees.demandRows.map((r) => r.studentId);
+                if (ids.length === 0) {
+                  Alert.alert('No students', 'Generate a demand bill first.');
+                  return;
+                }
                 void fees
                   .notifyDemand('sms', ids)
                   .then(() => Alert.alert('Sent', 'SMS notifications queued.'))
@@ -558,7 +942,7 @@ export default function TeacherFeesScreen() {
               }}
             />
             <CompactButton
-              label="WhatsApp"
+              label={`WhatsApp (${demandNotifyCount})`}
               icon="logo-whatsapp"
               outline
               onPress={() => {
@@ -566,6 +950,10 @@ export default function TeacherFeesScreen() {
                   demandSelected.size > 0
                     ? [...demandSelected]
                     : fees.demandRows.map((r) => r.studentId);
+                if (ids.length === 0) {
+                  Alert.alert('No students', 'Generate a demand bill first.');
+                  return;
+                }
                 void fees
                   .notifyDemand('whatsapp', ids)
                   .then(() => Alert.alert('Sent', 'WhatsApp notifications queued.'))
@@ -577,7 +965,36 @@ export default function TeacherFeesScreen() {
                   );
               }}
             />
+            <CompactButton
+              label={`Print (${demandPrintItems.length})`}
+              icon="download-outline"
+              outline
+              onPress={() => {
+                void downloadDemandBillPdf(
+                  demandPrintItems.map((r) => ({
+                    studentName: r.studentName,
+                    fatherName: r.fatherName,
+                    admissionNo: r.admissionNo,
+                    mobile: r.mobile,
+                    className: r.className,
+                    termLabel: r.termLabel,
+                    termAmount: r.termAmount,
+                    previousDues: r.previousDues,
+                    totalAmount: r.totalAmount,
+                  })),
+                  fees.demandMonthLabel || `${fees.demandMonth}/${fees.demandYear}`,
+                );
+              }}
+            />
           </View>
+
+          {fees.demandMonthLabel ? (
+            <Text style={[styles.monthLabel, { color: theme.colors.textPrimary }]}>
+              Demand Bill – {fees.demandMonthLabel} · {fees.demandRows.length} student
+              {fees.demandRows.length !== 1 ? 's' : ''}
+              {demandSelected.size > 0 ? ` · ${demandSelected.size} selected` : ''}
+            </Text>
+          ) : null}
 
           <View
             style={[
@@ -586,15 +1003,42 @@ export default function TeacherFeesScreen() {
             ]}
           >
             <Text style={[styles.summaryText, { color: theme.colors.textSecondary }]}>
-              Selected / shown: {demandTotals.count} · Term {currency(demandTotals.term)} · Prev{' '}
-              {currency(demandTotals.prev)} · Total {currency(demandTotals.total)}
+              TOTAL · Term {currency(demandTotals.term)} · Prev {currency(demandTotals.prev)} ·{' '}
+              <Text style={{ color: theme.colors.danger, fontWeight: '800' }}>
+                {currency(demandTotals.total)}
+              </Text>
+            </Text>
+            <Text style={[styles.summaryText, { color: theme.colors.textSecondary, marginTop: 4 }]}>
+              {demandSelected.size > 0
+                ? `${demandSelected.size} selected`
+                : `${fees.demandRows.length} total`}{' '}
+              · SMS/WhatsApp notify {demandSelected.size > 0 ? 'selected' : 'all'} students
             </Text>
           </View>
 
-          {fees.demandMonthLabel ? (
-            <Text style={[styles.monthLabel, { color: theme.colors.textPrimary }]}>
-              {fees.demandMonthLabel}
-            </Text>
+          {fees.demandRows.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => {
+                const allIds = fees.demandRows.map((r) => r.studentId);
+                const allOn = allIds.every((id) => demandSelected.has(id));
+                setDemandSelected(allOn ? new Set() : new Set(allIds));
+              }}
+              style={styles.toolbarRow}
+            >
+              <Ionicons
+                name={
+                  fees.demandRows.length > 0 &&
+                  fees.demandRows.every((r) => demandSelected.has(r.studentId))
+                    ? 'checkbox'
+                    : 'square-outline'
+                }
+                size={20}
+                color={theme.colors.primary}
+              />
+              <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 13 }}>
+                Select all
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           <SurfaceCard padded={false} style={styles.listCard}>
@@ -604,8 +1048,51 @@ export default function TeacherFeesScreen() {
               <EmptyState
                 icon="receipt-outline"
                 title="No demand rows"
-                message="Choose month, year, and class, then Generate."
+                message="Select month and class (or All Classes), then tap Generate."
               />
+            ) : demandViewMode === 'slips' ? (
+              demandPrintItems.map((row, index) => (
+                <View
+                  key={`slip-${row.studentId}-${index}`}
+                  style={[
+                    styles.slipCard,
+                    { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+                  ]}
+                >
+                  <Text style={{ fontWeight: '800', color: theme.colors.primary, fontSize: 13 }}>
+                    DEMAND SLIP
+                  </Text>
+                  <Text style={{ fontWeight: '700', color: theme.colors.textPrimary, marginTop: 6 }}>
+                    {row.studentName}
+                  </Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                    ADM {row.admissionNo} · {row.className}
+                  </Text>
+                  <Text style={{ color: theme.colors.primary, fontSize: 12, marginTop: 6 }}>
+                    {row.termLabel}
+                  </Text>
+                  <View style={[styles.rowBetween, { marginTop: 8 }]}>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Term fee</Text>
+                    <Text style={{ fontWeight: '700' }}>{currency(row.termAmount)}</Text>
+                  </View>
+                  {row.previousDues > 0 ? (
+                    <View style={styles.rowBetween}>
+                      <Text style={{ color: theme.colors.warning, fontSize: 12 }}>
+                        Prev. dues
+                      </Text>
+                      <Text style={{ color: theme.colors.warning, fontWeight: '700' }}>
+                        {currency(row.previousDues)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={[styles.rowBetween, { marginTop: 4 }]}>
+                    <Text style={{ fontWeight: '800', color: theme.colors.danger }}>TOTAL</Text>
+                    <Text style={{ fontWeight: '800', color: theme.colors.danger, fontSize: 16 }}>
+                      {currency(row.totalAmount)}
+                    </Text>
+                  </View>
+                </View>
+              ))
             ) : (
               fees.demandRows.map((row, index) => {
                 const selected = demandSelected.has(row.studentId);
@@ -618,6 +1105,7 @@ export default function TeacherFeesScreen() {
                         borderBottomWidth: StyleSheet.hairlineWidth,
                         borderBottomColor: theme.colors.border,
                       },
+                      selected && { backgroundColor: `${theme.colors.primary}10` },
                     ]}
                     onPress={() => {
                       setDemandSelected((prev) => {
@@ -640,11 +1128,20 @@ export default function TeacherFeesScreen() {
                         {row.studentName}
                       </Text>
                       <Text style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
-                        ADM {row.admissionNo} · {row.className} · {row.termLabel}
+                        ADM {row.admissionNo} · {row.className}
+                      </Text>
+                      <Text style={{ color: theme.colors.primary, fontSize: 12, marginTop: 2 }}>
+                        {row.termLabel}
+                      </Text>
+                      <Text style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
+                        Term {currency(row.termAmount)}
+                        {row.previousDues > 0
+                          ? ` · Prev ${currency(row.previousDues)}`
+                          : ''}
                       </Text>
                     </View>
                     <View style={styles.rowTrailing}>
-                      <Text style={[styles.amountLg, { color: theme.colors.textPrimary }]}>
+                      <Text style={[styles.amountLg, { color: theme.colors.danger }]}>
                         {currency(row.totalAmount)}
                       </Text>
                       <TouchableOpacity onPress={() => setDemandSlip(row)} hitSlop={8}>
@@ -694,7 +1191,7 @@ export default function TeacherFeesScreen() {
               <EmptyState
                 icon="cash-outline"
                 title="No collections"
-                message="No collections for your class. Tap New Collection to record one."
+                message="No collections found. Tap New Collection to record one."
               />
             ) : (
               fees.collections.map((row, index) => (
@@ -718,6 +1215,10 @@ export default function TeacherFeesScreen() {
                     <Text style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
                       #{row.id} · ADM {row.admissionNo} · {row.paymentMethod} · {row.paymentDate}
                     </Text>
+                    <Text style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
+                      Due {currency(row.amountDue)}
+                      {row.fine > 0 ? ` · Late ${currency(row.fine)}` : ''}
+                    </Text>
                   </View>
                   <View style={styles.rowTrailing}>
                     <Text style={[styles.amountSuccess, { color: theme.colors.success }]}>
@@ -726,6 +1227,143 @@ export default function TeacherFeesScreen() {
                     <Badge label={row.status} accent={statusAccent(row.status)} />
                   </View>
                 </TouchableOpacity>
+              ))
+            )}
+          </SurfaceCard>
+        </View>
+      ) : null}
+
+      {/* ════════ Receipts (admin) ════════ */}
+      {sub === 'receipts' && isAdmin ? (
+        <View style={styles.sectionGap}>
+          <View style={styles.toolbarRow}>
+            <CompactButton
+              label="Refresh"
+              icon="refresh"
+              outline
+              onPress={() => void fees.loadReceipts()}
+            />
+            <CompactButton
+              label="New Receipt"
+              icon="add"
+              onPress={() => {
+                setEditingReceipt(null);
+                setCollLookup(null);
+                setCollLookupError('');
+                setReceiptForm({
+                  collectionId: '',
+                  receiptNumber: '',
+                  amount: '0',
+                  paymentMethod: 'cash',
+                  paymentDate: toYmd(new Date()),
+                  remarks: '',
+                });
+                setReceiptModal(true);
+              }}
+            />
+          </View>
+          <SurfaceCard padded={false} style={styles.listCard}>
+            {fees.receiptsLoading ? (
+              <ActivityIndicator color={theme.colors.primary} style={styles.loader} />
+            ) : fees.receipts.length === 0 ? (
+              <EmptyState
+                icon="receipt-outline"
+                title="No receipts"
+                message="Issue a receipt against a fee collection."
+              />
+            ) : (
+              fees.receipts.map((r, index) => (
+                <View
+                  key={r.id}
+                  style={[
+                    styles.feeRow,
+                    index < fees.receipts.length - 1 && {
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.feeRowBody}>
+                    <Text style={[styles.rowName, { color: theme.colors.textPrimary }]}>
+                      {r.receiptNumber}
+                    </Text>
+                    <Text style={[styles.rowMeta, { color: theme.colors.textSecondary }]}>
+                      Coll #{r.collectionId} · {r.studentName} · {r.paymentMethod} ·{' '}
+                      {r.paymentDate || '—'}
+                    </Text>
+                    <View style={styles.toolbarRow}>
+                      <CompactButton
+                        label="Edit"
+                        outline
+                        onPress={() => {
+                          setEditingReceipt(r);
+                          setCollLookup(null);
+                          setCollLookupError('');
+                          setReceiptForm({
+                            collectionId: String(r.collectionId || ''),
+                            receiptNumber: r.receiptNumber,
+                            amount: String(r.amount),
+                            paymentMethod: r.paymentMethod || 'cash',
+                            paymentDate: r.paymentDate || toYmd(new Date()),
+                            remarks: r.remarks,
+                          });
+                          setReceiptModal(true);
+                        }}
+                      />
+                      <CompactButton
+                        label={receiptDownloadingId === r.receiptId ? '…' : 'Download'}
+                        outline
+                        icon="download-outline"
+                        onPress={() => {
+                          if (receiptDownloadingId != null) return;
+                          void (async () => {
+                            setReceiptDownloadingId(r.receiptId);
+                            try {
+                              await downloadStudentFeeReceiptPdf({
+                                receiptNumber: r.receiptNumber,
+                                amount: r.amount,
+                                paymentDate: r.paymentDate,
+                                paymentMethod: r.paymentMethod,
+                                collectionId: r.collectionId,
+                                remarks: r.remarks,
+                                studentName:
+                                  r.studentName && r.studentName !== '—'
+                                    ? r.studentName
+                                    : undefined,
+                              });
+                            } catch (e) {
+                              Alert.alert(
+                                'Download failed',
+                                e instanceof Error ? e.message : 'Could not create receipt PDF.',
+                              );
+                            } finally {
+                              setReceiptDownloadingId(null);
+                            }
+                          })();
+                        }}
+                      />
+                      {r.isActive ? (
+                        <CompactButton
+                          label="Deactivate"
+                          outline
+                          onPress={() => {
+                            Alert.alert('Deactivate receipt?', r.receiptNumber, [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Deactivate',
+                                style: 'destructive',
+                                onPress: () => void fees.removeReceipt(r.receiptId),
+                              },
+                            ]);
+                          }}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                  <Text style={[styles.amountSuccess, { color: theme.colors.success }]}>
+                    {currency(r.amount)}
+                  </Text>
+                </View>
               ))
             )}
           </SurfaceCard>
@@ -888,9 +1526,10 @@ export default function TeacherFeesScreen() {
       <CollectionModal
         visible={collectionModal}
         editing={editingCollection}
-        assignments={fees.assignments}
+        classOptions={fees.classOptions}
         restrictedClassId={fees.restrictedClassId}
         busy={fees.actionBusy}
+        loadAssignmentsForClass={fees.loadAssignmentsForClass}
         pendingTermForAssignment={fees.pendingTermForAssignment}
         onClose={() => setCollectionModal(false)}
         onSave={async (form) => {
@@ -902,6 +1541,367 @@ export default function TeacherFeesScreen() {
           }
         }}
       />
+
+      {/* Admin: structure / fee types / receipt modals */}
+      <Modal
+        visible={structureModal}
+        animationType="slide"
+        onRequestClose={() => setStructureModal(false)}
+      >
+        <View style={[styles.modalRoot, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+              {editingStructure ? 'Edit Fee Structure' : 'New Fee Structure'}
+            </Text>
+            <TouchableOpacity onPress={() => setStructureModal(false)} hitSlop={10}>
+              <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {fees.academicYearLabel ? (
+              <View
+                style={[
+                  styles.ayBanner,
+                  { backgroundColor: `${theme.colors.primary}18`, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 13 }}>
+                  Academic Year: {fees.academicYearLabel}
+                </Text>
+              </View>
+            ) : null}
+            <FormField label="Structure Name" required>
+              <TextField
+                value={structureForm.name}
+                onChangeText={(v) => setStructureForm((f) => ({ ...f, name: v }))}
+                placeholder="e.g. Annual Tuition Fee"
+              />
+            </FormField>
+            <FormField label="Fee Type" required>
+              <SelectField
+                options={fees.feeTypes.map((t) => ({ label: t.name, value: String(t.id) }))}
+                value={structureForm.feeTypeId || null}
+                onChange={(v) => setStructureForm((f) => ({ ...f, feeTypeId: v }))}
+                placeholder="Select fee type"
+              />
+            </FormField>
+            <FormField label="Amount (₹)">
+              <TextField
+                value={structureForm.amount}
+                onChangeText={(v) => setStructureForm((f) => ({ ...f, amount: v }))}
+                keyboardType="numeric"
+              />
+            </FormField>
+            <FormField label="Frequency">
+              <SelectField
+                options={FEE_FREQUENCIES.map((f) => ({
+                  label: f.replace(/_/g, ' '),
+                  value: f,
+                }))}
+                value={structureForm.frequency}
+                onChange={(v) => setStructureForm((f) => ({ ...f, frequency: v }))}
+              />
+            </FormField>
+            <FormField label="Due Day (1–31)">
+              <TextField
+                value={structureForm.dueDay}
+                onChangeText={(v) => setStructureForm((f) => ({ ...f, dueDay: v }))}
+                keyboardType="numeric"
+              />
+            </FormField>
+            <FormField label="Late Fee / Day (₹)">
+              <TextField
+                value={structureForm.lateFeePerDay}
+                onChangeText={(v) => setStructureForm((f) => ({ ...f, lateFeePerDay: v }))}
+                keyboardType="numeric"
+              />
+            </FormField>
+            <FormField
+              label={editingStructure ? 'Class' : 'Classes'}
+              hint={editingStructure ? undefined : 'Select multiple — one record per class'}
+            >
+              {!editingStructure ? (
+                <SearchBar
+                  value={structureForm.classSearch}
+                  onChangeText={(v) => setStructureForm((f) => ({ ...f, classSearch: v }))}
+                  placeholder="Search class…"
+                />
+              ) : null}
+              {editingStructure ? (
+                <SelectField
+                  options={fees.classOptions.map((c) => ({ label: c.name, value: String(c.id) }))}
+                  value={structureForm.classIds[0] != null ? String(structureForm.classIds[0]) : null}
+                  onChange={(v) =>
+                    setStructureForm((f) => ({ ...f, classIds: v ? [Number(v)] : [] }))
+                  }
+                />
+              ) : (
+                <View style={styles.classPickList}>
+                  {fees.classOptions
+                    .filter((c) => {
+                      const q = structureForm.classSearch.trim().toLowerCase();
+                      return !q || c.name.toLowerCase().includes(q);
+                    })
+                    .map((c) => {
+                      const checked = structureForm.classIds.includes(c.id);
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[styles.pickRow, { borderColor: theme.colors.border }]}
+                          onPress={() =>
+                            setStructureForm((f) => ({
+                              ...f,
+                              classIds: checked
+                                ? f.classIds.filter((id) => id !== c.id)
+                                : [...f.classIds, c.id],
+                            }))
+                          }
+                        >
+                          <Ionicons
+                            name={checked ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={checked ? theme.colors.primary : theme.colors.textSecondary}
+                          />
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              )}
+            </FormField>
+            <FormField label="Description (optional)">
+              <TextField
+                value={structureForm.description}
+                onChangeText={(v) => setStructureForm((f) => ({ ...f, description: v }))}
+                multiline
+              />
+            </FormField>
+            <PrimaryButton
+              label={fees.actionBusy ? 'Saving…' : editingStructure ? 'Update' : 'Create'}
+              disabled={fees.actionBusy}
+              onPress={() => {
+                if (!structureForm.name.trim()) {
+                  Alert.alert('Required', 'Structure name is required');
+                  return;
+                }
+                if (!structureForm.feeTypeId) {
+                  Alert.alert('Required', 'Fee type is required');
+                  return;
+                }
+                if (!editingStructure && structureForm.classIds.length === 0) {
+                  Alert.alert('Required', 'Select at least one class');
+                  return;
+                }
+                void (async () => {
+                  const ok = await fees.saveStructure(
+                    {
+                      name: structureForm.name.trim(),
+                      feeTypeId: Number(structureForm.feeTypeId),
+                      amount: Number(structureForm.amount) || 0,
+                      frequency: structureForm.frequency,
+                      dueDay: Math.min(31, Math.max(1, Number(structureForm.dueDay) || 10)),
+                      lateFeePerDay: Number(structureForm.lateFeePerDay) || 0,
+                      classIds: structureForm.classIds,
+                      description: structureForm.description.trim(),
+                    },
+                    editingStructure?.structureId,
+                  );
+                  if (ok) setStructureModal(false);
+                  else Alert.alert('Save failed', fees.error || 'Could not save structure');
+                })();
+              }}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={feeTypesModal}
+        animationType="slide"
+        onRequestClose={() => setFeeTypesModal(false)}
+      >
+        <View style={[styles.modalRoot, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Fee Types</Text>
+            <TouchableOpacity onPress={() => setFeeTypesModal(false)} hitSlop={10}>
+              <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <FormField label="New fee type">
+              <TextField
+                value={newFeeTypeName}
+                onChangeText={setNewFeeTypeName}
+                placeholder="e.g. Transport Fee"
+              />
+            </FormField>
+            <CompactButton
+              label={fees.actionBusy ? 'Adding…' : 'Add Fee Type'}
+              onPress={() => {
+                void (async () => {
+                  const ok = await fees.createFeeType(newFeeTypeName);
+                  if (ok) setNewFeeTypeName('');
+                  else Alert.alert('Failed', fees.error || 'Could not create fee type');
+                })();
+              }}
+            />
+            {fees.feeTypes.length === 0 ? (
+              <EmptyState
+                icon="settings-outline"
+                title="No fee types"
+                message="Add a fee type to use in structures."
+              />
+            ) : (
+              fees.feeTypes.map((t) => (
+                <View
+                  key={t.id}
+                  style={[styles.pickRow, { borderColor: theme.colors.border, justifyContent: 'space-between' }]}
+                >
+                  <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>{t.name}</Text>
+                  <CompactButton
+                    label="Delete"
+                    outline
+                    onPress={() => {
+                      Alert.alert('Delete fee type?', t.name, [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => void fees.removeFeeType(t.id),
+                        },
+                      ]);
+                    }}
+                  />
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={receiptModal}
+        animationType="slide"
+        onRequestClose={() => setReceiptModal(false)}
+      >
+        <View style={[styles.modalRoot, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+              {editingReceipt ? 'Edit Receipt' : 'New Receipt'}
+            </Text>
+            <TouchableOpacity onPress={() => setReceiptModal(false)} hitSlop={10}>
+              <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <FormField label="Collection ID" required>
+              <TextField
+                value={receiptForm.collectionId}
+                onChangeText={(v) => setReceiptForm((f) => ({ ...f, collectionId: v }))}
+                keyboardType="numeric"
+                placeholder="Enter Collection ID…"
+              />
+            </FormField>
+            {collLookupBusy ? (
+              <Text style={{ color: theme.colors.primary, fontSize: 12 }}>Looking up collection…</Text>
+            ) : null}
+            {collLookupError ? (
+              <Text style={{ color: theme.colors.danger, fontSize: 12 }}>⚠ {collLookupError}</Text>
+            ) : null}
+            {collLookup && !collLookupError ? (
+              <View
+                style={[
+                  styles.ayBanner,
+                  { backgroundColor: `${theme.colors.success}18`, borderColor: theme.colors.border },
+                ]}
+              >
+                <Text style={{ color: theme.colors.success, fontWeight: '700', fontSize: 13 }}>
+                  ✓ {collLookup.studentName}
+                  {collLookup.admissionNo ? ` · ADM ${collLookup.admissionNo}` : ''}
+                </Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                  Due {currency(collLookup.amountDue)} · Paid {currency(collLookup.amount)} ·{' '}
+                  {collLookup.status}
+                </Text>
+              </View>
+            ) : null}
+            <FormField label="Receipt Number" required>
+              <TextField
+                value={receiptForm.receiptNumber}
+                onChangeText={(v) => setReceiptForm((f) => ({ ...f, receiptNumber: v }))}
+                placeholder="e.g. RCPT-2026-001"
+              />
+            </FormField>
+            <FormField label="Amount (₹)" required>
+              <TextField
+                value={receiptForm.amount}
+                onChangeText={(v) => setReceiptForm((f) => ({ ...f, amount: v }))}
+                keyboardType="numeric"
+              />
+            </FormField>
+            {collLookup ? (
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 11, marginTop: -4 }}>
+                Auto-filled from collection · you may adjust if needed
+              </Text>
+            ) : null}
+            <FormField label="Payment Method">
+              <SelectField
+                options={PAYMENT_METHODS.map((m) => ({
+                  label: m.replace(/_/g, ' '),
+                  value: m,
+                }))}
+                value={receiptForm.paymentMethod}
+                onChange={(v) => setReceiptForm((f) => ({ ...f, paymentMethod: v }))}
+              />
+            </FormField>
+            <FormField label="Payment Date">
+              <TextField
+                value={receiptForm.paymentDate}
+                onChangeText={(v) => setReceiptForm((f) => ({ ...f, paymentDate: v }))}
+                placeholder="YYYY-MM-DD"
+              />
+            </FormField>
+            <FormField label="Remarks (optional)">
+              <TextField
+                value={receiptForm.remarks}
+                onChangeText={(v) => setReceiptForm((f) => ({ ...f, remarks: v }))}
+                multiline
+              />
+            </FormField>
+            <PrimaryButton
+              label={fees.actionBusy ? 'Saving…' : editingReceipt ? 'Update' : 'Create'}
+              disabled={fees.actionBusy || !!collLookupError || collLookupBusy}
+              onPress={() => {
+                if (!receiptForm.collectionId || !receiptForm.receiptNumber.trim()) {
+                  Alert.alert('Required', 'Collection ID and receipt number are required');
+                  return;
+                }
+                if (!Number(receiptForm.amount)) {
+                  Alert.alert('Required', 'Amount is required');
+                  return;
+                }
+                void (async () => {
+                  const ok = await fees.saveReceipt(
+                    {
+                      collectionId: Number(receiptForm.collectionId),
+                      receiptNumber: receiptForm.receiptNumber.trim(),
+                      amount: Number(receiptForm.amount) || 0,
+                      paymentMethod: receiptForm.paymentMethod,
+                      paymentDate: receiptForm.paymentDate,
+                      remarks: receiptForm.remarks.trim(),
+                    },
+                    editingReceipt?.receiptId,
+                  );
+                  if (ok) setReceiptModal(false);
+                  else Alert.alert('Save failed', fees.error || 'Could not save receipt');
+                })();
+              }}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
 
       <DetailSheet
         visible={!!registerDetail}
@@ -1545,27 +2545,31 @@ function TermsModal({
 function CollectionModal({
   visible,
   editing,
-  assignments,
+  classOptions,
   restrictedClassId,
   busy,
+  loadAssignmentsForClass,
   pendingTermForAssignment,
   onClose,
   onSave,
 }: {
   visible: boolean;
   editing: FeeCollectionRow | null;
-  assignments: FeeAssignmentRow[];
+  classOptions: Array<{ id: number; name: string }>;
   restrictedClassId?: number;
   busy: boolean;
+  loadAssignmentsForClass: (classId: number) => Promise<FeeAssignmentRow[]>;
   pendingTermForAssignment: (assignment: FeeAssignmentRow) => Promise<FeeTermRow | null>;
   onClose: () => void;
   onSave: (form: CollectionFormInput) => Promise<void>;
 }) {
   const theme = useTeacherTheme();
-  const scoped = assignments.filter(
-    (a) => !restrictedClassId || a.classId === restrictedClassId,
-  );
-  const [assignmentId, setAssignmentId] = useState('');
+  const [selClassId, setSelClassId] = useState<number | undefined>(restrictedClassId);
+  const [classAssignments, setClassAssignments] = useState<FeeAssignmentRow[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [selAssignment, setSelAssignment] = useState<FeeAssignmentRow | null>(null);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [termLabel, setTermLabel] = useState('');
   const [amountDue, setAmountDue] = useState('0');
   const [amountPaid, setAmountPaid] = useState('0');
   const [fine, setFine] = useState('0');
@@ -1577,6 +2581,12 @@ function CollectionModal({
   const [status, setStatus] = useState('pending');
   const [termId, setTermId] = useState<number | undefined>();
   const [feeStructureId, setFeeStructureId] = useState<number | undefined>();
+
+  const activeClassId = restrictedClassId ?? selClassId;
+  const paidNum = Number(amountPaid) || 0;
+  const dueNum = Number(amountDue) || 0;
+  const derivedStatus =
+    paidNum <= 0 ? 'pending' : paidNum >= dueNum ? 'paid' : 'partial';
 
   useEffect(() => {
     if (!visible) return;
@@ -1592,8 +2602,14 @@ function CollectionModal({
       setStatus(editing.status);
       setTermId(editing.termScheduleId);
       setFeeStructureId(editing.feeStructureId);
+      setSelAssignment(null);
+      setStudentSearch('');
     } else {
-      setAssignmentId(scoped[0]?.id ?? '');
+      setSelClassId(restrictedClassId);
+      setClassAssignments([]);
+      setSelAssignment(null);
+      setStudentSearch('');
+      setTermLabel('');
       setAmountDue('0');
       setAmountPaid('0');
       setFine('0');
@@ -1606,23 +2622,45 @@ function CollectionModal({
       setTermId(undefined);
       setFeeStructureId(undefined);
     }
-  }, [visible, editing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, editing, restrictedClassId]);
 
   useEffect(() => {
-    if (!visible || editing || !assignmentId) return;
-    const asg = scoped.find((a) => a.id === assignmentId);
-    if (!asg) return;
-    setFeeStructureId(asg.feeStructureId);
-    void pendingTermForAssignment(asg).then((term) => {
+    if (!visible || editing || !activeClassId) {
+      if (!activeClassId) setClassAssignments([]);
+      return;
+    }
+    setAssignLoading(true);
+    void loadAssignmentsForClass(activeClassId)
+      .then(setClassAssignments)
+      .finally(() => setAssignLoading(false));
+  }, [visible, editing, activeClassId, loadAssignmentsForClass]);
+
+  useEffect(() => {
+    if (!visible || editing || !selAssignment) return;
+    setFeeStructureId(selAssignment.feeStructureId);
+    void pendingTermForAssignment(selAssignment).then((term) => {
       if (term) {
         setTermId(Number(term.id));
+        setTermLabel(term.termLabel);
         setAmountDue(String(term.amountDue));
         setDueDate(term.dueDate);
       } else {
-        setAmountDue(String(asg.totalFee));
+        setTermId(undefined);
+        setTermLabel('');
+        setAmountDue(String(selAssignment.totalFee));
+        setDueDate('');
       }
     });
-  }, [assignmentId, visible, editing, pendingTermForAssignment]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selAssignment, visible, editing, pendingTermForAssignment]);
+
+  const filteredStudents = classAssignments.filter((a) => {
+    if (!studentSearch.trim()) return true;
+    const q = studentSearch.trim().toLowerCase();
+    return (
+      a.studentName.toLowerCase().includes(q) ||
+      a.admissionNo.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -1637,88 +2675,254 @@ function CollectionModal({
         </View>
         <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
           {!editing ? (
-            <FormField label="Student" required>
-              <SelectField
-                options={scoped.map((a) => ({
-                  label: `${a.studentName} · ${a.className}`,
-                  value: a.id,
-                }))}
-                value={assignmentId || null}
-                onChange={setAssignmentId}
-              />
-            </FormField>
-          ) : (
-            <FormField label="Student">
-              <Text style={{ fontWeight: '700', fontSize: 16, color: theme.colors.textPrimary }}>
-                {editing.studentName}
+            <>
+              <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>
+                Step 1 — Select Student
               </Text>
-            </FormField>
-          )}
+              <FormField label="Class" required>
+                <SelectField
+                  options={classOptions
+                    .filter((c) => !restrictedClassId || c.id === restrictedClassId)
+                    .map((c) => ({ label: c.name, value: String(c.id) }))}
+                  value={activeClassId != null ? String(activeClassId) : null}
+                  onChange={(v) => {
+                    setSelClassId(v ? Number(v) : undefined);
+                    setSelAssignment(null);
+                    setStudentSearch('');
+                  }}
+                  placeholder="— Select Class —"
+                />
+              </FormField>
 
-          <FormField label="Amount due">
-            <TextField value={amountDue} onChangeText={setAmountDue} keyboardType="numeric" />
-          </FormField>
-          <FormField label="Amount paid" required>
-            <TextField value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" />
-          </FormField>
-          <FormField label="Late fee">
-            <TextField value={fine} onChangeText={setFine} keyboardType="numeric" />
-          </FormField>
-          <FormField label="Payment method">
-            <SelectField
-              options={['cash', 'upi', 'card', 'cheque', 'bank_transfer', 'other'].map((m) => ({
-                label: m.toUpperCase(),
-                value: m,
-              }))}
-              value={method}
-              onChange={setMethod}
-            />
-          </FormField>
-          <DateField label="Payment date" value={paymentDate} onChange={setPaymentDate} />
-          <DateField label="Due date" value={dueDate} onChange={setDueDate} />
-          <FormField label="Transaction ref">
-            <TextField value={txn} onChangeText={setTxn} />
-          </FormField>
-          <FormField label="Remarks">
-            <TextField value={remarks} onChangeText={setRemarks} multiline />
-          </FormField>
-          {editing ? (
-            <FormField label="Status">
-              <SelectField
-                options={COLLECTION_STATUSES.map((s) => ({ label: s, value: s }))}
-                value={status}
-                onChange={setStatus}
+              {activeClassId ? (
+                <FormField label="Student" required>
+                  {selAssignment ? (
+                    <View style={[styles.pickRow, { borderColor: theme.colors.border }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
+                          {selAssignment.studentName}
+                        </Text>
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+                          ADM {selAssignment.admissionNo} · {selAssignment.className}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelAssignment(null);
+                          setStudentSearch('');
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={22} color={theme.colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <SearchBar
+                        value={studentSearch}
+                        onChangeText={setStudentSearch}
+                        placeholder={
+                          assignLoading ? 'Loading students…' : 'Search by name or ADM #…'
+                        }
+                      />
+                      {assignLoading ? (
+                        <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 8 }} />
+                      ) : (
+                        filteredStudents.map((a) => (
+                          <TouchableOpacity
+                            key={a.id}
+                            style={[styles.pickRow, { borderColor: theme.colors.border }]}
+                            onPress={() => {
+                              setSelAssignment(a);
+                              setStudentSearch('');
+                              setAmountPaid('0');
+                              setFine('0');
+                            }}
+                          >
+                            <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
+                              {a.studentName}
+                            </Text>
+                            <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+                              ADM {a.admissionNo}
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
+                      {!assignLoading && filteredStudents.length === 0 ? (
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+                          No fee-assigned students in this class.
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
+                </FormField>
+              ) : null}
+
+              {selAssignment ? (
+                <>
+                  <View
+                    style={[
+                      styles.ayBanner,
+                      {
+                        backgroundColor: `${theme.colors.primary}14`,
+                        borderColor: theme.colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontWeight: '700', color: theme.colors.primary, fontSize: 13 }}>
+                      Fee Summary — {selAssignment.studentName}
+                    </Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                      ADM {selAssignment.admissionNo} · {selAssignment.className} ·{' '}
+                      {selAssignment.frequency}
+                    </Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                      Total fee {currency(selAssignment.totalFee)}
+                      {termLabel ? ` · Term ${termLabel}` : ''}
+                    </Text>
+                    <Text
+                      style={{
+                        color: theme.colors.danger,
+                        fontWeight: '800',
+                        fontSize: 15,
+                        marginTop: 6,
+                      }}
+                    >
+                      Amount due: {currency(dueNum)}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>
+                    Step 2 — Payment Details
+                  </Text>
+                  <FormField label="Amount Paying (₹)" required>
+                    <TextField
+                      value={amountPaid}
+                      onChangeText={setAmountPaid}
+                      keyboardType="numeric"
+                    />
+                  </FormField>
+                  {paidNum > 0 ? (
+                    <Text
+                      style={{
+                        color: paidNum >= dueNum ? theme.colors.success : theme.colors.warning,
+                        fontSize: 12,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {paidNum >= dueNum
+                        ? `Fully paid · Status: ${derivedStatus}`
+                        : `Partial — ${currency(dueNum - paidNum)} remaining · ${derivedStatus}`}
+                    </Text>
+                  ) : null}
+                  <FormField label="Late Fee (₹)" hint="Recorded separately — does not change term fee">
+                    <TextField value={fine} onChangeText={setFine} keyboardType="numeric" />
+                  </FormField>
+                  <FormField label="Payment Method">
+                    <SelectField
+                      options={PAYMENT_METHODS.map((m) => ({
+                        label: m.replace(/_/g, ' '),
+                        value: m,
+                      }))}
+                      value={method}
+                      onChange={setMethod}
+                    />
+                  </FormField>
+                  <DateField label="Payment date" value={paymentDate} onChange={setPaymentDate} />
+                  <FormField label="Transaction Ref">
+                    <TextField value={txn} onChangeText={setTxn} placeholder="Optional" />
+                  </FormField>
+                  <FormField label="Remarks">
+                    <TextField value={remarks} onChangeText={setRemarks} multiline />
+                  </FormField>
+                  <PrimaryButton
+                    label={busy ? 'Saving…' : 'Save Collection'}
+                    icon="save-outline"
+                    loading={busy}
+                    onPress={() => {
+                      if (!selAssignment) {
+                        Alert.alert('Required', 'Select a student');
+                        return;
+                      }
+                      void onSave({
+                        studentId: selAssignment.studentId,
+                        feeStructureId,
+                        termScheduleId: termId,
+                        amountDue: dueNum,
+                        amountPaid: paidNum,
+                        fine: Number(fine) || 0,
+                        paymentMethod: method,
+                        paymentDate,
+                        dueDate,
+                        transactionRef: txn,
+                        remarks,
+                      });
+                    }}
+                  />
+                </>
+              ) : (
+                <CompactButton label="Cancel" outline onPress={onClose} style={{ marginTop: 8 }} />
+              )}
+            </>
+          ) : (
+            <>
+              <FormField label="Student">
+                <Text style={{ fontWeight: '700', fontSize: 16, color: theme.colors.textPrimary }}>
+                  {editing.studentName}
+                </Text>
+              </FormField>
+              <FormField label="Amount Paid (₹)">
+                <TextField value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" />
+              </FormField>
+              <FormField label="Late Fee / Fine (₹)">
+                <TextField value={fine} onChangeText={setFine} keyboardType="numeric" />
+              </FormField>
+              <FormField label="Payment Method">
+                <SelectField
+                  options={PAYMENT_METHODS.map((m) => ({
+                    label: m.replace(/_/g, ' '),
+                    value: m,
+                  }))}
+                  value={method}
+                  onChange={setMethod}
+                />
+              </FormField>
+              <FormField label="Status">
+                <SelectField
+                  options={COLLECTION_STATUSES.map((s) => ({ label: s, value: s }))}
+                  value={status}
+                  onChange={setStatus}
+                />
+              </FormField>
+              <DateField label="Payment date" value={paymentDate} onChange={setPaymentDate} />
+              <FormField label="Transaction Ref">
+                <TextField value={txn} onChangeText={setTxn} />
+              </FormField>
+              <FormField label="Remarks">
+                <TextField value={remarks} onChangeText={setRemarks} multiline />
+              </FormField>
+              <PrimaryButton
+                label={busy ? 'Saving…' : 'Save'}
+                icon="save-outline"
+                loading={busy}
+                onPress={() => {
+                  void onSave({
+                    studentId: editing.studentId,
+                    feeStructureId,
+                    termScheduleId: termId,
+                    amountDue: Number(amountDue) || editing.amountDue,
+                    amountPaid: Number(amountPaid) || 0,
+                    fine: Number(fine) || 0,
+                    paymentMethod: method,
+                    paymentDate,
+                    dueDate,
+                    transactionRef: txn,
+                    remarks,
+                    status,
+                  });
+                }}
               />
-            </FormField>
-          ) : null}
-
-          <PrimaryButton
-            label={busy ? 'Saving…' : 'Save'}
-            icon="save-outline"
-            loading={busy}
-            onPress={() => {
-              const asg = scoped.find((a) => a.id === assignmentId);
-              const studentId = editing?.studentId ?? asg?.studentId;
-              if (!studentId) {
-                Alert.alert('Required', 'Select a student');
-                return;
-              }
-              void onSave({
-                studentId,
-                feeStructureId,
-                termScheduleId: termId,
-                amountDue: Number(amountDue) || 0,
-                amountPaid: Number(amountPaid) || 0,
-                fine: Number(fine) || 0,
-                paymentMethod: method,
-                paymentDate,
-                dueDate,
-                transactionRef: txn,
-                remarks,
-                status: editing ? status : undefined,
-              });
-            }}
-          />
+            </>
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -1728,6 +2932,35 @@ function CollectionModal({
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14, paddingBottom: 32 },
   errorText: { fontSize: 13, fontWeight: '500' },
+  sectionTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10 },
+  cardTitle: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
+  rowBetween: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  ayBanner: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  classPickList: { maxHeight: 220, gap: 6, marginTop: 8 },
+  slipCard: {
+    marginHorizontal: 12,
+    marginVertical: 8,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  trendSnap: { gap: 8 },
+  trendStatRow: { flexDirection: 'row', gap: 8 },
+  trendStat: { flex: 1, gap: 2 },
+  trendStatValue: { fontSize: 15, fontWeight: '800' },
+  trendStatLabel: { fontSize: 11, fontWeight: '500', lineHeight: 14 },
+  trendDayList: { marginTop: 8, gap: 8 },
+  trendDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
   tabRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
   tabCard: {

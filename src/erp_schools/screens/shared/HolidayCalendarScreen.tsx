@@ -254,7 +254,9 @@ export default function HolidayCalendarScreen() {
             Holiday List ({m.year})
           </Text>
           <Text style={[styles.sectionSub, { color: theme.colors.textSecondary }]}>
-            Stay updated with all the holidays and breaks.
+            {m.canManage
+              ? 'Manage school holidays, festivals, and academic breaks.'
+              : 'Stay updated with all the holidays and breaks.'}
           </Text>
         </View>
         <View style={styles.yearStepper}>
@@ -299,8 +301,8 @@ export default function HolidayCalendarScreen() {
           <Text style={[styles.nextDate, { color: theme.colors.textSecondary }]}>
             {weekdayName(next.startDate)}, {next.dateLabel}
           </Text>
-          <View style={[styles.nextBadge, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.nextBadgeText}>
+          <View style={styles.nextBadge}>
+            <Text style={[styles.nextBadgeText, { color: theme.colors.primary }]}>
               {nextDays === 0 ? 'Today' : `In ${nextDays} Days`}
             </Text>
           </View>
@@ -442,14 +444,12 @@ export default function HolidayCalendarScreen() {
                   {item.name}
                 </Text>
                 <TypeBadge type={item.holidayType} />
-                {item.description ? (
-                  <Text
-                    style={[styles.rowDesc, { color: theme.colors.textSecondary }]}
-                    numberOfLines={2}
-                  >
-                    {item.description}
-                  </Text>
-                ) : null}
+                <Text
+                  style={[styles.rowDesc, { color: theme.colors.textSecondary }]}
+                  numberOfLines={2}
+                >
+                  {item.description || '—'}
+                </Text>
               </View>
               {m.canManage ? (
                 <View style={styles.actions}>
@@ -636,8 +636,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    backgroundColor: '#fff',
   },
-  nextBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  nextBadgeText: { fontSize: 12, fontWeight: '700' },
   monthHeader: {
     flexDirection: 'row',
     alignItems: 'center',

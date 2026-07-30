@@ -62,7 +62,13 @@ function dateKey(y: number, m: number, d: number) {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
-export default function TeacherExamsScreen() {
+export type TeacherExamsProps = {
+  /** Admin: Assessment hero branding (web Exams tab). */
+  role?: 'teacher' | 'admin';
+};
+
+export default function TeacherExamsScreen({ role = 'teacher' }: TeacherExamsProps) {
+  const isAdmin = role === 'admin';
   const theme = useTeacherTheme();
   const navigation = useNavigation<Nav>();
   const [tab, setTab] = useState<ExamTabKey>('groups');
@@ -366,7 +372,9 @@ export default function TeacherExamsScreen() {
             <Text style={[styles.pillText, { color: theme.colors.textPrimary }]}>School ERP</Text>
           </View>
         </View>
-        <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>Exams</Text>
+        <Text style={[styles.heroTitle, { color: theme.colors.textPrimary, fontSize: isAdmin ? 22 : 18 }]}>
+          Exams
+        </Text>
         <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
           Manage exam groups, schedules, marks entry, and published results.
         </Text>

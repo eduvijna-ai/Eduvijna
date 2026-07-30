@@ -1,6 +1,7 @@
 /**
- * useTeacherFeesData — instructor Fees tab (web FeesTab role_id 3/9).
- * Shell KPIs + Fee Assignment / Register / Demand Bill / Collections CRUD.
+ * useTeacherFeesData — Fees tab (web FeesTab).
+ * Teacher: class-scoped Assignment / Register / Demand / Collections.
+ * Admin (scope: 'school'): school-wide + Fee Structure + Receipts.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -9,9 +10,11 @@ import {
   demandBillApi,
   feeCollectionsApi,
   feeNotificationsApi,
+  feeReceiptsApi,
   feeReportsApi,
   feeStructuresApi,
   feeTermSchedulesApi,
+  feeTypesApi,
   routesApi,
   studentFeeAssignmentsApi,
   studentsLookupApi,
@@ -28,6 +31,12 @@ import {
 } from '../utils/apiHelpers';
 import { useSchoolsSession } from './useSchoolsSession';
 
+export type FeesDataScope = 'teacher' | 'school';
+
+export type UseTeacherFeesOptions = {
+  /** teacher = assigned classes only; school = admin school-wide (+ structures/receipts). */
+  scope?: FeesDataScope;
+};
 export const COLLECTION_STATUSES = [
   'pending',
   'partial',
@@ -156,6 +165,57 @@ export type FeeStudentOption = {
 };
 export type FeeRouteOption = { id: number; name: string; monthlyFee: number };
 
+export type FeeStructureRow = {
+  id: string;
+  structureId: number;
+  name: string;
+  classId: number;
+  className: string;
+  feeTypeId?: number;
+  feeTypeName: string;
+  amount: number;
+  frequency: string;
+  dueDay: number;
+  lateFeePerDay: number;
+  description: string;
+  isActive: boolean;
+};
+
+export type FeeTypeOption = { id: number; name: string };
+
+export type FeeReceiptRow = {
+  id: string;
+  receiptId: number;
+  receiptNumber: string;
+  collectionId: number;
+  studentName: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate: string;
+  remarks: string;
+  isActive: boolean;
+};
+
+export type StructureFormInput = {
+  name: string;
+  feeTypeId: number;
+  amount: number;
+  frequency: string;
+  dueDay: number;
+  lateFeePerDay: number;
+  classIds: number[];
+  description: string;
+};
+
+export type ReceiptFormInput = {
+  collectionId: number;
+  receiptNumber: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate: string;
+  remarks: string;
+};
+
 export type AssignmentFormInput = {
   studentId: number;
   classId: number;
@@ -233,9 +293,11 @@ function deriveCollectionStatus(amountPaying: number, amountDue: number): string
   return 'partial';
 }
 
-export function useTeacherFeesData() {
+export function useTeacherFeesData(options?: UseTeacherFeesOptions) {
+  const scope: FeesDataScope = options?.scope === 'school' ? 'school' : 'teacher';
+  const isSchoolScope = scope === 'school';
   const session = useSchoolsSession();
-  const { selectedYearId } = useAcademicYear();
+  const { selectedYearId, selectedYear } = useAcademicYear();
 
   const [status, setStatus] = useState<LoadStatus>(USE_MOCK_DATA ? 'ready' : 'idle');
   const [error, setError] = useState<string | null>(null);
@@ -275,10 +337,22 @@ export function useTeacherFeesData() {
   const [demandYear, setDemandYear] = useState(() => new Date().getFullYear());
   const [demandClassId, setDemandClassId] = useState<number | undefined>();
 
+  const [structures, setStructures] = useState<FeeStructureRow[]>([]);
+  const [structuresLoading, setStructuresLoading] = useState(false);
+  const [structureQuery, setStructureQuery] = useState('');
+  const [structureClassId, setStructureClassId] = useState<number | undefined>();
+  const [structureFeeTypeId, setStructureFeeTypeId] = useState<number | undefined>();
+  const [feeTypes, setFeeTypes] = useState<FeeTypeOption[]>([]);
+
+  const [receipts, setReceipts] = useState<FeeReceiptRow[]>([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(false);
+
   const schoolId = session.schoolId ?? undefined;
   const academicYearId = selectedYearId ?? undefined;
+  const academicYearLabel = selectedYear?.name || '';
   const teacherUserId = session.userId ?? undefined;
-  const restrictedClassId = teacherClassIds[0];
+  /** Teacher: lock to first assigned class. Admin school scope: no lock. */
+  const restrictedClassId = isSchoolScope ? undefined : teacherClassIds[0];
 
   const resolveTeacherClasses = useCallback(async () => {
     if (!academicYearId) {
@@ -296,12 +370,11 @@ export function useTeacherFeesData() {
         ...new Set(
           rows
             .filter((r) => {
-              if (!teacherUserId) return Boolean(r.class_id);
+              if (r.class_id == null) return false;
+              if (isSchoolScope || !teacherUserId) return true;
               const tid = Number(r.teacher_id);
               const ctid = Number(r.class_teacher_id);
-              return (
-                (tid === teacherUserId || ctid === teacherUserId) && r.class_id != null
-              );
+              return tid === teacherUserId || ctid === teacherUserId;
             })
             .map((r) => Number(r.class_id))
             .filter((n) => Number.isFinite(n) && n > 0),
@@ -329,7 +402,7 @@ export function useTeacherFeesData() {
       setClassOptions([]);
       return [] as number[];
     }
-  }, [academicYearId, schoolId, teacherUserId]);
+  }, [academicYearId, schoolId, teacherUserId, isSchoolScope]);
 
   const loadShell = useCallback(async () => {
     if (USE_MOCK_DATA) {
@@ -367,7 +440,8 @@ export function useTeacherFeesData() {
       const routesRaw = settledValue(results[5], null);
 
       let assignItems = safeList<Record<string, unknown>>(assignRaw);
-      if (ids.length > 0) {
+      // Teacher scope only: narrow KPI totals to assigned classes. Admin sees school-wide.
+      if (!isSchoolScope && ids.length > 0) {
         const idSet = new Set(ids);
         const scoped = assignItems.filter(
           (a) => a.class_id != null && idSet.has(Number(a.class_id)),
@@ -448,7 +522,7 @@ export function useTeacherFeesData() {
       setStatus('error');
       setKpis(emptyKpis());
     }
-  }, [resolveTeacherClasses, schoolId, academicYearId]);
+  }, [resolveTeacherClasses, schoolId, academicYearId, isSchoolScope]);
 
   const loadRegister = useCallback(async () => {
     if (USE_MOCK_DATA) return;
@@ -519,18 +593,20 @@ export function useTeacherFeesData() {
     if (USE_MOCK_DATA) return;
     setAssignLoading(true);
     try {
+      // Match web FeesTab: optional class filter only. Do not auto-lock to a single
+      // teacher class in school (admin) scope — that hid other classes' assignments.
       const classId =
         assignClassId ??
         restrictedClassId ??
-        (teacherClassIds.length === 1 ? teacherClassIds[0] : undefined);
+        (!isSchoolScope && teacherClassIds.length === 1 ? teacherClassIds[0] : undefined);
       const raw = await studentFeeAssignmentsApi.list({
         school_id: schoolId,
         academic_year_id: academicYearId,
         class_id: classId,
-        per_page: 100,
+        per_page: 200,
       });
       let items = safeList<Record<string, unknown>>(raw).map(mapAssignment);
-      if (!classId && teacherClassIds.length > 0) {
+      if (!isSchoolScope && !classId && teacherClassIds.length > 0) {
         const idSet = new Set(teacherClassIds);
         items = items.filter((a) => idSet.has(a.classId));
       }
@@ -541,7 +617,7 @@ export function useTeacherFeesData() {
     } finally {
       setAssignLoading(false);
     }
-  }, [assignClassId, restrictedClassId, teacherClassIds, schoolId, academicYearId]);
+  }, [assignClassId, restrictedClassId, teacherClassIds, schoolId, academicYearId, isSchoolScope]);
 
   const loadCollections = useCallback(async () => {
     if (USE_MOCK_DATA) return;
@@ -551,7 +627,7 @@ export function useTeacherFeesData() {
         status: collectionStatus || undefined,
         class_id: restrictedClassId,
         page: 1,
-        per_page: 50,
+        per_page: 100,
         school_id: schoolId,
       });
       setCollections(
@@ -584,11 +660,12 @@ export function useTeacherFeesData() {
 
   const loadDemandBill = useCallback(async () => {
     if (USE_MOCK_DATA) return;
+    // Web DemandBillView: class_id optional ("All Classes"). Teacher scope still needs a class.
     const classId =
       demandClassId ??
       restrictedClassId ??
-      (teacherClassIds.length === 1 ? teacherClassIds[0] : undefined);
-    if (!classId) {
+      (!isSchoolScope && teacherClassIds.length === 1 ? teacherClassIds[0] : undefined);
+    if (!isSchoolScope && !classId) {
       setDemandRows([]);
       setDemandMonthLabel('');
       return;
@@ -630,6 +707,7 @@ export function useTeacherFeesData() {
     demandMonth,
     demandYear,
     schoolId,
+    isSchoolScope,
   ]);
 
   useEffect(() => {
@@ -654,18 +732,37 @@ export function useTeacherFeesData() {
   useEffect(() => {
     if (restrictedClassId && demandClassId == null) {
       setDemandClassId(restrictedClassId);
-    } else if (teacherClassIds.length === 1 && demandClassId == null) {
+    } else if (!isSchoolScope && teacherClassIds.length === 1 && demandClassId == null) {
       setDemandClassId(teacherClassIds[0]);
     }
-  }, [restrictedClassId, teacherClassIds, demandClassId]);
+  }, [restrictedClassId, teacherClassIds, demandClassId, isSchoolScope]);
 
   useEffect(() => {
     if (restrictedClassId && assignClassId == null) {
       setAssignClassId(restrictedClassId);
-    } else if (teacherClassIds.length === 1 && assignClassId == null) {
+    } else if (!isSchoolScope && teacherClassIds.length === 1 && assignClassId == null) {
       setAssignClassId(teacherClassIds[0]);
     }
-  }, [restrictedClassId, teacherClassIds, assignClassId]);
+  }, [restrictedClassId, teacherClassIds, assignClassId, isSchoolScope]);
+
+  const loadAssignmentsForClass = useCallback(
+    async (classId: number): Promise<FeeAssignmentRow[]> => {
+      if (!classId) return [];
+      try {
+        const raw = await studentFeeAssignmentsApi.list({
+          class_id: classId,
+          school_id: schoolId,
+          per_page: 200,
+        });
+        return safeList<Record<string, unknown>>(raw)
+          .map(mapAssignment)
+          .filter((a) => a.isActive);
+      } catch {
+        return [];
+      }
+    },
+    [schoolId],
+  );
 
   const searchStudents = useCallback(
     async (q: string, classId?: number): Promise<FeeStudentOption[]> => {
@@ -921,8 +1018,266 @@ export function useTeacherFeesData() {
     [loadTerms],
   );
 
+  const loadFeeTypes = useCallback(async () => {
+    if (USE_MOCK_DATA || !isSchoolScope) return;
+    try {
+      const raw = await feeTypesApi.list({ school_id: schoolId, per_page: 100 });
+      setFeeTypes(
+        safeList<Record<string, unknown>>(raw).map((r) => ({
+          id: pickNumber(r.id),
+          name: pickString(r.name, r.fee_type_name, `Type ${r.id}`),
+        })),
+      );
+    } catch {
+      setFeeTypes([]);
+    }
+  }, [isSchoolScope, schoolId]);
+
+  const loadStructures = useCallback(async () => {
+    if (USE_MOCK_DATA || !isSchoolScope) return;
+    setStructuresLoading(true);
+    try {
+      const raw = await feeStructuresApi.list({
+        school_id: schoolId,
+        academic_year_id: academicYearId,
+        class_id: structureClassId,
+        fee_type_id: structureFeeTypeId,
+        q: structureQuery.trim() || undefined,
+        per_page: 100,
+      });
+      setStructures(
+        safeList<Record<string, unknown>>(raw).map((r, i) => ({
+          id: pickString(r.id, `st-${i}`),
+          structureId: pickNumber(r.id),
+          name: pickString(r.name, r.structure_name, 'Structure'),
+          classId: pickNumber(r.class_id),
+          className: pickString(r.class_name, '—'),
+          feeTypeId: pickNumber(r.fee_type_id) || undefined,
+          feeTypeName: pickString(r.fee_type_name, r.type_name, '—'),
+          amount: pickNumber(r.amount),
+          frequency: pickString(r.frequency, 'yearly'),
+          dueDay: pickNumber(r.due_day, 10),
+          lateFeePerDay: pickNumber(r.late_fee_per_day),
+          description: pickString(r.description),
+          isActive: r.is_active !== false,
+        })),
+      );
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to load fee structures'));
+      setStructures([]);
+    } finally {
+      setStructuresLoading(false);
+    }
+  }, [
+    isSchoolScope,
+    schoolId,
+    academicYearId,
+    structureClassId,
+    structureFeeTypeId,
+    structureQuery,
+  ]);
+
+  const loadReceipts = useCallback(async () => {
+    if (USE_MOCK_DATA || !isSchoolScope) return;
+    setReceiptsLoading(true);
+    try {
+      const raw = await feeReceiptsApi.list({
+        school_id: schoolId,
+        per_page: 100,
+      });
+      setReceipts(
+        safeList<Record<string, unknown>>(raw).map((r, i) => ({
+          id: pickString(r.id, `rcpt-${i}`),
+          receiptId: pickNumber(r.id),
+          receiptNumber: pickString(r.receipt_number, r.number, `R-${r.id}`),
+          collectionId: pickNumber(r.collection_id),
+          studentName: pickString(r.student_name, '—'),
+          amount: pickNumber(r.amount, r.amount_paid),
+          paymentMethod: pickString(r.payment_method, 'cash'),
+          paymentDate: pickString(r.payment_date, r.date).slice(0, 10),
+          remarks: pickString(r.remarks),
+          isActive: r.is_active !== false,
+        })),
+      );
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to load receipts'));
+      setReceipts([]);
+    } finally {
+      setReceiptsLoading(false);
+    }
+  }, [isSchoolScope, schoolId]);
+
+  const saveStructure = useCallback(
+    async (input: StructureFormInput, editingId?: number) => {
+      setActionBusy(true);
+      setError(null);
+      try {
+        const base = {
+          school_id: schoolId,
+          academic_year_id: academicYearId,
+          name: input.name,
+          fee_type_id: input.feeTypeId,
+          amount: input.amount,
+          frequency: input.frequency,
+          due_day: input.dueDay,
+          late_fee_per_day: input.lateFeePerDay,
+          description: input.description || undefined,
+        };
+        if (editingId) {
+          await feeStructuresApi.update(editingId, {
+            ...base,
+            class_id: input.classIds[0],
+          });
+        } else {
+          const classIds = input.classIds.length ? input.classIds : [undefined];
+          await Promise.all(
+            classIds.map((cid) =>
+              feeStructuresApi.create({
+                ...base,
+                class_id: cid,
+              }),
+            ),
+          );
+        }
+        await loadStructures();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Save structure failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [schoolId, academicYearId, loadStructures],
+  );
+
+  const removeStructure = useCallback(
+    async (id: number) => {
+      setActionBusy(true);
+      try {
+        await feeStructuresApi.softDelete(id, schoolId);
+        await loadStructures();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Deactivate failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [schoolId, loadStructures],
+  );
+
+  const createFeeType = useCallback(
+    async (name: string) => {
+      if (!name.trim()) return false;
+      setActionBusy(true);
+      try {
+        await feeTypesApi.create({ school_id: schoolId, name: name.trim() });
+        await loadFeeTypes();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Create fee type failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [schoolId, loadFeeTypes],
+  );
+
+  const removeFeeType = useCallback(
+    async (id: number) => {
+      setActionBusy(true);
+      try {
+        await feeTypesApi.softDelete(id);
+        await loadFeeTypes();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Delete fee type failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [loadFeeTypes],
+  );
+
+  const saveReceipt = useCallback(
+    async (input: ReceiptFormInput, editingId?: number) => {
+      setActionBusy(true);
+      setError(null);
+      try {
+        const payload = {
+          school_id: schoolId,
+          collection_id: input.collectionId,
+          receipt_number: input.receiptNumber,
+          amount: input.amount,
+          payment_method: input.paymentMethod,
+          payment_date: input.paymentDate,
+          remarks: input.remarks || undefined,
+        };
+        if (editingId) {
+          await feeReceiptsApi.update(editingId, payload);
+        } else {
+          await feeReceiptsApi.create(payload);
+        }
+        await loadReceipts();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Save receipt failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [schoolId, loadReceipts],
+  );
+
+  const removeReceipt = useCallback(
+    async (id: number) => {
+      setActionBusy(true);
+      try {
+        await feeReceiptsApi.softDelete(id, schoolId);
+        await loadReceipts();
+        return true;
+      } catch (e) {
+        setError(extractErrorMessage(e, 'Deactivate receipt failed'));
+        return false;
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [schoolId, loadReceipts],
+  );
+
+  const lookupCollection = useCallback(
+    async (collectionId: number) => {
+      try {
+        const raw = await feeCollectionsApi.getById(collectionId, schoolId);
+        const row = ((raw as { data?: unknown })?.data ?? raw) as Record<string, unknown>;
+        return {
+          amount: pickNumber(row.amount_paid, row.amount),
+          amountDue: pickNumber(row.amount_due),
+          paymentMethod: pickString(row.payment_method, 'cash'),
+          paymentDate: pickString(row.payment_date).slice(0, 10),
+          studentName: pickString(row.student_name, `Student #${row.student_id}`),
+          admissionNo: pickString(row.admission_number),
+          status: pickString(row.status, 'pending'),
+          studentId: pickNumber(row.student_id),
+        };
+      } catch {
+        return null;
+      }
+    },
+    [schoolId],
+  );
+
   return useMemo(
     () => ({
+      scope,
+      isSchoolScope,
+      academicYearLabel,
       status,
       error,
       actionBusy,
@@ -960,6 +1315,7 @@ export function useTeacherFeesData() {
       setDemandClassId,
       loadDemandBill,
       searchStudents,
+      loadAssignmentsForClass,
       loadStructuresForClass,
       loadTerms,
       saveAssignment,
@@ -970,9 +1326,33 @@ export function useTeacherFeesData() {
       removeCollection,
       notifyDemand,
       pendingTermForAssignment,
+      structures,
+      structuresLoading,
+      structureQuery,
+      setStructureQuery,
+      structureClassId,
+      setStructureClassId,
+      structureFeeTypeId,
+      setStructureFeeTypeId,
+      feeTypes,
+      loadFeeTypes,
+      loadStructures,
+      saveStructure,
+      removeStructure,
+      createFeeType,
+      removeFeeType,
+      receipts,
+      receiptsLoading,
+      loadReceipts,
+      saveReceipt,
+      removeReceipt,
+      lookupCollection,
       refetch: loadShell,
     }),
     [
+      scope,
+      isSchoolScope,
+      academicYearLabel,
       status,
       error,
       actionBusy,
@@ -1004,6 +1384,7 @@ export function useTeacherFeesData() {
       demandClassId,
       loadDemandBill,
       searchStudents,
+      loadAssignmentsForClass,
       loadStructuresForClass,
       loadTerms,
       saveAssignment,
@@ -1014,6 +1395,24 @@ export function useTeacherFeesData() {
       removeCollection,
       notifyDemand,
       pendingTermForAssignment,
+      structures,
+      structuresLoading,
+      structureQuery,
+      structureClassId,
+      structureFeeTypeId,
+      feeTypes,
+      loadFeeTypes,
+      loadStructures,
+      saveStructure,
+      removeStructure,
+      createFeeType,
+      removeFeeType,
+      receipts,
+      receiptsLoading,
+      loadReceipts,
+      saveReceipt,
+      removeReceipt,
+      lookupCollection,
       loadShell,
     ],
   );

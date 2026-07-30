@@ -32,7 +32,6 @@ import {
   enumLabel,
   type EngagementTabKey,
 } from '../../utils/engagementMeta';
-import { toLocalDateStr } from '../../utils/apiHelpers';
 
 type Params = {
   CreateEngagement: { kind: EngagementTabKey; recordId?: number };
@@ -42,23 +41,27 @@ type Nav = NativeStackNavigationProp<Params>;
 const opts = (values: readonly string[]) =>
   values.map((v) => ({ label: enumLabel(v), value: v }));
 
+const MEDIA_OPTS = MEDIA_TYPES.map((v) => ({
+  label: v === 'image' ? 'Image' : v === 'video' ? 'Video' : 'Document',
+  value: v,
+}));
+
 function titleFor(kind: EngagementTabKey, isEdit: boolean): string {
-  const verb = isEdit ? 'Edit' : 'Add';
   switch (kind) {
     case 'councils':
-      return `${verb} Council`;
+      return isEdit ? 'Edit Council' : 'Add Council';
     case 'members':
-      return `${verb} Member`;
+      return isEdit ? 'Edit Member' : 'Add Member';
     case 'grievances':
-      return `${verb} Grievance`;
+      return isEdit ? 'Edit Grievance' : 'File Grievance';
     case 'events':
-      return `${verb} Event`;
+      return isEdit ? 'Edit Event' : 'Create Event';
     case 'registrations':
-      return isEdit ? 'Edit Registration' : 'New Registration';
+      return isEdit ? 'Edit Registration' : 'Register Student';
     case 'gallery':
-      return `${verb} Gallery Item`;
+      return isEdit ? 'Edit Media' : 'Add Media';
     default:
-      return verb;
+      return isEdit ? 'Edit' : 'Add';
   }
 }
 
@@ -75,6 +78,13 @@ export default function CreateEngagementScreen() {
   const [form, setForm] = useState<Record<string, string | boolean | number>>({});
 
   useEffect(() => {
+    if (!eng.canManage) {
+      Alert.alert('Engagement', 'You do not have permission to manage engagement records.');
+      navigation.goBack();
+    }
+  }, [eng.canManage, navigation]);
+
+  useEffect(() => {
     if (!isEdit || !editingId) {
       // defaults matching web openCreate
       if (kind === 'councils') {
@@ -85,7 +95,7 @@ export default function CreateEngagementScreen() {
           student_id: '',
           role: 'member',
           status: 'active',
-          joined_date: toLocalDateStr(),
+          joined_date: '',
         });
       } else if (kind === 'grievances') {
         setForm({
@@ -100,7 +110,7 @@ export default function CreateEngagementScreen() {
         setForm({
           title: '',
           event_type: 'general',
-          start_date: toLocalDateStr(),
+          start_date: '',
           end_date: '',
           venue: '',
           description: '',
@@ -184,7 +194,6 @@ export default function CreateEngagementScreen() {
     }
 
     const payload: Record<string, unknown> = { ...form };
-    // normalize ids / numbers
     ['council_id', 'student_id', 'event_id', 'advisor_id', 'max_participants'].forEach(
       (k) => {
         if (payload[k] === '' || payload[k] == null) {
@@ -200,6 +209,10 @@ export default function CreateEngagementScreen() {
     }
     if (kind === 'gallery') {
       payload.is_featured = Boolean(form.is_featured);
+    }
+    // Web create defaults — keep status on create even when field is hidden
+    if (kind === 'grievances' && !isEdit) {
+      payload.status = 'submitted';
     }
 
     const ok = await eng.saveRecord(payload, isEdit ? editingId : undefined);
@@ -232,14 +245,15 @@ export default function CreateEngagementScreen() {
             <TextField
               value={String(form.academic_year || '')}
               onChangeText={(t) => set('academic_year', t)}
-              placeholder="e.g. 2026-27"
+              placeholder="2024-25"
             />
           </FormField>
-          <FormField label="Formed Date">
+          <FormField label="Description">
             <TextField
-              value={String(form.formed_date || '').slice(0, 10)}
-              onChangeText={(t) => set('formed_date', t)}
-              placeholder="YYYY-MM-DD"
+              value={String(form.description || '')}
+              onChangeText={(t) => set('description', t)}
+              multiline
+              placeholder="Optional…"
             />
           </FormField>
           <FormField label="Advisor ID">
@@ -250,12 +264,11 @@ export default function CreateEngagementScreen() {
               placeholder="Optional staff id"
             />
           </FormField>
-          <FormField label="Description">
+          <FormField label="Formed Date">
             <TextField
-              value={String(form.description || '')}
-              onChangeText={(t) => set('description', t)}
-              multiline
-              placeholder="Optional…"
+              value={String(form.formed_date || '').slice(0, 10)}
+              onChangeText={(t) => set('formed_date', t)}
+              placeholder="YYYY-MM-DD"
             />
           </FormField>
         </>
@@ -298,7 +311,7 @@ export default function CreateEngagementScreen() {
     if (kind === 'grievances') {
       return (
         <>
-          <FormField label="Student ID">
+          <FormField label="Student ID" required>
             <TextField
               value={String(form.student_id || '')}
               onChangeText={(t) => set('student_id', t)}
@@ -327,26 +340,28 @@ export default function CreateEngagementScreen() {
           </FormField>
           <FormField label="Priority">
             <SelectField
-              options={opts(GRIEVANCE_PRIORITIES)}
+              options={GRIEVANCE_PRIORITIES.map((p) => ({ label: p, value: p }))}
               value={String(form.priority || 'medium')}
               onChange={(v) => set('priority', v)}
             />
           </FormField>
-          <FormField label="Status">
-            <SelectField
-              options={opts(GRIEVANCE_STATUSES)}
-              value={String(form.status || 'submitted')}
-              onChange={(v) => set('status', v)}
-            />
-          </FormField>
           {isEdit ? (
-            <FormField label="Resolution Note">
-              <TextField
-                value={String(form.resolution_note || '')}
-                onChangeText={(t) => set('resolution_note', t)}
-                multiline
-              />
-            </FormField>
+            <>
+              <FormField label="Status">
+                <SelectField
+                  options={opts(GRIEVANCE_STATUSES)}
+                  value={String(form.status || 'submitted')}
+                  onChange={(v) => set('status', v)}
+                />
+              </FormField>
+              <FormField label="Resolution Note">
+                <TextField
+                  value={String(form.resolution_note || '')}
+                  onChangeText={(t) => set('resolution_note', t)}
+                  multiline
+                />
+              </FormField>
+            </>
           ) : null}
         </>
       );
@@ -387,6 +402,13 @@ export default function CreateEngagementScreen() {
               onChangeText={(t) => set('venue', t)}
             />
           </FormField>
+          <FormField label="Description">
+            <TextField
+              value={String(form.description || '')}
+              onChangeText={(t) => set('description', t)}
+              multiline
+            />
+          </FormField>
           <FormField label="Max Participants">
             <TextField
               value={String(form.max_participants || '')}
@@ -396,16 +418,9 @@ export default function CreateEngagementScreen() {
           </FormField>
           <FormField label="Status">
             <SelectField
-              options={opts(EVENT_STATUSES)}
+              options={EVENT_STATUSES.map((s) => ({ label: s, value: s }))}
               value={String(form.status || 'upcoming')}
               onChange={(v) => set('status', v)}
-            />
-          </FormField>
-          <FormField label="Description">
-            <TextField
-              value={String(form.description || '')}
-              onChangeText={(t) => set('description', t)}
-              multiline
             />
           </FormField>
         </>
@@ -419,7 +434,6 @@ export default function CreateEngagementScreen() {
               value={String(form.event_id || '')}
               onChangeText={(t) => set('event_id', t)}
               keyboardType="number-pad"
-              editable={!isEdit}
             />
           </FormField>
           <FormField label="Student ID" required>
@@ -427,13 +441,12 @@ export default function CreateEngagementScreen() {
               value={String(form.student_id || '')}
               onChangeText={(t) => set('student_id', t)}
               keyboardType="number-pad"
-              editable={!isEdit}
             />
           </FormField>
           <FormField label="Attendance Marked">
             <View style={styles.switchRow}>
               <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-                Marked present
+                Attendance marked
               </Text>
               <Switch
                 value={Boolean(form.attendance_marked)}
@@ -466,13 +479,6 @@ export default function CreateEngagementScreen() {
             onChange={(v) => set('category', v)}
           />
         </FormField>
-        <FormField label="Media Type">
-          <SelectField
-            options={opts(MEDIA_TYPES)}
-            value={String(form.media_type || 'image')}
-            onChange={(v) => set('media_type', v)}
-          />
-        </FormField>
         <FormField label="Media URL" required>
           <TextField
             value={String(form.media_url || '')}
@@ -480,16 +486,12 @@ export default function CreateEngagementScreen() {
             placeholder="https://…"
           />
         </FormField>
-        <FormField label="Featured">
-          <View style={styles.switchRow}>
-            <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-              Show as featured
-            </Text>
-            <Switch
-              value={Boolean(form.is_featured)}
-              onValueChange={(v) => set('is_featured', v)}
-            />
-          </View>
+        <FormField label="Media Type">
+          <SelectField
+            options={MEDIA_OPTS}
+            value={String(form.media_type || 'image')}
+            onChange={(v) => set('media_type', v)}
+          />
         </FormField>
         <FormField label="Description">
           <TextField
@@ -498,9 +500,28 @@ export default function CreateEngagementScreen() {
             multiline
           />
         </FormField>
+        <FormField label="Featured">
+          <View style={styles.switchRow}>
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+              Featured
+            </Text>
+            <Switch
+              value={Boolean(form.is_featured)}
+              onValueChange={(v) => set('is_featured', v)}
+            />
+          </View>
+        </FormField>
       </>
     );
   }, [kind, form, isEdit, theme.colors.textSecondary]);
+
+  if (!eng.canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title={titleFor(kind, isEdit)} showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
 
   if (loading) {
     return (
@@ -536,7 +557,7 @@ export default function CreateEngagementScreen() {
         <View style={styles.form}>{fields}</View>
       </SurfaceCard>
       <Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>
-        IDs match the web admin forms (council / student / event numeric IDs).
+        Same as web admin: council / student / event use numeric IDs.
       </Text>
     </TeacherScreen>
   );

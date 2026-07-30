@@ -1,7 +1,7 @@
 /**
  * useTeacherAttendanceTracker — web AttendanceTab tracker seam for instructors.
  * APIs: studentsByUserApi, attendanceSettingsApi, attendanceRecordsApi
- * Rules: subject required to edit; teacher can edit today only; P/A/L cycle.
+ * Rules: subject required to edit; teacher can edit today only (admin: any date); P/A/L cycle.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -9,6 +9,7 @@ import {
   attendanceRecordsApi,
   attendanceSettingsApi,
   studentsByUserApi,
+  timetableLookupApi,
 } from '@core/api/erp.api';
 import { USE_MOCK_DATA } from '../config';
 import { useAcademicYear } from '../contexts/AcademicYearContext';
@@ -63,11 +64,25 @@ export type AttMetrics = {
   workingDays: number;
 };
 
-const NEXT: Record<string, AttStatus> = {
+export type TrackerOptions = {
+  /** Web admin: edit any date in range. Teacher: today only. */
+  canEditAnyDate?: boolean;
+  /** Web admin cycle: P → A → L → empty → P */
+  allowClearOnCycle?: boolean;
+};
+
+const TEACHER_NEXT: Record<string, AttStatus> = {
   '': 'present',
   present: 'absent',
   absent: 'late',
   late: 'present',
+};
+
+const ADMIN_NEXT: Record<string, AttStatus> = {
+  '': 'present',
+  present: 'absent',
+  absent: 'late',
+  late: '',
 };
 
 const DOW_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -215,7 +230,14 @@ function mapStudent(r: Record<string, unknown>): AttStudent {
   };
 }
 
-export function useTeacherAttendanceTracker(initialClassId?: string | number) {
+export function useTeacherAttendanceTracker(
+  initialClassId?: string | number,
+  options?: TrackerOptions,
+) {
+  const canEditAnyDate = !!options?.canEditAnyDate;
+  const allowClearOnCycle = !!options?.allowClearOnCycle;
+  const cycleMap = allowClearOnCycle ? ADMIN_NEXT : TEACHER_NEXT;
+
   const session = useSchoolsSession();
   const { selectedYearId, selectedYear } = useAcademicYear();
   const schoolId = session.schoolId ?? undefined;
@@ -235,6 +257,7 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
   const [sectionId, setSectionId] = useState<number | undefined>();
   const [subjectId, setSubjectId] = useState<number | undefined>();
   const [query, setQuery] = useState('');
+  const [selectedDate, setSelectedDate] = useState(todayStr);
 
   const [workingDates, setWorkingDates] = useState<string[]>([]);
   const [baseAttendance, setBaseAttendance] = useState<
@@ -245,9 +268,19 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     {},
   );
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
+  /** Admin: timetable class subjects (web AttendanceTab merge). */
+  const [lookupSubjects, setLookupSubjects] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
 
   const isViewOnly = !subjectId;
-  const canEditDate = useCallback((date: string) => date === todayStr, [todayStr]);
+  const canEditDate = useCallback(
+    (date: string) =>
+      canEditAnyDate
+        ? workingDates.includes(date) || date === todayStr
+        : date === todayStr,
+    [canEditAnyDate, workingDates, todayStr],
+  );
 
   const classOptions = useMemo(() => {
     const map = new Map<number, string>();
@@ -278,10 +311,43 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
       .forEach((s) => {
         if (s.subjectId) map.set(s.subjectId, s.subjectName);
       });
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
-  }, [allStudents, classId, sectionId]);
+    /* Admins: merge full class timetable subjects (web AttendanceTab). */
+    if (canEditAnyDate) {
+      lookupSubjects.forEach((s) => {
+        if (s.id && !map.has(s.id)) map.set(s.id, s.name);
+      });
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allStudents, classId, sectionId, lookupSubjects, canEditAnyDate]);
 
-  /* Web: subject scopes records only — roster stays all students in class/section. */
+  useEffect(() => {
+    if (!canEditAnyDate || !schoolId || !classId || USE_MOCK_DATA) {
+      setLookupSubjects([]);
+      return;
+    }
+    let cancelled = false;
+    void timetableLookupApi
+      .subjects(classId, schoolId)
+      .then((raw) => {
+        if (cancelled) return;
+        const items = safeList<Record<string, unknown>>(raw)
+          .map((s) => ({
+            id: pickNumber(s.subject_id, s.id),
+            name: pickString(s.subject_name, s.name, `Subject ${pickNumber(s.subject_id, s.id)}`),
+          }))
+          .filter((s) => s.id > 0);
+        setLookupSubjects(items);
+      })
+      .catch(() => {
+        if (!cancelled) setLookupSubjects([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditAnyDate, schoolId, classId, sectionId]);
+
   const roster = useMemo(() => {
     const seen = new Map<number, AttStudent>();
     allStudents.forEach((s) => {
@@ -369,6 +435,13 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
       if (!workingNames.has('sat')) workingNames.add('sat');
       const dates = buildWorkingDates(range.from, range.to, workingNames);
       setWorkingDates(dates);
+      setSelectedDate((prev) =>
+        dates.includes(prev)
+          ? prev
+          : dates.includes(todayStr)
+            ? todayStr
+            : dates[dates.length - 1] || todayStr,
+      );
 
       let records = safeList<Record<string, unknown>>(recordsRaw);
       if (subjectId) {
@@ -422,6 +495,7 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     selectedYear?.end_date,
     schoolId,
     subjectId,
+    todayStr,
   ]);
 
   useEffect(() => {
@@ -453,14 +527,25 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
       setLocalEdits((prev) => {
         const current =
           prev[studentId]?.[date] ?? baseAttendance[studentId]?.[date] ?? '';
-        const next = NEXT[current] ?? 'present';
+        const next = cycleMap[current] ?? 'present';
         return {
           ...prev,
           [studentId]: { ...(prev[studentId] || {}), [date]: next },
         };
       });
     },
-    [isViewOnly, canEditDate, baseAttendance],
+    [isViewOnly, canEditDate, baseAttendance, cycleMap],
+  );
+
+  const setCellStatus = useCallback(
+    (studentId: number, date: string, attStatus: AttStatus) => {
+      if (isViewOnly || !canEditDate(date)) return;
+      setLocalEdits((prev) => ({
+        ...prev,
+        [studentId]: { ...(prev[studentId] || {}), [date]: attStatus },
+      }));
+    },
+    [isViewOnly, canEditDate],
   );
 
   const applyBulk = useCallback(
@@ -489,9 +574,10 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     });
   }, [todayStr]);
 
+  const clearEdits = useCallback(() => setLocalEdits({}), []);
+
   const hasEdits = useMemo(
-    () =>
-      Object.values(localEdits).some((edits) => Object.keys(edits).length > 0),
+    () => Object.values(localEdits).some((edits) => Object.keys(edits).length > 0),
     [localEdits],
   );
 
@@ -500,8 +586,7 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     setSaving(true);
     setError(null);
     try {
-      const dateMap: Record<string, Array<{ student_id: number; status: string }>> =
-        {};
+      const dateMap: Record<string, Array<{ student_id: number; status: string }>> = {};
       Object.entries(localEdits).forEach(([sid, edits]) => {
         Object.entries(edits).forEach(([date, st]) => {
           if (!st) return;
@@ -639,6 +724,29 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     };
   }, [workingDates, todayStr, roster, getStatus]);
 
+  const dayCounts = useMemo(() => {
+    const map: Record<
+      string,
+      { present: number; absent: number; late: number; marked: number }
+    > = {};
+    workingDates.forEach((d) => {
+      let present = 0;
+      let absent = 0;
+      let late = 0;
+      let marked = 0;
+      roster.forEach((s) => {
+        const st = getStatus(s.studentId, d);
+        if (!st) return;
+        marked += 1;
+        if (st === 'present') present += 1;
+        else if (st === 'absent') absent += 1;
+        else if (st === 'late') late += 1;
+      });
+      map[d] = { present, absent, late, marked };
+    });
+    return map;
+  }, [workingDates, roster, getStatus]);
+
   const studentSummaries = useMemo(() => {
     return roster.map((s) => {
       let p = 0;
@@ -668,9 +776,10 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
         pct,
         risk,
         todayStatus: getStatus(s.studentId, todayStr),
+        selectedStatus: getStatus(s.studentId, selectedDate),
       };
     });
-  }, [roster, workingDates, getStatus, todayStr]);
+  }, [roster, workingDates, getStatus, todayStr, selectedDate]);
 
   const weekGroups = useMemo(() => buildWeekGroups(workingDates), [workingDates]);
   const monthGroups = useMemo(() => buildMonthGroups(workingDates), [workingDates]);
@@ -696,6 +805,8 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     setSubjectId,
     query,
     setQuery,
+    selectedDate,
+    setSelectedDate,
     classOptions,
     sectionOptions,
     subjectOptions,
@@ -706,16 +817,28 @@ export function useTeacherAttendanceTracker(initialClassId?: string | number) {
     useMonthSummary,
     todayInRange,
     metrics,
+    dayCounts,
     studentSummaries,
     isViewOnly,
+    canEditAnyDate,
     canEditDate,
     getStatus,
     toggleCell,
+    setCellStatus,
     applyBulk,
     resetToday,
+    clearEdits,
     hasEdits,
     saveChanges,
     refetch: loadGrid,
     settings,
   };
+}
+
+/** Admin Attendance hub — edit any date, clear-on-cycle. */
+export function useAdminAttendanceTracker(initialClassId?: string | number) {
+  return useTeacherAttendanceTracker(initialClassId, {
+    canEditAnyDate: true,
+    allowClearOnCycle: true,
+  });
 }

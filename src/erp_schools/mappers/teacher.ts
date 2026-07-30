@@ -141,6 +141,8 @@ export function mapTeacherClasses(
       sectionName: sectionName || undefined,
       teacherName: pickString(r.teacher_name) || undefined,
       classTeacherName: pickString(r.class_teacher_name) || undefined,
+      teacherId: r.teacher_id != null ? pickNumber(r.teacher_id) : null,
+      isClassTeacher: r.is_class_teacher === true || r.is_class_teacher === 1,
       classId: classId || undefined,
       sectionId,
       subjectId,
@@ -211,14 +213,21 @@ export function computeClassOverviewKpis(
     filteredStudents = filteredStudents.filter((s) => s.subjectName === filters.subjectName);
   }
 
-  const teacherIds = new Set(
-    filteredRows.map((r) => r.teacherName).filter(Boolean),
+  // Admin: distinct teacher_id (fallback teacher name); instructor: self = 1/0
+  const teacherKeys = new Set(
+    filteredRows
+      .map((r) => {
+        if (r.teacherId != null && r.teacherId > 0) return `id:${r.teacherId}`;
+        if (r.teacherName) return `n:${r.teacherName}`;
+        return '';
+      })
+      .filter(Boolean),
   );
 
   return {
     classes: classSectionPairs.size || filteredRows.length,
     students: distinctStudentCount(filteredStudents),
-    teachers: isInstructor ? (filteredRows.length > 0 ? 1 : 0) : teacherIds.size,
+    teachers: isInstructor ? (filteredRows.length > 0 ? 1 : 0) : teacherKeys.size,
     subjects: new Set(filteredRows.map((r) => r.subject).filter(Boolean)).size,
     weeklyPeriods: filteredRows.reduce((n, c) => n + c.periodsPerWeek, 0),
   };
