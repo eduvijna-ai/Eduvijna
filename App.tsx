@@ -15,6 +15,7 @@ import { ThemeProvider } from './src/context/ThemeContext';
 import { AppSideNavProvider } from './src/context/AppSideNavContext';
 import { DropdownProvider } from './src/context/DropdownContext';
 import { AuthProvider } from './src/core/context/AuthContext';
+import ImageCropModal from './src/core/components/ImageCropModal';
 import { navigationRef } from './src/core/services/navigationService';
 import { setAuthErrorNavigationCallback } from './src/core/services/dashboardApi';
 import { initializeCache } from './src/core/services/cacheService';
@@ -590,6 +591,7 @@ export default function App() {
           <AuthProvider>
             <DropdownProvider>
               <AppWithFonts />
+              <ImageCropModal />
             </DropdownProvider>
           </AuthProvider>
         </ThemeProvider>

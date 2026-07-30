@@ -33,7 +33,8 @@
       "^@context/(.*)$": "<rootDir>/src/context/$1",
       "^@theme/(.*)$": "<rootDir>/src/theme/$1",
       "^@platforms/(.*)$": "<rootDir>/src/platforms/$1",
-      "^@mobile/(.*)$": "<rootDir>/src/platforms/mobile/$1"
+      "^@mobile/(.*)$": "<rootDir>/src/platforms/mobile/$1",
+      "^react-native-original$": "<rootDir>/node_modules/react-native"
     },
     "collectCoverageFrom": [
       "src/screens/CreateDocumentQuizScreen.tsx",

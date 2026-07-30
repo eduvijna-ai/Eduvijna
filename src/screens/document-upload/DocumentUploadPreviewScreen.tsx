@@ -36,6 +36,7 @@ import {
   saveImagePagesAsLibraryBook,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
+import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
 import {
   upsertDocumentUploadBook,
   markDocumentUploadSessionComplete,
@@ -301,42 +302,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setError('');
       setCapturingPage(true);
 
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setError('Camera permission is required to capture document pages.');
-        return;
-      }
+      const captured = await captureAndCropDocumentImage();
+      if (!captured) return;
 
-      let cameraResult: ImagePicker.ImagePickerResult;
-      try {
-        cameraResult = await ImagePicker.launchCameraAsync({
-          allowsEditing: false,
-          quality: 0.9,
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        });
-      } catch {
-        if (Platform.OS === 'web') {
-          cameraResult = await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: false,
-            quality: 0.9,
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          });
-        } else {
-          throw new Error('Unable to open camera.');
-        }
-      }
-
-      if (cameraResult.canceled || !cameraResult.assets?.length) return;
-
-      const captured = cameraResult.assets[0];
-      const compressedUri = await compressCameraImage(captured.uri);
-      const fileName = captured.fileName || `camera-${Date.now()}.jpg`;
       const newPage = {
         pageNumber: (bookState.pages?.length || 0) + 1,
-        fileUri: compressedUri,
-        fileName,
+        fileUri: captured.uri,
+        fileName: captured.name,
         mimeType: captured.mimeType || 'image/jpeg',
-        thumbnailUri: compressedUri,
+        thumbnailUri: captured.uri,
       };
 
       const next = appendCameraPage(bookState, newPage);

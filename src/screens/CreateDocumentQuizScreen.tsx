@@ -20,6 +20,7 @@ import { ImageManipulator as ExpoImageManipulator, SaveFormat } from 'expo-image
 import { File as ExpoFile } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../core/api/config';
+import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
 import QuizFormFields from '../components/QuizFormFields';
 import { useDropdowns } from '../context/DropdownContext';
 import ShareQuizModal from '../components/ShareQuizModal';
@@ -683,15 +684,6 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
     }
   };
 
-  const requestCameraPermission = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setCameraError('Camera permission is required to capture images.');
-      return false;
-    }
-    return true;
-  };
-
   const openCameraPrompt = () => {
     if (capturedImages.length >= 5) {
       setCameraError('You can only have up to 5 images in total.');
@@ -727,35 +719,26 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
       return;
     }
 
-    const hasPermission = await requestCameraPermission();
-    if (!hasPermission) return;
-
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
+      setCameraError('');
+      const captured = await captureAndCropDocumentImage();
+      if (!captured) return;
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const imageUri = result.assets[0].uri;
-        
-        // Check for duplicate image
-        if (capturedImageSources.includes(imageUri)) {
-          setCameraError('This image has already been captured.');
-          return;
-        }
-        
-        setCapturedImages((prev: string[]) => {
-          if (prev.length >= 5) return prev; // Hard cap at 5
-          return [...prev, imageUri].slice(0, 5);
-        });
-        setCapturedImageSources((prev: string[]) => {
-          if (prev.length >= 5) return prev;
-          return [...prev, imageUri].slice(0, 5);
-        });
-        setCameraError('');
+      // Check for duplicate image
+      if (capturedImageSources.includes(captured.uri)) {
+        setCameraError('This image has already been captured.');
+        return;
       }
+
+      setCapturedImages((prev: string[]) => {
+        if (prev.length >= 5) return prev;
+        return [...prev, captured.uri].slice(0, 5);
+      });
+      setCapturedImageSources((prev: string[]) => {
+        if (prev.length >= 5) return prev;
+        return [...prev, captured.uri].slice(0, 5);
+      });
+      setCameraError('');
     } catch (error) {
       console.error('Error capturing image:', error);
       setCameraError('Failed to capture image. Please try again.');

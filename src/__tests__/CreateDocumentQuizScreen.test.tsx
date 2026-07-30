@@ -16,6 +16,11 @@
  *   - Start-new / reset functionality
  */
 
+jest.mock('../core/services/documentCameraCapture', () => ({
+  __esModule: true,
+  captureAndCropDocumentImage: jest.fn(),
+}));
+
 import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +28,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../core/api/config';
 import CreateDocumentQuizScreen from '../screens/CreateDocumentQuizScreen';
+import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
+
+const mockCaptureAndCrop = captureAndCropDocumentImage as jest.MockedFunction<
+  typeof captureAndCropDocumentImage
+>;
 
 // ── Mock heavy child components to keep test memory footprint small ───────
 jest.mock('../components/QuizFormFields', () => {
@@ -552,10 +562,9 @@ describe('CreateDocumentQuizScreen – camera input type', () => {
   });
 
   it('shows error when camera permission is denied', async () => {
-    (ImagePicker.requestCameraPermissionsAsync as jest.Mock).mockResolvedValueOnce({
-      status: 'denied',
-    });
-    // The camera section renders with icon-camera; just verify camera tab is pressed OK
+    mockCaptureAndCrop.mockRejectedValueOnce(
+      new Error('Camera permission is required to capture document pages.'),
+    );
     const { getByText, queryByText } = render(
       <CreateDocumentQuizScreen navigation={makeNavigation()} />,
     );

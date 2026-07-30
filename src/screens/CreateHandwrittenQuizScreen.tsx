@@ -29,6 +29,7 @@ import { useTheme } from '@context/ThemeContext';
 import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
 import { MAX_IMAGE_UPLOADS } from '../core/services/documentUploadApi';
+import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
 import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
@@ -256,16 +257,14 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         return;
       }
-      const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
-      if (!result.canceled && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const compressedUri = await compressImage(asset.uri);
-        setPickedImages((prev) => [
-          ...prev,
-          { uri: compressedUri, name: `hw_${Date.now()}.jpg`, type: 'image/jpeg' },
-        ]);
-        setError('');
-      }
+      const captured = await captureAndCropDocumentImage();
+      if (!captured) return;
+      // Helper already cropped + compressed — do not compress again.
+      setPickedImages((prev) => [
+        ...prev,
+        { uri: captured.uri, name: captured.name, type: captured.mimeType || 'image/jpeg' },
+      ]);
+      setError('');
     } catch {
       Alert.alert('Error', 'Failed to open camera. Please try again.');
     }
