@@ -194,14 +194,31 @@ export function useTeacherHrData() {
   const [saving, setSaving] = useState(false);
   const [staffId, setStaffId] = useState<number | null>(null);
   const [staffName, setStaffName] = useState('');
-  const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>(mockBalances);
-  const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>(mockHistory);
-  const [leaveTypeOptions, setLeaveTypeOptions] = useState<LeaveOption[]>(mockLeaveTypes);
-  const [currentPayroll, setCurrentPayroll] = useState(mockCurrentPayroll);
-  const [salaryHistory, setSalaryHistory] = useState<PayslipSummary[]>(
-    mockSalaryHistory as PayslipSummary[],
+  const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>(
+    USE_MOCK_DATA ? mockBalances : [],
   );
-  const [salaryBreakdown, setSalaryBreakdown] = useState<SalaryBreakdown>(mockBreakdown);
+  const [leaveHistory, setLeaveHistory] = useState<LeaveRecord[]>(
+    USE_MOCK_DATA ? mockHistory : [],
+  );
+  const [leaveTypeOptions, setLeaveTypeOptions] = useState<LeaveOption[]>(
+    USE_MOCK_DATA ? mockLeaveTypes : [],
+  );
+  const [currentPayroll, setCurrentPayroll] = useState<{
+    monthLabel: string;
+    netSalary: number;
+    status: 'paid' | 'pending';
+    paidOn: string;
+  }>(
+    USE_MOCK_DATA
+      ? mockCurrentPayroll
+      : { monthLabel: '—', netSalary: 0, status: 'paid', paidOn: '' },
+  );
+  const [salaryHistory, setSalaryHistory] = useState<PayslipSummary[]>(
+    USE_MOCK_DATA ? (mockSalaryHistory as PayslipSummary[]) : [],
+  );
+  const [salaryBreakdown, setSalaryBreakdown] = useState<SalaryBreakdown>(
+    USE_MOCK_DATA ? mockBreakdown : { basic: 0, allowances: 0, deductions: 0, net: 0 },
+  );
 
   const load = useCallback(async () => {
     if (USE_MOCK_DATA) {
@@ -238,8 +255,8 @@ export function useTeacherHrData() {
       const baseParams: Record<string, string | number> = { per_page: 50 };
       if (schoolId) baseParams.school_id = schoolId;
 
-      const leaveParams = { ...baseParams };
-      const payParams = { ...baseParams, per_page: 200 };
+      const leaveParams: Record<string, string | number> = { ...baseParams };
+      const payParams: Record<string, string | number> = { ...baseParams, per_page: 200 };
       if (ownStaffId) {
         leaveParams.staff_id = ownStaffId;
         payParams.staff_id = ownStaffId;
@@ -337,7 +354,7 @@ export function useTeacherHrData() {
         setCurrentPayroll({
           monthLabel: latest.monthLabel,
           netSalary: latest.netSalary,
-          status: latest.status === 'paid' ? 'paid' : 'pending',
+          status: latest.status === 'paid' ? ('paid' as const) : ('pending' as const),
           paidOn: latest.paidOn,
         });
         setSalaryBreakdown({

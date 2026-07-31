@@ -4,7 +4,16 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Platform,
+} from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -31,17 +40,38 @@ import { toLocalDateStr } from '../../utils/apiHelpers';
 
 type Params = { CreateHoliday: { holidayId?: number } };
 type Nav = NativeStackNavigationProp<Params>;
+type DateFieldKey = 'start' | 'end';
 
 const TYPE_OPTIONS = HOLIDAY_TYPES.map((t) => ({
   label: t.charAt(0).toUpperCase() + t.slice(1),
   value: t,
 }));
 
+function parseYmd(ymd: string, fallback = new Date()): Date {
+  if (!ymd || ymd.length < 10) return fallback;
+  const d = new Date(`${ymd.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? fallback : d;
+}
+
+function toYmd(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatDisplayYmd(ymd: string): string {
+  if (!ymd) return 'Select date';
+  const d = parseYmd(ymd);
+  return d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export default function CreateHolidayScreen() {
   const theme = useTeacherTheme();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<Params, 'CreateHoliday'>>();
-  const { createHoliday, updateHoliday, getHoliday, saving, year } =
+  const { createHoliday, updateHoliday, getHoliday, saving, year, canManage } =
     useHolidayCalendarData();
 
   const editingId = route.params?.holidayId;
@@ -54,9 +84,17 @@ export default function CreateHolidayScreen() {
   const [endDate, setEndDate] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('');
+  const [picking, setPicking] = useState<DateFieldKey | null>(null);
 
   useEffect(() => {
-    if (!isEdit || !editingId) return;
+    if (!canManage) {
+      Alert.alert('Holidays', 'Students can view holidays but cannot add or edit them.');
+      navigation.goBack();
+    }
+  }, [canManage, navigation]);
+
+  useEffect(() => {
+    if (!canManage || !isEdit || !editingId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -75,7 +113,7 @@ export default function CreateHolidayScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isEdit, editingId, getHoliday]);
+  }, [canManage, isEdit, editingId, getHoliday]);
 
   const previewColor =
     (color && isValidHexColor(color.startsWith('#') ? color : `#${color}`)
@@ -84,13 +122,21 @@ export default function CreateHolidayScreen() {
         : `#${color}`
       : null) || DEFAULT_HOLIDAY_COLOR;
 
+  const onPickDate = (key: DateFieldKey, date?: Date) => {
+    if (Platform.OS !== 'ios') setPicking(null);
+    if (!date) return;
+    const ymd = toYmd(date);
+    if (key === 'start') setStartDate(ymd);
+    else setEndDate(ymd);
+  };
+
   const onSave = async () => {
     if (!name.trim()) {
       Alert.alert('Required', 'Holiday name is required.');
       return;
     }
     if (!startDate.trim()) {
-      Alert.alert('Required', 'Start date is required (YYYY-MM-DD).');
+      Alert.alert('Required', 'Start date is required.');
       return;
     }
     if (color.trim()) {
@@ -124,6 +170,14 @@ export default function CreateHolidayScreen() {
     }
     navigation.goBack();
   };
+
+  if (!canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title="Holiday" showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
 
   if (loading) {
     return (
@@ -173,26 +227,64 @@ export default function CreateHolidayScreen() {
             />
           </FormField>
 
-          <View style={styles.row2}>
-            <View style={styles.flex1}>
-              <FormField label="Start Date" required>
-                <TextField
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="YYYY-MM-DD"
-                />
-              </FormField>
+          <FormField label="Start Date" required>
+            <TouchableOpacity
+              style={[styles.dateBtn, { borderColor: theme.colors.border }]}
+              onPress={() => setPicking('start')}
+            >
+              <Text style={[styles.dateValue, { color: theme.colors.textPrimary }]}>
+                {formatDisplayYmd(startDate)}
+              </Text>
+              <Ionicons name="calendar-outline" size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </FormField>
+
+          <FormField label="End Date" hint="Optional — leave blank for a single-day holiday">
+            <View style={styles.endDateRow}>
+              <TouchableOpacity
+                style={[styles.dateBtn, styles.flex1, { borderColor: theme.colors.border }]}
+                onPress={() => setPicking('end')}
+              >
+                <Text
+                  style={[
+                    styles.dateValue,
+                    { color: endDate ? theme.colors.textPrimary : theme.colors.textSecondary },
+                  ]}
+                >
+                  {endDate ? formatDisplayYmd(endDate) : 'Optional'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+              {endDate ? (
+                <TouchableOpacity
+                  style={[styles.clearDateBtn, { borderColor: theme.colors.border }]}
+                  onPress={() => setEndDate('')}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.textSecondary }}>
+                    Clear
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
-            <View style={styles.flex1}>
-              <FormField label="End Date">
-                <TextField
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="YYYY-MM-DD"
-                />
-              </FormField>
-            </View>
-          </View>
+          </FormField>
+
+          {picking ? (
+            <DateTimePicker
+              value={parseYmd(picking === 'start' ? startDate : endDate || startDate)}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={(_, date) => onPickDate(picking, date)}
+            />
+          ) : null}
+
+          {Platform.OS === 'ios' && picking ? (
+            <PrimaryButton
+              label="Done"
+              size="compact"
+              variant="outline"
+              onPress={() => setPicking(null)}
+            />
+          ) : null}
 
           <FormField label="Description">
             <TextField
@@ -256,8 +348,27 @@ export default function CreateHolidayScreen() {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 12, paddingBottom: 24 },
   form: { gap: 4 },
-  row2: { flexDirection: 'row', gap: 10 },
   flex1: { flex: 1 },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 48,
+  },
+  dateValue: { fontSize: 14, fontWeight: '600' },
+  endDateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  clearDateBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
   colorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   swatchPreview: {
     width: 40,

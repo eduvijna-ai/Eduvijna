@@ -1,15 +1,14 @@
 /**
- * Attendance Details — full daily log + monthly breakdown.
- * Reference: assets/student_screens/student attendance screen.png (Daily/Monthly tabs)
+ * Attendance Details — daily log + monthly breakdown (live data).
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SegmentedControl,
   SurfaceCard,
   SectionHeader,
@@ -18,46 +17,58 @@ import {
   type PillStatus,
 } from '../../../components';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
-import { useStudentData } from '../../../hooks/useStudentData';
+import { useStudentAttendance, type AttStatusKey } from '../../../hooks/useStudentAttendance';
 import type { StudentStackParamList } from '../../../types/navigation';
-import type { StudentAttendanceStatus } from '../../../types/student';
 
 const TABS = [
   { key: 'daily', label: 'Daily' },
   { key: 'monthly', label: 'Monthly' },
 ];
 
-const PILL: Record<StudentAttendanceStatus, PillStatus> = {
+const PILL: Record<AttStatusKey, PillStatus> = {
   present: 'present',
   absent: 'absent',
   late: 'late',
   leave: 'leave',
 };
 
-const MONTHLY = [
-  { month: 'April', percent: 88, present: 21, total: 24 },
-  { month: 'March', percent: 88, present: 22, total: 25 },
-  { month: 'February', percent: 92, present: 23, total: 25 },
-  { month: 'January', percent: 87, present: 20, total: 23 },
-];
-
 export default function AttendanceDetailsScreen() {
   const theme = useTeacherTheme();
   const route = useRoute<RouteProp<StudentStackParamList, 'AttendanceDetails'>>();
-  const { profile, attendance } = useStudentData();
-  const [tab, setTab] = useState<string>(route.params?.mode ?? 'daily');
+  const att = useStudentAttendance();
+  const [tab, setTab] = useState(route.params?.mode === 'monthly' ? 'monthly' : 'daily');
+
+  const monthly = useMemo(() => {
+    const map = new Map<string, { present: number; total: number; label: string }>();
+    att.dailyRows.forEach((r) => {
+      const key = r.date.slice(0, 7);
+      if (!key) return;
+      const bucket = map.get(key) || {
+        present: 0,
+        total: 0,
+        label: new Date(`${key}-01T12:00:00`).toLocaleDateString('en-IN', {
+          month: 'long',
+          year: 'numeric',
+        }),
+      };
+      bucket.total += 1;
+      if (r.status === 'present' || r.status === 'late') bucket.present += 1;
+      map.set(key, bucket);
+    });
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([, v]) => ({
+        ...v,
+        percent: v.total ? Math.round((v.present / v.total) * 100) : 0,
+      }));
+  }, [att.dailyRows]);
 
   return (
     <TeacherScreen
-      header={
-        <StudentIdentityHeader
-          title="Attendance Details"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-        />
-      }
+      header={<StudentModuleHeader title="Attendance Details" />}
       contentStyle={styles.content}
+      refreshing={att.status === 'loading'}
+      onRefresh={() => void att.refetch()}
     >
       <SegmentedControl segments={TABS} activeKey={tab} onChange={setTab} />
 
@@ -65,51 +76,90 @@ export default function AttendanceDetailsScreen() {
         <View style={styles.section}>
           <SectionHeader title="Daily Log" icon="list-outline" />
           <SurfaceCard padded={false} style={styles.listCard}>
-            {attendance.recent.map((day, index) => (
-              <View
-                key={day.id}
-                style={[
-                  styles.row,
-                  index < attendance.recent.length - 1 && { borderBottomColor: theme.colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
-                ]}
-              >
-                <View style={[styles.dateBadge, { backgroundColor: theme.colors.surfaceAlt }]}>
-                  <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>{day.day}</Text>
-                  <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]}>{day.month}</Text>
+            {att.dailyRows.length === 0 ? (
+              <Text style={[styles.empty, { color: theme.colors.textSecondary }]}>
+                No attendance records yet.
+              </Text>
+            ) : (
+              att.dailyRows.map((day, index) => (
+                <View
+                  key={day.id}
+                  style={[
+                    styles.row,
+                    index < att.dailyRows.length - 1 && {
+                      borderBottomColor: theme.colors.border,
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                    },
+                  ]}
+                >
+                  <View style={[styles.dateBadge, { backgroundColor: theme.colors.surfaceAlt }]}>
+                    <Text style={[styles.dateDay, { color: theme.colors.textPrimary }]}>
+                      {day.date.slice(8, 10) || '—'}
+                    </Text>
+                    <Text style={[styles.dateMonth, { color: theme.colors.textSecondary }]}>
+                      {day.date.slice(5, 7)}
+                    </Text>
+                  </View>
+                  <View style={styles.info}>
+                    <Text style={[styles.weekday, { color: theme.colors.textPrimary }]}>
+                      {day.subject}
+                    </Text>
+                    <Text style={[styles.note, { color: theme.colors.textSecondary }]}>
+                      {day.date} · {day.dayLabel}
+                      {day.remarks !== '—' ? ` · ${day.remarks}` : ''}
+                    </Text>
+                  </View>
+                  <StatusPill status={PILL[day.status]} />
                 </View>
-                <View style={styles.info}>
-                  <Text style={[styles.weekday, { color: theme.colors.textPrimary }]}>{day.weekday}</Text>
-                  {day.note ? <Text style={[styles.note, { color: theme.colors.textSecondary }]}>{day.note}</Text> : null}
-                </View>
-                <StatusPill status={PILL[day.status]} />
-              </View>
-            ))}
+              ))
+            )}
           </SurfaceCard>
         </View>
       ) : (
         <View style={styles.section}>
           <SectionHeader title="Monthly Breakdown" icon="calendar-outline" />
           <SurfaceCard style={styles.monthCard}>
-            {MONTHLY.map((m) => (
-              <View key={m.month} style={styles.monthRow}>
-                <View style={styles.monthHead}>
-                  <Text style={[styles.monthName, { color: theme.colors.textPrimary }]}>{m.month}</Text>
-                  <Text style={[styles.monthPct, { color: theme.colors.textSecondary }]}>
-                    {m.present}/{m.total} • {m.percent}%
-                  </Text>
+            {monthly.length === 0 ? (
+              <Text style={[styles.empty, { color: theme.colors.textSecondary }]}>
+                No monthly data in this range.
+              </Text>
+            ) : (
+              monthly.map((m) => (
+                <View key={m.label} style={styles.monthRow}>
+                  <View style={styles.monthHead}>
+                    <Text style={[styles.monthName, { color: theme.colors.textPrimary }]}>
+                      {m.label}
+                    </Text>
+                    <Text style={[styles.monthPct, { color: theme.colors.textSecondary }]}>
+                      {m.present}/{m.total} · {m.percent}%
+                    </Text>
+                  </View>
+                  <ProgressBar
+                    percent={m.percent}
+                    height={8}
+                    color={
+                      m.percent >= 90
+                        ? theme.colors.success
+                        : m.percent >= att.minRequired
+                          ? theme.colors.primary
+                          : theme.colors.warning
+                    }
+                  />
                 </View>
-                <ProgressBar
-                  percent={m.percent}
-                  height={8}
-                  color={m.percent >= 90 ? theme.colors.success : m.percent >= 75 ? theme.colors.primary : theme.colors.warning}
-                />
-              </View>
-            ))}
+              ))
+            )}
           </SurfaceCard>
-          <SurfaceCard style={[styles.tipCard, { backgroundColor: theme.colors.tintGreen }]}>
-            <Ionicons name="trending-up" size={18} color={theme.colors.success} />
+          <SurfaceCard style={[styles.tipCard, { backgroundColor: theme.colors.tintTeal }]}>
+            <Ionicons
+              name={att.metrics.pct >= att.minRequired ? 'trending-up' : 'alert-circle'}
+              size={18}
+              color={
+                att.metrics.pct >= att.minRequired ? theme.colors.success : theme.colors.danger
+              }
+            />
             <Text style={[styles.tipText, { color: theme.colors.textSecondary }]}>
-              Your attendance is consistently above the 75% requirement. Keep it up!
+              Overall {att.metrics.pct}% vs required {att.minRequired}%. Present + late count as
+              attended.
             </Text>
           </SurfaceCard>
         </View>
@@ -123,7 +173,13 @@ const styles = StyleSheet.create({
   section: { gap: 0 },
   listCard: { paddingHorizontal: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  dateBadge: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  dateBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dateDay: { fontSize: 15, fontWeight: '700' },
   dateMonth: { fontSize: 10 },
   info: { flex: 1, gap: 2 },
@@ -136,4 +192,5 @@ const styles = StyleSheet.create({
   monthPct: { fontSize: 12, fontWeight: '600' },
   tipCard: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
   tipText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  empty: { fontSize: 13, paddingVertical: 16, paddingHorizontal: 4 },
 });

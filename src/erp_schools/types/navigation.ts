@@ -54,6 +54,17 @@ export type TeacherStackParamList = {
   AssessmentDetails: { assessmentId: string };
   Exams: undefined;
 
+  // exams (web ExamsTab / ExamGroupsSubView parity)
+  CreateExamGroup: { groupId?: number };
+  ExamGroupDetail: { groupId: number };
+  CreateExamItem: { groupId: number; itemId?: number };
+  ExamSubjects: { groupId: number; itemId: number };
+  ExamStudents: { groupId: number; itemId: number };
+  ExamGrades: { groupId: number };
+  ExamMarksEntry: { groupId: number; itemId: number };
+  ExamResultsManage: { groupId: number; itemId: number };
+  ExamReportCards: { itemId: number; groupId: number; examName?: string };
+
   // assignments
   AssignmentDashboard: undefined;
   CreateAssignment: undefined;
@@ -113,7 +124,7 @@ export type StudentTabParamList = {
   StudentHome: undefined;
   StudentAcademics: undefined;
   StudentDashboard: undefined;
-  StudentAITest: undefined;
+  StudentTimetableTab: undefined;
   StudentMore: undefined;
 };
 
@@ -122,7 +133,7 @@ export type StudentStackParamList = {
   StudentTabs: NavigatorScreenParams<StudentTabParamList> | undefined;
 
   // academics
-  SubjectDetails: { subjectId: string };
+  SubjectDetails: { subjectId: string }; // enrollment class_id key
   MarksReport: undefined;
   ProgressReport: undefined;
 
@@ -137,7 +148,7 @@ export type StudentStackParamList = {
   AssignmentPerformance: undefined;
 
   // timetable & exams
-  Timetable: undefined;
+  StudentTimetable: undefined;
   ExamSchedule: undefined;
   ExamResults: undefined;
 
@@ -169,7 +180,7 @@ export type StudentStackParamList = {
 /** Admin bottom-tab routes (the persistent 5-item bar). */
 export type AdminTabParamList = {
   AdminHome: undefined;
-  AdminPeople: undefined;
+  AdminAttendance: undefined;
   AdminMainDashboard: undefined;
   AdminFinance: undefined;
   AdminMore: undefined;
@@ -186,6 +197,8 @@ export type AdminStackParamList = {
 
   // people
   StudentManagement: undefined;
+  AdminStudentProfile: { studentId: string; openEdit?: boolean };
+  AdminTeacherDetail: { staffId: string; openEdit?: boolean };
   TeacherManagement: undefined;
   ParentManagement: undefined;
   StaffManagement: undefined;
@@ -194,8 +207,22 @@ export type AdminStackParamList = {
 
   // academics
   AcademicOverview: undefined;
-  Classes: undefined;
+  Classes: { initialTab?: 'classes' | 'students' | 'teachers' } | undefined;
   Exams: undefined;
+  CreateExamGroup: { groupId?: number };
+  ExamGroupDetail: { groupId: number };
+  CreateExamItem: { groupId: number; itemId?: number };
+  ExamSubjects: { groupId: number; itemId: number };
+  ExamStudents: { groupId: number; itemId: number };
+  ExamGrades: { groupId: number };
+  ExamMarksEntry: { groupId: number; itemId: number };
+  ExamResultsManage: { groupId: number; itemId: number };
+  ExamReportCards: { itemId: number; groupId: number; examName?: string };
+
+  // timetable management (web TimetableTab)
+  Timetable: undefined;
+  CreateTimetableTemplate: { templateId?: number };
+  CreateTimetableSlot: { slotId?: number; templateId?: number; dayOfWeek?: number };
 
   // admissions
   AdmissionsDashboard: undefined;
@@ -209,16 +236,24 @@ export type AdminStackParamList = {
   TransportDashboard: undefined;
   VehicleManagement: undefined;
   RouteManagement: undefined;
+  Safety: undefined;
   HostelDashboard: undefined;
   InventoryDashboard: undefined;
+  BiometricDashboard: undefined;
+  FormsDashboard: undefined;
+  ParentPortal: undefined;
+  AnalyticsDashboard: undefined;
 
   // finance
   FeeCollection: undefined;
   RevenueAnalytics: undefined;
   ExpenseAnalytics: undefined;
+  HrPayroll: undefined;
 
   // communication
   Announcements: undefined;
+  CreateNotice: { noticeId?: number };
+  NoticeDetail: { noticeId: number };
 
   // library (web LibraryTab parity)
   Library: undefined;

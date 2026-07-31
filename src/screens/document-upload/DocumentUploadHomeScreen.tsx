@@ -32,6 +32,7 @@ import {
   DOCUMENT_FILE_MIME_TYPES,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
+import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
 import {
   getDocumentUploadBooks,
   upsertDocumentUploadBook,
@@ -174,14 +175,15 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     size?: number;
   }) => {
     setError('');
-    const compressedUri = await compressCameraImage(asset.uri);
+    // URI is already cropped + compressed by captureAndCropDocumentImage.
+    const fileUri = asset.uri;
     const fileName = asset.name || `camera-${Date.now()}.jpg`;
     const page = {
       pageNumber: 1,
-      fileUri: compressedUri,
+      fileUri,
       fileName,
       mimeType: asset.mimeType || 'image/jpeg',
-      thumbnailUri: compressedUri,
+      thumbnailUri: fileUri,
     };
 
     const title = (bookName || fileName.replace(/\.[^/.]+$/, '') || 'Camera Document').trim();
@@ -368,37 +370,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       setSuccess('');
       setCapturing(true);
 
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setError('Camera permission is required to capture document pages.');
-        return;
-      }
+      const captured = await captureAndCropDocumentImage();
+      if (!captured) return;
 
-      let cameraResult: ImagePicker.ImagePickerResult;
-      try {
-        cameraResult = await ImagePicker.launchCameraAsync({
-          allowsEditing: false,
-          quality: 0.9,
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        });
-      } catch {
-        if (Platform.OS === 'web') {
-          cameraResult = await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: false,
-            quality: 0.9,
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          });
-        } else {
-          throw new Error('Unable to open camera.');
-        }
-      }
-
-      if (cameraResult.canceled || !cameraResult.assets?.length) return;
-      const captured = cameraResult.assets[0];
       await processCameraCapture({
         uri: captured.uri,
-        name: captured.fileName || `camera-${Date.now()}.jpg`,
-        mimeType: captured.mimeType || 'image/jpeg',
+        name: captured.name,
+        mimeType: captured.mimeType,
         size: captured.fileSize,
       });
     } catch (e: any) {

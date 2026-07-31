@@ -50,7 +50,13 @@ const FILTERS: ChipOption[] = [
   })),
 ];
 
-export default function NoticeBoardScreen() {
+export type NoticeBoardProps = {
+  /** Admin: Communications hero branding (web Notices & Announcements). */
+  role?: 'teacher' | 'admin';
+};
+
+export default function NoticeBoardScreen({ role = 'teacher' }: NoticeBoardProps) {
+  const isAdmin = role === 'admin';
   const theme = useTeacherTheme();
   const navigation = useTeacherNavigation();
 
@@ -142,7 +148,7 @@ export default function NoticeBoardScreen() {
     <TeacherScreen
       header={
         <ScreenHeader
-          title="Notice Board"
+          title={isAdmin ? 'Notices' : 'Notice Board'}
           trailingIcon="add"
           onTrailingPress={() => navigation.navigate('CreateNotice', {})}
         />
@@ -151,6 +157,18 @@ export default function NoticeBoardScreen() {
       refreshing={status === 'loading' || saving}
       onRefresh={() => void refetch()}
     >
+      {isAdmin ? (
+        <>
+          <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>Communications</Text>
+          <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>
+            Notices & Announcements
+          </Text>
+          <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
+            Publish school-wide notices, pin important updates, and keep students and staff informed.
+          </Text>
+        </>
+      ) : null}
+
       <View style={styles.statsRow}>
         <StatChip label="On this page" value={filtered.length} />
         <StatChip label="Pinned" value={pinnedCount} />
@@ -284,6 +302,14 @@ function NoticeCard({
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 14 },
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  heroTitle: { fontSize: 24, fontWeight: '800', letterSpacing: -0.3 },
+  heroSub: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
   statsRow: { flexDirection: 'row', gap: 8 },
   statChip: {
     flex: 1,

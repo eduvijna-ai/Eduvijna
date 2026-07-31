@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   ProgressBar,
@@ -25,7 +25,10 @@ export default function MarksReportScreen() {
   const { academics } = useStudentData();
 
   return (
-    <TeacherScreen header={<ScreenHeader title="Marks Report" trailingIcon="download-outline" />} contentStyle={styles.content}>
+    <TeacherScreen
+      header={<StudentModuleHeader title="Marks Report" trailingIcon="download-outline" />}
+      contentStyle={styles.content}
+    >
       <SurfaceCard style={[styles.summaryCard, { backgroundColor: theme.colors.tintTeal }]}>
         <Text style={[styles.summaryValue, { color: theme.colors.primary }]}>{academics.summary.overallAverage}%</Text>
         <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Overall Average • Rank #{academics.summary.rank} of {academics.summary.classStrength}</Text>

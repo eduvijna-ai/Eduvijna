@@ -44,6 +44,15 @@ import GradeStudentsScreen from '../screens/teacher/assessments/GradeStudentsScr
 import AssessmentListScreen from '../screens/teacher/assessments/AssessmentListScreen';
 import AssessmentDetailsScreen from '../screens/teacher/assessments/AssessmentDetailsScreen';
 import TeacherExamsScreen from '../screens/teacher/exams/TeacherExamsScreen';
+import CreateExamGroupScreen from '../screens/teacher/exams/CreateExamGroupScreen';
+import ExamGroupDetailScreen from '../screens/teacher/exams/ExamGroupDetailScreen';
+import CreateExamItemScreen from '../screens/teacher/exams/CreateExamItemScreen';
+import ExamSubjectsScreen from '../screens/teacher/exams/ExamSubjectsScreen';
+import ExamStudentsScreen from '../screens/teacher/exams/ExamStudentsScreen';
+import ExamGradesScreen from '../screens/teacher/exams/ExamGradesScreen';
+import ExamMarksEntryScreen from '../screens/teacher/exams/ExamMarksEntryScreen';
+import ExamResultsManageScreen from '../screens/teacher/exams/ExamResultsManageScreen';
+import ExamReportCardsScreen from '../screens/teacher/exams/ExamReportCardsScreen';
 
 // assignments
 import AssignmentDashboardScreen from '../screens/teacher/assignments/AssignmentDashboardScreen';
@@ -120,6 +129,15 @@ export function TeacherStack() {
       <Stack.Screen name={TEACHER_ROUTES.ASSESSMENT_LIST} component={AssessmentListScreen} />
       <Stack.Screen name={TEACHER_ROUTES.ASSESSMENT_DETAILS} component={AssessmentDetailsScreen} />
       <Stack.Screen name={TEACHER_ROUTES.EXAMS} component={TeacherExamsScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.CREATE_EXAM_GROUP} component={CreateExamGroupScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_GROUP_DETAIL} component={ExamGroupDetailScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.CREATE_EXAM_ITEM} component={CreateExamItemScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_SUBJECTS} component={ExamSubjectsScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_STUDENTS} component={ExamStudentsScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_GRADES} component={ExamGradesScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_MARKS_ENTRY} component={ExamMarksEntryScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_RESULTS_MANAGE} component={ExamResultsManageScreen} />
+      <Stack.Screen name={TEACHER_ROUTES.EXAM_REPORT_CARDS} component={ExamReportCardsScreen} />
 
       <Stack.Screen name={TEACHER_ROUTES.ASSIGNMENT_DASHBOARD} component={AssignmentDashboardScreen} />
       <Stack.Screen name={TEACHER_ROUTES.CREATE_ASSIGNMENT} component={CreateAssignmentScreen} />

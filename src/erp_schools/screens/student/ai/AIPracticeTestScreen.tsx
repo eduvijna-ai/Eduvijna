@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   FormField,
   SelectField,
@@ -50,7 +50,7 @@ export default function AIPracticeTestScreen() {
 
   return (
     <TeacherScreen
-      header={<ScreenHeader title="AI Practice Test" />}
+      header={<StudentModuleHeader title="AI Practice Test" />}
       contentStyle={styles.content}
       footer={
         <PrimaryButton

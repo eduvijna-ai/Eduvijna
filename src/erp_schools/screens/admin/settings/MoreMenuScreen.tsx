@@ -29,38 +29,51 @@ const SECTIONS: MenuSection[] = [
     title: 'Academic',
     links: [
       { label: 'Academic Overview', icon: 'school-outline', accent: 'teal', route: 'AcademicOverview' },
-      { label: 'Classes', icon: 'easel-outline', accent: 'blue', route: 'Classes' },
+      { label: 'Class Overview', icon: 'easel-outline', accent: 'blue', route: 'Classes' },
       { label: 'Exams', icon: 'clipboard-outline', accent: 'orange', route: 'Exams' },
+      { label: 'Timetable', icon: 'time-outline', accent: 'green', route: 'Timetable' },
       { label: 'Academic Reports', icon: 'bar-chart-outline', accent: 'purple', route: 'AcademicReports' },
     ],
   },
   {
     title: 'Admissions',
     links: [
-      { label: 'Admissions Dashboard', icon: 'person-add-outline', accent: 'green', route: 'AdmissionsDashboard' },
-      { label: 'Admission Applications', icon: 'document-text-outline', accent: 'teal', route: 'AdmissionApplications' },
-      { label: 'Approval Workflow', icon: 'checkmark-done-outline', accent: 'blue', route: 'ApprovalWorkflow' },
+      { label: 'Admissions Operations', icon: 'person-add-outline', accent: 'green', route: 'AdmissionsDashboard' },
     ],
   },
   {
     title: 'Operations',
     links: [
       { label: 'Attendance Dashboard', icon: 'stats-chart-outline', accent: 'teal', route: 'AttendanceDashboard' },
-      { label: 'Library Dashboard', icon: 'library-outline', accent: 'orange', route: 'LibraryDashboard' },
-      { label: 'Library', icon: 'book-outline', accent: 'blue', route: 'Library' },
-      { label: 'Transport Dashboard', icon: 'bus-outline', accent: 'green', route: 'TransportDashboard' },
-      { label: 'Vehicle Management', icon: 'car-outline', accent: 'purple', route: 'VehicleManagement' },
-      { label: 'Route Management', icon: 'map-outline', accent: 'pink', route: 'RouteManagement' },
-      { label: 'Hostel Dashboard', icon: 'bed-outline', accent: 'orange', route: 'HostelDashboard' },
-      { label: 'Inventory Dashboard', icon: 'cube-outline', accent: 'teal', route: 'InventoryDashboard' },
+      { label: 'Library Management', icon: 'book-outline', accent: 'blue', route: 'Library' },
+      { label: 'Transport Management', icon: 'bus-outline', accent: 'green', route: 'TransportDashboard' },
+      { label: 'Safety & Security', icon: 'shield-checkmark-outline', accent: 'red', route: 'Safety' },
+      { label: 'Hostel Management', icon: 'bed-outline', accent: 'orange', route: 'HostelDashboard' },
+      { label: 'Inventory Management', icon: 'cube-outline', accent: 'teal', route: 'InventoryDashboard' },
+      { label: 'Biometric', icon: 'finger-print-outline', accent: 'blue', route: 'BiometricDashboard' },
+      { label: 'Form Builder', icon: 'document-text-outline', accent: 'purple', route: 'FormsDashboard' },
+    ],
+  },
+  {
+    title: 'Finance',
+    links: [
+      { label: 'Fee Management', icon: 'cash-outline', accent: 'green', route: 'FeeCollection' },
+    ],
+  },
+  {
+    title: 'People Operations',
+    links: [
+      { label: 'HR & Payroll', icon: 'wallet-outline', accent: 'purple', route: 'HrPayroll' },
+      { label: 'Parent Portal', icon: 'people-outline', accent: 'blue', route: 'ParentPortal' },
     ],
   },
   {
     title: 'Insights',
     links: [
       { label: 'School Overview', icon: 'business-outline', accent: 'teal', route: 'SchoolOverview' },
+      { label: 'Analytics', icon: 'analytics-outline', accent: 'teal', route: 'AnalyticsDashboard' },
       { label: 'Reports Dashboard', icon: 'document-text-outline', accent: 'blue', route: 'ReportsDashboard' },
-      { label: 'Announcements', icon: 'megaphone-outline', accent: 'pink', route: 'Announcements' },
+      { label: 'Notices', icon: 'megaphone-outline', accent: 'pink', route: 'Announcements' },
       { label: 'Engagement', icon: 'heart-outline', accent: 'purple', route: 'Engagement' },
       { label: 'Holidays', icon: 'calendar-outline', accent: 'orange', route: 'HolidayCalendar' },
     ],

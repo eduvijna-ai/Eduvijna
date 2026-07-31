@@ -33,6 +33,10 @@ export interface ClassInfo {
   sectionName?: string;
   teacherName?: string;
   classTeacherName?: string;
+  /** Assigned subject teacher user id (web class-overview.teacher_id). */
+  teacherId?: number | null;
+  /** Web class-overview.is_class_teacher */
+  isClassTeacher?: boolean;
   classId?: number;
   sectionId?: number | null;
   subjectId?: number | null;

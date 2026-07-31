@@ -31,9 +31,11 @@ export function DonutChart({
   const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
 
   // Keep the center label fully inside the donut hole so long values
-  // (e.g. "₹15.15L") never touch the ring. The text auto-shrinks to fit.
-  // The small inset accounts for the circular shape narrowing off-center.
+  // (e.g. "₹15.15L") never touch the ring. Scale type to chart size —
+  // module-overview donuts are ~64px and need smaller center text.
   const holeDiameter = Math.max(0, size - strokeWidth * 2 - 8);
+  const valueFont = Math.max(10, Math.round(size * 0.17));
+  const labelFont = Math.max(7, Math.round(size * 0.08));
 
   let offsetAccum = 0;
 
@@ -76,16 +78,25 @@ export function DonutChart({
           <View style={{ width: holeDiameter, alignItems: 'center' }}>
             {centerValue ? (
               <Text
-                style={[styles.value, { color: theme.colors.textPrimary }]}
+                style={[
+                  styles.value,
+                  { color: theme.colors.textPrimary, fontSize: valueFont },
+                ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.6}
+                minimumFontScale={0.55}
               >
                 {centerValue}
               </Text>
             ) : null}
             {centerLabel ? (
-              <Text style={[styles.label, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: theme.colors.textSecondary, fontSize: labelFont },
+                ]}
+                numberOfLines={1}
+              >
                 {centerLabel}
               </Text>
             ) : null}
@@ -98,6 +109,6 @@ export function DonutChart({
 
 const styles = StyleSheet.create({
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 24, fontWeight: '800' },
-  label: { fontSize: 11, marginTop: 2 },
+  value: { fontWeight: '800' },
+  label: { marginTop: 1 },
 });

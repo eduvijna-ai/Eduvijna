@@ -388,16 +388,21 @@ export function mapExamSchedule(data: unknown): ExamScheduleItem[] {
     const date = pickString(ex.exam_date, ex.date, ex.scheduled_date, ex.start_date);
     const state: ExamScheduleItem['state'] =
       date && date < today ? 'completed' : date === today ? 'ongoing' : 'upcoming';
-    const subject = pickString(ex.subject_name, ex.subject, ex.exam_name, ex.title, 'Exam');
+    const subject = pickString(ex.subject_name, ex.subject, 'Subject');
+    const durationMins = pickNumber(ex.duration_mins, ex.duration_minutes);
+    const start = pickString(ex.start_time, ex.time);
+    const durationLabel =
+      pickString(ex.duration_label, ex.duration) ||
+      (durationMins ? `${durationMins} min` : '');
     return {
-      id: pickString(ex.id, ex.exam_item_id, `exam-${i}`),
+      id: pickString(ex.exam_subject_id, ex.id, ex.exam_item_id, `exam-${i}`),
       subject,
       icon: subjectIcon(subject),
       accent: accentAt(i),
       dateLabel: formatDisplayDate(date || null),
-      timeLabel: formatDisplayTime(pickString(ex.start_time, ex.time) || null),
-      room: pickString(ex.room, ex.venue, ex.hall),
-      durationLabel: pickString(ex.duration_label, ex.duration) || (ex.duration_minutes ? `${ex.duration_minutes} min` : ''),
+      timeLabel: formatDisplayTime(start || null),
+      room: pickString(ex.room_no, ex.room, ex.venue, ex.hall),
+      durationLabel,
       state,
     };
   });

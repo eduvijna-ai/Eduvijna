@@ -72,11 +72,11 @@ export default function EngagementHubScreen() {
       case 'members':
         return 'Add Member';
       case 'grievances':
-        return 'Add Grievance';
+        return 'File Grievance';
       case 'events':
         return 'Add Event';
       case 'registrations':
-        return 'New Registration';
+        return 'Register Student';
       case 'gallery':
         return 'Add Media';
       default:
@@ -274,7 +274,7 @@ export default function EngagementHubScreen() {
         <TextField
           value={eng.filterA}
           onChangeText={eng.setFilterA}
-          placeholder="Filter by Event ID…"
+          placeholder="Event ID filter"
           keyboardType="number-pad"
         />
       ) : null}
@@ -300,7 +300,11 @@ export default function EngagementHubScreen() {
         <EmptyState
           icon="sparkles-outline"
           title={`No ${tab}`}
-          message="Nothing here yet. Add a record to get started."
+          message={
+            eng.canManage
+              ? `Use “${addLabel}” to create the first record.`
+              : 'Nothing here yet for this filter.'
+          }
           ctaLabel={eng.canManage ? addLabel : undefined}
           onCtaPress={
             eng.canManage
@@ -480,7 +484,7 @@ export default function EngagementHubScreen() {
             </Text>
           </TouchableOpacity>
           <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>
-            {eng.page} / {eng.pages}
+            {eng.page} / {eng.pages} ({eng.total})
           </Text>
           <TouchableOpacity
             disabled={eng.page >= eng.pages}

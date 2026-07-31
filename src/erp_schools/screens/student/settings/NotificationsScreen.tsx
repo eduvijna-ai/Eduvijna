@@ -5,7 +5,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   EmptyState,
 } from '../../../components';
@@ -18,7 +18,10 @@ export default function NotificationsScreen() {
   const { notifications } = useStudentData();
 
   return (
-    <TeacherScreen header={<ScreenHeader title="Notifications" trailingIcon="checkmark-done-outline" />} contentStyle={styles.content}>
+    <TeacherScreen
+      header={<StudentModuleHeader title="Notifications" trailingIcon="checkmark-done-outline" />}
+      contentStyle={styles.content}
+    >
       {notifications.length === 0 ? (
         <EmptyState icon="notifications-off-outline" title="No notifications" message="You're all caught up." />
       ) : (

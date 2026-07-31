@@ -33,10 +33,25 @@ export default function CreateBookScreen() {
   const theme = useTeacherTheme();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteProp<Params, 'CreateBook'>>();
-  const { createBook, updateBook, getBook, saving } = useLibraryData();
+  const { createBook, updateBook, getBook, saving, canManage } = useLibraryData();
 
   const editingId = route.params?.bookId;
   const isEdit = editingId != null && editingId > 0;
+
+  useEffect(() => {
+    if (!canManage) {
+      Alert.alert('Library', 'Students can browse books but cannot add or edit them.');
+      navigation.goBack();
+    }
+  }, [canManage, navigation]);
+
+  if (!canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title="Book" showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
 
   const [loading, setLoading] = useState(Boolean(isEdit));
   const [title, setTitle] = useState('');

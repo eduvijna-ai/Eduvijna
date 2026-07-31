@@ -30,7 +30,7 @@ export function AcademicYearPill({ value, options, onChange }: AcademicYearPillP
           <Text style={[styles.caption, { color: theme.colors.textSecondary }]}>Academic Year</Text>
           <Text style={[styles.value, { color: theme.colors.textPrimary }]}>{value}</Text>
         </View>
-        <Ionicons name="chevron-down" size={14} color={theme.colors.textSecondary} />
+        <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -65,10 +65,24 @@ export function AcademicYearPill({ value, options, onChange }: AcademicYearPillP
 }
 
 const styles = StyleSheet.create({
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
-  caption: { fontSize: 9 },
-  value: { fontSize: 13, fontWeight: '700' },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  caption: { fontSize: 9, lineHeight: 11, fontWeight: '600' },
+  value: { fontSize: 12, fontWeight: '800', lineHeight: 15 },
   overlay: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
   sheet: { paddingVertical: 8 },
-  option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
 });

@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import {
   TeacherScreen,
-  ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   ListItem,
@@ -58,7 +58,7 @@ export default function SettingsScreen() {
   const [emailDigest, setEmailDigest] = useState(false);
 
   return (
-    <TeacherScreen header={<ScreenHeader title="Settings" />} contentStyle={styles.content}>
+    <TeacherScreen header={<StudentModuleHeader title="Settings" />} contentStyle={styles.content}>
       <View style={styles.section}>
         <SectionHeader title="Preferences" />
         <SurfaceCard padded={false} style={styles.card}>

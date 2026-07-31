@@ -1,5 +1,5 @@
 /**
- * Library Management — web LibraryTab parity (Books + Transactions).
+ * Library Management — web LibraryTab parity (Books + My Issues / Transactions).
  */
 
 import React, { useMemo, useState, useCallback, useRef } from 'react';
@@ -9,6 +9,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   TeacherScreen,
   ScreenHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SegmentedControl,
   SearchBar,
@@ -43,10 +44,12 @@ export default function LibraryScreen() {
   const [tab, setTab] = useState('books');
   const [pulling, setPulling] = useState(false);
 
-  // Keep a stable ref so focus refresh does not re-subscribe when hook identity changes
-  // (that loop was keeping RefreshControl spinning forever).
   const refreshAllRef = useRef(lib.refreshAll);
   refreshAllRef.current = lib.refreshAll;
+  const refetchBooksRef = useRef(lib.refetchBooks);
+  refetchBooksRef.current = lib.refetchBooks;
+  const refetchTxRef = useRef(lib.refetchTransactions);
+  refetchTxRef.current = lib.refetchTransactions;
 
   useFocusEffect(
     useCallback(() => {
@@ -57,12 +60,16 @@ export default function LibraryScreen() {
   const onPullRefresh = useCallback(async () => {
     setPulling(true);
     try {
-      if (tab === 'books') await lib.refetchBooks();
-      else await lib.refetchTransactions();
+      if (tab === 'books') await refetchBooksRef.current();
+      else await refetchTxRef.current();
     } finally {
       setPulling(false);
     }
-  }, [tab, lib.refetchBooks, lib.refetchTransactions]);
+  }, [tab]);
+
+  const onHeaderRefresh = useCallback(() => {
+    void onPullRefresh();
+  }, [onPullRefresh]);
 
   const segments: Segment[] = useMemo(
     () => [
@@ -91,10 +98,13 @@ export default function LibraryScreen() {
     [],
   );
 
-  const statusChips: ChipOption[] = TX_STATUSES.map((s) => ({
-    key: s,
-    label: s,
-  }));
+  const statusChips: ChipOption[] = useMemo(
+    () => [
+      { key: '', label: 'All' },
+      ...TX_STATUSES.map((s) => ({ key: s, label: s })),
+    ],
+    [],
+  );
 
   const onDeactivateBook = (bookId: number, title: string) => {
     Alert.alert('Deactivate?', `Deactivate “${title}”?`, [
@@ -134,9 +144,33 @@ export default function LibraryScreen() {
     (tab === 'books' && lib.bookLoading && lib.books.length === 0) ||
     (tab === 'transactions' && lib.txLoading && lib.transactions.length === 0);
 
+  const header = lib.isStudent ? (
+    <StudentModuleHeader
+      title="Library"
+      trailingIcon="refresh-outline"
+      onTrailingPress={onHeaderRefresh}
+      trailingAccessibilityLabel="Refresh library"
+    />
+  ) : (
+    <ScreenHeader
+      title="Library"
+      showBack
+      trailingIcon={lib.canManage ? 'add' : 'refresh-outline'}
+      onTrailingPress={
+        lib.canManage
+          ? () =>
+              navigation.navigate(
+                tab === 'books' ? 'CreateBook' : 'CreateLibraryTransaction',
+                {},
+              )
+          : onHeaderRefresh
+      }
+    />
+  );
+
   if (loading) {
     return (
-      <TeacherScreen header={<ScreenHeader title="Library" />}>
+      <TeacherScreen header={header}>
         <ScreenLoader message="Loading library…" />
       </TeacherScreen>
     );
@@ -144,21 +178,7 @@ export default function LibraryScreen() {
 
   return (
     <TeacherScreen
-      header={
-        <ScreenHeader
-          title="Library"
-          trailingIcon={lib.canManage ? 'add' : undefined}
-          onTrailingPress={
-            lib.canManage
-              ? () =>
-                  navigation.navigate(
-                    tab === 'books' ? 'CreateBook' : 'CreateLibraryTransaction',
-                    {},
-                  )
-              : undefined
-          }
-        />
-      }
+      header={header}
       contentStyle={styles.content}
       refreshing={pulling}
       onRefresh={() => void onPullRefresh()}
@@ -178,11 +198,21 @@ export default function LibraryScreen() {
         ) : undefined
       }
     >
-      <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
-        {lib.isStudent
-          ? 'Browse the book catalog and your issue history.'
-          : 'Catalog books and track issue, return, and overdue transactions.'}
-      </Text>
+      <View style={styles.hero}>
+        <View style={[styles.resourcePill, { backgroundColor: theme.colors.tintBlue }]}>
+          <Text style={[styles.resourcePillText, { color: theme.colors.info }]}>
+            Resource Center
+          </Text>
+        </View>
+        <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>
+          Library Management
+        </Text>
+        <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
+          {lib.isStudent
+            ? 'Browse the book catalog and your issue history.'
+            : 'Catalog books and track issue, return, and overdue transactions.'}
+        </Text>
+      </View>
 
       <SegmentedControl segments={segments} activeKey={tab} onChange={setTab} />
 
@@ -192,6 +222,10 @@ export default function LibraryScreen() {
 
       {tab === 'books' ? (
         <View style={styles.tabBody}>
+          <Text style={[styles.tabHint, { color: theme.colors.textSecondary }]}>
+            {lib.isStudent ? 'Browse available books.' : 'Manage catalog, copies, and shelf locations.'}
+          </Text>
+
           <SearchBar
             value={lib.bookSearch}
             onChangeText={lib.setBookSearch}
@@ -204,9 +238,16 @@ export default function LibraryScreen() {
             placeholder="All Categories"
           />
 
-          <Text style={[styles.count, { color: theme.colors.textSecondary }]}>
-            {lib.bookTotal} book{lib.bookTotal === 1 ? '' : 's'}
-          </Text>
+          <View style={styles.filterActions}>
+            <Text style={[styles.count, { color: theme.colors.textSecondary }]}>
+              {lib.bookTotal} book{lib.bookTotal === 1 ? '' : 's'}
+            </Text>
+            <TouchableOpacity onPress={() => void lib.refetchBooks()} hitSlop={8}>
+              <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 13 }}>
+                ↻ Refresh
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {lib.books.length === 0 ? (
             <EmptyState
@@ -226,7 +267,7 @@ export default function LibraryScreen() {
                   icon="book-outline"
                   iconAccent={book.availableCopies === 0 ? 'red' : 'teal'}
                   title={book.title}
-                  subtitle={`${book.author || '—'} · ${categoryLabel(book.category)}`}
+                  subtitle={`#${book.bookId} · ${book.author || '—'} · ${categoryLabel(book.category)}`}
                   divider={index < lib.books.length - 1}
                   onPress={
                     lib.canManage
@@ -237,7 +278,7 @@ export default function LibraryScreen() {
                   trailing={
                     <View style={styles.trailing}>
                       <Text style={[styles.meta, { color: theme.colors.textSecondary }]}>
-                        Tot {book.totalCopies}
+                        Total {book.totalCopies}
                       </Text>
                       <Text
                         style={[
@@ -251,7 +292,7 @@ export default function LibraryScreen() {
                           },
                         ]}
                       >
-                        Out {book.issuedCopies}
+                        Issued {book.issuedCopies}
                       </Text>
                       <Text
                         style={[
@@ -265,7 +306,7 @@ export default function LibraryScreen() {
                           },
                         ]}
                       >
-                        Avail {book.availableCopies}
+                        Available {book.availableCopies}
                       </Text>
                       {lib.canManage ? (
                         <View style={styles.actions}>
@@ -333,7 +374,7 @@ export default function LibraryScreen() {
                 </Text>
               </TouchableOpacity>
               <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>
-                {lib.bookPage} / {lib.bookPages}
+                {lib.bookPage} / {lib.bookPages} ({lib.bookTotal} total)
               </Text>
               <TouchableOpacity
                 disabled={lib.bookPage >= lib.bookPages}
@@ -358,6 +399,12 @@ export default function LibraryScreen() {
         </View>
       ) : (
         <View style={styles.tabBody}>
+          <Text style={[styles.tabHint, { color: theme.colors.textSecondary }]}>
+            {lib.isStudent
+              ? 'Your borrowed books and due dates.'
+              : 'Issue, return, and fine tracking.'}
+          </Text>
+
           <FilterChips
             size="sm"
             options={statusChips}
@@ -365,9 +412,19 @@ export default function LibraryScreen() {
             onChange={(k) => lib.setTxStatusFilter(k)}
           />
 
-          <Text style={[styles.count, { color: theme.colors.textSecondary }]}>
-            {lib.txTotal} transaction{lib.txTotal === 1 ? '' : 's'}
-          </Text>
+          <View style={styles.filterActions}>
+            <Text style={[styles.count, { color: theme.colors.textSecondary }]}>
+              {lib.txTotal}{' '}
+              {lib.isStudent
+                ? `issue${lib.txTotal === 1 ? '' : 's'}`
+                : `transaction${lib.txTotal === 1 ? '' : 's'}`}
+            </Text>
+            <TouchableOpacity onPress={() => void lib.refetchTransactions()} hitSlop={8}>
+              <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 13 }}>
+                ↻ Refresh
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {!lib.academicYearId && lib.canManage ? (
             <Text style={[styles.hint, { color: theme.colors.danger }]}>
@@ -378,8 +435,12 @@ export default function LibraryScreen() {
           {lib.transactions.length === 0 ? (
             <EmptyState
               icon="swap-horizontal-outline"
-              title="No transactions"
-              message="Issue a book to see it here."
+              title={lib.isStudent ? 'No issues found' : 'No transactions'}
+              message={
+                lib.isStudent
+                  ? 'You have no borrowed books for this filter.'
+                  : 'Issue a book to see it here.'
+              }
               ctaLabel={lib.canManage ? 'New Transaction' : undefined}
               onCtaPress={
                 lib.canManage
@@ -403,7 +464,11 @@ export default function LibraryScreen() {
                           : 'blue'
                     }
                     title={lib.bookLabel(tx.bookId)}
-                    subtitle={`${lib.memberLabel(tx.memberId, tx.memberType)} · ${tx.memberType}`}
+                    subtitle={
+                      lib.isStudent
+                        ? `Issue ${tx.issueDate || '—'} · Due ${tx.dueDate || '—'}`
+                        : `${lib.memberLabel(tx.memberId, tx.memberType)} · ${tx.memberType}`
+                    }
                     divider={index < lib.transactions.length - 1}
                     onPress={
                       lib.canManage
@@ -422,15 +487,39 @@ export default function LibraryScreen() {
                             {tx.status}
                           </Text>
                         </View>
+                        {!lib.isStudent ? (
+                          <>
+                            <Text
+                              style={[styles.meta, { color: theme.colors.textSecondary }]}
+                            >
+                              Issue {tx.issueDate || '—'}
+                            </Text>
+                            <Text
+                              style={[styles.meta, { color: theme.colors.textSecondary }]}
+                            >
+                              Due {tx.dueDate || '—'}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text
+                            style={[styles.meta, { color: theme.colors.textSecondary }]}
+                          >
+                            #{tx.transactionId}
+                          </Text>
+                        )}
                         <Text
-                          style={[styles.meta, { color: theme.colors.textSecondary }]}
+                          style={[
+                            styles.meta,
+                            {
+                              color:
+                                tx.fineAmount > 0
+                                  ? theme.colors.danger
+                                  : theme.colors.textSecondary,
+                              fontWeight: tx.fineAmount > 0 ? '700' : '600',
+                            },
+                          ]}
                         >
-                          Due {tx.dueDate || '—'}
-                        </Text>
-                        <Text
-                          style={[styles.meta, { color: theme.colors.textSecondary }]}
-                        >
-                          {tx.fineAmount > 0 ? `₹${tx.fineAmount}` : 'No fine'}
+                          {tx.fineAmount > 0 ? `Fine ₹${tx.fineAmount}` : 'No fine'}
                         </Text>
                         {lib.canManage ? (
                           <View style={styles.actions}>
@@ -497,7 +586,7 @@ export default function LibraryScreen() {
                 </Text>
               </TouchableOpacity>
               <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>
-                {lib.txPage} / {lib.txPages}
+                {lib.txPage} / {lib.txPages} ({lib.txTotal} total)
               </Text>
               <TouchableOpacity
                 disabled={lib.txPage >= lib.txPages}
@@ -525,13 +614,29 @@ export default function LibraryScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 12, paddingBottom: 24 },
+  hero: { gap: 4 },
+  resourcePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 2,
+  },
+  resourcePillText: { fontSize: 11, fontWeight: '700' },
+  heroTitle: { fontSize: 20, fontWeight: '800' },
   heroSub: { fontSize: 13, lineHeight: 18 },
+  tabHint: { fontSize: 12, fontWeight: '500' },
   tabBody: { gap: 10 },
+  filterActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   count: { fontSize: 12, fontWeight: '600' },
   error: { fontSize: 13 },
   hint: { fontSize: 12 },
   listCard: { paddingHorizontal: 14 },
-  trailing: { alignItems: 'flex-end', gap: 3, maxWidth: 130 },
+  trailing: { alignItems: 'flex-end', gap: 3, maxWidth: 140 },
   meta: { fontSize: 11, fontWeight: '600', textAlign: 'right' },
   actions: { flexDirection: 'row', gap: 10, marginTop: 2 },
   statusPill: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },

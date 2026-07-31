@@ -109,7 +109,7 @@ async function cleanupExpiredStorageEntries(): Promise<void> {
       console.log(`🧹 [CACHE CLEANUP] Removed ${cleaned} expired AsyncStorage entries`);
     }
   } catch (error) {
-    console.error('❌ [CACHE CLEANUP] Error cleaning AsyncStorage:', error);
+    console.warn('⚠️ [CACHE CLEANUP] Error cleaning AsyncStorage:', error);
   }
 }
 
@@ -127,8 +127,17 @@ export async function initializeCache(): Promise<void> {
     cleanupExpiredStorageEntries();
   }, 5 * 60 * 1000);
   
-  // Initial cleanup
+  // Initial cleanup — also reclaim if storage is already tight
   await cleanupExpiredStorageEntries();
+  try {
+    await AsyncStorage.setItem('eduvijna:health-check', 'OK');
+    await AsyncStorage.removeItem('eduvijna:health-check');
+  } catch (error) {
+    if (isStorageFullError(error)) {
+      const n = await reclaimStorageSpace(true);
+      console.warn(`⚠️ [CACHE INIT] Storage was full — reclaimed ${n} cache entries`);
+    }
+  }
   
   console.log('✅ [CACHE INIT] Cache service initialized successfully');
 }
@@ -188,6 +197,68 @@ export async function getCachedData<T>(key: string): Promise<T | null> {
 }
 
 /**
+ * Detect AsyncStorage / SQLite disk-full failures (common on Android emulators).
+ */
+function isStorageFullError(error: unknown): boolean {
+  const msg = String(
+    (error as { message?: string })?.message ?? error ?? '',
+  ).toLowerCase();
+  return (
+    msg.includes('sqlite_full') ||
+    msg.includes('database or disk is full') ||
+    msg.includes('disk is full') ||
+    msg.includes('code 13')
+  );
+}
+
+/**
+ * Free AsyncStorage space: drop expired eduvijna keys, then oldest entries if needed.
+ */
+async function reclaimStorageSpace(aggressive = false): Promise<number> {
+  let removed = 0;
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const eduvijnaKeys = keys.filter((k) => k.startsWith('eduvijna:'));
+    if (eduvijnaKeys.length === 0) return 0;
+
+    const dated: Array<{ key: string; timestamp: number }> = [];
+    for (const key of eduvijnaKeys) {
+      const value = await AsyncStorage.getItem(key);
+      if (!value) {
+        await AsyncStorage.removeItem(key);
+        removed++;
+        continue;
+      }
+      try {
+        const entry: CacheEntry = JSON.parse(value);
+        if (isExpired(entry)) {
+          await AsyncStorage.removeItem(key);
+          removed++;
+        } else {
+          dated.push({ key, timestamp: entry.timestamp || 0 });
+        }
+      } catch {
+        await AsyncStorage.removeItem(key);
+        removed++;
+      }
+    }
+
+    // If still tight / aggressive reclaim: drop oldest half of remaining keys
+    if (aggressive || removed === 0) {
+      dated.sort((a, b) => a.timestamp - b.timestamp);
+      const toDrop = dated.slice(0, Math.max(1, Math.ceil(dated.length / 2)));
+      if (toDrop.length) {
+        await AsyncStorage.multiRemove(toDrop.map((d) => d.key));
+        removed += toDrop.length;
+      }
+    }
+  } catch {
+    // ignore reclaim failures
+  }
+  return removed;
+}
+
+/**
  * Set data in cache (both Memory and AsyncStorage)
  */
 export async function setCachedData(
@@ -201,16 +272,67 @@ export async function setCachedData(
   const logTime = new Date().toISOString();
   const entry: CacheEntry = { data, timestamp, ttl, source };
 
-  // L1: Set in memory cache
+  // L1: Set in memory cache (always — app keeps working even if disk is full)
   memoryCache.set(fullKey, entry);
-  
+
+  const payload = JSON.stringify(entry);
+
+  const writeToDisk = async (): Promise<boolean> => {
+    try {
+      await AsyncStorage.setItem(fullKey, payload);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // L2: Set in AsyncStorage (persistent)
   try {
-    await AsyncStorage.setItem(fullKey, JSON.stringify(entry));
-    console.log(`💾 [${logTime}] [CACHE SET] ${key} | Source: ${source} | TTL: ${ttl}s | Stored in L1 (Memory) + L2 (AsyncStorage)`);
+    await AsyncStorage.setItem(fullKey, payload);
+    console.log(
+      `💾 [${logTime}] [CACHE SET] ${key} | Source: ${source} | TTL: ${ttl}s | Stored in L1 (Memory) + L2 (AsyncStorage)`,
+    );
   } catch (error) {
-    console.error(`❌ [${logTime}] [CACHE SET ERROR] Failed to save ${key} to AsyncStorage:`, error);
-    console.log(`💾 [${logTime}] [CACHE SET] ${key} | Source: ${source} | TTL: ${ttl}s | Stored in L1 (Memory) only`);
+    // Recover from SQLITE_FULL / disk full without surfacing a red LogBox error
+    if (isStorageFullError(error)) {
+      const purged = await reclaimStorageSpace(false);
+      let ok = await writeToDisk();
+      if (!ok) {
+        const purgedMore = await reclaimStorageSpace(true);
+        ok = await writeToDisk();
+        if (!ok) {
+          // Last resort: wipe all app cache keys so the app stays usable
+          try {
+            const keys = await AsyncStorage.getAllKeys();
+            const eduvijnaKeys = keys.filter((k) => k.startsWith('eduvijna:'));
+            if (eduvijnaKeys.length) await AsyncStorage.multiRemove(eduvijnaKeys);
+            ok = await writeToDisk();
+            console.warn(
+              `⚠️ [${logTime}] [CACHE FULL] Cleared ${eduvijnaKeys.length} keys after SQLITE_FULL; ${ok ? 'retry ok' : 'L1 only'}`,
+            );
+          } catch {
+            console.warn(
+              `⚠️ [${logTime}] [CACHE FULL] Disk full — kept ${key} in memory only`,
+            );
+          }
+        } else {
+          console.warn(
+            `⚠️ [${logTime}] [CACHE FULL] Reclaimed ${purged + purgedMore} keys; saved ${key}`,
+          );
+        }
+      } else {
+        console.warn(
+          `⚠️ [${logTime}] [CACHE FULL] Reclaimed ${purged} expired keys; saved ${key}`,
+        );
+      }
+      return;
+    }
+
+    // Non-full errors: warn only (don't trip LogBox as console.error)
+    console.warn(
+      `⚠️ [${logTime}] [CACHE SET] Failed to persist ${key} — using memory only:`,
+      error,
+    );
   }
 }
 

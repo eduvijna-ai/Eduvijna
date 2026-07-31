@@ -127,7 +127,7 @@ function unwrapRecord(data: unknown): Record<string, unknown> {
 }
 
 export function useLibraryData() {
-  const { schoolId, isStudent } = useSchoolsSession();
+  const { schoolId, isStudent, userId } = useSchoolsSession();
   const { selectedYearId } = useAcademicYear();
   const canManage = !isStudent;
 
@@ -150,8 +150,29 @@ export function useLibraryData() {
   const [catalogBooks, setCatalogBooks] = useState<LibraryBook[]>([]);
   const [staffMembers, setStaffMembers] = useState<MemberOption[]>([]);
   const [studentMembers, setStudentMembers] = useState<MemberOption[]>([]);
+  /** Student library issues use profile_id as member_id (web issue form). */
+  const [studentMemberId, setStudentMemberId] = useState<number | null>(null);
 
   const perPage = 25;
+
+  const resolveStudentMemberId = useCallback(async (): Promise<number | null> => {
+    if (!isStudent || !userId) return null;
+    try {
+      const studentsRaw = await studentsByUserApi.getAll(
+        selectedYearId ? { academic_year_id: selectedYearId } : undefined,
+      );
+      const rows = safeList<Record<string, unknown>>(studentsRaw);
+      const mine =
+        rows.find((s) => pickNumber(s.user_id) === userId) ||
+        rows.find((s) => pickNumber(s.id) === userId) ||
+        rows[0];
+      if (!mine) return null;
+      const profileId = pickNumber(mine.profile_id);
+      return profileId || pickNumber(mine.user_id, userId) || null;
+    } catch {
+      return null;
+    }
+  }, [isStudent, userId, selectedYearId]);
 
   const loadBooks = useCallback(async () => {
     setBookStatus('loading');
@@ -185,20 +206,42 @@ export function useLibraryData() {
     setTxStatus('loading');
     setError(null);
     try {
+      let memberId = studentMemberId;
+      if (isStudent && memberId == null) {
+        memberId = await resolveStudentMemberId();
+        if (memberId) setStudentMemberId(memberId);
+      }
+
       const params: Record<string, string | number> = {
         page: txPage,
         per_page: perPage,
       };
       if (schoolId) params.school_id = schoolId;
       if (txStatusFilter) params.status = txStatusFilter;
+      // True "My Issues" for students (web UI title; API supports member_id)
+      if (isStudent && memberId) params.member_id = memberId;
+
       const data = await libraryTransactionsApi.list(params);
-      const items = safeList<Record<string, unknown>>(data).map(mapTx);
-      const total =
+      let items = safeList<Record<string, unknown>>(data).map(mapTx);
+      const apiTotal =
         data && typeof data === 'object' && 'total' in (data as object)
           ? pickNumber((data as Record<string, unknown>).total, items.length)
           : items.length;
+
+      // Client fallback if API ignores member_id and returns other members
+      if (isStudent && memberId) {
+        const hasOthers = items.some((t) => t.memberId !== memberId);
+        if (hasOthers) {
+          items = items.filter((t) => t.memberId === memberId);
+          setTransactions(items);
+          setTxTotal(items.length);
+          setTxStatus('ready');
+          return;
+        }
+      }
+
       setTransactions(items);
-      setTxTotal(total);
+      setTxTotal(apiTotal);
       setTxStatus('ready');
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -206,7 +249,14 @@ export function useLibraryData() {
       setTxTotal(0);
       setTxStatus('error');
     }
-  }, [schoolId, txPage, txStatusFilter]);
+  }, [
+    schoolId,
+    txPage,
+    txStatusFilter,
+    isStudent,
+    studentMemberId,
+    resolveStudentMemberId,
+  ]);
 
   const loadCatalogBooks = useCallback(async () => {
     if (!schoolId) {
@@ -222,7 +272,8 @@ export function useLibraryData() {
   }, [schoolId]);
 
   const loadMembers = useCallback(async () => {
-    if (!schoolId) {
+    // Students are read-only — skip staff/roster lists (avoids 403 + unused work).
+    if (isStudent || !schoolId) {
       setStaffMembers([]);
       setStudentMembers([]);
       return;
@@ -277,7 +328,7 @@ export function useLibraryData() {
     } catch {
       setStudentMembers([]);
     }
-  }, [schoolId, selectedYearId]);
+  }, [schoolId, selectedYearId, isStudent]);
 
   useEffect(() => {
     void loadBooks();
@@ -291,6 +342,18 @@ export function useLibraryData() {
     void loadCatalogBooks();
     void loadMembers();
   }, [loadCatalogBooks, loadMembers]);
+
+  useEffect(() => {
+    if (!isStudent) return;
+    let cancelled = false;
+    void (async () => {
+      const id = await resolveStudentMemberId();
+      if (!cancelled && id) setStudentMemberId(id);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isStudent, resolveStudentMemberId]);
 
   const bookLabel = useCallback(
     (bookId: number) => {
@@ -308,11 +371,12 @@ export function useLibraryData() {
 
   const memberLabel = useCallback(
     (memberId: number, memberType: string) => {
+      if (isStudent) return 'You';
       const list = memberType === 'staff' ? staffMembers : studentMembers;
       const m = list.find((x) => x.id === memberId);
       return m?.label || `#${memberId}`;
     },
-    [staffMembers, studentMembers],
+    [staffMembers, studentMembers, isStudent],
   );
 
   const getBook = useCallback(
@@ -562,7 +626,10 @@ export function useLibraryData() {
       setTxPage,
       txStatusFilter,
       setTxStatusFilter: (s: string) => {
-        setTxStatusFilterState((prev) => (prev === s ? '' : s));
+        setTxStatusFilterState((prev) => {
+          if (s === '') return '';
+          return prev === s ? '' : s;
+        });
         setTxPage(1);
       },
       txStatus,

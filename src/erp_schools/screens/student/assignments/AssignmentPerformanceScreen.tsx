@@ -9,7 +9,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SegmentedControl,
   SurfaceCard,
   SectionHeader,
@@ -35,7 +35,7 @@ const DIST_COLOR = { success: 'success', info: 'info', warning: 'warning', dange
 
 export default function AssignmentPerformanceScreen() {
   const theme = useTeacherTheme();
-  const { profile, assignments } = useStudentData();
+  const { assignments } = useStudentData();
   const termRange = useStudentUIStore((s) => s.termRange);
   const [tab, setTab] = useState('overview');
 
@@ -52,11 +52,8 @@ export default function AssignmentPerformanceScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
+        <StudentModuleHeader
           title="Assignment Performance"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
           trailingIcon="calendar-outline"
           rightSlot={
             <View style={[styles.termPill, { borderColor: theme.colors.border }]}>

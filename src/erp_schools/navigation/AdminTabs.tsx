@@ -3,7 +3,10 @@
  *
  * Isolated from the Teacher/Student tabs and the host/ERP navigators: all route
  * names are Admin*-prefixed (see AdminTabParamList) so there are no collisions.
- * Tabs: Dashboard · People · Home (main app escape) · Finance · More.
+ * Tabs: Dashboard · Attendance · Home (main app escape) · Finance · More.
+ *
+ * People hub removed from tabs (still fixture/mock) — live Class Overview /
+ * Student & Teacher flows remain under More / stack.
  */
 
 import React from 'react';
@@ -17,16 +20,23 @@ import type { AdminTabParamList } from '../types/navigation';
 import { ADMIN_TABS } from './adminRoutes';
 
 import AdminHomeScreen from '../screens/admin/dashboard/AdminHomeScreen';
-import PeopleHubScreen from '../screens/admin/people/PeopleHubScreen';
+import TeacherAttendanceScreen from '../screens/teacher/attendance/TeacherAttendanceScreen';
 import MainDashboardTabPlaceholder from '../screens/teacher/dashboard/MainDashboardTabPlaceholder';
 import FinanceDashboardScreen from '../screens/admin/finance/FinanceDashboardScreen';
 import MoreMenuScreen from '../screens/admin/settings/MoreMenuScreen';
 
 const Tab = createBottomTabNavigator<AdminTabParamList>();
 
-const ICONS: Record<keyof AdminTabParamList, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
+function AdminAttendanceTab() {
+  return <TeacherAttendanceScreen role="admin" showBack={false} />;
+}
+
+const ICONS: Record<
+  keyof AdminTabParamList,
+  { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }
+> = {
   AdminHome: { active: 'speedometer', inactive: 'speedometer-outline' },
-  AdminPeople: { active: 'people', inactive: 'people-outline' },
+  AdminAttendance: { active: 'checkbox', inactive: 'checkbox-outline' },
   AdminMainDashboard: { active: 'home', inactive: 'home-outline' },
   AdminFinance: { active: 'wallet', inactive: 'wallet-outline' },
   AdminMore: { active: 'grid', inactive: 'grid-outline' },
@@ -50,12 +60,26 @@ export function AdminTabs() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarIcon: ({ focused, color, size }) => {
           const icon = ICONS[route.name];
-          return <Ionicons name={focused ? icon.active : icon.inactive} size={size} color={color} />;
+          return (
+            <Ionicons
+              name={focused ? icon.active : icon.inactive}
+              size={size}
+              color={color}
+            />
+          );
         },
       })}
     >
-      <Tab.Screen name={ADMIN_TABS.HOME} component={AdminHomeScreen} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name={ADMIN_TABS.PEOPLE} component={PeopleHubScreen} options={{ title: 'People' }} />
+      <Tab.Screen
+        name={ADMIN_TABS.HOME}
+        component={AdminHomeScreen}
+        options={{ title: 'Dashboard' }}
+      />
+      <Tab.Screen
+        name={ADMIN_TABS.ATTENDANCE}
+        component={AdminAttendanceTab}
+        options={{ title: 'Attendance' }}
+      />
       <Tab.Screen
         name={ADMIN_TABS.DASHBOARD}
         component={MainDashboardTabPlaceholder}
@@ -67,8 +91,16 @@ export function AdminTabs() {
           },
         }}
       />
-      <Tab.Screen name={ADMIN_TABS.FINANCE} component={FinanceDashboardScreen} options={{ title: 'Finance' }} />
-      <Tab.Screen name={ADMIN_TABS.MORE} component={MoreMenuScreen} options={{ title: 'More' }} />
+      <Tab.Screen
+        name={ADMIN_TABS.FINANCE}
+        component={FinanceDashboardScreen}
+        options={{ title: 'Finance' }}
+      />
+      <Tab.Screen
+        name={ADMIN_TABS.MORE}
+        component={MoreMenuScreen}
+        options={{ title: 'More' }}
+      />
     </Tab.Navigator>
   );
 }

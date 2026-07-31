@@ -46,7 +46,14 @@ export default function CreateLibraryTransactionScreen() {
   const [remarks, setRemarks] = useState('');
 
   useEffect(() => {
-    if (!isEdit || !editingId) return;
+    if (!lib.canManage) {
+      Alert.alert('Library', 'Students can view issues but cannot create or edit them.');
+      navigation.goBack();
+    }
+  }, [lib.canManage, navigation]);
+
+  useEffect(() => {
+    if (!isEdit || !editingId || !lib.canManage) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -68,7 +75,7 @@ export default function CreateLibraryTransactionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isEdit, editingId, lib.getTransaction]);
+  }, [isEdit, editingId, lib.canManage, lib.getTransaction]);
 
   const bookOptions = useMemo(() => {
     const current = bookId ? Number(bookId) : null;
@@ -104,6 +111,10 @@ export default function CreateLibraryTransactionScreen() {
       Alert.alert('Required', 'Book and Member are required.');
       return;
     }
+    if (!isEdit && !dueDate.trim()) {
+      Alert.alert('Required', 'Due date is required.');
+      return;
+    }
     const payload = {
       book_id: Number(bookId),
       member_id: Number(memberId),
@@ -124,6 +135,14 @@ export default function CreateLibraryTransactionScreen() {
     }
     navigation.goBack();
   };
+
+  if (!lib.canManage) {
+    return (
+      <TeacherScreen header={<ScreenHeader title="Transaction" showBack />}>
+        <ScreenLoader message="Returning…" />
+      </TeacherScreen>
+    );
+  }
 
   if (loading) {
     return (
@@ -163,11 +182,12 @@ export default function CreateLibraryTransactionScreen() {
     >
       <SurfaceCard>
         <View style={styles.form}>
-          <FormField label="Book" required>
+          <FormField label="Book" required hint={isEdit ? 'Book cannot be changed after issue.' : undefined}>
             <SelectField
               options={bookOptions}
               value={bookId || null}
               onChange={setBookId}
+              disabled={isEdit}
               placeholder={
                 bookOptions.length === 0
                   ? 'No books with available copies'
@@ -181,23 +201,24 @@ export default function CreateLibraryTransactionScreen() {
             </Text>
           ) : null}
 
-          <FormField label="Member Type">
+          <FormField label="Member Type" hint={isEdit ? 'Locked after issue.' : undefined}>
             <SelectField
               options={MEMBER_TYPES.map((t) => ({ label: t, value: t }))}
               value={memberType}
+              disabled={isEdit}
               onChange={(v) => {
-                if (isEdit) return;
                 setMemberType(v);
                 setMemberId('');
               }}
             />
           </FormField>
 
-          <FormField label="Member" required>
+          <FormField label="Member" required hint={isEdit ? 'Locked after issue.' : undefined}>
             <SelectField
               options={memberOptions}
               value={memberId || null}
               onChange={setMemberId}
+              disabled={isEdit}
               placeholder="Select member…"
             />
           </FormField>
@@ -223,7 +244,7 @@ export default function CreateLibraryTransactionScreen() {
               editable={!isEdit}
             />
           </FormField>
-          <FormField label="Due Date">
+          <FormField label="Due Date" required={!isEdit}>
             <TextField
               value={dueDate}
               onChangeText={setDueDate}

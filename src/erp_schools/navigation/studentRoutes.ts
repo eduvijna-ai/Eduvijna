@@ -8,7 +8,8 @@ export const STUDENT_TABS = {
   HOME: 'StudentHome',
   ACADEMICS: 'StudentAcademics',
   DASHBOARD: 'StudentDashboard',
-  AI_TEST: 'StudentAITest',
+  /** Tab host for timetable — distinct from stack route `StudentTimetable`. */
+  TIMETABLE: 'StudentTimetableTab',
   MORE: 'StudentMore',
 } as const;
 
@@ -27,7 +28,8 @@ export const STUDENT_ROUTES = {
   ASSIGNMENT_SUBMISSION: 'AssignmentSubmission',
   ASSIGNMENT_PERFORMANCE: 'AssignmentPerformance',
 
-  TIMETABLE: 'Timetable',
+  /** Unique vs teacher stack `Timetable` — avoids cross-navigator collisions on device. */
+  TIMETABLE: 'StudentTimetable',
   EXAM_SCHEDULE: 'ExamSchedule',
   EXAM_RESULTS: 'ExamResults',
 

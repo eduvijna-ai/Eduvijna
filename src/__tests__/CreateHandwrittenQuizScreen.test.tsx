@@ -14,20 +14,26 @@
  *   - Permission requests on mount
  */
 
+jest.mock('../core/services/documentCameraCapture', () => ({
+  __esModule: true,
+  captureAndCropDocumentImage: jest.fn(),
+}));
+
 import React from 'react';
 import { render, fireEvent, waitFor, act, Alert } from '@testing-library/react-native';
 import { Alert as RNAlert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../core/api/config';
 import CreateHandwrittenQuizScreen, { buildStrictQuizContent } from '../screens/CreateHandwrittenQuizScreen';
+import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
 
 // ── Typed mocks ───────────────────────────────────────────────────────────
 const mockPost = apiClient.post as jest.MockedFunction<typeof apiClient.post>;
 const mockLaunchLibrary = ImagePicker.launchImageLibraryAsync as jest.MockedFunction<
   typeof ImagePicker.launchImageLibraryAsync
 >;
-const mockLaunchCamera = ImagePicker.launchCameraAsync as jest.MockedFunction<
-  typeof ImagePicker.launchCameraAsync
+const mockCaptureAndCrop = captureAndCropDocumentImage as jest.MockedFunction<
+  typeof captureAndCropDocumentImage
 >;
 const mockRequestCamera = ImagePicker.requestCameraPermissionsAsync as jest.MockedFunction<
   typeof ImagePicker.requestCameraPermissionsAsync
@@ -144,7 +150,7 @@ describe('CreateHandwrittenQuizScreen – initial UI', () => {
   it('renders the 4-step how-it-works guide', () => {
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
     expect(getByText('How it works')).toBeTruthy();
-    expect(getByText(/Upload clear photos/)).toBeTruthy();
+    expect(getByText(/Capture or pick handwritten page photos/)).toBeTruthy();
     expect(getByText(/Extract text with OCR/)).toBeTruthy();
     expect(getByText(/Set class, subject/)).toBeTruthy();
   });
@@ -219,25 +225,35 @@ describe('CreateHandwrittenQuizScreen – image picking from gallery', () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 describe('CreateHandwrittenQuizScreen – camera capture', () => {
-  it('adds a single image from camera', async () => {
-    mockLaunchCamera.mockResolvedValueOnce({
-      canceled: false,
-      assets: [mockImage(0)],
-    } as any);
+  it('adds a single image from camera after crop', async () => {
+    mockCaptureAndCrop.mockImplementationOnce(async () => ({
+      uri: 'file:///cropped_0.jpg',
+      name: 'camera-0.jpg',
+      mimeType: 'image/jpeg',
+    }));
 
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
-    fireEvent.press(getByText('Camera'));
+
+    await act(async () => {
+      fireEvent.press(getByText('Camera'));
+    });
 
     await waitFor(() => {
+      expect(mockCaptureAndCrop).toHaveBeenCalled();
       expect(getByText(/Step 1 · Upload Images \(1\/5\)/)).toBeTruthy();
     });
   });
 
-  it('does nothing when camera is cancelled', async () => {
-    mockLaunchCamera.mockResolvedValueOnce({ canceled: true, assets: [] } as any);
+  it('does nothing when camera/crop is cancelled', async () => {
+    mockCaptureAndCrop.mockImplementationOnce(async () => null);
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
-    fireEvent.press(getByText('Camera'));
+
+    await act(async () => {
+      fireEvent.press(getByText('Camera'));
+    });
+
     await waitFor(() => {
+      expect(mockCaptureAndCrop).toHaveBeenCalled();
       expect(getByText(/\(0\/5\)/)).toBeTruthy();
     });
   });
@@ -252,10 +268,10 @@ describe('CreateHandwrittenQuizScreen – camera capture', () => {
     fireEvent.press(getByText('Gallery'));
     await waitFor(() => expect(getByText(/\(5\/5\)/)).toBeTruthy());
 
-    // Camera button should be disabled – pressing it should not call launchCameraAsync
+    // Camera button should be disabled – pressing it should not call capture helper
     fireEvent.press(getByText('Camera'));
     await waitFor(() => {
-      expect(mockLaunchCamera).not.toHaveBeenCalled();
+      expect(mockCaptureAndCrop).not.toHaveBeenCalled();
     });
   });
 });

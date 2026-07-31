@@ -8,7 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
-  StudentIdentityHeader,
+  StudentModuleHeader,
   SurfaceCard,
   SectionHeader,
   StatGrid,
@@ -42,12 +42,8 @@ export default function StudentProfileScreen() {
   return (
     <TeacherScreen
       header={
-        <StudentIdentityHeader
+        <StudentModuleHeader
           title="My Profile"
-          studentName={profile.name}
-          className={profile.className}
-          rollNo={profile.rollNo}
-          admissionNo={profile.admissionNo}
           showBack={false}
           trailingIcon="create-outline"
         />
@@ -80,7 +76,7 @@ export default function StudentProfileScreen() {
         <SurfaceCard padded={false} style={styles.listCard}>
           <ListItem icon="calendar-outline" iconAccent="teal" title="Attendance" showChevron onPress={() => navigation.navigate('Attendance')} />
           <ListItem icon="bar-chart-outline" iconAccent="green" title="Marks Report" showChevron onPress={() => navigation.navigate('MarksReport')} />
-          <ListItem icon="wallet-outline" iconAccent="orange" title="Fee Details" showChevron onPress={() => navigation.navigate('FeeDashboard')} />
+          <ListItem icon="wallet-outline" iconAccent="orange" title="My Fees" showChevron onPress={() => navigation.navigate('FeeDashboard')} />
           <ListItem icon="settings-outline" iconAccent="blue" title="Settings" divider={false} showChevron onPress={() => navigation.navigate('StudentSettings')} />
         </SurfaceCard>
       </View>

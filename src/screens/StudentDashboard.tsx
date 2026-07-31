@@ -22,7 +22,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import {
   ParsedQuiz,
   DashboardStats,
-} from '@core/types/dashboard.types';
+  getDisplayName,
+} from '@core/types';
 import { isStudentQuizActive } from '../utils/quizFilters';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
 
@@ -43,6 +44,9 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   const incomingParams = route?.params;
   console.log('📥 Incoming Params to StudentDashboard:', incomingParams);
+
+  // Prefer full_name (e.g. Eshwara) over raw username (demo_eshwar) — TeacherDashboard parity
+  const displayName = getDisplayName(user).split(/\s+/)[0] || 'Student';
 
   // Dashboard store for sharing data with ClassesList
   const { setQuizzes } = useDashboardStore();
@@ -398,7 +402,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroGreeting} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
                 <Text style={styles.heroLead}>Hello, </Text>
-                <Text style={styles.heroBold}>{user?.username || 'Student'}</Text>
+                <Text style={styles.heroBold}>{displayName}</Text>
                 <Text style={styles.heroLead}> 👋</Text>
               </Text>
               <Text style={styles.heroSub}>Here&apos;s your learning overview for today.</Text>
