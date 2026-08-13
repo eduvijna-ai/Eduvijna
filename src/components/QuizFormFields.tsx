@@ -89,6 +89,11 @@ export interface QuizFormFieldsProps {
 
   // Compact sizing
   compact?: boolean;
+
+  /** When false, Class / Subject / Lesson are marked (optional) like web document-quiz. Default true. */
+  fieldsRequired?: boolean;
+  /** Keep search inside the provided lists — do not hit the unscoped search API. */
+  localSearchOnly?: boolean;
 }
 
 export default function QuizFormFields(props: QuizFormFieldsProps) {
@@ -154,13 +159,16 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
     additionalInstructionsError = '',
 
     compact = false,
+    fieldsRequired = true,
+    localSearchOnly = false,
   } = props;
 
   const useModalQuestionCount = useModalForQuestionCount ?? usePickerForCount;
 
-  // Use prop data if provided, otherwise use context data (loaded once for entire app)
-  const rawClasses = propClasses || contextClasses;
-  const rawSubjects = propSubjects || contextSubjects;
+  // Document-quiz passes an explicit list (often short). Never fall back to the
+  // app-wide class catalog in that case — that catalog is Class 1–12+.
+  const rawClasses = localSearchOnly ? (propClasses ?? []) : (propClasses !== undefined ? propClasses : contextClasses);
+  const rawSubjects = localSearchOnly ? (propSubjects ?? []) : (propSubjects !== undefined ? propSubjects : contextSubjects);
   const normalizeDropdownItems = <T extends { id?: string; name?: string; label?: string; value?: string }>(items: T[]): T[] =>
     (items || []).filter((item) => Boolean(item?.id) && Boolean(item?.name || item?.label || item?.value));
 
@@ -226,8 +234,8 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       clearTimeout(classSearchTimer.current);
     }
     
-    // If less than 3 characters, show all classes (local filter)
-    if (query.length < 3) {
+    // Local filter for short queries, or always when lists are school-scoped
+    if (localSearchOnly || query.length < 3) {
       let filtered = classes.filter((c) => {
         const name = (c?.name || '').toLowerCase();
         const label = (c?.label || '').toLowerCase();
@@ -282,7 +290,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
         setIsSearchingClasses(false);
       }
     }, 300);
-  }, [classes]);
+  }, [classes, classValue, localSearchOnly]);
 
   // Handle subject search with debounce
   const handleSubjectSearch = useCallback((query: string) => {
@@ -293,8 +301,8 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       clearTimeout(subjectSearchTimer.current);
     }
     
-    // If less than 3 characters, show all subjects (local filter)
-    if (query.length < 3) {
+    // Local filter for short queries, or always when lists are school-scoped
+    if (localSearchOnly || query.length < 3) {
       let filtered = subjects.filter((s) => {
         const name = (s?.name || '').toLowerCase();
         const label = (s?.label || '').toLowerCase();
@@ -349,7 +357,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
         setIsSearchingSubjects(false);
       }
     }, 300);
-  }, [subjects]);
+  }, [subjects, subjectValue, localSearchOnly]);
 
   // Search functionality for classes and subjects (API-based for longer queries)
   const handleSearch = useCallback(async (type: 'classes' | 'subjects', query: string) => {
@@ -423,7 +431,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {/* Class/Grade Field */}
       {showClass && (
         <View style={[styles.field, compact && styles.fieldCompact]}>
-          <Text style={styles.label}>Class/Grade *</Text>
+          <Text style={styles.label}>{fieldsRequired ? 'Class/Grade *' : 'Class/Grade (optional)'}</Text>
           {isLoadingClasses ? (
             <View style={styles.loadingContainer}>
               <LoadingSpinner size={20} />
@@ -533,7 +541,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {/* Subject Field */}
       {showSubject && (
         <View style={[styles.field, compact && styles.fieldCompact]}>
-          <Text style={styles.label}>Subject *</Text>
+          <Text style={styles.label}>{fieldsRequired ? 'Subject *' : 'Subject (optional)'}</Text>
           {isLoadingSubjects ? (
             <View style={styles.loadingContainer}>
               <LoadingSpinner size={20} />
@@ -668,7 +676,7 @@ export default function QuizFormFields(props: QuizFormFieldsProps) {
       {/* Lesson/Topic Field */}
       {showLesson && (
         <View style={[styles.field, compact && styles.fieldCompact]}>
-          <Text style={styles.label}>{lessonLabel} *</Text>
+          <Text style={styles.label}>{fieldsRequired ? `${lessonLabel} *` : `${lessonLabel} (optional)`}</Text>
           <TextInput
             style={[styles.input, compact && styles.inputCompact]}
             value={lessonValue}

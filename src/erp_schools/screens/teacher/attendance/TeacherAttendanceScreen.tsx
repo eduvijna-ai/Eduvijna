@@ -15,6 +15,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import {
   TeacherScreen,
   ScreenHeader,
@@ -38,6 +39,8 @@ import {
   type AttStatus,
   type ViewPeriod,
 } from '../../../hooks/useTeacherAttendanceTracker';
+import StudentMarkSheet from './StudentMarkSheet';
+import MyAttendanceHome from './MyAttendanceHome';
 import {
   useTeacherMyAttendance,
   type StaffAttRecord,
@@ -70,21 +73,29 @@ type HubTab =
   | 'student-report'
   | 'settings';
 
-const TEACHER_HUB_TABS: Array<{ key: HubTab; title: string; subtitle: string }> = [
-  { key: 'tracker', title: 'Student Attendance', subtitle: 'Mark & view class attendance grid.' },
-  { key: 'my-attendance', title: 'My Attendance', subtitle: 'Your staff attendance & self-mark.' },
-  { key: 'class-report', title: 'Class Report', subtitle: 'Class-wise attendance summary.' },
-  { key: 'student-report', title: 'Student Report', subtitle: 'Individual student summary.' },
-  { key: 'settings', title: 'Settings', subtitle: 'Working days & attendance rules.' },
+const TEACHER_HUB_TABS: Array<{
+  key: HubTab;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  { key: 'tracker', title: 'Student Attendance', icon: 'people-outline' },
+  { key: 'my-attendance', title: 'My Attendance', icon: 'finger-print-outline' },
+  { key: 'class-report', title: 'Class Report', icon: 'bar-chart-outline' },
+  { key: 'student-report', title: 'Student Report', icon: 'person-outline' },
+  { key: 'settings', title: 'Settings', icon: 'settings-outline' },
 ];
 
-const ADMIN_HUB_TABS: Array<{ key: HubTab; title: string; subtitle: string }> = [
-  { key: 'tracker', title: 'Student Attendance', subtitle: 'Mark & view class attendance.' },
-  { key: 'my-attendance', title: 'My Attendance', subtitle: 'Your staff attendance & self-mark.' },
-  { key: 'staff-attendance', title: 'Staff Attendance', subtitle: 'Mark all staff (1H / 2H).' },
-  { key: 'class-report', title: 'Class Report', subtitle: 'Class-wise attendance summary.' },
-  { key: 'student-report', title: 'Student Report', subtitle: 'Individual student summary.' },
-  { key: 'settings', title: 'Settings', subtitle: 'Working days & attendance rules.' },
+const ADMIN_HUB_TABS: Array<{
+  key: HubTab;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
+  { key: 'tracker', title: 'Student Attendance', icon: 'people-outline' },
+  { key: 'my-attendance', title: 'My Attendance', icon: 'finger-print-outline' },
+  { key: 'staff-attendance', title: 'Staff Attendance', icon: 'briefcase-outline' },
+  { key: 'class-report', title: 'Class Report', icon: 'bar-chart-outline' },
+  { key: 'student-report', title: 'Student Report', icon: 'person-outline' },
+  { key: 'settings', title: 'Settings', icon: 'settings-outline' },
 ];
 
 export type AttendanceHubProps = {
@@ -122,6 +133,7 @@ const STATUS_STYLE: Record<
   present: { bg: '#DCFCE7', fg: '#16A34A', label: 'P' },
   absent: { bg: '#FEE2E2', fg: '#DC2626', label: 'A' },
   late: { bg: '#FFEDD5', fg: '#EA580C', label: 'L' },
+  leave: { bg: '#F1F5F9', fg: '#64748B', label: 'Lv' },
   '': { bg: '#F1F5F9', fg: '#94A3B8', label: '—' },
 };
 
@@ -161,12 +173,6 @@ export default function TeacherAttendanceScreen({
       }
       contentStyle={styles.content}
     >
-      <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>Daily Operations</Text>
-      <Text style={[styles.heroTitle, { color: theme.colors.textPrimary }]}>Attendance</Text>
-      <Text style={[styles.heroSub, { color: theme.colors.textSecondary }]}>
-        Track student and staff attendance, run reports, and configure settings.
-      </Text>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -178,34 +184,30 @@ export default function TeacherAttendanceScreen({
             <TouchableOpacity
               key={t.key}
               onPress={() => setTab(t.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={t.title}
               style={[
-                styles.tabCard,
-                theme.shadow.light,
+                styles.tabPill,
                 {
                   backgroundColor: active ? theme.colors.primary : theme.colors.surface,
                   borderColor: active ? theme.colors.primary : theme.colors.border,
                 },
               ]}
             >
+              <Ionicons
+                name={t.icon}
+                size={15}
+                color={active ? theme.colors.textInverse : theme.colors.textSecondary}
+              />
               <Text
                 style={[
-                  styles.tabTitle,
-                  { color: active ? '#FFF' : theme.colors.textPrimary },
+                  styles.tabPillLabel,
+                  { color: active ? theme.colors.textInverse : theme.colors.textSecondary },
                 ]}
                 numberOfLines={1}
               >
                 {t.title}
-              </Text>
-              <Text
-                style={[
-                  styles.tabSub,
-                  {
-                    color: active ? 'rgba(255,255,255,0.85)' : theme.colors.textSecondary,
-                  },
-                ]}
-                numberOfLines={2}
-              >
-                {t.subtitle}
               </Text>
             </TouchableOpacity>
           );
@@ -219,7 +221,7 @@ export default function TeacherAttendanceScreen({
           isAdmin={isAdmin}
         />
       ) : null}
-      {tab === 'my-attendance' ? <MyAttendancePanel key={`my-${refreshKey}`} /> : null}
+      {tab === 'my-attendance' ? <MyAttendanceHome key={`my-${refreshKey}`} /> : null}
       {tab === 'staff-attendance' && isAdmin ? (
         <StaffAttendancePanel key={`staff-${refreshKey}`} />
       ) : null}
@@ -241,13 +243,21 @@ function TrackerPanel({
   initialClassId?: string | number;
   isAdmin?: boolean;
 }) {
+  if (!isAdmin) {
+    return <StudentMarkSheet embedded initialClassId={initialClassId} />;
+  }
+  return <AdminTrackerPanel initialClassId={initialClassId} />;
+}
+
+function AdminTrackerPanel({ initialClassId }: { initialClassId?: string | number }) {
+  const isAdmin = true;
   const theme = useTeacherTheme();
-  const t = useTeacherAttendanceTracker(
-    initialClassId,
-    isAdmin ? { canEditAnyDate: true, allowClearOnCycle: true } : undefined,
-  );
+  const t = useTeacherAttendanceTracker(initialClassId, {
+    canEditAnyDate: true,
+    allowClearOnCycle: true,
+  });
   const [bulkStatus, setBulkStatus] = useState<AttStatus>('present');
-  const markDate = isAdmin ? t.selectedDate : t.todayStr;
+  const markDate = t.selectedDate;
 
   const metricItems: StatItem[] = useMemo(() => {
     const base: StatItem[] = [
@@ -1385,7 +1395,7 @@ function StaffAttendancePanel() {
 
 /* ════════ My Attendance (staff / teacher self) ════════ */
 
-function MyAttendancePanel() {
+function MyAttendancePanelLegacy() {
   const theme = useTeacherTheme();
   const { profile } = useTeacherStaffProfile();
   const m = useTeacherMyAttendance();
@@ -2569,17 +2579,17 @@ const styles = StyleSheet.create({
   },
   heroTitle: { fontSize: 26, fontWeight: '800', letterSpacing: -0.3 },
   heroSub: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
-  tabRail: { gap: 10, paddingRight: 8, paddingVertical: 2 },
-  tabCard: {
-    width: 168,
-    minHeight: 74,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+  tabRail: { gap: 8, paddingRight: 8, paddingVertical: 2 },
+  tabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 40,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1.5,
   },
-  tabTitle: { fontSize: 13, fontWeight: '700' },
-  tabSub: { fontSize: 11, lineHeight: 14, marginTop: 4 },
+  tabPillLabel: { fontSize: 13, fontWeight: '700' },
   sectionGap: { gap: 12 },
   filterCard: { gap: 8 },
   sectionHeading: { fontSize: 17, fontWeight: '700', marginBottom: 2 },

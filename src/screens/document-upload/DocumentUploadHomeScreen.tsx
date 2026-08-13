@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -27,6 +27,7 @@ import {
   createCameraSessionBook,
   appendCameraPage,
   mergeCameraSessionPages,
+  sanitizeCameraDocumentTitle,
   MAX_QUIZ_PAGES,
   MAX_IMAGE_UPLOADS,
   DOCUMENT_FILE_MIME_TYPES,
@@ -35,6 +36,7 @@ import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
 import {
   getDocumentUploadBooks,
+  getDocumentUploadBookById,
   upsertDocumentUploadBook,
   consumeDocumentUploadHomeReset,
 } from '@core/services/documentUploadStorage';
@@ -76,6 +78,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
   const [books, setBooks] = useState<DocumentUploadBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<DocumentUploadBook | null>(null);
+  const selectedBookRef = useRef<DocumentUploadBook | null>(null);
+  selectedBookRef.current = selectedBook;
   const [bookName, setBookName] = useState('');
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -92,6 +96,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   }, []);
 
   // Reload on focus; clear upload UI after a successful assessment generation.
+  // selectedBook is in-memory — Preview add/remove persist to AsyncStorage, so
+  // re-read that copy here or Home keeps showing the stale page count.
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -101,12 +107,31 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         const loaded = await getDocumentUploadBooks();
         if (!active) return;
         setBooks(loaded);
-        if (pendingReset) {
+        const current = selectedBookRef.current;
+        // Only wipe Home when Close deleted THIS selected book. Generate no longer
+        // sets the reset flag, so Back → add pages → Home keeps the session.
+        const closedSelected =
+          !!pendingReset && !!current && current.id === pendingReset && !loaded.some((b) => b.id === pendingReset);
+
+        if (closedSelected) {
           setSelectedBook(null);
           setBookName('');
           setError('');
           setSuccess('');
           setActiveTab('upload');
+        } else if (current) {
+          const updated = loaded.find((b) => b.id === current.id) ?? null;
+          setSelectedBook(updated);
+          if (!updated) {
+            setBookName('');
+          } else {
+            setBookName((name) => {
+              if (!name || name === current.title || name === current.originalName) {
+                return updated.title || updated.originalName;
+              }
+              return name;
+            });
+          }
         }
         setLoadingBooks(false);
       })();
@@ -186,7 +211,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       thumbnailUri: fileUri,
     };
 
-    const title = (bookName || fileName.replace(/\.[^/.]+$/, '') || 'Camera Document').trim();
+    const title = sanitizeCameraDocumentTitle(bookName || fileName);
     let next: DocumentUploadBook;
 
     if (selectedBook?.isCameraSession && (selectedBook.pages?.length || 0) < MAX_QUIZ_PAGES) {
@@ -340,7 +365,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         });
       }
 
-      const title = (bookName || 'Gallery Document').trim();
+      const title = sanitizeCameraDocumentTitle(bookName || 'Gallery Document');
       const next = mergeCameraSessionPages(
         selectedBook?.isCameraSession ? selectedBook : null,
         pages,
@@ -386,16 +411,26 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     }
   };
 
-  const goToPreview = () => {
+  const goToPreview = async () => {
     if (!selectedBook) {
       setError('Please upload or select a book first.');
       return;
     }
 
+    const stored = await getDocumentUploadBookById(selectedBook.id);
+    if (!stored) {
+      setSelectedBook(null);
+      setBookName('');
+      setError('That document is no longer available. Please upload or capture again.');
+      return;
+    }
+
     const mergedBook = {
-      ...selectedBook,
-      title: (bookName || selectedBook.title || selectedBook.originalName).trim(),
+      ...stored,
+      title: (bookName || stored.title || stored.originalName).trim(),
     };
+    await upsertDocumentUploadBook(mergedBook);
+    setSelectedBook(mergedBook);
 
     navigation.navigate('DocumentUploadPreviewScreen', { book: mergedBook });
   };

@@ -82,6 +82,20 @@ export interface BatchOCRResponse {
 }
 
 /** Local preview URI for a page (camera session or single local file). */
+const UUID_FILE_STEM =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Camera/gallery pickers often return a UUID as the file name — never use that as the book title. */
+export function sanitizeCameraDocumentTitle(raw?: string): string {
+  const candidate = String(raw || '')
+    .replace(/\.[^/.]+$/, '')
+    .trim();
+  if (!candidate || UUID_FILE_STEM.test(candidate) || /^camera-\d+$/i.test(candidate)) {
+    return 'Camera Document';
+  }
+  return candidate;
+}
+
 export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pageNumber: number): string | undefined {
   if (!book) return undefined;
   const fromPages = book.pages?.find((p) => p.pageNumber === pageNumber);
@@ -92,7 +106,7 @@ export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pag
 
 export function createCameraSessionBook(firstPage: DocumentCameraPage, title?: string): DocumentUploadBook {
   const now = new Date().toISOString();
-  const sessionTitle = (title || firstPage.fileName.replace(/\.[^/.]+$/, '') || 'Camera Document').trim();
+  const sessionTitle = sanitizeCameraDocumentTitle(title || firstPage.fileName);
   return {
     id: `camera-${Date.now()}`,
     title: sessionTitle,
@@ -152,7 +166,7 @@ export function mergeCameraSessionPages(
   }
 
   if (title?.trim()) {
-    book = { ...book, title: title.trim() };
+    book = { ...book, title: sanitizeCameraDocumentTitle(title) };
   }
   return book;
 }

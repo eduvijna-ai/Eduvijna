@@ -23,7 +23,7 @@ import {
 } from '../utils/apiHelpers';
 import { useSchoolsSession } from './useSchoolsSession';
 
-export type AttStatus = 'present' | 'absent' | 'late' | '';
+export type AttStatus = 'present' | 'absent' | 'late' | 'leave' | '';
 export type ViewPeriod =
   | 'month'
   | 'current-week'
@@ -43,6 +43,7 @@ export type AttStudent = {
   sectionName: string;
   subjectId: number;
   subjectName: string;
+  avatarUrl?: string;
 };
 
 export type AttMetrics = {
@@ -69,6 +70,11 @@ export type TrackerOptions = {
   canEditAnyDate?: boolean;
   /** Web admin cycle: P → A → L → empty → P */
   allowClearOnCycle?: boolean;
+  /**
+   * Mobile mark sheet: pick any calendar date ≤ today and mark that day
+   * (not limited to “today” or working-day chips).
+   */
+  allowPastDates?: boolean;
 };
 
 const TEACHER_NEXT: Record<string, AttStatus> = {
@@ -215,7 +221,17 @@ function buildMonthGroups(
   return groups;
 }
 
+function normalizeAttStatus(raw: string): AttStatus {
+  const st = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  if (st === 'present' || st === 'p') return 'present';
+  if (st === 'absent' || st === 'a') return 'absent';
+  if (st === 'late' || st === 'l') return 'late';
+  if (st === 'leave' || st === 'excused' || st === 'on_leave') return 'leave';
+  return '';
+}
+
 function mapStudent(r: Record<string, unknown>): AttStudent {
+  const photo = pickString(r.avatar_url, r.photo_url, r.image_url, r.profile_photo, r.photo);
   return {
     studentId: pickNumber(r.user_id, r.student_id, r.id),
     name: pickString(r.name, r.username, 'Student'),
@@ -227,6 +243,7 @@ function mapStudent(r: Record<string, unknown>): AttStudent {
     sectionName: pickString(r.section_name, '—'),
     subjectId: pickNumber(r.subject_id),
     subjectName: pickString(r.subject_name, '—'),
+    avatarUrl: photo || undefined,
   };
 }
 
@@ -236,6 +253,7 @@ export function useTeacherAttendanceTracker(
 ) {
   const canEditAnyDate = !!options?.canEditAnyDate;
   const allowClearOnCycle = !!options?.allowClearOnCycle;
+  const allowPastDates = !!options?.allowPastDates;
   const cycleMap = allowClearOnCycle ? ADMIN_NEXT : TEACHER_NEXT;
 
   const session = useSchoolsSession();
@@ -275,11 +293,13 @@ export function useTeacherAttendanceTracker(
 
   const isViewOnly = !subjectId;
   const canEditDate = useCallback(
-    (date: string) =>
-      canEditAnyDate
-        ? workingDates.includes(date) || date === todayStr
-        : date === todayStr,
-    [canEditAnyDate, workingDates, todayStr],
+    (date: string) => {
+      if (date > todayStr) return false;
+      if (allowPastDates) return true;
+      if (canEditAnyDate) return workingDates.includes(date) || date === todayStr;
+      return date === todayStr;
+    },
+    [allowPastDates, canEditAnyDate, workingDates, todayStr],
   );
 
   const classOptions = useMemo(() => {
@@ -435,13 +455,13 @@ export function useTeacherAttendanceTracker(
       if (!workingNames.has('sat')) workingNames.add('sat');
       const dates = buildWorkingDates(range.from, range.to, workingNames);
       setWorkingDates(dates);
-      setSelectedDate((prev) =>
-        dates.includes(prev)
-          ? prev
-          : dates.includes(todayStr)
-            ? todayStr
-            : dates[dates.length - 1] || todayStr,
-      );
+      setSelectedDate((prev) => {
+        if (dates.includes(prev)) return prev;
+        if (prev >= range.from && prev <= range.to) return prev;
+        return dates.includes(todayStr)
+          ? todayStr
+          : dates[dates.length - 1] || todayStr;
+      });
 
       let records = safeList<Record<string, unknown>>(recordsRaw);
       if (subjectId) {
@@ -453,15 +473,16 @@ export function useTeacherAttendanceTracker(
       const STATUS_PRIORITY: Record<string, number> = {
         absent: 3,
         late: 2,
+        leave: 2,
         present: 1,
       };
 
       records.forEach((r) => {
         const sid = pickNumber(r.student_id, r.user_id);
         const date = pickString(r.date).slice(0, 10);
-        const st = pickString(r.status).toLowerCase() as AttStatus;
+        const st = normalizeAttStatus(pickString(r.status));
         if (!sid || !date) return;
-        if (st !== 'present' && st !== 'absent' && st !== 'late') return;
+        if (!st) return;
         const subjKey = subjectId ? subjectId : pickNumber(r.subject_id);
         const key = `${sid}|${date}|${subjKey || 0}|0`;
         const id = pickNumber(r.id);
@@ -576,6 +597,21 @@ export function useTeacherAttendanceTracker(
 
   const clearEdits = useCallback(() => setLocalEdits({}), []);
 
+  const selectMarkDate = useCallback(
+    (ymd: string) => {
+      const next = ymd.slice(0, 10);
+      if (!next) return;
+      const clamped = next > todayStr ? todayStr : next;
+      const y = Number(clamped.slice(0, 4));
+      const m = Number(clamped.slice(5, 7));
+      setViewPeriod('month');
+      if (Number.isFinite(y)) setYear(y);
+      if (Number.isFinite(m) && m >= 1 && m <= 12) setMonth(m);
+      setSelectedDate(clamped);
+    },
+    [todayStr],
+  );
+
   const hasEdits = useMemo(
     () => Object.values(localEdits).some((edits) => Object.keys(edits).length > 0),
     [localEdits],
@@ -605,10 +641,11 @@ export function useTeacherAttendanceTracker(
           records.forEach((rec) => {
             const key = `${rec.student_id}|${date}|${subjKey}|0`;
             const recordId = baseRecordIds[key];
+            const payloadStatus = rec.status === 'leave' ? 'excused' : rec.status;
             if (recordId) {
-              updates.push(attendanceRecordsApi.update(recordId, { status: rec.status }));
+              updates.push(attendanceRecordsApi.update(recordId, { status: payloadStatus }));
             } else {
-              toCreate.push(rec);
+              toCreate.push({ ...rec, status: payloadStatus });
             }
           });
           if (updates.length) await Promise.all(updates);
@@ -727,12 +764,13 @@ export function useTeacherAttendanceTracker(
   const dayCounts = useMemo(() => {
     const map: Record<
       string,
-      { present: number; absent: number; late: number; marked: number }
+      { present: number; absent: number; late: number; leave: number; marked: number }
     > = {};
-    workingDates.forEach((d) => {
+    const tallyDate = (d: string) => {
       let present = 0;
       let absent = 0;
       let late = 0;
+      let leave = 0;
       let marked = 0;
       roster.forEach((s) => {
         const st = getStatus(s.studentId, d);
@@ -741,11 +779,18 @@ export function useTeacherAttendanceTracker(
         if (st === 'present') present += 1;
         else if (st === 'absent') absent += 1;
         else if (st === 'late') late += 1;
+        else if (st === 'leave') leave += 1;
       });
-      map[d] = { present, absent, late, marked };
+      return { present, absent, late, leave, marked };
+    };
+    workingDates.forEach((d) => {
+      map[d] = tallyDate(d);
     });
+    if (selectedDate && !map[selectedDate]) {
+      map[selectedDate] = tallyDate(selectedDate);
+    }
     return map;
-  }, [workingDates, roster, getStatus]);
+  }, [workingDates, roster, getStatus, selectedDate]);
 
   const studentSummaries = useMemo(() => {
     return roster.map((s) => {
@@ -757,6 +802,9 @@ export function useTeacherAttendanceTracker(
         if (st === 'present') p += 1;
         else if (st === 'absent') a += 1;
         else if (st === 'late') l += 1;
+        else if (st === 'leave') {
+          /* leave is marked but not present/late */
+        }
       });
       const denom = workingDates.length || 1;
       const pct = Math.round(((p + l) / denom) * 1000) / 10;
@@ -807,6 +855,7 @@ export function useTeacherAttendanceTracker(
     setQuery,
     selectedDate,
     setSelectedDate,
+    selectMarkDate,
     classOptions,
     sectionOptions,
     subjectOptions,

@@ -13,7 +13,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -30,6 +29,11 @@ import {
   type DocumentUploadDifficulty,
 } from '@core/services/documentUploadApi';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
+import QuizFormFields from '../../components/QuizFormFields';
+import {
+  matchDropdownItem,
+  useSchoolClassSubjectDropdowns,
+} from '@core/hooks/useSchoolClassSubjectDropdowns';
 
 const MAX_PAGES = MAX_QUIZ_PAGES;
 const DIFFICULTIES: Array<{ key: DocumentUploadDifficulty; label: string }> = [
@@ -60,7 +64,9 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         difficulty?: DocumentUploadDifficulty;
         questionCount?: number;
         subject?: string;
+        subjectId?: string;
         grade?: string;
+        classId?: string;
         lesson?: string;
       }
     | undefined;
@@ -72,8 +78,16 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
     restoredForm?.difficulty || 'medium',
   );
   const [questionCount, setQuestionCount] = useState(restoredForm?.questionCount ?? 10);
-  const [subject, setSubject] = useState(restoredForm?.subject ?? book?.subject ?? '');
-  const [grade, setGrade] = useState(restoredForm?.grade ?? book?.gradeLevel ?? '');
+  const [classId, setClassId] = useState(restoredForm?.classId ?? '');
+  const [subjectId, setSubjectId] = useState(restoredForm?.subjectId ?? '');
+  const {
+    classes,
+    subjects,
+    isLoadingClasses,
+    isLoadingSubjects,
+    classLabel,
+    subjectLabel,
+  } = useSchoolClassSubjectDropdowns(classId);
   const [lesson, setLesson] = useState(
     restoredForm?.lesson ?? book?.lessonTitle ?? book?.title ?? '',
   );
@@ -91,12 +105,29 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   const totalPagesRaw = Math.max(1, book?.totalPages || 1);
 
   useEffect(() => {
+    if (classId || !classes.length) return;
+    const preset = restoredForm?.classId || restoredForm?.grade || book?.gradeLevel;
+    const match = matchDropdownItem(classes, preset);
+    if (match) setClassId(match.id);
+  }, [classes, classId, restoredForm?.classId, restoredForm?.grade, book?.gradeLevel]);
+
+  useEffect(() => {
+    if (subjectId || !subjects.length) return;
+    const preset = restoredForm?.subjectId || restoredForm?.subject || book?.subject;
+    const match = matchDropdownItem(subjects, preset);
+    if (match) setSubjectId(match.id);
+  }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, book?.subject]);
+
+  const resolvedGrade = classLabel;
+  const resolvedSubject = subjectLabel(subjectId);
+
+  useEffect(() => {
     const restored = route.params?.previewFormState;
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    if (restored.subject !== undefined) setSubject(restored.subject);
-    if (restored.grade !== undefined) setGrade(restored.grade);
+    if (restored.classId !== undefined) setClassId(restored.classId);
+    if (restored.subjectId !== undefined) setSubjectId(restored.subjectId);
     if (restored.lesson !== undefined) setLesson(restored.lesson);
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
@@ -186,8 +217,8 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         pageNumbers: orderedPages(),
         questionCount,
         difficulty,
-        subject: subject.trim(),
-        gradeLevel: grade.trim(),
+        subject: resolvedSubject,
+        gradeLevel: resolvedGrade,
         lessonTitle: lesson.trim() || book.title,
       });
 
@@ -199,8 +230,8 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
       try {
         await saveUserAssessment({
           title: lesson.trim() || book.title,
-          subject: subject.trim() || 'Document',
-          class_name: grade.trim() || 'General',
+          subject: resolvedSubject,
+          class_name: resolvedGrade,
           level: difficulty,
           lesson: lesson.trim() || book.title,
           assessment_type: 'web-quiz',
@@ -216,14 +247,12 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
       }
 
       const pageNumbers = orderedPages();
-      const resolvedGrade = grade.trim() || book.gradeLevel || 'General';
-      const resolvedSubject = subject.trim() || book.subject || 'Document';
-      const resolvedLesson = lesson.trim() || book.lessonTitle || book.title;
+      const resolvedLesson = lesson.trim();
 
       navigation.navigate('DocumentUploadQuizScreen', {
         quizData: {
           id: book.docId,
-          title: resolvedLesson,
+          title: resolvedLesson || book.title,
           questions: result.questions,
           class: resolvedGrade,
           subject: resolvedSubject,
@@ -244,12 +273,15 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         },
         previewBook: book,
         returnScreen: 'BookPageViewerScreen',
+        source: 'document-upload',
         previewFormState: {
           selectedPages: pageNumbers,
           difficulty,
           questionCount,
           subject: resolvedSubject,
+          subjectId,
           grade: resolvedGrade,
+          classId,
           lesson: resolvedLesson,
         },
       });
@@ -273,9 +305,9 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
       const rawContent = await extractRawContent({ docId: book.docId, pageNumbers: orderedPages() });
 
       const worksheet = await generateWorksheet({
-        class: grade.trim() || 'General',
-        subject: subject.trim() || 'Document',
-        lesson: lesson.trim() || book.title,
+        class: resolvedGrade,
+        subject: resolvedSubject,
+        lesson: lesson.trim(),
         itext: rawContent,
         level: difficulty,
         count: questionCount,
@@ -292,10 +324,10 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         try {
           await saveUserAssessment({
             title: `${lesson.trim() || book.title} Worksheet`,
-            subject: subject.trim() || 'Document',
-            class_name: grade.trim() || 'General',
+            subject: resolvedSubject,
+            class_name: resolvedGrade,
             level: difficulty,
-            lesson: lesson.trim() || book.title,
+            lesson: lesson.trim(),
             assessment_type: 'worksheet',
             source: 'Doc-Worksheet',
             school_id: schoolId ?? null,
@@ -482,34 +514,29 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           })}
         </View>
 
-        {/* Metadata (pre-filled, editable) */}
         <Text style={styles.sectionTitle}>Details</Text>
-        <Text style={styles.fieldLabel}>Subject</Text>
-        <TextInput
-          style={styles.input}
-          value={subject}
-          onChangeText={setSubject}
-          placeholder="Subject"
-          placeholderTextColor={colors.textSecondary}
-          editable={!busy}
-        />
-        <Text style={styles.fieldLabel}>Grade / Class</Text>
-        <TextInput
-          style={styles.input}
-          value={grade}
-          onChangeText={setGrade}
-          placeholder="Grade / Class"
-          placeholderTextColor={colors.textSecondary}
-          editable={!busy}
-        />
-        <Text style={styles.fieldLabel}>Lesson</Text>
-        <TextInput
-          style={styles.input}
-          value={lesson}
-          onChangeText={setLesson}
-          placeholder="Lesson"
-          placeholderTextColor={colors.textSecondary}
-          editable={!busy}
+        <QuizFormFields
+          compact
+          fieldsRequired={false}
+          localSearchOnly
+          showClass
+          classValue={classId}
+          onClassChange={setClassId}
+          classes={classes}
+          isLoadingClasses={isLoadingClasses}
+          showSubject
+          subjectValue={subjectId}
+          onSubjectChange={setSubjectId}
+          subjects={subjects}
+          isLoadingSubjects={isLoadingSubjects}
+          showLesson
+          lessonValue={lesson}
+          onLessonChange={setLesson}
+          lessonPlaceholder="e.g. Reflection of Light"
+          lessonLabel="Lesson"
+          showAdditionalInstructions={false}
+          showDifficultyLevel={false}
+          showQuestionCount={false}
         />
 
         {!!error && (

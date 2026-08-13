@@ -10,7 +10,7 @@ import {
   toTeacherQuiz,
   toStudentQuiz,
 } from '../types/quiz.types';
-import { cachedApiCall, CACHE_TTL, clearCacheEntry } from './cacheService';
+import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
 import { API_BASE_URL } from '../api/config';
 // Uncomment below to use mock data when backend is unavailable
 // import {
@@ -166,7 +166,9 @@ export async function fetchTeacherDashboardSummary(
           data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
         };
       } catch (error) {
-        console.error('Error fetching teacher dashboard summary:', error);
+        if (!isTransientNetworkError(error)) {
+          console.error('Error fetching teacher dashboard summary:', error);
+        }
         throw error;
       }
     },
@@ -248,7 +250,9 @@ export async function fetchTeacherQuizzes(
           data: data.data.map((quiz: QuizDetails) => toTeacherQuiz(quiz)),
         };
       } catch (error) {
-        console.error('Error fetching teacher quizzes:', error);
+        if (!isTransientNetworkError(error)) {
+          console.error('Error fetching teacher quizzes:', error);
+        }
         throw error;
       }
     },
@@ -414,7 +418,9 @@ export async function fetchStudentQuizzes(
           data: allStudentQuizzes,
         };
       } catch (error) {
-        console.error('Error fetching student quizzes:', error);
+        if (!isTransientNetworkError(error)) {
+          console.error('Error fetching student quizzes:', error);
+        }
         throw error;
       }
     },
@@ -522,7 +528,9 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
         
         return data;
       } catch (error) {
-        console.error('Error fetching teacher classrooms:', error);
+        if (!isTransientNetworkError(error)) {
+          console.error('Error fetching teacher classrooms:', error);
+        }
         throw error;
       }
     },

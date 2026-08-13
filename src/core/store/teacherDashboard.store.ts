@@ -5,11 +5,13 @@
  * Prevents redundant API calls when navigating between screens
  */
 
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 import {
   fetchTeacherDashboardSummary,
   fetchTeacherQuizzes,
 } from '../services/dashboardApi';
+import { getPendingCropUri, subscribeCropSession } from '../services/imageCropSession';
 import type {
   TeacherQuiz,
   TeacherDashboardStats,
@@ -59,6 +61,21 @@ const initialStats: TeacherDashboardStats = {
   total_assessments: 0,
   active_assessments: 0,
   pending_reviews: 0,
+};
+
+/** Camera / other native activities pause the app and kill in-flight fetch(). */
+let lastBackgroundAt = 0;
+AppState.addEventListener('change', (next) => {
+  if (next === 'inactive' || next === 'background') {
+    lastBackgroundAt = Date.now();
+  }
+});
+
+const BACKGROUND_FETCH_COOLDOWN_MS = 5000;
+
+const isTransientNetworkError = (err: unknown): boolean => {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return /network request failed|failed to fetch|network error|aborted|timeout/i.test(message);
 };
 
 /**
@@ -277,6 +294,15 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       return;
     }
 
+    // Camera → crop: native camera backgrounds the app and aborts fetch.
+    // Opening the crop modal can remount Assessments and retry immediately.
+    if (getPendingCropUri()) {
+      return;
+    }
+    if (lastBackgroundAt && Date.now() - lastBackgroundAt < BACKGROUND_FETCH_COOLDOWN_MS) {
+      return;
+    }
+
     set({ loading: true, error: null });
 
     try {
@@ -363,11 +389,24 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard';
+      const cropping = Boolean(getPendingCropUri());
+      const transient = isTransientNetworkError(err);
+
+      // Don't pop a red LogBox over the crop UI for a fetch killed by the camera.
+      if (cropping || transient) {
+        set({
+          loading: false,
+          error: state.allQuizzes.length > 0 ? state.error : null,
+          isInitialized: state.allQuizzes.length > 0 ? state.isInitialized : false,
+        });
+        return;
+      }
+
       console.error('❌ Teacher dashboard error:', errorMessage, err);
       set({
         error: errorMessage,
         loading: false,
-        isInitialized: false,
+        isInitialized: state.allQuizzes.length > 0,
       });
     }
   },
@@ -484,3 +523,24 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
     });
   },
 }));
+
+// After camera/crop, quietly retry if the first dashboard fetch was aborted.
+subscribeCropSession(() => {
+  if (getPendingCropUri()) return;
+  setTimeout(() => {
+    const snapshot = useTeacherDashboardStore.getState();
+    if (!snapshot.isInitialized && !snapshot.loading) {
+      void snapshot.loadDashboard();
+    }
+  }, 600);
+});
+
+AppState.addEventListener('change', (next) => {
+  if (next !== 'active') return;
+  setTimeout(() => {
+    const snapshot = useTeacherDashboardStore.getState();
+    if (!snapshot.isInitialized && !snapshot.loading && !getPendingCropUri()) {
+      void snapshot.loadDashboard();
+    }
+  }, BACKGROUND_FETCH_COOLDOWN_MS);
+});

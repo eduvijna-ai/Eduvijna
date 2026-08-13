@@ -72,6 +72,31 @@ export function jsSunColToBackendDow(sunCol: number): number {
   return sunCol === 0 ? 6 : sunCol - 1;
 }
 
+/**
+ * Read API day_of_week (0–6 or ISO 1–7). Accepts camelCase aliases.
+ * Call coerceMon0DayOfWeek on the full set to normalize to Mon=0…Sun=6.
+ */
+export function readBackendDayOfWeek(raw: Record<string, unknown>, fallback = 0): number {
+  for (const key of ['day_of_week', 'dayOfWeek', 'weekday', 'dow'] as const) {
+    const val = raw[key];
+    if (val === null || val === undefined || val === '') continue;
+    const n = Number(val);
+    if (!Number.isFinite(n)) continue;
+    return n;
+  }
+  return fallback;
+}
+
+/** If a slot set uses 1=Mon…7=Sun (has 7, never 0), shift to Mon=0…Sun=6. */
+export function coerceMon0DayOfWeek(dayValues: number[]): (dow: number) => number {
+  const has0 = dayValues.some((d) => d === 0);
+  const has7 = dayValues.some((d) => d === 7);
+  if (has7 && !has0) {
+    return (d) => (d === 7 ? 6 : Math.max(0, d - 1));
+  }
+  return (d) => (d === 7 ? 6 : d);
+}
+
 export function slotTypeAccent(type: string): 'teal' | 'blue' | 'green' | 'orange' | 'purple' | 'pink' {
   switch (type) {
     case 'lab':

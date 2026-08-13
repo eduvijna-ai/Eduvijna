@@ -1,6 +1,6 @@
 /**
  * useTeacherTimetable — Instructor Timetable seam (web TimetableTab PersonalWeeklyTimetable).
- * APIs: timetableSlotsApi.myTeacherTimetable, timetableTemplatesApi.list
+ * APIs: myTeacherTimetable + slots list fallback (same as home dashboard), templates for other weeks.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -15,6 +15,11 @@ import {
   toLocalDateStr,
   type LoadStatus,
 } from '../utils/apiHelpers';
+import {
+  coerceMon0DayOfWeek,
+  isDateInTemplateRange,
+  readBackendDayOfWeek,
+} from '../utils/timetableMeta';
 import { useSchoolsSession } from './useSchoolsSession';
 
 export const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
@@ -70,39 +75,28 @@ const SLOT_ACCENT: Record<string, 'teal' | 'blue' | 'green' | 'orange' | 'purple
   free: 'orange',
 };
 
-function normalizeYMD(v?: string | null): string | undefined {
-  if (!v) return undefined;
-  return v.slice(0, 10);
-}
-
-function isWithinDateRange(dateYMD: string, from?: string | null, to?: string | null): boolean {
-  const f = normalizeYMD(from);
-  const t = normalizeYMD(to);
-  if (f && dateYMD < f) return false;
-  if (t && dateYMD > t) return false;
-  return true;
-}
-
-function isDateInTemplateRange(dateYMD: string, template?: TemplateMeta): boolean {
-  if (!template) return true;
-  return isWithinDateRange(dateYMD, template.effectiveFrom, template.effectiveTo);
-}
-
 function mapSlot(raw: Record<string, unknown>, index: number): TeacherTimetableSlot {
+  const templateId = pickNumber(raw.template_id, raw.templateId);
   return {
     id: pickString(raw.id, `slot-${index}`),
-    templateId: pickNumber(raw.template_id),
-    dayOfWeek: pickNumber(raw.day_of_week),
-    periodNumber: pickNumber(raw.period_number, index + 1),
-    startTime: pickString(raw.start_time),
-    endTime: pickString(raw.end_time),
-    subjectName: pickString(raw.subject_name, raw.slot_type, 'Period'),
-    className: pickString(raw.class_name),
-    sectionName: pickString(raw.section_name),
-    room: pickString(raw.room),
-    slotType: pickString(raw.slot_type, 'lecture'),
-    teacherName: pickString(raw.teacher_name),
+    templateId: templateId > 0 ? templateId : 0,
+    dayOfWeek: readBackendDayOfWeek(raw, 0),
+    periodNumber: pickNumber(raw.period_number, raw.periodNumber, raw.period_no, raw.period, index + 1),
+    startTime: pickString(raw.start_time, raw.startTime, raw.from_time),
+    endTime: pickString(raw.end_time, raw.endTime, raw.to_time),
+    subjectName: pickString(raw.subject_name, raw.subjectName, raw.subject, raw.slot_type, 'Period'),
+    className: pickString(raw.class_name, raw.className),
+    sectionName: pickString(raw.section_name, raw.sectionName),
+    room: pickString(raw.room, raw.room_name, raw.roomName),
+    slotType: pickString(raw.slot_type, raw.slotType, 'lecture'),
+    teacherName: pickString(raw.teacher_name, raw.teacherName),
   };
+}
+
+function hasTeachingInfo(raw: Record<string, unknown>): boolean {
+  return Boolean(
+    pickString(raw.subject_name, raw.subjectName, raw.subject, raw.class_name, raw.className),
+  );
 }
 
 function startOfWeekMonday(base: Date, weekOffset: number): Date {
@@ -139,12 +133,29 @@ export function useTeacherTimetable() {
     return map;
   }, [templates]);
 
+  const currentWeekBounds = useMemo(() => {
+    const monday = startOfWeekMonday(new Date(), 0);
+    const saturday = new Date(monday);
+    saturday.setDate(monday.getDate() + 5);
+    return {
+      start: toLocalDateStr(monday),
+      end: toLocalDateStr(saturday),
+    };
+  }, []);
+
   const slotVisibleOnDate = useCallback(
     (slot: TeacherTimetableSlot, dateYMD: string) => {
+      // Home "Today's Timetable" does not apply template range. Keep the
+      // current week in sync so View All shows the same Class 4 / Science slot.
+      if (dateYMD >= currentWeekBounds.start && dateYMD <= currentWeekBounds.end) {
+        return true;
+      }
+      if (!slot.templateId) return true;
       const tmpl = templateById.get(slot.templateId);
+      if (!tmpl || (!tmpl.effectiveFrom && !tmpl.effectiveTo)) return true;
       return isDateInTemplateRange(dateYMD, tmpl);
     },
-    [templateById],
+    [templateById, currentWeekBounds],
   );
 
   const load = useCallback(async () => {
@@ -155,21 +166,118 @@ export function useTeacherTimetable() {
     setStatus('loading');
     setError(null);
     const schoolId = session.schoolId ?? undefined;
+    const teacherUserId = session.userId ?? undefined;
     try {
-      const [slotsRaw, templatesRaw] = await Promise.all([
+      const [slotsRaw, templatesRaw, fallbackRaw] = await Promise.all([
         timetableSlotsApi.myTeacherTimetable(schoolId),
         timetableTemplatesApi
-          .list({ school_id: schoolId, per_page: 200 })
+          .list({ school_id: schoolId, per_page: 200, is_active: true })
           .catch(() => ({ items: [] })),
+        teacherUserId != null
+          ? timetableSlotsApi
+              .list({
+                school_id: schoolId,
+                teacher_id: teacherUserId,
+                is_active: true,
+                per_page: 200,
+              })
+              .catch(() => ({ items: [] }))
+          : Promise.resolve({ items: [] }),
       ]);
 
-      setSlots(safeList<Record<string, unknown>>(slotsRaw).map(mapSlot));
+      const mine = safeList<Record<string, unknown>>(slotsRaw);
+      const fallback = safeList<Record<string, unknown>>(fallbackRaw);
+      const usedFallback = !(
+        mine.some(hasTeachingInfo) || (mine.length > 0 && fallback.length === 0)
+      ) && fallback.length > 0;
+      const rows = usedFallback ? fallback : mine;
+
+      const mapped = rows.map(mapSlot);
+      const shift = coerceMon0DayOfWeek(mapped.map((s) => s.dayOfWeek));
+      const finalSlots = mapped.map((s) => ({ ...s, dayOfWeek: shift(s.dayOfWeek) }));
+      setSlots(finalSlots);
+
+      if (__DEV__) {
+        const jsDow = new Date().getDay();
+        const todayIdx = (jsDow + 6) % 7;
+        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const summarize = (list: Record<string, unknown>[]) =>
+          list.map((s) => ({
+            id: s.id,
+            day_of_week: s.day_of_week ?? s.dayOfWeek,
+            period: s.period_number ?? s.periodNumber,
+            subject: s.subject_name ?? s.subjectName ?? s.subject,
+            class: s.class_name ?? s.className,
+            section: s.section_name ?? s.sectionName,
+            room: s.room ?? s.room_name,
+            start: s.start_time ?? s.startTime,
+            end: s.end_time ?? s.endTime,
+            is_active: s.is_active,
+          }));
+        const todayMapped = finalSlots.filter((s) => s.dayOfWeek === todayIdx);
+        console.log('[InstructorTimetable] params', {
+          schoolId,
+          teacherUserId,
+          deviceToday: toLocalDateStr(),
+          jsGetDay_Sun0: jsDow,
+          apiDayOfWeek_Mon0: todayIdx,
+          todayName: dayNames[todayIdx],
+        });
+        console.log(
+          '[InstructorTimetable] GET /api/v1/erp/timetable/teacher-timetable',
+          { school_id: schoolId, count: mine.length, slots: summarize(mine) },
+        );
+        console.log(
+          '[InstructorTimetable] GET /api/v1/erp/timetable/slots (fallback)',
+          {
+            school_id: schoolId,
+            teacher_id: teacherUserId,
+            is_active: true,
+            count: fallback.length,
+            slots: summarize(fallback),
+          },
+        );
+        console.log('[InstructorTimetable] source used', usedFallback ? 'slots-list' : 'teacher-timetable');
+        console.log('[InstructorTimetable] mapped slots (Mon=0)', finalSlots.map((s) => ({
+          id: s.id,
+          dayOfWeek: s.dayOfWeek,
+          dayName: dayNames[s.dayOfWeek] ?? `?${s.dayOfWeek}`,
+          period: s.periodNumber,
+          subject: s.subjectName,
+          className: s.className,
+          sectionName: s.sectionName,
+          room: s.room,
+          start: s.startTime,
+          end: s.endTime,
+        })));
+        console.log('[InstructorTimetable] TODAY match', {
+          expectingDay: `${dayNames[todayIdx]} index=${todayIdx}`,
+          count: todayMapped.length,
+          slots: todayMapped.map((s) => ({
+            period: s.periodNumber,
+            subject: s.subjectName,
+            className: s.className,
+            sectionName: s.sectionName,
+            room: s.room,
+            start: s.startTime,
+          })),
+        });
+      }
       setTemplates(
-        safeList<Record<string, unknown>>(templatesRaw).map((t) => ({
-          id: pickNumber(t.id),
-          effectiveFrom: pickString(t.effective_from) || undefined,
-          effectiveTo: pickString(t.effective_to) || undefined,
-        })),
+        safeList<Record<string, unknown>>(templatesRaw)
+          .map((t) => {
+            const id = pickNumber(t.id, t.template_id);
+            if (id <= 0) return null;
+            return {
+              id,
+              effectiveFrom:
+                pickString(t.effective_from, t.effectiveFrom, t.start_date).slice(0, 10) ||
+                undefined,
+              effectiveTo:
+                pickString(t.effective_to, t.effectiveTo, t.end_date).slice(0, 10) || undefined,
+            } as TemplateMeta;
+          })
+          .filter((t): t is TemplateMeta => t != null),
       );
       setStatus('ready');
     } catch (e) {
@@ -177,7 +285,7 @@ export function useTeacherTimetable() {
       setSlots([]);
       setStatus('error');
     }
-  }, [session.schoolId]);
+  }, [session.schoolId, session.userId]);
 
   useEffect(() => {
     void load();
@@ -265,11 +373,12 @@ export function useTeacherTimetable() {
 
   const weekVisibleSlots = useMemo(
     () =>
-      slots.filter(
-        (slot) =>
-          slot.dayOfWeek <= 5 &&
-          slotVisibleOnDate(slot, toLocalDateStr(weekDates[slot.dayOfWeek])),
-      ),
+      slots.filter((slot) => {
+        if (slot.dayOfWeek < 0 || slot.dayOfWeek > 5) return false;
+        const date = weekDates[slot.dayOfWeek];
+        if (!date) return false;
+        return slotVisibleOnDate(slot, toLocalDateStr(date));
+      }),
     [slots, weekDates, slotVisibleOnDate],
   );
 
@@ -363,6 +472,7 @@ export function useTeacherTimetable() {
       monthLabel,
       monthCells,
       periodRows,
+      slots,
       hasSlots: slots.length > 0,
     }),
     [
@@ -385,7 +495,7 @@ export function useTeacherTimetable() {
       monthLabel,
       monthCells,
       periodRows,
-      slots.length,
+      slots,
     ],
   );
 }

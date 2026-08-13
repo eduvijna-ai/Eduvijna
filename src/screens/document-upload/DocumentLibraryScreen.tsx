@@ -42,6 +42,7 @@ import {
   type ServerBook,
   type BookFilterOptions,
 } from '@core/services/documentUploadApi';
+import QuizFormFields from '../../components/QuizFormFields';
 
 /** Lazily-loaded page-1 cover thumbnail for a library book. */
 function BookCover({ docId, fallbackColor, iconBg }: { docId: string; fallbackColor: string; iconBg: string }) {
@@ -108,9 +109,17 @@ export default function DocumentLibraryScreen({ navigation }: any) {
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadFile, setUploadFile] = useState<{ uri: string; name: string; mimeType?: string } | null>(null);
   const [uTitle, setUTitle] = useState('');
-  const [uGrade, setUGrade] = useState('');
-  const [uSubject, setUSubject] = useState('');
+  const [uClassId, setUClassId] = useState('');
+  const [uSubjectId, setUSubjectId] = useState('');
   const [uLesson, setULesson] = useState('');
+  const libraryClasses = useMemo(
+    () => filters.grade_levels.map((g) => ({ id: g, name: g, label: g, value: g })),
+    [filters.grade_levels],
+  );
+  const librarySubjects = useMemo(
+    () => filters.subjects.map((s) => ({ id: s, name: s, label: s, value: s })),
+    [filters.subjects],
+  );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
@@ -232,17 +241,23 @@ export default function DocumentLibraryScreen({ navigation }: any) {
         fileName: uploadFile.name,
         mimeType: uploadFile.mimeType,
         title: uTitle.trim(),
-        gradeLevel: uGrade.trim(),
-        subject: uSubject.trim(),
+        gradeLevel: uClassId,
+        subject: uSubjectId,
         lessonTitle: uLesson.trim(),
       });
       setBooks((prev) => [created, ...prev]);
+      try {
+        const nextFilters = await getBookFilters();
+        setFilters(nextFilters);
+      } catch {
+        // non-blocking
+      }
       // Reset and close
       setUploadVisible(false);
       setUploadFile(null);
       setUTitle('');
-      setUGrade('');
-      setUSubject('');
+      setUClassId('');
+      setUSubjectId('');
       setULesson('');
     } catch (e: any) {
       setUploadError(normalizeErrorMessage(e, 'Upload failed. Please try again.'));
@@ -432,31 +447,26 @@ export default function DocumentLibraryScreen({ navigation }: any) {
                 placeholderTextColor={colors.textSecondary}
               />
 
-              <Text style={styles.fieldLabel}>Grade / Class</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={uGrade}
-                onChangeText={setUGrade}
-                placeholder="e.g. Class 10"
-                placeholderTextColor={colors.textSecondary}
-              />
-
-              <Text style={styles.fieldLabel}>Subject</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={uSubject}
-                onChangeText={setUSubject}
-                placeholder="e.g. Physics"
-                placeholderTextColor={colors.textSecondary}
-              />
-
-              <Text style={styles.fieldLabel}>Lesson</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={uLesson}
-                onChangeText={setULesson}
-                placeholder="e.g. Optics"
-                placeholderTextColor={colors.textSecondary}
+              <QuizFormFields
+                compact
+                fieldsRequired={false}
+                localSearchOnly
+                showClass
+                classValue={uClassId}
+                onClassChange={setUClassId}
+                classes={libraryClasses}
+                showSubject
+                subjectValue={uSubjectId}
+                onSubjectChange={setUSubjectId}
+                subjects={librarySubjects}
+                showLesson
+                lessonValue={uLesson}
+                onLessonChange={setULesson}
+                lessonPlaceholder="e.g. Optics"
+                lessonLabel="Lesson"
+                showAdditionalInstructions={false}
+                showDifficultyLevel={false}
+                showQuestionCount={false}
               />
 
               {!!uploadError && <Text style={styles.modalError}>{uploadError}</Text>}

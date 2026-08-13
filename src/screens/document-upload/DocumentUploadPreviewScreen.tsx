@@ -7,11 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
@@ -34,18 +34,24 @@ import {
   runBatchOcrOnImages,
   aggregateOcrText,
   saveImagePagesAsLibraryBook,
+  sanitizeCameraDocumentTitle,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
 import {
+  getDocumentUploadBookById,
   upsertDocumentUploadBook,
-  markDocumentUploadSessionComplete,
   removeDocumentUploadBook,
 } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import QuizFormFields from '../../components/QuizFormFields';
+import {
+  matchDropdownItem,
+  useSchoolClassSubjectDropdowns,
+} from '@core/hooks/useSchoolClassSubjectDropdowns';
 
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
@@ -79,15 +85,8 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
   return fallback;
 };
 
-const isUuidLike = (value: string): boolean =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
-
-const defaultCameraLessonTitle = (book: DocumentUploadBook): string => {
-  const candidate = (book.title || book.originalName || '').trim();
-  if (!candidate || isUuidLike(candidate)) return 'Camera Document';
-  if (/^camera-\d+$/i.test(candidate)) return 'Camera Document';
-  return candidate.replace(/\.[^/.]+$/, '') || 'Camera Document';
-};
+const defaultCameraLessonTitle = (book: DocumentUploadBook): string =>
+  sanitizeCameraDocumentTitle(book.title || book.originalName);
 
 export default function DocumentUploadPreviewScreen({ navigation, route }: any) {
   const { theme } = useTheme();
@@ -107,7 +106,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         difficulty?: 'easy' | 'medium' | 'hard';
         questionCount?: number;
         classValue?: string;
+        classId?: string;
         subject?: string;
+        subjectId?: string;
         lesson?: string;
       }
     | undefined;
@@ -117,12 +118,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(100);
-  const [classValue, setClassValue] = useState(
-    restoredForm?.classValue ?? route?.params?.presetClass ?? '',
-  );
-  const [subject, setSubject] = useState(
-    restoredForm?.subject ?? route?.params?.presetSubject ?? '',
-  );
+  const [classId, setClassId] = useState(restoredForm?.classId ?? '');
+  const [subjectId, setSubjectId] = useState(restoredForm?.subjectId ?? '');
+  const {
+    classes,
+    subjects,
+    isLoadingClasses,
+    isLoadingSubjects,
+    classLabel,
+    subjectLabel,
+  } = useSchoolClassSubjectDropdowns(classId);
   const [lesson, setLesson] = useState(
     restoredForm?.lesson ?? route?.params?.presetLesson ?? '',
   );
@@ -150,19 +155,50 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const totalPages = resolvedPageCount ?? bookState?.totalPages ?? 1;
   const docId = bookState?.docId;
 
-  useEffect(() => {
-    if (route?.params?.book) {
-      setBookState(route.params.book);
+  const applyBookFromStorageOrParams = useCallback(async (incoming?: DocumentUploadBook) => {
+    if (!incoming?.id) return;
+    // Camera sessions are mutated on this screen (add/remove pages) and written
+    // to AsyncStorage. Home can still pass a stale in-memory copy — storage wins.
+    if (incoming.isCameraSession) {
+      const stored = await getDocumentUploadBookById(incoming.id);
+      const resolved = stored ?? incoming;
+      setBookState(resolved);
+      const count = Math.max(1, resolved.totalPages || resolved.pages?.length || 1);
+      setPage((p) => Math.min(p, count));
+      return;
     }
-  }, [route?.params?.book]);
+    setBookState(incoming);
+  }, []);
+
+  useEffect(() => {
+    void applyBookFromStorageOrParams(route?.params?.book);
+  }, [route?.params?.book, applyBookFromStorageOrParams]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const incoming = route?.params?.book as DocumentUploadBook | undefined;
+      if (!incoming?.isCameraSession || !incoming.id) return undefined;
+      let active = true;
+      (async () => {
+        const stored = await getDocumentUploadBookById(incoming.id);
+        if (!active || !stored) return;
+        setBookState(stored);
+        const count = Math.max(1, stored.totalPages || stored.pages?.length || 1);
+        setPage((p) => Math.min(p, count));
+      })();
+      return () => {
+        active = false;
+      };
+    }, [route?.params?.book?.id, route?.params?.book?.isCameraSession]),
+  );
 
   useEffect(() => {
     const restored = route?.params?.previewFormState;
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    if (restored.classValue !== undefined) setClassValue(restored.classValue);
-    if (restored.subject !== undefined) setSubject(restored.subject);
+    if (restored.classId !== undefined) setClassId(restored.classId);
+    if (restored.subjectId !== undefined) setSubjectId(restored.subjectId);
     if (restored.lesson !== undefined) setLesson(restored.lesson);
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
@@ -172,9 +208,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   useEffect(() => {
     if (!bookState) return;
     setLesson((prev) => {
-      if (prev && !isUuidLike(prev)) return prev;
+      if (prev && sanitizeCameraDocumentTitle(prev) === prev) return prev;
       if (isCameraSession) return defaultCameraLessonTitle(bookState);
-      return bookState.title || bookState.originalName || '';
+      return sanitizeCameraDocumentTitle(bookState.title || bookState.originalName);
     });
     if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
@@ -187,14 +223,23 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     navigation.setParams?.({ book: next });
   }, [navigation]);
 
-  const resolvedClass = classValue.trim() || 'Class 10';
-  const resolvedSubject =
-    subject.trim() || (assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document');
-  const resolvedLesson =
-    lesson.trim() ||
-    bookState?.title ||
-    bookState?.originalName ||
-    (assessmentSource === 'Handwritten' ? 'Handwritten Notes' : 'Document Lesson');
+  useEffect(() => {
+    if (classId || !classes.length) return;
+    const preset = restoredForm?.classId || restoredForm?.classValue || route?.params?.presetClass;
+    const match = matchDropdownItem(classes, preset);
+    if (match) setClassId(match.id);
+  }, [classes, classId, restoredForm?.classId, restoredForm?.classValue, route?.params?.presetClass]);
+
+  useEffect(() => {
+    if (subjectId || !subjects.length) return;
+    const preset = restoredForm?.subjectId || restoredForm?.subject || route?.params?.presetSubject;
+    const match = matchDropdownItem(subjects, preset);
+    if (match) setSubjectId(match.id);
+  }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, route?.params?.presetSubject]);
+
+  const resolvedClass = classLabel;
+  const resolvedSubject = subjectLabel(subjectId);
+  const resolvedLesson = lesson.trim();
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
     const book = bookOverride ?? bookState;
@@ -582,10 +627,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      if (bookState?.id) {
-        await markDocumentUploadSessionComplete(bookState.id);
-      }
-
       navigation.navigate('DocumentUploadQuizScreen', {
         quizData: {
           id: libraryDocId || bookState.docId || bookState.id,
@@ -620,10 +661,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           difficulty,
           questionCount,
           classValue: resolvedClass,
+          classId,
           subject: resolvedSubject,
+          subjectId,
           lesson: resolvedLesson,
         },
-        source: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
+        source: 'document-upload',
+        workspaceMode: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
         showShareButton: true,
         showActionButtons: true,
       });
@@ -677,7 +721,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         await saveUserAssessment({
           title: `${bookState?.title || 'Document'} Worksheet`,
           subject: wsData.Metadata?.Subject || 'Document',
-          class_name: wsData.Metadata?.Class || 'Class 10',
+          class_name: wsData.Metadata?.Class || resolvedClass,
           level: wsData.Metadata?.Difficulty || difficulty,
           lesson: wsData.Metadata?.Lesson || bookState?.title,
           assessment_type: 'worksheet',
@@ -694,10 +738,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             },
           ],
         });
-      }
-
-      if (bookState?.id) {
-        await markDocumentUploadSessionComplete(bookState.id);
       }
 
       navigation.navigate('WorksheetScreen', {
@@ -922,31 +962,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
               : 'Configure options, then generate from selected pages'}
           </Text>
 
-          <Text style={styles.label}>Class / Grade</Text>
-          <TextInput
-            value={classValue}
-            onChangeText={setClassValue}
-            placeholder="e.g., Class 10"
-            style={styles.metaInput}
-            placeholderTextColor={colors.textSecondary}
-          />
-
-          <Text style={styles.label}>Subject</Text>
-          <TextInput
-            value={subject}
-            onChangeText={setSubject}
-            placeholder="e.g., Maths"
-            style={styles.metaInput}
-            placeholderTextColor={colors.textSecondary}
-          />
-
-          <Text style={styles.label}>Lesson / Topic</Text>
-          <TextInput
-            value={lesson}
-            onChangeText={setLesson}
-            placeholder="e.g., Resume review"
-            style={styles.metaInput}
-            placeholderTextColor={colors.textSecondary}
+          <QuizFormFields
+            compact
+            fieldsRequired={false}
+            localSearchOnly
+            showClass
+            classValue={classId}
+            onClassChange={setClassId}
+            classes={classes}
+            isLoadingClasses={isLoadingClasses}
+            classError={!classId && error.includes('class') ? error : ''}
+            showSubject
+            subjectValue={subjectId}
+            onSubjectChange={setSubjectId}
+            subjects={subjects}
+            isLoadingSubjects={isLoadingSubjects}
+            subjectError={!subjectId && error.includes('subject') ? error : ''}
+            showLesson
+            lessonValue={lesson}
+            onLessonChange={setLesson}
+            lessonPlaceholder="e.g., Photosynthesis"
+            lessonLabel="Lesson / Topic"
+            showAdditionalInstructions={false}
+            showDifficultyLevel={false}
+            showQuestionCount={false}
           />
 
           <Text style={styles.label}>Difficulty Level</Text>
