@@ -70,6 +70,7 @@ export async function getClasses(params: {
   page?: number;
   per_page?: number;
   exact?: boolean;
+  allowFallback?: boolean;
 } = {}): Promise<DropdownResponse<ClassItem>> {
   console.log('📚 [getClasses] Starting API call to /api/v1/dropdowns/classes');
   try {
@@ -101,6 +102,9 @@ export async function getClasses(params: {
   } catch (error: any) {
     console.error('❌ [getClasses] API call failed:', error.message);
     console.error('❌ [getClasses] Error details:', error.response?.data || error);
+    if (params.allowFallback === false) {
+      return { items: [] };
+    }
     console.log('⚠️ [getClasses] Using fallback data');
     return { items: FALLBACK_CLASSES };
   }
@@ -156,6 +160,7 @@ export async function getSubjectsByClass(classId: string, params: {
   page?: number;
   per_page?: number;
   exact?: boolean;
+  allowFallback?: boolean;
 } = {}): Promise<DropdownResponse<SubjectItem>> {
   console.log(`📖 [getSubjectsByClass] Starting API call for classId: ${classId}`);
   try {
@@ -187,6 +192,9 @@ export async function getSubjectsByClass(classId: string, params: {
   } catch (error: any) {
     console.error(`❌ [getSubjectsByClass] API call failed for classId ${classId}:`, error.message);
     console.error('❌ [getSubjectsByClass] Error details:', error.response?.data || error);
+    if (params.allowFallback === false) {
+      return { items: [] };
+    }
     console.log('⚠️ [getSubjectsByClass] Using fallback data');
     return { items: FALLBACK_SUBJECTS };
   }

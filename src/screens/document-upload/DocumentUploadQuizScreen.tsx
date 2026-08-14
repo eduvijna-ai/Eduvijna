@@ -24,14 +24,16 @@ export default function DocumentUploadQuizScreen(props: any) {
         params: {
           ...params,
           quiz: quizData,
-          source: source || 'document-upload',
+          source: source === 'history' ? 'history' : 'document-upload',
+          workspaceMode:
+            workspaceMode ||
+            (source === 'handwritten' ? 'handwritten' : 'document'),
           hideStackHeader: true,
           showActionButtons: showActionButtons ?? true,
           showShareButton: showShareButton ?? true,
           previewBook,
           returnScreen,
           previewFormState,
-          workspaceMode,
           assessmentId,
           initialResponses,
         },

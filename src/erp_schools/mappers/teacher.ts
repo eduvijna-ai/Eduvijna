@@ -11,6 +11,7 @@ import type {
   StudentInfo,
 } from '../types/domain';
 import { formatDisplayDate, formatDisplayTime, pickNumber, pickString, safeList, toLocalDateStr } from '../utils/apiHelpers';
+import { coerceMon0DayOfWeek } from '../utils/timetableMeta';
 
 const ACCENTS = ['teal', 'blue', 'green', 'orange', 'purple', 'pink'] as const;
 
@@ -304,34 +305,48 @@ export function mapTeacherStudents(roster: unknown): StudentInfo[] {
   return out;
 }
 
+function rawSlotDayOfWeek(raw: Record<string, unknown>): number {
+  return pickNumber(raw.day_of_week, raw.dayOfWeek, raw.weekday, raw.dow);
+}
+
 /**
  * Map timetable slots for "today" using web Mon=0…Sun=6 day_of_week.
+ *
+ * `assumeToday`: payload is already filtered to today (slots list with day_of_week).
+ * `strictToday`: never treat other weekdays as today. Full-week teacher-timetable
+ * must use this — otherwise a Monday class is shown on the home "Today" card.
  */
 export function mapTeacherSchedule(
   slots: unknown,
-  opts?: { apiDow?: number; assumeToday?: boolean },
+  opts?: { apiDow?: number; assumeToday?: boolean; strictToday?: boolean },
 ): SchedulePeriod[] {
   const apiDow = opts?.apiDow ?? webApiDayOfWeek();
   let rows = safeList<Record<string, unknown>>(slots);
+  const toMon0 = coerceMon0DayOfWeek(rows.map(rawSlotDayOfWeek));
   if (!opts?.assumeToday) {
-    const todays = rows.filter((s) => Number(s.day_of_week) === apiDow);
-    if (todays.length > 0) rows = todays;
+    const todays = rows.filter((s) => toMon0(rawSlotDayOfWeek(s)) === apiDow);
+    if (todays.length > 0) {
+      rows = todays;
+    } else if (opts?.strictToday) {
+      rows = [];
+    }
   }
 
   return rows
     .slice()
     .sort(
       (a, b) =>
-        pickNumber(a.period_number, a.period_no) - pickNumber(b.period_number, b.period_no),
+        pickNumber(a.period_number, a.periodNumber, a.period_no, a.period) -
+        pickNumber(b.period_number, b.periodNumber, b.period_no, b.period),
     )
     .slice(0, 12)
     .map((s, i) => ({
       id: pickString(s.id, `sch-${i}`),
-      startTime: formatDisplayTime(pickString(s.start_time, s.from_time)),
-      endTime: formatDisplayTime(pickString(s.end_time, s.to_time)),
-      classCode: pickString(s.class_code, s.class_name, s.section_name),
-      subject: pickString(s.subject_name, s.subject, 'Period'),
-      room: pickString(s.room_name, s.room),
+      startTime: formatDisplayTime(pickString(s.start_time, s.startTime, s.from_time)),
+      endTime: formatDisplayTime(pickString(s.end_time, s.endTime, s.to_time)),
+      classCode: pickString(s.class_code, s.class_name, s.className, s.section_name),
+      subject: pickString(s.subject_name, s.subjectName, s.subject, 'Period'),
+      room: pickString(s.room_name, s.roomName, s.room),
     }));
 }
 
@@ -447,14 +462,9 @@ function buildAttendanceFallbackFromRecords(
 /**
  * Attendance % for teacher dashboard — mirrors web ERPDashboardTab.
  *
- * Web:
- *   overallPct = kpis.today_attendance_pct ?? avg(trend[].percentage)
- *   avgAttPct  = avg(trend days with total>0) ?? overallPct
- *   Student Att. % KPI = overallPct ?? avgAttPct ?? '—'
- *   Glance "Attendance" = overallPct ?? 'Not marked'
- *   Donut "Avg. Att." = avgAttPct
- *
- * Note: Student Att. % and Avg. Att. are often different (e.g. today 0%, avg 50%).
+ * Web dashHasAtt = trend.some(total>0) || today_attendance_pct != null
+ * If the dashboard has no marked days, web rebuilds % from attendance records.
+ * Empty 0%-padded trend must not win over that fallback (that was mobile 0% vs web 75%).
  */
 export function computeTeacherAttendanceMetrics(
   dashKpis: Record<string, unknown> | null,
@@ -462,55 +472,57 @@ export function computeTeacherAttendanceMetrics(
   attRecords: unknown,
   teacherClassIds: number[],
 ): { overallPct: number | null; avgAttPct: number | null; kpiPct: number | null } {
-  const trendItems = normalizeAttendanceTrend(dashTrend);
+  let trendItems = normalizeAttendanceTrend(dashTrend);
+
+  const readTodayKpi = (): number | null => {
+    if (!dashKpis || !Object.prototype.hasOwnProperty.call(dashKpis, 'today_attendance_pct')) {
+      return null;
+    }
+    const raw = dashKpis.today_attendance_pct;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+  };
+
+  let todayFromKpis = readTodayKpi();
+  let trendDaysWithData = trendItems.filter((t) => t.total > 0);
+
+  // Dashboard often sends today_attendance_pct: 0 when nothing is marked yet.
+  // That is not a real 0% day (no totals). Web then rebuilds from records → 75%.
+  const dashHasAtt =
+    trendDaysWithData.length > 0 ||
+    (todayFromKpis != null && !(todayFromKpis === 0 && trendDaysWithData.length === 0));
+  const fb = buildAttendanceFallbackFromRecords(attRecords, teacherClassIds);
+  if (!dashHasAtt) {
+    todayFromKpis = fb.todayPct;
+  }
 
   const trendAvgAll =
     trendItems.length > 0
       ? trendItems.reduce((s, t) => s + t.percentage, 0) / trendItems.length
       : null;
-
-  const trendDaysWithData = trendItems.filter((t) => t.total > 0);
+  trendDaysWithData = trendItems.filter((t) => t.total > 0);
   const trendAvgMarked =
     trendDaysWithData.length > 0
       ? trendDaysWithData.reduce((s, t) => s + t.percentage, 0) /
         trendDaysWithData.length
       : null;
 
-  let todayFromKpis: number | null = null;
-  if (
-    dashKpis != null &&
-    dashKpis.today_attendance_pct != null &&
-    dashKpis.today_attendance_pct !== ''
-  ) {
-    const n = Number(dashKpis.today_attendance_pct);
-    if (Number.isFinite(n)) todayFromKpis = Math.round(n * 10) / 10;
-  }
+  // Do not treat an all-zero padded trend as 0% overall when records have a real avg.
+  const usableTrendAvg =
+    trendDaysWithData.length > 0 && trendAvgAll != null
+      ? Math.round(trendAvgAll * 10) / 10
+      : null;
 
-  // Web skips records when today_attendance_pct is set (even 0). That blocks Avg.
-  // when trend fails to parse. Always derive records avg if trend has no marked days.
-  let fallbackTodayPct: number | null = null;
-  let fallbackTrendAvg: number | null = null;
-  if (trendDaysWithData.length === 0) {
-    const fb = buildAttendanceFallbackFromRecords(attRecords, teacherClassIds);
-    fallbackTrendAvg = fb.trendAvg;
-    // Only fill today from records when KPI did not send today_attendance_pct
-    if (todayFromKpis == null) fallbackTodayPct = fb.todayPct;
-  }
+  let overallPct: number | null = todayFromKpis ?? usableTrendAvg;
+  if (overallPct == null && fb.todayPct != null) overallPct = fb.todayPct;
+  if (overallPct == null && fb.trendAvg != null) overallPct = fb.trendAvg;
 
-  // overallPct — web line 367-368 (+ fallback todayPct into kpis)
-  let overallPct: number | null =
-    todayFromKpis ??
-    (trendAvgAll != null ? Math.round(trendAvgAll * 10) / 10 : null);
-  if (overallPct == null && fallbackTodayPct != null) overallPct = fallbackTodayPct;
-  if (overallPct == null && fallbackTrendAvg != null) overallPct = fallbackTrendAvg;
-
-  // avgAttPct — web lines 382-385 (prefer marked-day trend, then records avg, then overall)
   let avgAttPct: number | null =
     trendAvgMarked != null ? Math.round(trendAvgMarked * 10) / 10 : null;
-  if (avgAttPct == null && fallbackTrendAvg != null) avgAttPct = fallbackTrendAvg;
+  if (avgAttPct == null && fb.trendAvg != null) avgAttPct = fb.trendAvg;
   if (avgAttPct == null && overallPct != null) avgAttPct = overallPct;
 
-  // Student Att. % KPI — web line 425
   const kpiPct = overallPct ?? avgAttPct ?? null;
 
   return { overallPct, avgAttPct, kpiPct };

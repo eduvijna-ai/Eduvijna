@@ -16,6 +16,8 @@ interface ClassContextBannerProps {
   studentCount?: number;
   /** Optional right-aligned schedule (e.g. "09:20 AM – 10:05 AM"). */
   timeLabel?: string;
+  /** When set, the white badge shows this icon instead of the class code. */
+  badgeIcon?: keyof typeof Ionicons.glyphMap;
 }
 
 export function ClassContextBanner({
@@ -25,6 +27,7 @@ export function ClassContextBanner({
   room,
   studentCount,
   timeLabel,
+  badgeIcon,
 }: ClassContextBannerProps) {
   const theme = useTeacherTheme();
 
@@ -48,7 +51,11 @@ export function ClassContextBanner({
 
       <View style={styles.row}>
         <View style={styles.badge}>
-          <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{code}</Text>
+          {badgeIcon ? (
+            <Ionicons name={badgeIcon} size={24} color={theme.colors.primary} />
+          ) : (
+            <Text style={[styles.badgeText, { color: theme.colors.primary }]}>{code}</Text>
+          )}
         </View>
 
         <View style={styles.info}>

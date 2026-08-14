@@ -244,7 +244,6 @@ export function useTeacherData() {
           date_from: trendFrom,
           date_to: today,
           per_page: 10000,
-          ...(academicYearId ? { academic_year_id: academicYearId } : {}),
         }),
         assignmentsApi.list({ ...yearParams, per_page: 50 }),
         studentsByUserApi.getAll(yearParams),
@@ -327,9 +326,10 @@ export function useTeacherData() {
       }
 
       const students = mapTeacherStudents(rosterRaw);
-      // Full week timetable for periods/week; today filter for home schedule
-      const weekSlots =
-        safeList(scheduleRaw).length > 0 ? scheduleRaw : slotsRaw;
+      // Weekly grid (all days) vs today's periods (must match today's day_of_week).
+      const mineSlots = safeList(scheduleRaw);
+      const todayListSlots = safeList(slotsRaw);
+      const weekSlots = mineSlots.length > 0 ? mineSlots : todayListSlots;
       const mapped = mapTeacherClasses(overviewRaw ?? kpiRaw, {
         teacherUserId: teacherUserId ?? null,
         students,
@@ -344,7 +344,12 @@ export function useTeacherData() {
       const classesSummary =
         mapped.classes.length > 0 ? mapped.summary : kpiMapped.summary;
 
-      const schedule = mapTeacherSchedule(weekSlots, { apiDow });
+      // teacher-timetable is the full week. Only keep rows for today's weekday.
+      // If none match, use slots?day_of_week=today (already scoped to this teacher).
+      const todayFromWeek = mapTeacherSchedule(mineSlots, { apiDow, strictToday: true });
+      const todayFromList = mapTeacherSchedule(todayListSlots, { assumeToday: true });
+      const schedule =
+        todayFromWeek.length > 0 ? todayFromWeek : todayFromList;
       const announcements = mapTeacherAnnouncements(noticesRaw);
       const notices = mapNoticesList(noticesRaw);
       const asgItems = safeList(asgRaw);
@@ -374,6 +379,19 @@ export function useTeacherData() {
         attRaw,
         uniqueClassIds,
       );
+
+      if (__DEV__) {
+        console.log('[TeacherHome] Student Att. %', {
+          schoolId,
+          academicYearId,
+          kpiTodayPct: dashKpis?.today_attendance_pct,
+          overallPct: attMetrics.overallPct,
+          avgAttPct: attMetrics.avgAttPct,
+          kpiPct: attMetrics.kpiPct,
+          recordCount: safeList(attRaw).length,
+          teacherClassIds: uniqueClassIds,
+        });
+      }
 
       setData({
         classes,

@@ -89,7 +89,7 @@ export default function TeacherHomeScreen() {
   const goStudents = () =>
     navigation.navigate('TeacherTabs', { screen: 'TeacherStudents' });
   const goAttendance = () =>
-    navigation.navigate('TeacherAttendance', { classId: firstClassId });
+    navigation.navigate('MarkAttendance', { classId: firstClassId });
   const goTimetable = () => navigation.navigate('Timetable', {});
   const goFees = () => navigation.navigate('TeacherFees');
 
@@ -138,7 +138,7 @@ export default function TeacherHomeScreen() {
       icon: 'checkbox-outline',
       label: 'Take Attendance',
       accent: 'teal',
-      onPress: () => navigation.navigate('TeacherAttendance', { classId: firstClassId }),
+      onPress: () => navigation.navigate('MarkAttendance', { classId: firstClassId }),
     },
     {
       key: 'holidays',
@@ -394,7 +394,9 @@ export default function TeacherHomeScreen() {
               <View style={[styles.scheduleDot, { backgroundColor: theme.colors.primary }]} />
               <View style={styles.scheduleInfo}>
                 <Text style={[styles.scheduleClass, { color: theme.colors.textPrimary }]}>
-                  Class {period.classCode}
+                  {/^class\s/i.test(period.classCode)
+                    ? period.classCode
+                    : `Class ${period.classCode}`}
                 </Text>
                 <Text style={[styles.scheduleSubject, { color: theme.colors.textSecondary }]}>
                   {period.subject}

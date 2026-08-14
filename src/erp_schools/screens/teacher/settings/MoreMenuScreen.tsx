@@ -32,7 +32,7 @@ const SECTIONS: MenuSection[] = [
   {
     title: 'Attendance & Payroll',
     links: [
-      { label: 'Student Attendance', icon: 'checkbox-outline', accent: 'teal', route: 'TeacherAttendance' },
+      { label: 'Student Attendance', icon: 'checkbox-outline', accent: 'teal', route: 'MarkAttendance' },
       { label: 'My Attendance', icon: 'finger-print-outline', accent: 'blue', route: 'MyAttendance' },
       { label: 'Attendance Calendar', icon: 'calendar-outline', accent: 'purple', route: 'AttendanceCalendar' },
       { label: 'Payroll & Leave', icon: 'wallet-outline', accent: 'green', route: 'PayrollDashboard' },
@@ -109,6 +109,9 @@ export default function MoreMenuScreen() {
         break;
       case 'TeacherAttendance':
         navigation.navigate('TeacherAttendance', {});
+        break;
+      case 'MarkAttendance':
+        navigation.navigate('MarkAttendance', {});
         break;
       case 'MyAttendance':
         navigation.navigate('TeacherAttendance', { tab: 'my-attendance' });

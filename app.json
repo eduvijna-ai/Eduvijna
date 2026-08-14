@@ -16,7 +16,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.eduvijna.app"
+      "bundleIdentifier": "com.eduvijna.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "EduVijna uses the camera so you can photograph textbook and handwritten pages to generate quizzes.",
+        "NSPhotoLibraryUsageDescription": "EduVijna accesses your photos so you can pick document pages to generate quizzes."
+      }
     },
     "android": {
       "package": "com.eduvijna.app",
@@ -70,6 +74,15 @@
           }
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "EduVijna uses the camera so you can photograph textbook and handwritten pages to generate quizzes.",
+          "photosPermission": "EduVijna accesses your photos so you can pick document pages to generate quizzes.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-document-picker",
       "expo-notifications",
       "./plugins/withCropButtonLabel",
       "expo-asset",

@@ -386,6 +386,12 @@ export async function clearAllCache(): Promise<void> {
   stats.cacheMisses = 0;
 }
 
+/** Android camera / app-background often aborts fetch() with this TypeError. */
+export function isTransientNetworkError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /network request failed|failed to fetch|network error|aborted|timeout/i.test(message);
+}
+
 /**
  * Make API call with caching (cache-first strategy)
  */
@@ -426,7 +432,14 @@ export async function cachedApiCall<T>(
     return data;
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`❌ [${timestamp}] [API CALL FAILED] ${cacheKey} | Duration: ${duration}ms | Error:`, error);
+    // Camera / background kills in-flight fetch — warn only so LogBox does not cover crop UI.
+    if (isTransientNetworkError(error)) {
+      console.warn(
+        `[API CALL FAILED] ${cacheKey} | Duration: ${duration}ms | ${error instanceof Error ? error.message : error}`,
+      );
+    } else {
+      console.error(`❌ [${timestamp}] [API CALL FAILED] ${cacheKey} | Duration: ${duration}ms | Error:`, error);
+    }
     throw error;
   }
 }

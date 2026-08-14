@@ -43,6 +43,7 @@ import {
   type PlayableQuizQuestion,
 } from '@core/utils/answerMappingUtils';
 import { regenerateDocumentUploadQuiz } from '../core/services/documentUploadApi';
+import { markDocumentUploadSessionComplete } from '../core/services/documentUploadStorage';
 
 interface QuizQuestion {
   id: string;
@@ -190,6 +191,26 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     }
     navigation.navigate('Main', { screen: 'Dashboard' });
   }, [navigation]);
+
+  /**
+   * Close (X) = done with this quiz → drop the local staging session and open Home.
+   * Back (←) keeps the session so the teacher can change pages and generate again.
+   */
+  const closeDocumentUploadQuiz = useCallback(() => {
+    const bookId = routeParams?.previewBook?.id || routeParams?.previewBook?.docId;
+    void (async () => {
+      if (bookId) {
+        await markDocumentUploadSessionComplete(String(bookId));
+      }
+      navigation.navigate('DocumentUploadHomeScreen');
+    })();
+  }, [navigation, routeParams?.previewBook?.id]);
+
+  const isDocumentUploadModule =
+    source !== 'history' &&
+    (source === 'document-upload' ||
+      (hideStackHeader === true &&
+        !!(routeParams?.returnScreen || routeParams?.previewBook)));
   
   // Use useMemo to stabilize quizSource object reference and prevent infinite loops
   const quizSource = useMemo(() => {
@@ -533,6 +554,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleHeaderClose = () => {
+    if (isDocumentUploadModule) {
+      closeDocumentUploadQuiz();
+      return;
+    }
     leaveQuizScreen();
   };
 
