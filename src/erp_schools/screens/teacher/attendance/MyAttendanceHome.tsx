@@ -178,11 +178,18 @@ export default function MyAttendanceHome() {
   };
 
   const openCalendar = () => {
-    try {
-      navigation.navigate('AttendanceCalendar');
-    } catch {
-      setHistoryOpen(true);
+    // Walk parents until we hit TeacherStack / AdminStack (owns AttendanceCalendar).
+    let nav: { navigate: (name: string) => void; getState?: () => { routeNames?: string[] }; getParent?: () => unknown } | undefined =
+      navigation as never;
+    for (let i = 0; i < 5 && nav; i += 1) {
+      const names = nav.getState?.()?.routeNames;
+      if (names?.includes('AttendanceCalendar')) {
+        nav.navigate('AttendanceCalendar');
+        return;
+      }
+      nav = nav.getParent?.() as typeof nav;
     }
+    (navigation as { navigate: (name: string) => void }).navigate('AttendanceCalendar');
   };
 
   return (

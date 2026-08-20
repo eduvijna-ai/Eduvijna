@@ -51,6 +51,7 @@ import ApprovalWorkflowScreen from '../screens/admin/admissions/ApprovalWorkflow
 
 // operations
 import AttendanceDashboardScreen from '../screens/admin/attendance/AttendanceDashboardScreen';
+import AttendanceCalendarScreen from '../screens/teacher/attendance/AttendanceCalendarScreen';
 import LibraryDashboardScreen from '../screens/admin/library/LibraryDashboardScreen';
 import TransportDashboardScreen from '../screens/admin/transport/TransportDashboardScreen';
 import VehicleManagementScreen from '../screens/admin/transport/VehicleManagementScreen';
@@ -134,6 +135,10 @@ export function AdminStack() {
       <Stack.Screen name={ADMIN_ROUTES.APPROVAL_WORKFLOW} component={ApprovalWorkflowScreen} />
 
       <Stack.Screen name={ADMIN_ROUTES.ATTENDANCE_DASHBOARD} component={AttendanceDashboardScreen} />
+      <Stack.Screen
+        name={ADMIN_ROUTES.ATTENDANCE_CALENDAR}
+        component={AttendanceCalendarScreen}
+      />
       <Stack.Screen name={ADMIN_ROUTES.LIBRARY_DASHBOARD} component={LibraryDashboardScreen} />
       <Stack.Screen name={ADMIN_ROUTES.BOOK_MANAGEMENT} component={LibraryScreen} />
       <Stack.Screen name={ADMIN_ROUTES.LIBRARY} component={LibraryScreen} />

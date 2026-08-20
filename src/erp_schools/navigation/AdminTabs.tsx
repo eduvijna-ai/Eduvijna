@@ -11,6 +11,7 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native';
 import { APP_MAIN_TABS } from '@mobile/navigation/appRoutes';
@@ -28,7 +29,21 @@ import MoreMenuScreen from '../screens/admin/settings/MoreMenuScreen';
 const Tab = createBottomTabNavigator<AdminTabParamList>();
 
 function AdminAttendanceTab() {
-  return <TeacherAttendanceScreen role="admin" showBack={false} />;
+  const navigation = useNavigation();
+  return (
+    <TeacherAttendanceScreen
+      role="admin"
+      showBack
+      onBack={() => {
+        // Tab root often cannot pop — send admin back to Dashboard.
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+          return;
+        }
+        navigation.navigate(ADMIN_TABS.HOME as never);
+      }}
+    />
+  );
 }
 
 const ICONS: Record<

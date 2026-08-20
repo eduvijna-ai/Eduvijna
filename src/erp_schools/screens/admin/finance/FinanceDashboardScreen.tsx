@@ -7,8 +7,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import {
   TeacherScreen,
+  ScreenHeader,
   SurfaceCard,
   SectionHeader,
   StatGrid,
@@ -21,11 +23,13 @@ import { useTeacherTheme } from '../../../theme/useTeacherTheme';
 import { useAdminNavigation } from '../../../hooks/useAdminNavigation';
 import { useAdminData } from '../../../hooks/useAdminData';
 import { accentColors } from '../../../theme/accents';
+import { ADMIN_TABS } from '../../../navigation/adminRoutes';
 import { DistributionList, DonutLegend } from '../components';
 
 export default function FinanceDashboardScreen() {
   const theme = useTeacherTheme();
   const navigation = useAdminNavigation();
+  const tabNav = useNavigation();
   const { finance } = useAdminData();
 
   const links: QuickAction[] = [
@@ -36,11 +40,25 @@ export default function FinanceDashboardScreen() {
   ];
 
   return (
-    <TeacherScreen contentStyle={styles.content}>
-      <View>
-        <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Finance Overview</Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Collections, revenue & expenses</Text>
-      </View>
+    <TeacherScreen
+      header={
+        <ScreenHeader
+          title="Finance Overview"
+          showBack
+          onBack={() => {
+            if (tabNav.canGoBack()) {
+              tabNav.goBack();
+              return;
+            }
+            tabNav.navigate(ADMIN_TABS.HOME as never);
+          }}
+        />
+      }
+      contentStyle={styles.content}
+    >
+      <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+        Collections, revenue & expenses
+      </Text>
 
       <StatGrid items={finance.kpis} columns={2} variant="tinted" />
 
@@ -104,8 +122,7 @@ export default function FinanceDashboardScreen() {
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 4, gap: 16 },
-  title: { fontSize: 26, fontWeight: '800' },
-  subtitle: { fontSize: 13, marginTop: 2 },
+  subtitle: { fontSize: 13, marginBottom: 0 },
 
   feeGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 },
   feeCard: { width: '48%', gap: 4 },

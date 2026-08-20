@@ -231,6 +231,8 @@ export type AdminStackParamList = {
 
   // operations
   AttendanceDashboard: undefined;
+  /** Shared with teacher stack — My Attendance "View Calendar". */
+  AttendanceCalendar: undefined;
   LibraryDashboard: undefined;
   BookManagement: undefined;
   TransportDashboard: undefined;

@@ -103,6 +103,8 @@ export type AttendanceHubProps = {
   role?: 'teacher' | 'admin';
   /** Tab roots should pass false so the back chevron is hidden. */
   showBack?: boolean;
+  /** Optional back handler (e.g. admin tab → Dashboard). */
+  onBack?: () => void;
 };
 
 const PERIODS: ChipOption[] = [
@@ -140,6 +142,7 @@ const STATUS_STYLE: Record<
 export default function TeacherAttendanceScreen({
   role = 'teacher',
   showBack = true,
+  onBack,
 }: AttendanceHubProps) {
   const isAdmin = role === 'admin';
   const theme = useTeacherTheme();
@@ -167,6 +170,7 @@ export default function TeacherAttendanceScreen({
         <ScreenHeader
           title="Attendance"
           showBack={showBack}
+          onBack={onBack}
           trailingIcon="refresh-outline"
           onTrailingPress={() => setRefreshKey((k) => k + 1)}
         />

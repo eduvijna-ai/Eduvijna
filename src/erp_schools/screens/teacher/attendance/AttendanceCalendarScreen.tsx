@@ -7,6 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import {
   TeacherScreen,
   ScreenHeader,
@@ -26,6 +27,17 @@ import {
 } from '../../../hooks/useTeacherMyAttendance';
 import type { SelfAttendanceStatus } from '../../../types/domain';
 import { toLocalDateStr } from '../../../utils/apiHelpers';
+
+function goBackReliable(navigation: { canGoBack: () => boolean; goBack: () => void; getParent?: () => unknown }) {
+  let nav: typeof navigation | undefined = navigation;
+  for (let i = 0; i < 5 && nav; i += 1) {
+    if (nav.canGoBack()) {
+      nav.goBack();
+      return;
+    }
+    nav = nav.getParent?.() as typeof navigation | undefined;
+  }
+}
 
 const WEEK_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = [
@@ -101,6 +113,7 @@ function formatLongDate(iso: string): string {
 
 export default function AttendanceCalendarScreen() {
   const theme = useTeacherTheme();
+  const navigation = useNavigation();
   const { profile } = useTeacherStaffProfile();
   const m = useTeacherMyAttendance();
 
@@ -109,6 +122,14 @@ export default function AttendanceCalendarScreen() {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [marked, setMarked] = useState<SelfAttendanceStatus>('present');
   const [note, setNote] = useState('');
+
+  const header = (
+    <ScreenHeader
+      title="Mark My Attendance"
+      showBack
+      onBack={() => goBackReliable(navigation)}
+    />
+  );
 
   // Load month view for calendar dots
   useEffect(() => {
@@ -237,7 +258,7 @@ export default function AttendanceCalendarScreen() {
 
   if (m.status === 'idle' || m.status === 'loading') {
     return (
-      <TeacherScreen header={<ScreenHeader title="Mark My Attendance" />}>
+      <TeacherScreen header={header}>
         <ScreenLoader message="Loading attendance…" />
       </TeacherScreen>
     );
@@ -245,9 +266,9 @@ export default function AttendanceCalendarScreen() {
 
   return (
     <TeacherScreen
-      header={<ScreenHeader title="Mark My Attendance" />}
+      header={header}
       contentStyle={styles.content}
-      refreshing={m.status === 'loading' || m.saving}
+      refreshing={m.saving}
       onRefresh={() => void m.refetch()}
       footer={
         <PrimaryButton

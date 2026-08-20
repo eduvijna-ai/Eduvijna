@@ -50,6 +50,8 @@ export const ADMIN_ROUTES = {
   APPROVAL_WORKFLOW: 'ApprovalWorkflow',
 
   ATTENDANCE_DASHBOARD: 'AttendanceDashboard',
+  /** Staff self calendar (same screen as teacher AttendanceCalendar). */
+  ATTENDANCE_CALENDAR: 'AttendanceCalendar',
   LIBRARY_DASHBOARD: 'LibraryDashboard',
   BOOK_MANAGEMENT: 'BookManagement',
   LIBRARY: 'Library',
