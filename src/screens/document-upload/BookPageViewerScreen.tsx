@@ -118,8 +118,9 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
     if (match) setSubjectId(match.id);
   }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, book?.subject]);
 
-  const resolvedGrade = classLabel;
-  const resolvedSubject = subjectLabel(subjectId);
+  // API requires min-length 1 for class/subject (422 if empty). Match web defaults.
+  const resolvedGrade = (classLabel || '').trim() || 'General';
+  const resolvedSubject = (subjectLabel(subjectId) || '').trim() || 'Document';
 
   useEffect(() => {
     const restored = route.params?.previewFormState;
@@ -307,7 +308,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
       const worksheet = await generateWorksheet({
         class: resolvedGrade,
         subject: resolvedSubject,
-        lesson: lesson.trim(),
+        lesson: lesson.trim() || book.title || 'Selected pages',
         itext: rawContent,
         level: difficulty,
         count: questionCount,

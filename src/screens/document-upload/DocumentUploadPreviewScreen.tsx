@@ -66,6 +66,19 @@ const DIFFICULTY_OPTIONS = [
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
   if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const parts = detail
+      .map((item: any) => {
+        const field = Array.isArray(item?.loc)
+          ? item.loc.filter((p: unknown) => p !== 'body').join('.')
+          : '';
+        const msg = typeof item?.msg === 'string' ? item.msg : '';
+        if (field && msg) return `${field}: ${msg}`;
+        return msg || '';
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join('; ');
+  }
   if (detail && typeof detail === 'object') {
     if (typeof detail.message === 'string' && detail.message.trim()) {
       const extra = Array.isArray(detail.details)
@@ -81,6 +94,8 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
       return fallback;
     }
   }
+  const topMessage = err?.response?.data?.message;
+  if (typeof topMessage === 'string' && topMessage.trim()) return topMessage;
   if (typeof err?.message === 'string' && err.message.trim()) return err.message;
   return fallback;
 };
@@ -237,9 +252,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (match) setSubjectId(match.id);
   }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, route?.params?.presetSubject]);
 
-  const resolvedClass = classLabel;
-  const resolvedSubject = subjectLabel(subjectId);
-  const resolvedLesson = lesson.trim();
+  // API requires min-length 1 for class/subject (422 if empty). Match web defaults.
+  const resolvedClass = (classLabel || '').trim() || 'General';
+  const resolvedSubject = (subjectLabel(subjectId) || '').trim() || 'Document';
+  const resolvedLesson =
+    lesson.trim() ||
+    bookState?.title ||
+    bookState?.originalName ||
+    'Selected pages';
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
     const book = bookOverride ?? bookState;
@@ -685,6 +705,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
+
     try {
       setError('');
       setLoadingWorksheet(true);
@@ -697,7 +719,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       } else if (bookState?.docId) {
         rawContent = await extractRawContent({
           docId: bookState.docId,
-          pageNumbers: Array.from(selectedPages).sort((a, b) => a - b),
+          pageNumbers,
         });
       }
 
@@ -743,7 +765,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       navigation.navigate('WorksheetScreen', {
         worksheetData: worksheet,
         title: `${bookState?.title || 'Document'} Worksheet`,
-        selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
+        selectedPages: pageNumbers,
       });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
