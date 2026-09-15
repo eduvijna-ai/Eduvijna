@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
+  InteractionManager,
   Platform,
   ScrollView,
   StyleSheet,
@@ -42,6 +43,17 @@ import {
 } from '@core/services/documentUploadStorage';
 
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
+
+/** Let navigation transitions finish before presenting system pickers (critical on iOS). */
+const waitForUiSettle = (ms = Platform.OS === 'ios' ? 400 : 50): Promise<void> =>
+  new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(resolve, ms);
+    });
+  });
+
+/** Safety net if a system picker never resolves (iOS modal-on-modal hang). */
+const PICKER_WATCHDOG_MS = 90_000;
 
 type ActiveTab = 'upload' | 'search';
 
@@ -87,6 +99,42 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const pickerBusyRef = useRef(false);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPickerWatchdog = useCallback(() => {
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+  }, []);
+
+  const resetPickerUi = useCallback((message?: string) => {
+    clearPickerWatchdog();
+    pickerBusyRef.current = false;
+    setUploading(false);
+    setCapturing(false);
+    if (message) setError(message);
+  }, [clearPickerWatchdog]);
+
+  const armPickerWatchdog = useCallback(() => {
+    clearPickerWatchdog();
+    watchdogRef.current = setTimeout(() => {
+      if (!pickerBusyRef.current) return;
+      resetPickerUi(
+        'File picker did not respond. Please try again. If this keeps happening, close this screen and reopen it.',
+      );
+    }, PICKER_WATCHDOG_MS);
+  }, [clearPickerWatchdog, resetPickerUi]);
+
+  // Leaving this screen must never leave tiles stuck on Opening...
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        resetPickerUi();
+      };
+    }, [resetPickerUi]),
+  );
 
   const loadBooks = useCallback(async () => {
     setLoadingBooks(true);
@@ -141,24 +189,6 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     }, []),
   );
 
-  useEffect(() => {
-    const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'gallery' | 'search' | undefined;
-    if (!autoAction) return;
-
-    if (autoAction === 'upload') {
-      void handleUploadTilePress();
-    } else if (autoAction === 'camera') {
-      void handleCameraTilePress();
-    } else if (autoAction === 'gallery') {
-      void handleGalleryTilePress();
-    } else if (autoAction === 'search') {
-      setActiveTab('search');
-    }
-
-    // Clear one-time action so it won't rerun on focus re-entry.
-    navigation.setParams?.({ autoAction: undefined });
-  }, [route?.params?.autoAction]);
-
   const filteredBooks = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return books;
@@ -174,8 +204,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     try {
       setError('');
       setSuccess('');
+      await waitForUiSettle();
 
-      // One document file only (PDF/DOC/…). Images use Gallery / Camera (up to 5).
       const result = await DocumentPicker.getDocumentAsync({
         multiple: false,
         copyToCacheDirectory: true,
@@ -189,7 +219,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to upload document.'));
     } finally {
-      setUploading(false);
+      resetPickerUi();
     }
   };
 
@@ -319,15 +349,22 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   };
 
   const handleUploadTilePress = async () => {
+    if (pickerBusyRef.current) return;
+    pickerBusyRef.current = true;
     setUploading(true);
+    armPickerWatchdog();
     await pickAndUpload();
   };
 
   const handleGalleryTilePress = async () => {
+    if (pickerBusyRef.current) return;
+    pickerBusyRef.current = true;
     try {
       setError('');
       setSuccess('');
       setCapturing(true);
+      armPickerWatchdog();
+      await waitForUiSettle();
 
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permission.status !== 'granted') {
@@ -385,15 +422,19 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to pick images from gallery.'));
     } finally {
-      setCapturing(false);
+      resetPickerUi();
     }
   };
 
   const handleCameraTilePress = async () => {
+    if (pickerBusyRef.current) return;
+    pickerBusyRef.current = true;
     try {
       setError('');
       setSuccess('');
       setCapturing(true);
+      armPickerWatchdog();
+      await waitForUiSettle();
 
       const captured = await captureAndCropDocumentImage();
       if (!captured) return;
@@ -407,9 +448,40 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to capture document.'));
     } finally {
-      setCapturing(false);
+      resetPickerUi();
     }
   };
+
+  useEffect(() => {
+    const autoAction = route?.params?.autoAction as 'upload' | 'camera' | 'gallery' | 'search' | undefined;
+    if (!autoAction) return;
+
+    let cancelled = false;
+    // Clear one-time action so it won't rerun on focus re-entry.
+    navigation.setParams?.({ autoAction: undefined });
+
+    (async () => {
+      // Wait for the card transition to finish before opening system pickers.
+      await waitForUiSettle(Platform.OS === 'ios' ? 500 : 100);
+      if (cancelled) return;
+
+      if (autoAction === 'upload') {
+        void handleUploadTilePress();
+      } else if (autoAction === 'camera') {
+        void handleCameraTilePress();
+      } else if (autoAction === 'gallery') {
+        void handleGalleryTilePress();
+      } else if (autoAction === 'search') {
+        setActiveTab('search');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Handlers are intentionally stable enough for one-shot autoAction; re-run only when param changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.autoAction]);
 
   const goToPreview = async () => {
     if (!selectedBook) {

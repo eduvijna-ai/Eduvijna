@@ -157,8 +157,8 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
       
       await refreshAfterQuizGenerated();
       
-      // Navigate to quiz taking screen with the generated quiz
-      navigation.navigate('QuizTakingScreen', {
+      // Replace create screen so the generated quiz is always visible on top.
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id || 'website-quiz',
           title: lesson || result.title || 'Website Quiz',
@@ -218,7 +218,7 @@ export default function CreateWebsiteQuizScreen({ navigation }: any) {
               
               await refreshAfterQuizGenerated();
               
-              navigation.navigate('QuizTakingScreen', {
+              navigation.replace('QuizTakingScreen', {
                 quizData: {
                   id: result.quiz_id || 'website-quiz',
                   title: summary.title || result.title || 'Website Quiz',

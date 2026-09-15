@@ -272,12 +272,20 @@ export default function MobileNavigation() {
           headerBackTitle: 'Back',
         }}
       />
+      {/*
+        Create / document / assessment entry screens use presentation: 'card' on
+        BOTH platforms. Native-stack 'modal' on iOS becomes a page-sheet that:
+        (1) hides follow-up QuizTaking/Worksheet navigations behind it, and
+        (2) breaks DocumentPicker / ImagePicker / Camera (modal-on-modal hang).
+        Android already looked like full screens with 'modal'; 'card' keeps
+        Android behavior and fixes iOS without Platform branching.
+      */}
       <Stack.Screen 
         name="CreateAIQuizScreen" 
         component={CreateAIQuizScreen}
         options={({ navigation: screenNav }) => ({
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Create AI Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -298,7 +306,7 @@ export default function MobileNavigation() {
           const mode = (route?.params as any)?.mode;
           return {
             headerShown: true,
-            presentation: 'modal',
+            presentation: 'card',
             title: mode === 'handwritten' ? 'Handwritten Workspace' : 'Document Workspace',
             headerBackTitle: 'Back',
           };
@@ -309,7 +317,7 @@ export default function MobileNavigation() {
         component={CreateDocumentQuizScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Document Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -322,7 +330,7 @@ export default function MobileNavigation() {
         component={CreateImageQuizScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Create Image Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -335,7 +343,7 @@ export default function MobileNavigation() {
         component={ImageAssessmentScreen as any}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Image Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -348,7 +356,7 @@ export default function MobileNavigation() {
         component={CreateYouTubeQuizScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'YouTube Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -361,7 +369,7 @@ export default function MobileNavigation() {
         component={CreateWebsiteQuizScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Create Website Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -374,7 +382,7 @@ export default function MobileNavigation() {
         component={CreateHandwrittenQuizScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Handwritten Assessment',
           headerBackTitle: 'Back',
           headerRight: () => (
@@ -445,7 +453,7 @@ export default function MobileNavigation() {
         component={QuizPreviewScreen}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Assessment Preview',
           headerBackTitle: 'Back',
         }}
@@ -519,7 +527,7 @@ export default function MobileNavigation() {
         component={DocumentUploadHomeScreen as any}
         options={{
           headerShown: true,
-          presentation: 'modal',
+          presentation: 'card',
           title: 'Document & Handwritten',
           headerBackTitle: 'Back',
         }}

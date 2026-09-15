@@ -391,7 +391,7 @@ export default function CreateYouTubeQuizScreen({ navigation }: any) {
         // Save failure is non-critical
       }
 
-      navigation.navigate('QuizTakingScreen', {
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson} Assessment`,

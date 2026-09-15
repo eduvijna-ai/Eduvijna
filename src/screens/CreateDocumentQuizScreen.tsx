@@ -939,7 +939,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
       setQuestionCount(parseInt(values.questionCount, 10) || 5);
       setAdditionalInstructions(values.additionalInstructions);
 
-      navigation.navigate('QuizTakingScreen', {
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson.trim()} Assessment`,

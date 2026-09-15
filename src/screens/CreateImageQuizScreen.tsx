@@ -303,8 +303,8 @@ export default function CreateImageQuizScreen({ navigation }: any) {
       const classLabel = classes.find((c: any) => c.id === values.class)?.name || values.class;
       const subjectLabel = subjects.find((s: any) => s.id === values.subject)?.name || values.subject;
 
-      // Navigate to assessment taking screen with the generated assessment
-      navigation.navigate('QuizTakingScreen', {
+      // Replace create screen so the generated quiz is always visible on top.
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
           title: `${values.lesson} Assessment`,

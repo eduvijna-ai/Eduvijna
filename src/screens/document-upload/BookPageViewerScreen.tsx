@@ -250,7 +250,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
       const pageNumbers = orderedPages();
       const resolvedLesson = lesson.trim();
 
-      navigation.navigate('DocumentUploadQuizScreen', {
+      navigation.replace('DocumentUploadQuizScreen', {
         quizData: {
           id: book.docId,
           title: resolvedLesson || book.title,
@@ -341,7 +341,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
         }
       }
 
-      navigation.navigate('WorksheetScreen', {
+      navigation.replace('WorksheetScreen', {
         worksheetData: worksheet,
         title: `${lesson.trim() || book.title} Worksheet`,
         selectedPages: orderedPages(),

@@ -368,7 +368,8 @@ export default function CreateAIQuizScreen({ navigation }: any) {
       }
 
       setWorksheetModalOpen(false);
-      navigation.navigate('WorksheetScreen', {
+      // Replace so the create form cannot stay on top of the worksheet (iOS modal hang).
+      navigation.replace('WorksheetScreen', {
         worksheetData: result,
         title,
       });
@@ -412,7 +413,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         }
         await refreshAfterQuizGenerated();
 
-        navigation.navigate('QuizTakingScreen', {
+        navigation.replace('QuizTakingScreen', {
           quizData: {
             id: result.quiz_id,
             title: `${general.lesson.trim()} Assessment`,
@@ -483,7 +484,7 @@ export default function CreateAIQuizScreen({ navigation }: any) {
         }
         await refreshAfterQuizGenerated();
 
-        navigation.navigate('QuizTakingScreen', {
+        navigation.replace('QuizTakingScreen', {
           quizData: {
             id: result.quiz_id,
             title: `${competitive.topic.trim()} Competitive Assessment`,

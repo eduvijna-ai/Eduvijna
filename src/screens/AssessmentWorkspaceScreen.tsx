@@ -337,7 +337,7 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
       }
 
       // Navigate to WorksheetScreen in view mode
-      navigation.navigate('WorksheetScreen', {
+      navigation.replace('WorksheetScreen', {
         worksheetData: result,
         title: `${wsSubject.trim()} – ${wsLesson.trim()}`,
       });

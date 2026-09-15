@@ -411,7 +411,7 @@ export default function ImageAssessmentScreen({ navigation }: any) {
         // Non-blocking save failure
       }
 
-      navigation.navigate('QuizTakingScreen', {
+      navigation.replace('QuizTakingScreen', {
         quizData: {
           id: result.quiz_id,
           title: `${ctx.lesson} Assessment`,
@@ -499,7 +499,7 @@ export default function ImageAssessmentScreen({ navigation }: any) {
       }
 
       setWorksheetModalOpen(false);
-      navigation.navigate('WorksheetScreen', { worksheetData: result, title });
+      navigation.replace('WorksheetScreen', { worksheetData: result, title });
     } catch (e: any) {
       setWorksheetError(e?.message || 'Failed to generate worksheet.');
     } finally {

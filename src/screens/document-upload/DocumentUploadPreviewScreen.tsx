@@ -647,7 +647,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      navigation.navigate('DocumentUploadQuizScreen', {
+      navigation.replace('DocumentUploadQuizScreen', {
         quizData: {
           id: libraryDocId || bookState.docId || bookState.id,
           title: bookState.title || bookState.originalName,
@@ -762,7 +762,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         });
       }
 
-      navigation.navigate('WorksheetScreen', {
+      navigation.replace('WorksheetScreen', {
         worksheetData: worksheet,
         title: `${bookState?.title || 'Document'} Worksheet`,
         selectedPages: pageNumbers,
