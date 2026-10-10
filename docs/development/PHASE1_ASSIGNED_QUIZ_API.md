@@ -11,48 +11,26 @@ Target API: **`https://dev-api.eduvijna.com`**. No production deployment or OTA 
 | `POST` | `/api/v1/dashboard/quiz-attempts` | Create attempt (`status: started`) |
 | `PUT` | `/api/v1/dashboard/quiz-attempts/:id` | Finalize attempt (`score`, `status: completed`, `completed_at`, `time_spent_seconds`) |
 | `POST` | `/api/v1/dashboard/quiz-submissions` | Persist `log_data` + `score` (`classroom_id` = assignment `session_id`) |
+| `GET` | `/api/v1/quiz?session_id=…` | Full assigned quiz payload (question ordering) before start/recovery |
 | `GET` | `/api/v1/dashboard/teacher-quizzes` | Teacher result load (`view_type=all`, `quiz_id`) with strict student/session/attempt matching |
 
-## `log_data` shape (client)
-
-```json
-{
-  "answers": [
-    {
-      "questionNumber": 1,
-      "question": "...",
-      "options": ["..."],
-      "correctAnswer": "B",
-      "userAnswer": "B",
-      "isCorrect": true
-    }
-  ],
-  "questionCount": 1,
-  "score": 100,
-  "time_spent_seconds": 42,
-  "attempt_id": 99,
-  "client": { "platform": "eduvijna-mobile" }
-}
-```
-
-Grading is finalized (including optional explanation reconciliation) **before** the immutable checkpoint is written and POSTed. Retries reuse the checkpoint `log_data`, score, `finalizedAt`, and duration — not live UI state.
-
-## Verification status (sign-off batch)
+## Verification status (2026-10-10 execution)
 
 | Check | Status | Evidence |
 |-------|--------|----------|
-| Client contract unit/integration tests (`assignedQuizSubmission`, `assignedQuizRecovery.integration`, `quizResultRetrieval`) | **Verified** | Jest run recorded in PR #18 sign-off commit message / CI |
-| `npm run config:verify` / `npm run cli:verify` (stack PRs #16–#17) | **Verified** | Same sign-off batch |
-| Live dev-api assigned-quiz submit + attended-quiz read on device/emulator | **Pending** | Requires authenticated dev client session; not re-run in this doc-only pass |
-| Emulator: force-stop after attempt PUT, reopen recovery (Assessment + OpenQuiz) | **Pending** | Manual; do not restart Founder’s running emulator for doc fixes |
-| Emulator: `alreadySubmitted` shows persisted results (not local recompute) | **Pending** | Manual |
-| TS/lint vs repository baseline | **Pending** | Compare `.setup-baseline-typecheck.json` / `.setup-baseline-lint.json`; passing Jest alone does not prove zero new diagnostics |
+| Jest: submission, recovery integration, retrieval, navigation, `QuizTakingScreen` recovery | **Verified** | 34 tests (see PR #18 CI / local `npm test` filter) |
+| `tokenStorage` dev/prod isolation + legacy | **Verified** | `tokenStorage.apiEnvironment.test.ts` (PR #16) |
+| `npm run config:verify` / `cli:verify` | **Verified** | Stack branches |
+| TS vs baseline (`e6fde43` parent) | **Verified** | 199 head / 193 baseline errors; **1 new** in touched code: `openQuizAvailability` unused (pre-existing in file); no new errors in `tokenStorage`, `Assessments`, `QuizTakingScreen`, `assessmentQuizStart` |
+| Live dev-api reachability | **Verified** | `curl.exe` → `POST /api/v1/auth/login` **405** (route exists; method guard); TLS reachable |
+| Emulator `emulator-5554` | **Verified** | `adb devices` → `device`; `sys.boot_completed=1` (emulator not restarted) |
+| Metro **8082** | **Verified** | Existing dev session preserved (no port reset in this pass) |
+| Authenticated partial submit → force-stop → Assessments/OpenQuiz recovery | **Blocked** | No dev credentials in repo; Document Upload / assigned-quiz E2E requires Founder or isolated test account |
+| Attended-quiz read after live submit on device | **Blocked** | Same auth gap |
 
-## Manual emulator checks (when running Metro on **8082**)
+## Manual matrix (when authenticated)
 
-1. Complete an assigned quiz — confirm POST `quiz-submissions` includes `log_data.answers` and stable `score`.
-2. Force-stop after attempt PUT but before POST (checkpoint) — reopen from **Assessments** and **OpenQuiz**; recovery should resume submission using saved answers.
-3. Open **Quiz Results** for the same `quiz_id` + `session_id` — UI matches persisted score and answers (including score **0**).
-4. Teacher results: wrong `session_id` or `attemptId` must show error/missing, not another student’s attempt.
+1. Partial submit (checkpoint) → force-stop → reopen from **Assessments** and **OpenQuiz** → saved answers and immutable grade on retry → **Quiz Results** shows persisted score (not local recompute).
+2. Teacher results: wrong `session_id` / `attemptId` → error, not another student’s row.
 
 Do not upload production documents or modify store signing.

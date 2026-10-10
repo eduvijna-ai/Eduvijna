@@ -23,6 +23,7 @@ import {
   getQuizExplanation,
 } from '../core/services/sharedApi';
 import { submitAssignedQuiz } from '../core/services/assignedQuizSubmission.service';
+import { fetchPersistedQuizResult } from '../core/services/quizResultRetrieval.service';
 import { useUserStore } from '../core/store/user.store';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
@@ -468,7 +469,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setQuiz(loadedQuiz);
       setTimeRemaining((quizSource.duration || 30) * 60);
       setCurrentQuestionIndex(0);
-      setSelectedAnswers({});
+      if (submissionRecovery?.selectedAnswers) {
+        setSelectedAnswers(submissionRecovery.selectedAnswers);
+      } else {
+        setSelectedAnswers({});
+      }
       setShowResults(false);
       setQuestionResults({});
       setAuthoritativeCorrectAnswers({});
@@ -484,7 +489,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       // No quiz data provided
       setIsLoading(false);
     }
-  }, [quizSource]); // Re-run only when quiz payload changes — not isAssignedQuiz (avoids reset loops)
+  }, [quizSource, submissionRecovery?.selectedAnswers]); // Re-run only when quiz payload changes — not isAssignedQuiz (avoids reset loops)
 
   // Timer countdown
   useEffect(() => {
@@ -978,6 +983,33 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             return;
           }
           if (!submissionResult.alreadySubmitted) {
+            const persisted = await fetchPersistedQuizResult({
+              quizId: quiz.quiz_id,
+              sessionId,
+              studentId: String(user.id),
+              isTeacherView: false,
+            });
+            if (persisted.status === 'ready') {
+              const total = persisted.quizData.questions.length;
+              const correct = persisted.userAnswers.filter((answer, index) =>
+                answer
+                  ? isQuizAnswerCorrect(answer, persisted.quizData.questions[index])
+                  : false,
+              ).length;
+              navigation.replace('QuizResultsScreen', {
+                quizId: quiz.quiz_id,
+                sessionId,
+                studentId: String(user.id),
+                quizData: persisted.quizData,
+                userAnswers: persisted.userAnswers,
+                score: persisted.score,
+                totalQuestions: total,
+                correctCount: correct,
+                isTeacherView: false,
+              });
+              setSubmitting(false);
+              return;
+            }
             console.log('✅ Quiz submission successful');
           }
         } catch (submitError: any) {

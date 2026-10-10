@@ -19,6 +19,7 @@ import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
 } from './assignedQuizRecovery.service';
+import { loadAssignedQuizDataForSession } from './assessmentQuizStart.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -73,6 +74,7 @@ interface User {
 interface NavigationAdapter {
   navigate: (screen: string, params?: any) => void;
   alert: (title: string, message: string, buttons?: any[]) => void;
+  onNavigate?: (screen: string, params?: any) => void;
 }
 
 /**
@@ -335,8 +337,14 @@ export async function handleOpenQuiz(
       );
       if (pendingCheckpoint) {
         const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-        const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
-        navigationAdapter.navigate('QuizTakingScreen', {
+        const mergedQuiz = await loadAssignedQuizDataForSession({
+          correctQuizId: quizData.quiz_id,
+          correctSessionId: sessionId,
+          correctClassroomId: quizData.classroom_id || quizData.class_id || '',
+          attemptData: validation.quizData,
+        });
+        const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
+        const screenParams = {
           quiz: normalizedQuiz,
           quizId: normalizedQuiz.quizId,
           sessionId: normalizedQuiz.sessionId,
@@ -344,7 +352,16 @@ export async function handleOpenQuiz(
           quizData: normalizedQuiz,
           is_public: quizData.is_public,
           submissionRecovery: recovery,
-        });
+        };
+        if (navigationAdapter.onNavigate) {
+          navigationAdapter.onNavigate('QuizTakingScreen', {
+            ...screenParams,
+            quiz: normalizedQuiz,
+            is_public: quizData.is_public,
+          });
+        } else {
+          navigationAdapter.navigate('QuizTakingScreen', screenParams);
+        }
         return;
       }
 

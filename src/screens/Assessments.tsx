@@ -20,11 +20,16 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
-import { checkQuizAttempt, getQuizBySessionId } from '@core/services/sharedApi';
+import { checkQuizAttempt } from '@core/services/sharedApi';
 import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
 } from '@core/services/assignedQuizRecovery.service';
+import {
+  buildQuizTakingNavigationParams,
+  loadAssignedQuizDataForSession,
+  navigateStudentToQuizTaking,
+} from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
 
@@ -423,15 +428,18 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         );
         if (pendingCheckpoint) {
           const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-          if (navigation) {
-            navigation.navigate('QuizTakingScreen', {
-              quizId: correctQuizId,
-              sessionId: correctSessionId,
-              classroomId: correctClassroomId,
-              quizData: attemptData,
-              submissionRecovery: recovery,
-            });
-          }
+          const startCtx = {
+            correctQuizId,
+            correctSessionId,
+            correctClassroomId,
+            attemptData,
+          };
+          const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+          navigateStudentToQuizTaking(
+            navigation,
+            onNavigate,
+            buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
+          );
           return;
         }
 
@@ -447,80 +455,32 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           return;
         }
 
-        // Not yet completed — fetch full quiz data (with questions) then navigate.
-        // This mirrors the web (OpenQuizPage) and Notifications screen flow:
-        //   GET /api/v1/quiz?session_id=... → quiz_data.questions.quizzes (filtered to question_count)
-        let quizDataWithQuestions = attemptData;
-        try {
-          const quizResponse = await getQuizBySessionId(correctSessionId);
-          if (quizResponse.success && quizResponse.quiz_data) {
-            const fetchedQuiz = quizResponse.quiz_data;
-            // Limit to the teacher-selected question count (same as web)
-            const questionLimit = fetchedQuiz.question_count || fetchedQuiz.questions.quizzes.length;
-            const questions = fetchedQuiz.questions.quizzes.slice(0, questionLimit).map(
-              (q: any, index: number) => ({
-                id: `q-${index}`,
-                question: q.quiz.question,
-                options: q.quiz.options,
-                correctAnswer: q.quiz.answer,
-                answer: q.answer,
-                explanation: null,
-              })
-            );
-            quizDataWithQuestions = {
-              ...attemptData,
-              id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              quiz_id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              session_id: correctSessionId,
-              classroom_id: correctClassroomId,
-              title: fetchedQuiz.topic || attemptData?.quiz_name || 'Assessment',
-              duration: fetchedQuiz.duration || attemptData?.duration || 30,
-              has_time_limit: fetchedQuiz.has_time_limit ?? true,
-              is_public: fetchedQuiz.is_public ?? false,
-              questions,
-            };
-          }
-        } catch (fetchErr) {
-          console.warn('⚠️ Could not fetch quiz questions, navigating with metadata only:', fetchErr);
-        }
-
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-            quiz: quizDataWithQuestions,
-            is_public: false,
-          });
-        }
+        const startCtx = {
+          correctQuizId,
+          correctSessionId,
+          correctClassroomId,
+          attemptData,
+        };
+        const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+        navigateStudentToQuizTaking(
+          navigation,
+          onNavigate,
+          buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions),
+        );
       } catch {
         // If the attempt-check fails, proceed to the quiz so the student
         // is never blocked by a network error.
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-            quiz: attemptData,
-            is_public: false,
-          });
-        }
+        const startCtx = {
+          correctQuizId,
+          correctSessionId,
+          correctClassroomId,
+          attemptData,
+        };
+        navigateStudentToQuizTaking(
+          navigation,
+          onNavigate,
+          buildQuizTakingNavigationParams(startCtx, attemptData ?? {}),
+        );
       } finally {
         setTimeout(() => setLoadingQuizId(null), 1000);
       }
