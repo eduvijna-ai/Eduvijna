@@ -11,7 +11,11 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useDocumentScreenFocusEffect } from '@core/hooks/useDocumentScreenFocusEffect';
+import {
+  readDocumentWorkspacePreset,
+  withDocumentWorkspaceParams,
+} from '@core/utils/documentWorkspaceParams';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
@@ -174,7 +178,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     void applyBookFromStorageOrParams(route?.params?.book);
   }, [route?.params?.book, applyBookFromStorageOrParams]);
 
-  useFocusEffect(
+  useDocumentScreenFocusEffect(
     useCallback(() => {
       const incoming = route?.params?.book as DocumentUploadBook | undefined;
       if (!incoming?.isCameraSession || !incoming.id) return undefined;
@@ -627,7 +631,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      navigation.navigate('DocumentUploadQuizScreen', {
+      navigation.navigate(
+        'DocumentUploadQuizScreen',
+        withDocumentWorkspaceParams(route, {
         quizData: {
           id: libraryDocId || bookState.docId || bookState.id,
           title: bookState.title || bookState.originalName,
@@ -670,7 +676,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         workspaceMode: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
         showShareButton: true,
         showActionButtons: true,
-      });
+      }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
     } finally {
@@ -740,11 +747,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         });
       }
 
-      navigation.navigate('WorksheetScreen', {
-        worksheetData: worksheet,
-        title: `${bookState?.title || 'Document'} Worksheet`,
-        selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
-      });
+      navigation.navigate(
+        'WorksheetScreen',
+        withDocumentWorkspaceParams(route, {
+          worksheetData: worksheet,
+          title: `${bookState?.title || 'Document'} Worksheet`,
+          selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
+        }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
     } finally {

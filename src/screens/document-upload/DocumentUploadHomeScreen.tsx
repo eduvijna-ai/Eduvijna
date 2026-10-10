@@ -10,7 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useDocumentScreenFocusEffect } from '@core/hooks/useDocumentScreenFocusEffect';
+import {
+  readDocumentWorkspacePreset,
+  withDocumentWorkspaceParams,
+  workspacePresetToPreviewFields,
+} from '@core/utils/documentWorkspaceParams';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,7 +103,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   // Reload on focus; clear upload UI after a successful assessment generation.
   // selectedBook is in-memory — Preview add/remove persist to AsyncStorage, so
   // re-read that copy here or Home keeps showing the stale page count.
-  useFocusEffect(
+  useDocumentScreenFocusEffect(
     useCallback(() => {
       let active = true;
       setLoadingBooks(true);
@@ -230,7 +235,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     setSelectedBook(next);
     setBookName(next.title);
     await loadBooks();
-    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const processAssetAndNavigate = async (asset: {
@@ -315,7 +326,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     await loadBooks();
 
     // Required flow: upload/capture success -> direct preview
-    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const handleUploadTilePress = async () => {
@@ -381,7 +398,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       setSelectedBook(next);
       setBookName(next.title);
       await loadBooks();
-      navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+      navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to pick images from gallery.'));
     } finally {
@@ -432,7 +455,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     await upsertDocumentUploadBook(mergedBook);
     setSelectedBook(mergedBook);
 
-    navigation.navigate('DocumentUploadPreviewScreen', { book: mergedBook });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: mergedBook,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const goToHistory = () => {

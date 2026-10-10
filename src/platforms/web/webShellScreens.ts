@@ -7,6 +7,7 @@ export const DOCUMENT_UPLOAD_WEB_SCREENS = [
   'DocumentUploadQuizScreen',
   'DocumentLibraryScreen',
   'BookPageViewerScreen',
+  'WorksheetScreen',
 ] as const;
 
 export type DocumentUploadWebScreen = (typeof DOCUMENT_UPLOAD_WEB_SCREENS)[number];
@@ -66,6 +67,7 @@ export function isRegisteredWebShellScreen(screen: string): boolean {
     'QuizStatusScreen',
     'QuizLoadingScreen',
     'ERP',
+    'WorksheetScreen',
     ...DOCUMENT_UPLOAD_WEB_SCREENS,
   ]);
   return base.has(screen);

@@ -47,6 +47,7 @@ import DocumentUploadHistoryScreen from './src/screens/document-upload/DocumentU
 import DocumentUploadQuizScreen from './src/screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from './src/screens/document-upload/DocumentLibraryScreen';
 import BookPageViewerScreen from './src/screens/document-upload/BookPageViewerScreen';
+import WorksheetScreen from './src/screens/WorksheetScreen';
 import type { WebShellScreen } from './src/platforms/web/webShellScreens';
 import CreateImageQuizScreen from './src/screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from './src/screens/CreateYouTubeQuizScreen';
@@ -71,6 +72,7 @@ function AppContent() {
   useNotificationPolling(); // Poll for notifications via API
   const [activeScreen, setActiveScreen] = useState<WebShellScreen>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
+  const webNavStackRef = useRef<Array<{ screen: WebShellScreen; params: any }>>([]);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
@@ -81,6 +83,7 @@ function AppContent() {
       // User logged out, clear guards
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
+      webNavStackRef.current = [];
       initialDeepLinkProcessed.current = false; // Allow deep link re-processing after logout
     } else {
       // User just authenticated - allow pending deep link to be processed
@@ -257,6 +260,7 @@ function AppContent() {
 
   // Handle navigation between screens with params support
   const handleNavigate = (screen: string, params?: any) => {
+    webNavStackRef.current.push({ screen: activeScreen, params: navigationParams });
     setActiveScreen(screen as any);
     setNavigationParams(params || {});
   };
@@ -266,9 +270,29 @@ function AppContent() {
   // navigate/goBack/replace/setOptions.
   const createWebNavigation = (defaultBackScreen: string = 'dashboard') => ({
     navigate: (screen: string, params?: any) => handleNavigate(screen, params),
-    replace: (screen: string, params?: any) => handleNavigate(screen, params),
-    goBack: () => handleNavigate(defaultBackScreen),
-    // No-op on web shell; prevents crashes from stack-only APIs.
+    replace: (screen: string, params?: any) => {
+      webNavStackRef.current.pop();
+      handleNavigate(screen, params);
+    },
+    goBack: () => {
+      const previous = webNavStackRef.current.pop();
+      if (previous) {
+        setActiveScreen(previous.screen);
+        setNavigationParams(previous.params || {});
+        return;
+      }
+      setActiveScreen(defaultBackScreen as WebShellScreen);
+      setNavigationParams({});
+    },
+    canGoBack: () => webNavStackRef.current.length > 0,
+    push: (screen: string, params?: any) => handleNavigate(screen, params),
+    pop: () => {
+      const previous = webNavStackRef.current.pop();
+      if (previous) {
+        setActiveScreen(previous.screen);
+        setNavigationParams(previous.params || {});
+      }
+    },
     setOptions: (_options: any) => {},
   });
 
@@ -596,6 +620,13 @@ function AppContent() {
           return <QuizLoadingScreen 
             route={{ params: navigationParams }}
           />;
+        case 'WorksheetScreen':
+          return (
+            <WorksheetScreen
+              navigation={createWebNavigation('DocumentUploadPreviewScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'ERP':
           return (
             <NavigationContainer independent>
@@ -612,7 +643,7 @@ function AppContent() {
     };
 
     return (
-      <WebNavigation activeScreen={activeScreen} onNavigate={(screen) => handleNavigate(screen)}>
+      <WebNavigation activeScreen={activeScreen} onNavigate={handleNavigate}>
         {renderScreen()}
       </WebNavigation>
     );

@@ -108,9 +108,30 @@ async function main() {
   const student = await loginDevApi(cfg.accounts.student.username, cfg.accounts.student.password);
   report.steps.push(step('login_instructor_student', 'passed'));
 
-  const classroomId =
-    cfg.disposableQuiz?.classroomId ||
-    (await discoverClassroomForStudent(instructor.token, student.userId)).classroomId;
+  let classroomId = cfg.disposableQuiz?.classroomId;
+  if (!classroomId) {
+    try {
+      classroomId = (await discoverClassroomForStudent(instructor.token, student.userId)).classroomId;
+    } catch (error) {
+      report.steps.push(
+        step('disposable_classroom_setup', 'failed', {
+          error: error?.message || String(error),
+        }),
+      );
+      report.status = 'failed';
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
+      console.error('Disposable classroom setup failed; aborting document workflow.');
+      process.exit(1);
+    }
+  }
+  if (!classroomId) {
+    report.steps.push(step('disposable_classroom_setup', 'failed', { error: 'missing_classroom_id' }));
+    report.status = 'failed';
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
+    process.exit(1);
+  }
 
   // --- From Books: list → generate → save → history → reopen ---
   const filesRes = await apiJson(
@@ -388,11 +409,10 @@ async function main() {
     );
   }
 
-  const failed = report.steps.some((s) => s.status === 'failed');
-  const corePassed = report.steps
-    .filter((s) => s.step !== 'upload_multimodal_generate')
-    .every((s) => s.status === 'passed' || s.status === 'skipped' || s.status === 'limited');
-  report.status = failed ? 'failed' : corePassed ? 'passed' : 'limited';
+  const documentFailed = report.steps.some(
+    (s) => s.status === 'failed' || s.status === 'limited',
+  );
+  report.status = documentFailed ? 'failed' : 'passed';
 
   mkdirSync(dirname(out), { recursive: true });
   const redactedReport = redactDeep({
@@ -404,7 +424,7 @@ async function main() {
   });
   writeFileSync(out, JSON.stringify(redactedReport, null, 2));
   console.log(`Wrote ${out} (status=${report.status})`);
-  process.exit(failed ? 1 : 0);
+  process.exit(documentFailed ? 1 : 0);
 }
 
 main().catch((e) => {

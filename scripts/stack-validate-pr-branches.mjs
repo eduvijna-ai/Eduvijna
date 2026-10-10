@@ -169,11 +169,23 @@ try {
     });
   }
 
-  report.status = report.branches.some((b) =>
+  const exportFailures = report.branches.some((b) =>
     Object.values(b.exports).some((e) => e.exitCode !== 0),
-  )
+  );
+  const diagnosticRegression = report.branches.some(
+    (b) =>
+      (b.diagnostics?.tsErrorsAdded ?? 0) > 0 ||
+      (b.diagnostics?.eslintErrorsDelta ?? 0) > 0 ||
+      (b.diagnostics?.head?.typeCheckExit ?? 0) !== 0 ||
+      (b.diagnostics?.head?.eslintExit ?? 0) !== 0,
+  );
+  report.status = exportFailures
     ? 'export_failures'
-    : 'passed';
+    : diagnosticRegression
+      ? 'diagnostic_regression'
+      : 'passed';
+  report.exportStatus = exportFailures ? 'failed' : 'passed';
+  report.diagnosticStatus = diagnosticRegression ? 'regression' : 'passed';
 } catch (error) {
   report.status = 'failed';
   report.error = error?.message || String(error);
@@ -183,4 +195,8 @@ try {
   mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
+  const shouldFail =
+    report.status !== 'passed' ||
+    report.branches?.some((b) => (b.diagnostics?.tsErrorsAdded ?? 0) > 0);
+  process.exit(shouldFail ? 1 : 0);
 }
