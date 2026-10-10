@@ -488,7 +488,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       <View style={styles.tabRow}>
         {([
           { key: 'upload', label: 'Upload' },
-          { key: 'search', label: 'Search' },
+          { key: 'search', label: 'On device' },
         ] as const).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -513,8 +513,10 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
             <Ionicons name="library-outline" size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.libraryBannerTitle}>Browse Document Library</Text>
-            <Text style={styles.libraryBannerSub}>Generate quizzes from books saved on the server</Text>
+            <Text style={styles.libraryBannerTitle}>From Books</Text>
+            <Text style={styles.libraryBannerSub}>
+              Server library — select pages, generate, save, and share to classrooms
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
         </TouchableOpacity>

@@ -70,8 +70,22 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
     navigate: () => {},
     goBack: () => {},
     addListener: () => () => {},
+    replace: () => {},
     ...(propNavigation || {}),
   };
+
+  // Legacy screen name — runtime document-quiz parity lives in the upload workspace.
+  useEffect(() => {
+    const params = route?.params ?? {};
+    if (typeof navigation.replace === 'function') {
+      navigation.replace('DocumentUploadHomeScreen', params);
+      return;
+    }
+    if (typeof navigation.navigate === 'function') {
+      navigation.navigate('DocumentUploadHomeScreen', params);
+    }
+  }, [navigation, route?.params]);
+
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();

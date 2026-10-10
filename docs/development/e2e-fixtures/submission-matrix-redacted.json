@@ -1,0 +1,10 @@
+{
+  "verifiedAt": "2026-10-10T11:40:44.460Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "status": "pending_credentials",
+  "limitations": [
+    "Create .dev-api-credentials.local.json with instructor + student accounts to execute live matrix."
+  ],
+  "instructor": null,
+  "student": null
+}
