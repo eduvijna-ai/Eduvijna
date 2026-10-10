@@ -13,6 +13,8 @@ import NotificationBell from '../../../components/NotificationBell';
 import NotificationsDropdown from '../../../components/NotificationsDropdown';
 import useNotifications from '@core/hooks/useNotifications';
 import { handleOpenQuiz } from '@core/services/openQuizHandler';
+import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
 import { Alert } from 'react-native';
 
 
@@ -79,6 +81,53 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     // Navigate based on notification type and data
     const { type, data } = notification;
     const quizId = data?.quiz_id || data?.quizId;
+    const openQuizUser = authUser ?? user;
+
+    if (type === 'quiz_graded' && openQuizUser) {
+      const gradedParams = buildQuizGradedResultsNavigationParams(data ?? {});
+      const gradedSessionId =
+        typeof gradedParams?.sessionId === 'string' ? gradedParams.sessionId : null;
+      const gradedStudentId =
+        typeof gradedParams?.studentId === 'string'
+          ? gradedParams.studentId
+          : openQuizUser.role === 'student'
+            ? String(openQuizUser.id)
+            : undefined;
+
+      if (gradedParams && gradedSessionId && gradedStudentId && openQuizUser.role === 'student') {
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: gradedStudentId,
+            quizId: gradedParams.quizId as string | number,
+            sessionId: gradedSessionId,
+            classroomId: String(data?.classroom_id ?? data?.classroomId ?? ''),
+            quizName: gradedParams.quizName as string | undefined,
+          },
+          {
+            onNavigate: (screen, params) => onNavigate(screen as WebNavScreen, params),
+          },
+        );
+        return;
+      }
+
+      if (gradedParams && (openQuizUser.role === 'instructor' || openQuizUser.role === 'admin')) {
+        onNavigate('QuizResultsScreen', {
+          ...gradedParams,
+          isTeacherView: true,
+          studentId: gradedStudentId ?? gradedParams.studentId,
+        });
+        return;
+      }
+
+      if (gradedParams) {
+        onNavigate('QuizResultsScreen', gradedParams);
+        return;
+      }
+
+      onNavigate('assessments');
+      return;
+    }
+
     const rawSessionId = data?.session_id ?? data?.sessionId;
     const sessionId =
       typeof rawSessionId === 'string'
@@ -87,7 +136,6 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
           ? String(rawSessionId)
           : null;
 
-    const openQuizUser = authUser ?? user;
     if (sessionId && openQuizUser) {
       await handleOpenQuiz(sessionId, 'notification', openQuizUser, {
         navigate: (screen, params) => onNavigate(screen as WebNavScreen, params),
@@ -100,14 +148,6 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
       case 'quiz_assigned':
         if (quizId) {
           onNavigate('QuizPreviewScreen', { quizId });
-        } else {
-          onNavigate('assessments');
-        }
-        break;
-
-      case 'quiz_graded':
-        if (quizId) {
-          onNavigate('QuizResultsScreen', { quizId });
         } else {
           onNavigate('assessments');
         }

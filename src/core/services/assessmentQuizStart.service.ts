@@ -181,10 +181,6 @@ export async function resolveStudentAssignedQuizStart(args: {
     args.studentId,
     args.sessionId || undefined,
   );
-  if (attemptCheck.lookupFailed) {
-    return { kind: 'lookup_failed' };
-  }
-
   const pendingCheckpoint = await findPendingSubmissionCheckpoint(
     args.studentId,
     args.quizId,
@@ -198,6 +194,10 @@ export async function resolveStudentAssignedQuizStart(args: {
       kind: 'navigate',
       params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
     };
+  }
+
+  if (attemptCheck.lookupFailed) {
+    return { kind: 'lookup_failed' };
   }
 
   if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
