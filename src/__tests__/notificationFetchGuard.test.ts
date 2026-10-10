@@ -35,6 +35,21 @@ describe('notificationFetchGuard', () => {
     expect(throttled.notifications[0]?.title).toBe('cached');
   });
 
+  it('retains last success after HTTP 429', async () => {
+    jest.useFakeTimers();
+    await guardedNotificationFetch('acct-429', async () => [
+      { id: 3, title: 'before-429', body: '', status: 'sent', priority: 'normal', created_at: '' },
+    ]);
+    jest.advanceTimersByTime(16_000);
+    const rateLimited = await guardedNotificationFetch('acct-429', async () => {
+      const err = Object.assign(new Error('rate limited'), { status: 429 });
+      throw err;
+    });
+    expect(rateLimited.kind).toBe('suppressed');
+    expect(rateLimited.reason).toBe('rate_limited');
+    expect(rateLimited.notifications[0]?.title).toBe('before-429');
+  });
+
   it('isolates accounts during throttle', async () => {
     await guardedNotificationFetch('a', async () => [
       { id: 1, title: 'A', body: '', status: 'sent', priority: 'normal', created_at: '' },
