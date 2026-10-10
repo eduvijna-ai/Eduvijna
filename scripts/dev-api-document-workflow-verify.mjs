@@ -435,7 +435,10 @@ async function main() {
       data: s.data ? redactDeep(s.data) : undefined,
     })),
   });
-  writeFileSync(out, JSON.stringify(redactedReport, null, 2));
+  writeFileSync(
+    out,
+    JSON.stringify({ ...redactedReport, verificationInstructions: VERIFICATION_INSTRUCTIONS }, null, 2),
+  );
   console.log(`Wrote ${out} (status=${report.status})`);
   process.exit(documentFailed ? 1 : 0);
 }
