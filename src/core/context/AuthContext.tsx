@@ -71,6 +71,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const logout = async () => {
     try {
+      const accountKey = user?.id != null ? String(user.id) : null;
+      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
+      resetNotificationFetchGuardForAccount(accountKey);
       // Clear stored data
       await TokenStorage.clearAuthData();
       
