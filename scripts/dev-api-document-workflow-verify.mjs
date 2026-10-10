@@ -26,6 +26,13 @@ const PNG_1X1 = Buffer.from(
 
 const QUIZ_REACT_DEPLOYED_REF = '31ae140f50ccc79079cdfc8c28f2d03b60fde7';
 
+const VERIFICATION_INSTRUCTIONS = [
+  'Use authorized dev-api accounts only; disposable uploads and sharequiz rows.',
+  'From Books optional string fields must remain empty-string payloads, not null.',
+  'Quiz-React deployed reference is read-only parity context; no Quiz-React mutations.',
+  'Failed assertions and steps must fail overall status and exit code.',
+];
+
 function step(name, status, detail = {}) {
   return { step: name, status, ...detail };
 }
@@ -97,6 +104,7 @@ async function main() {
     steps: [],
     assertions: [],
     limitations: [],
+    verificationInstructions: VERIFICATION_INSTRUCTIONS,
     status: 'pending',
   };
 
@@ -414,9 +422,9 @@ async function main() {
     );
   }
 
-  const documentFailed = report.steps.some(
-    (s) => s.status === 'failed' || s.status === 'limited',
-  );
+  const assertionFailed = report.assertions.some((a) => a.passed === false);
+  const documentFailed =
+    report.steps.some((s) => s.status === 'failed' || s.status === 'limited') || assertionFailed;
   report.status = documentFailed ? 'failed' : 'passed';
 
   mkdirSync(dirname(out), { recursive: true });
