@@ -1,10 +1,11 @@
 {
-  "verifiedAt": "2026-10-10T12:48:43.995Z",
+  "verifiedAt": "2026-10-10T15:47:43.301Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "profiles": [
     {
       "accountLabel": "admin",
       "role": "admin",
+      "roleVerified": true,
       "steps": [
         {
           "name": "[redacted]",
@@ -25,14 +26,17 @@
         {
           "name": "[redacted]",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "attemptedAfterSaveLost": false
         }
       ],
-      "restored": true
+      "restored": true,
+      "abortedBeforeMutation": false
     },
     {
       "accountLabel": "instructor",
       "role": "instructor",
+      "roleVerified": true,
       "steps": [
         {
           "name": "[redacted]",
@@ -53,14 +57,17 @@
         {
           "name": "[redacted]",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "attemptedAfterSaveLost": false
         }
       ],
-      "restored": true
+      "restored": true,
+      "abortedBeforeMutation": false
     },
     {
       "accountLabel": "student",
       "role": "student",
+      "roleVerified": true,
       "steps": [
         {
           "name": "[redacted]",
@@ -81,10 +88,12 @@
         {
           "name": "[redacted]",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "attemptedAfterSaveLost": false
         }
       ],
-      "restored": true
+      "restored": true,
+      "abortedBeforeMutation": false
     }
   ],
   "notifications": [
@@ -108,28 +117,20 @@
           "name": "[redacted]",
           "httpStatus": 200,
           "ok": true
-        },
-        {
-          "name": "[redacted]",
-          "detail": "Inspect history sampleTypes for graded/submission types when present on dev-api.",
-          "sampleTypes": []
         }
       ],
       "clientEvidence": [
         {
           "name": "[redacted]",
-          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
-        },
-        {
-          "name": "[redacted]",
-          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
       "deviceReceipt": {
         "status": "not_collected",
         "reason": "No physical device push receipt in CI matrix"
       },
-      "limitations": []
+      "limitations": [],
+      "ok": true
     },
     {
       "accountLabel": "instructor",
@@ -151,28 +152,20 @@
           "name": "[redacted]",
           "httpStatus": 200,
           "ok": true
-        },
-        {
-          "name": "[redacted]",
-          "detail": "Inspect history sampleTypes for graded/submission types when present on dev-api.",
-          "sampleTypes": []
         }
       ],
       "clientEvidence": [
         {
           "name": "[redacted]",
-          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
-        },
-        {
-          "name": "[redacted]",
-          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
       "deviceReceipt": {
         "status": "not_collected",
         "reason": "No physical device push receipt in CI matrix"
       },
-      "limitations": []
+      "limitations": [],
+      "ok": true
     },
     {
       "accountLabel": "student",
@@ -194,28 +187,20 @@
           "name": "[redacted]",
           "httpStatus": 200,
           "ok": true
-        },
-        {
-          "name": "[redacted]",
-          "count": 0,
-          "hasSessionDestination": false
         }
       ],
       "clientEvidence": [
         {
           "name": "[redacted]",
-          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
-        },
-        {
-          "name": "[redacted]",
-          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
       "deviceReceipt": {
         "status": "not_collected",
         "reason": "No physical device push receipt in CI matrix"
       },
-      "limitations": []
+      "limitations": [],
+      "ok": true
     }
   ],
   "erpDeferred": true,
