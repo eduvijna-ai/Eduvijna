@@ -79,7 +79,8 @@ function sdkmanager {
 }
 
 function avdmanager {
-  & (Join-Path $cmdlineBin 'avdmanager.bat') --sdk_root=$SdkPath @args
+  # Uses ANDROID_SDK_ROOT / ANDROID_HOME set above (avdmanager rejects global --sdk_root).
+  & (Join-Path $cmdlineBin 'avdmanager.bat') @args
 }
 
 Write-Host "JAVA_HOME=$env:JAVA_HOME"

@@ -42,7 +42,7 @@ java -version          # 17.x
 adb version            # 1.0.41+
 emulator -list-avds    # includes Eduvijna_Android_Dev
 sdkmanager --version          # functions preset --sdk_root when dot-sourced
-avdmanager list avd
+avdmanager list avd   # may warn on AVD path; prefer `emulator -list-avds` for boot checks
 ```
 
 ### Hardware acceleration
