@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import type { DashboardStats } from '../types';
 import type { StudentDashboardQuizRow as Row } from '../services/studentDashboardData.service';
@@ -96,4 +97,14 @@ export function resetStudentAssignmentDashboardStore(userId: string | null = nul
 
 export function selectStudentDashboardStatsFromStore(): DashboardStats {
   return useStudentAssignmentDashboardStore.getState().getStats();
+}
+
+/** Memoized stats from stable store fields (avoids getStats() reference loops in effects). */
+export function useStudentAssignmentDashboardStats(): DashboardStats {
+  const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
+  return useMemo(
+    () => useStudentAssignmentDashboardStore.getState().getStats(),
+    [rawQuizzes, classificationNow],
+  );
 }

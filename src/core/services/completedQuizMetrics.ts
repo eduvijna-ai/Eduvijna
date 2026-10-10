@@ -43,6 +43,24 @@ export function countCorrectAnswersFromPersistedResult(
   return evaluated > 0 ? correct : undefined;
 }
 
+export function completedRowNeedsHydration(quiz: {
+  status?: string;
+  score?: number | null;
+  time_spent_seconds?: number | null;
+  completed_at?: string | null;
+  correct_answers?: number;
+}): boolean {
+  if (quiz.status !== 'completed') {
+    return false;
+  }
+  const hasScore = quiz.score != null && Number.isFinite(quiz.score);
+  const hasTime = quiz.time_spent_seconds != null && Number.isFinite(quiz.time_spent_seconds);
+  const hasCompletedAt =
+    quiz.completed_at != null && String(quiz.completed_at).trim().length > 0;
+  const hasCorrect = typeof quiz.correct_answers === 'number';
+  return !hasScore || !hasTime || !hasCompletedAt || !hasCorrect;
+}
+
 export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,

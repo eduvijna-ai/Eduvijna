@@ -26,7 +26,10 @@ import {
 } from '@core/types';
 import { isStudentQuizActive, isStudentQuizUpcoming } from '../utils/quizFilters';
 import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
-import { useStudentAssignmentDashboardStore } from '@core/store/studentAssignmentDashboard.store';
+import {
+  useStudentAssignmentDashboardStats,
+  useStudentAssignmentDashboardStore,
+} from '@core/store/studentAssignmentDashboard.store';
 import {
   executeStudentAssignedQuizViewResults,
   isAssignedQuizLoadError,
@@ -68,19 +71,9 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<DashboardStats>({
-    total_quizzes: 0,
-    completed_count: 0,
-    pending_count: 0,
-    missed_count: 0,
-    average_score: 0,
-    total_time_spent: 0,
-    total_questions_attempted: 0,
-    total_classes: 0,
-  });
+  const stats = useStudentAssignmentDashboardStats();
   const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
   const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
-  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
   const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
   const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
@@ -91,13 +84,10 @@ export default function StudentDashboard({ navigation, route }: Props) {
     s.getClassifiedQuizzes(),
   ) as ParsedQuiz[];
 
-  const sharedStats = useStudentAssignmentDashboardStore((s) => s.getStats());
-
   useEffect(() => {
-    setStats(sharedStats);
     const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
     setQuizzes(classified as any, classified.length);
-  }, [sharedStats, classificationNow, rawQuizzes, setQuizzes]);
+  }, [classificationNow, rawQuizzes, setQuizzes]);
 
   const isWeb = width >= 768;
   const isTablet = width >= 600 && width < 1024;
@@ -133,21 +123,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
         return;
       }
 
-      const dashboardStats = useStudentAssignmentDashboardStore.getState().getStats();
-
-      if (parsed.length > 0) {
-        setStats(dashboardStats);
-      } else {
-        setStats({
-          total_quizzes: 0,
-          completed_count: 0,
-          pending_count: 0,
-          missed_count: 0,
-          average_score: 0,
-          total_time_spent: 0,
-          total_questions_attempted: 0,
-          total_classes: 0,
-        });
+      if (parsed.length === 0) {
         setQuizzes([], 0);
       }
     } catch (error: any) {
