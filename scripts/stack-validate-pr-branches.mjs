@@ -79,15 +79,15 @@ function linkNodeModules(worktreePath) {
   }
 }
 
-function ensureWorktree(branch) {
+function ensureWorktree(branch, sha) {
   const safe = branch.replace(/[^\w-]/g, '_');
   const path = join(worktreeRoot, safe);
-  if (!existsSync(path)) {
-    mkdirSync(worktreeRoot, { recursive: true });
-    execSync(`git worktree add "${path}" "${branch}"`, { cwd: repoRoot, stdio: 'inherit' });
+  mkdirSync(worktreeRoot, { recursive: true });
+  const gitFile = join(path, '.git');
+  if (!existsSync(gitFile)) {
+    execSync(`git worktree add --detach "${path}" "${sha}"`, { cwd: repoRoot, stdio: 'inherit' });
   } else {
-    execSync(`git -C "${path}" checkout "${branch}"`, { stdio: 'inherit' });
-    execSync(`git -C "${path}" pull --ff-only origin "${branch}"`, { stdio: 'ignore' });
+    execSync(`git -C "${path}" checkout --detach "${sha}"`, { stdio: 'inherit' });
   }
   linkNodeModules(path);
   return path;
@@ -134,14 +134,19 @@ const report = {
     diagnostics: 'npm run type-check && npm run lint',
   },
   branches: [],
+  status: 'running',
+  error: null,
 };
 
-for (const row of STACK) {
+try {
+  execSync('git fetch origin', { cwd: repoRoot, stdio: 'ignore' });
+
+  for (const row of STACK) {
   const head = git(`rev-parse origin/${row.branch}`);
   const baseRef = resolveBaseRef(row.base);
   const baseSha = git(`merge-base ${head} ${baseRef}`);
   const branchKey = `pr${row.pr}`;
-  const wt = ensureWorktree(row.branch);
+  const wt = ensureWorktree(row.branch, head);
 
   console.log(`\n=== PR #${row.pr} ${row.branch} @ ${head.slice(0, 12)} ===`);
 
@@ -165,8 +170,19 @@ for (const row of STACK) {
     },
     exports,
   });
-}
+  }
 
-mkdirSync(dirname(reportPath), { recursive: true });
-writeFileSync(reportPath, JSON.stringify(report, null, 2));
-console.log(`\nWrote ${reportPath}`);
+  report.status = report.branches.some((b) =>
+    Object.values(b.exports).some((e) => e.exitCode !== 0),
+  )
+    ? 'export_failures'
+    : 'passed';
+} catch (error) {
+  report.status = 'failed';
+  report.error = error?.message || String(error);
+  throw error;
+} finally {
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.log(`\nWrote ${reportPath} (status=${report.status})`);
+}
