@@ -1,7 +1,7 @@
 describe('web navigation replace semantics', () => {
   it('replace swaps active entry without growing stack depth', () => {
-    const stack: string[] = ['dashboard'];
-    let active = 'document-home';
+    const stack: string[] = [];
+    let active = 'dashboard';
     const push = (screen: string) => {
       stack.push(active);
       active = screen;
@@ -15,5 +15,7 @@ describe('web navigation replace semantics', () => {
     replace('worksheet');
     expect(stack).toEqual(['dashboard']);
     expect(active).toBe('worksheet');
+    push('quiz-status');
+    expect(stack).toEqual(['dashboard', 'worksheet']);
   });
 });

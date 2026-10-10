@@ -170,4 +170,35 @@ describe('Assessments assigned quiz start navigation', () => {
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(await readQuizSubmissionCheckpoint('student-1', 10, 'sess-10')).not.toBeNull();
   });
+
+  it('resumes immutable recovery when attempt lookup fails but checkpoint exists', async () => {
+    await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+    mockCheckAttempt.mockResolvedValue({
+      hasAttempted: false,
+      lookupFailed: true,
+    });
+    mockGetAttended.mockResolvedValue({ submitted_at: null, log_data: {}, items: [] });
+    mockGetQuiz.mockResolvedValue({
+      success: true,
+      quiz_data: {
+        quiz_id: 10,
+        topic: 'Recovery Quiz',
+        question_count: 1,
+        questions: { quizzes: [{ quiz: { question: 'Q?', options: ['1', '2'], answer: '2' } }] },
+      },
+    });
+
+    const result = await resolveStudentAssignedQuizStart({
+      studentId: 'student-1',
+      quizId: 10,
+      sessionId: 'sess-10',
+      classroomId: 'c1',
+      attemptData: { quiz_id: 10, session_id: 'sess-10' },
+    });
+
+    expect(result.kind).toBe('navigate');
+    if (result.kind === 'navigate') {
+      expect(result.params.submissionRecovery?.mode).toBe('immutable_retry');
+    }
+  });
 });
