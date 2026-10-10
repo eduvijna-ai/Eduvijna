@@ -19,6 +19,19 @@ describe('reapplyStudentAssignmentClassification', () => {
     expect(row.availability_status).toBe('coming soon');
   });
 
+  it('marks inactive untimed assignments unavailable', () => {
+    const row = reapplyStudentAssignmentClassification(
+      {
+        status: 'pending',
+        has_time_limit: false,
+        is_active: false,
+      },
+      new Date(),
+    );
+    expect(row.availability_status).toBe('expired');
+    expect(row.status).toBe('missed');
+  });
+
   it('collects future boundary instants', () => {
     const start = new Date(Date.now() + 5_000).toISOString();
     const times = collectAssignmentBoundaryTimes(

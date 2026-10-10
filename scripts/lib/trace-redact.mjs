@@ -6,6 +6,21 @@ const PII_VALUE_PATTERNS = [
   /@.+\..+/,
 ];
 
+const RESOURCE_REF_KEYS = new Set([
+  'session_id',
+  'sessionId',
+  'classroom_id',
+  'classroomId',
+  'class_id',
+  'classId',
+  'quiz_id',
+  'quizId',
+]);
+
+function isResourceRefKey(key) {
+  return RESOURCE_REF_KEYS.has(key);
+}
+
 export function redactScalarValue(value) {
   if (value == null) return value;
   if (typeof value === 'string') {
@@ -41,12 +56,7 @@ export function redactDeep(input, depth = 0) {
   if (input && typeof input === 'object') {
     const out = {};
     for (const [key, value] of Object.entries(input)) {
-      if (
-        key === 'session_id' ||
-        key === 'classroom_id' ||
-        key === 'class_id' ||
-        key === 'quiz_id'
-      ) {
+      if (isResourceRefKey(key)) {
         out[key] =
           typeof value === 'string' || typeof value === 'number'
             ? `ref:${hashString(String(value))}`

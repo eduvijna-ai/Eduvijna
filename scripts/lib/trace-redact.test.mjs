@@ -9,6 +9,12 @@ test('redacts email-like strings inside arrays under non-sensitive keys', () => 
 });
 
 test('redacts demo usernames in nested string values', () => {
-  const out = redactDeep({ note: 'assigned to demo_aarya' });
-  assert.equal(out.note, 'assigned to [redacted-user]');
+  const out = redactDeep({ message: 'assigned to demo_aarya' });
+  assert.equal(out.message, 'assigned to [redacted-user]');
+});
+
+test('redacts camelCase resource identifiers', () => {
+  const out = redactDeep({ sessionId: 'sess-abc-123', quizId: 99 });
+  assert.match(out.sessionId, /^ref:[0-9a-f]+$/);
+  assert.match(out.quizId, /^ref:[0-9a-f]+$/);
 });

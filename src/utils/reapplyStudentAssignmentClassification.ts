@@ -7,6 +7,7 @@ export type AssignmentClockQuiz = {
   start_time?: string | null;
   end_time?: string | null;
   has_time_limit?: boolean;
+  is_active?: boolean;
   availability_status?: string;
 };
 
@@ -21,6 +22,7 @@ export function reapplyStudentAssignmentClassification<T extends AssignmentClock
     start_time: quiz.start_time,
     end_time: quiz.end_time,
     has_time_limit: quiz.has_time_limit,
+    is_active: quiz.is_active,
     now,
   });
   return {

@@ -904,8 +904,13 @@ export async function fetchStudentClassroomNameLookup(): Promise<Map<string, str
     return map;
   }
 
-  const data = await response.json();
-  const rows = Array.isArray(data.data) ? data.data : [];
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return map;
+  }
+  const rows = Array.isArray(data?.data) ? data.data : [];
   for (const row of rows) {
     const id = row.classroom_id || row.class_id;
     const name = row.classroom_name || row.name;
@@ -983,6 +988,7 @@ export function checkRecordToQuiz(
     availability_status: classified.availability_status,
     duration: d.duration,
     has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
     is_overdue: endDate ? now > endDate : false,
     days_until_due: endDate
       ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))

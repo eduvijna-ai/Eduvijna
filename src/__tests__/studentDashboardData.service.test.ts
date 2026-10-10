@@ -1,8 +1,22 @@
 import {
   computeStudentDashboardStats,
   dedupeStudentDashboardQuizzes,
+  loadStudentDashboardQuizzes,
 } from '../core/services/studentDashboardData.service';
-import { checkRecordToQuiz } from '../core/services/dashboardApi';
+import {
+  checkRecordToQuiz,
+  fetchQuizCheckRecord,
+  fetchStudentClassroomNameLookup,
+} from '../core/services/dashboardApi';
+
+jest.mock('../core/services/dashboardApi', () => {
+  const actual = jest.requireActual('../core/services/dashboardApi');
+  return {
+    ...actual,
+    fetchQuizCheckRecord: jest.fn(),
+    fetchStudentClassroomNameLookup: jest.fn(),
+  };
+});
 
 describe('studentDashboardData', () => {
   it('uses lookup when quiz_details omit classroom_name', () => {
@@ -147,5 +161,37 @@ describe('studentDashboardData', () => {
     expect(stats.completed_count).toBe(1);
     expect(stats.pending_count).toBe(1);
     expect(stats.average_score).toBe(80);
+  });
+
+  it('preserves check-record rows when classroom lookup transport fails', async () => {
+    const pendingRow = {
+      status: null,
+      classid: 'class_b3261be7',
+      student_id: '70',
+      quiz_details: {
+        quiz_id: 11,
+        topic: 'Lookup Resilience',
+        summary: '',
+        session_id: 'sess-resilience',
+        start_time: '2026-01-01T00:00:00.000Z',
+        end_time: '2099-01-01T00:00:00.000Z',
+        duration: 30,
+        has_time_limit: true,
+        question_count: 3,
+        questions: { quizzes: [] },
+        status: 'active',
+        is_active: true,
+        is_public: false,
+      },
+    };
+    (fetchQuizCheckRecord as jest.Mock).mockImplementation((_id: string, scope: string) =>
+      Promise.resolve({ result: scope === 'pending' ? [pendingRow] : [] }),
+    );
+    (fetchStudentClassroomNameLookup as jest.Mock).mockRejectedValue(new Error('transport_failed'));
+
+    const { quizzes } = await loadStudentDashboardQuizzes('70');
+    expect(quizzes).toHaveLength(1);
+    expect(quizzes[0].quiz_name).toBe('Lookup Resilience');
+    expect(String(quizzes[0].classroom_id)).toBe('class_b3261be7');
   });
 });

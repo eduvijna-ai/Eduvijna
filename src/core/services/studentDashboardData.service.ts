@@ -147,11 +147,12 @@ function mapCheckRecordRow(
 export async function loadStudentDashboardQuizzes(
   studentId: string,
 ): Promise<{ quizzes: StudentDashboardQuizRow[]; stats: DashboardStats }> {
-  const [pendingRes, completedRes, authorizedClassrooms] = await Promise.all([
+  const [pendingRes, completedRes, classroomLookup] = await Promise.all([
     fetchQuizCheckRecord(studentId, 'pending'),
     fetchQuizCheckRecord(studentId, 'completed'),
-    fetchStudentClassroomNameLookup(),
+    fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
   ]);
+  const authorizedClassrooms = classroomLookup;
 
   const combined = [...(pendingRes.result || []), ...(completedRes.result || [])];
   const classroomNames = mergeClassroomNameLookups(authorizedClassrooms, combined);
