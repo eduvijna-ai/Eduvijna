@@ -41,12 +41,14 @@ try {
     }
 
     foreach ($binDir in ($candidates | Select-Object -Unique)) {
-      if (Test-Path -LiteralPath (Join-Path $binDir "sdkmanager.bat")) {
+      $sdkManager = Join-Path $binDir "sdkmanager.bat"
+      $avdManager = Join-Path $binDir "avdmanager.bat"
+      if ((Test-Path -LiteralPath $sdkManager) -and (Test-Path -LiteralPath $avdManager)) {
         return $binDir
       }
     }
 
-    throw "Android SDK cmdline-tools not found under $SdkRoot. Install Command-line Tools (sdkmanager/avdmanager) via Android Studio SDK Manager."
+    throw "Android SDK cmdline-tools not found under $SdkRoot. A candidate directory must contain both sdkmanager.bat and avdmanager.bat (incomplete latest/flat installs are skipped). Install Command-line Tools via Android Studio SDK Manager."
   }
 
   if ([string]::IsNullOrWhiteSpace($SdkPath)) {
@@ -83,7 +85,12 @@ try {
   }
 
   function avdmanager {
-    & (Join-Path $script:EduvijnaCmdlineBin 'avdmanager.bat') @args
+    $avdManagerBat = Join-Path $script:EduvijnaCmdlineBin 'avdmanager.bat'
+    if ($MyInvocation.ExpectingInput) {
+      $input | & $avdManagerBat @args
+    } else {
+      & $avdManagerBat @args
+    }
   }
 
   Write-Host "JAVA_HOME=$env:JAVA_HOME"

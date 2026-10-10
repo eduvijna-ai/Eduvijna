@@ -33,7 +33,13 @@ cd C:\Users\kanne\dev\Eduvijna
 # . .\scripts\setup-android-env.ps1 -JdkPath "D:\jdk-17" -SdkPath "D:\Android\Sdk"
 ```
 
-Sets `JAVA_HOME` to JDK **17**, `ANDROID_HOME` / `ANDROID_SDK_ROOT`, and prepends platform-tools, emulator, and resolved **cmdline-tools** `bin` (`latest`, flat `bin`, or versioned folder).
+Sets `JAVA_HOME` to JDK **17**, `ANDROID_HOME` / `ANDROID_SDK_ROOT`, and prepends platform-tools, emulator, and resolved **cmdline-tools** `bin` (`latest`, flat `bin`, or versioned folder). A candidate is used only when **both** `sdkmanager.bat` and `avdmanager.bat` exist; incomplete installs are skipped.
+
+Isolated fixture checks (temp JDK/SDK trees only — does **not** touch a running Founder emulator):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup-android-env.tests.ps1
+```
 
 Verify in the **same** PowerShell session immediately after dot-sourcing (a **new** window does not inherit the script — dot-source again there):
 
@@ -76,7 +82,7 @@ If `sdkmanager` / `avdmanager` report an invalid SDK root, missing tools, or “
 
 Do **not** stop a Founder-running emulator to repair the SDK; use a separate PowerShell window for SDK checks only.
 
-Google’s recommended layout is `%ANDROID_SDK_ROOT%\cmdline-tools\latest\bin`; this host also has `%ANDROID_SDK_ROOT%\cmdline-tools\bin` — the setup script picks the first verified install.
+Google’s recommended layout is `%ANDROID_SDK_ROOT%\cmdline-tools\latest\bin`; this host also has `%ANDROID_SDK_ROOT%\cmdline-tools\bin`. The setup script picks the first directory that contains **both** `sdkmanager.bat` and `avdmanager.bat`.
 
 ## Emulator: `Eduvijna_Android_Dev`
 
@@ -86,7 +92,7 @@ Google’s recommended layout is `%ANDROID_SDK_ROOT%\cmdline-tools\latest\bin`; 
 | Device profile | `pixel` |
 | System image | `system-images;android-36;google_apis_playstore;x86_64` |
 
-Create (if missing):
+Create (if missing). The dot-sourced `avdmanager` wrapper forwards PowerShell pipeline input to `avdmanager.bat` (required for `echo no | …`):
 
 ```powershell
 . .\scripts\setup-android-env.ps1
@@ -238,7 +244,7 @@ Recorded **2026-10-10** on Windows (AVD `Eduvijna_Android_Dev`, emulator **36.2.
 | Cold boot `-no-snapshot-load` | **Pass** — `Found systemPath …\system-images\android-36\google_apis_playstore\x86_64\`; `sys.boot_completed=1`; `emulator-5554 device` |
 | App UI / dev client | **Pass** — Dev client opened `exp+eduvijna://…` → `MainActivity`; login UI (`No access token found` in Metro logs) |
 | API host `dev-api.eduvijna.com` | **Pass** — `adb logcat`: `baseURL: 'https://dev-api.eduvijna.com'` / `/api/v1/auth/logout`; `expo config` → `development` |
-| Gallery / camera / document picker | **Pending Founder** — Document Upload requires **authenticated** dev login; no test credentials in repo (do not upload documents) |
+| Gallery / camera / document picker | **Pending** — authenticated emulator login not executed this pass; no additional unauthenticated login probes |
 | Fast Refresh | **Pass** — Metro rebundled after local `Login.tsx` placeholder edit; change **reverted** before commit |
 | Reload / reconnect | **Pass** — JS bundle reload via dev-client URL to `http://10.0.2.2:8081` after Metro restart |
 | `npm run config:verify` / `cli:verify` | **Pass** on stacked branch (`eas-cli/16.27.0`) |
