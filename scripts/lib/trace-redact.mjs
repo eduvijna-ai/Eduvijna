@@ -27,10 +27,7 @@ export function redactScalarValue(value) {
     if (PII_VALUE_PATTERNS.some((re) => re.test(value))) {
       return '[redacted]';
     }
-    if (/\bdemo_[a-z0-9_]+\b/i.test(value)) {
-      return value.replace(/\bdemo_[a-z0-9_]+\b/gi, '[redacted-user]');
-    }
-    return value;
+    return redactFreeText(value);
   }
   return value;
 }

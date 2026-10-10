@@ -9,6 +9,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { execSync } from 'node:child_process';
+import {
+  collectTypeScriptIdentities,
+  diffIdentities,
+  parseEslintJsonReport,
+} from './lib/diagnostic-identities.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const exportRoot = join(repoRoot, '.stack-export-check');
@@ -66,27 +71,19 @@ function countDiagnostics(output, pattern) {
   return matches ? matches.length : 0;
 }
 
-function extractDiagnosticIdentities(typeOut, lintOut) {
-  const ts = new Set();
-  for (const match of typeOut.matchAll(/error (TS\d+):/g)) {
-    ts.add(match[1]);
-  }
-  const eslint = new Set();
-  for (const match of lintOut.matchAll(/\n\s*([^\s]+)\s+error\s+/g)) {
-    eslint.add(match[1]);
-  }
+function extractDiagnosticIdentities(typeOut, lintJsonOut) {
+  const ts = collectTypeScriptIdentities(typeOut);
+  const eslint = parseEslintJsonReport(lintJsonOut);
   return {
-    ts: [...ts].sort(),
-    eslint: [...eslint].sort(),
+    ts,
+    eslint,
   };
 }
 
 function diffAddedIdentities(headIds, baseIds) {
-  const baseTs = new Set(baseIds.ts);
-  const baseEslint = new Set(baseIds.eslint);
   return {
-    tsAdded: headIds.ts.filter((id) => !baseTs.has(id)),
-    eslintAdded: headIds.eslint.filter((id) => !baseEslint.has(id)),
+    tsAdded: diffIdentities(headIds.ts, baseIds.ts),
+    eslintAdded: diffIdentities(headIds.eslint, baseIds.eslint),
   };
 }
 
@@ -97,29 +94,30 @@ function runDiagnostics() {
     encoding: 'utf8',
     maxBuffer: 20 * 1024 * 1024,
   });
-  const lint = spawnSync('npm run lint', {
+  const lint = spawnSync('npx eslint . --ext .ts,.tsx --format json', {
     cwd: repoRoot,
     shell: true,
     encoding: 'utf8',
     maxBuffer: 30 * 1024 * 1024,
   });
   const typeOut = `${type.stdout || ''}\n${type.stderr || ''}`;
-  const lintOut = `${lint.stdout || ''}\n${lint.stderr || ''}`;
-  const identities = extractDiagnosticIdentities(typeOut, lintOut);
+  const lintJsonOut = `${lint.stdout || ''}`;
+  const lintErrOut = `${lint.stderr || ''}`;
+  const identities = extractDiagnosticIdentities(typeOut, lintJsonOut);
   const toolFailure =
     type.status === null ||
     lint.status === null ||
     type.error ||
     lint.error ||
     (type.status !== 0 && identities.ts.length === 0 && typeOut.includes('error')) ||
-    (lint.status !== 0 && identities.eslint.length === 0 && lintOut.includes('error'));
+    (lint.status !== 0 && identities.eslint.length === 0 && (lintErrOut.includes('error') || lintJsonOut.includes('error')));
   return {
     typeCheckExit: type.status ?? 1,
     eslintExit: lint.status ?? 1,
     tsErrorCount: countDiagnostics(typeOut, /error TS\d+:/g),
     eslintErrorCount: countDiagnostics(lintOut, /\berror\b/gi),
     tsOutputBytes: typeOut.length,
-    eslintOutputBytes: lintOut.length,
+    eslintOutputBytes: lintJsonOut.length + lintErrOut.length,
     identities,
     baselineDebt: {
       tsIdentities: identities.ts,
