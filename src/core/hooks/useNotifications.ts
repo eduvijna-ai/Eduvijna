@@ -5,12 +5,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getNotifications,
-  getUnreadCount,
   markAsRead,
   markAllAsRead,
   Notification,
 } from '../api/notifications.api';
 import { useAuth } from '@core/hooks/useAuth';
+import { countUnreadNotifications, isNotificationUnread } from '../api/notificationUnread';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -33,7 +33,7 @@ export default function useNotifications() {
       setError(null);
       const data = await getNotifications({ accountKey });
       setNotifications(data);
-      setUnreadCount(data.filter((n) => !n.clicked_at && !n.is_read).length);
+      setUnreadCount(countUnreadNotifications(data));
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load notifications';
@@ -44,31 +44,29 @@ export default function useNotifications() {
   }, [accountKey]);
 
   const fetchUnreadCount = useCallback(async () => {
-    if (!accountKey) return;
-    try {
-      const count = await getUnreadCount({ accountKey, notifications });
-      setUnreadCount(count);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to load unread count';
-      console.error('Failed to fetch unread count:', errorMsg);
-    }
-  }, [accountKey]);
+    await fetchNotifications();
+  }, [fetchNotifications]);
 
   const markNotificationRead = useCallback(
     async (notificationId: string | number) => {
       if (!accountKey) return;
       try {
+        const wasUnread = notifications.some(
+          (n) => n.id === Number(notificationId) && isNotificationUnread(n),
+        );
         setNotifications((prev) =>
           prev.map((n) => (n.id === Number(notificationId) ? { ...n, is_read: true } : n)),
         );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
+        if (wasUnread) {
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
         await markAsRead(String(notificationId), accountKey);
       } catch (err: unknown) {
         console.error('Failed to mark notification as read:', err);
         await fetchNotifications();
       }
     },
-    [accountKey, fetchNotifications],
+    [accountKey, fetchNotifications, notifications],
   );
 
   const markAllNotificationsRead = useCallback(async () => {
