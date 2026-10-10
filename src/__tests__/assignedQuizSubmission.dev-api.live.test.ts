@@ -1,6 +1,5 @@
 /**
  * Live dev-api matrix: submitAssignedQuiz + cross-process checkpoint recovery.
- * Phases: EDUVIJNA_MATRIX_PHASE=1 (interrupt) then =2 (recover) in a fresh Jest process.
  */
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
@@ -9,15 +8,21 @@ import * as TokenStorage from '../core/services/tokenStorage';
 import type { PlayableQuizQuestion } from '../core/utils/answerMappingUtils';
 import * as sharedApi from '../core/services/sharedApi';
 import { submitAssignedQuiz } from '../core/services/assignedQuizSubmission.service';
-import { fetchPersistedQuizResult } from '../core/services/quizResultRetrieval.service';
+import {
+  fetchPersistedQuizResult,
+  getAttendedQuiz,
+} from '../core/services/quizResultRetrieval.service';
 import { readQuizSubmissionCheckpoint } from '../core/services/quizSubmissionCheckpoint';
 import { apiClient, API_BASE_URL } from '../core/api/config';
 
 const LIVE = process.env.EDUVIJNA_LIVE_DEV_API === '1';
 const PHASE = process.env.EDUVIJNA_MATRIX_PHASE || '1';
 const credPath = join(__dirname, '..', '..', '.dev-api-credentials.local.json');
-const runDir = process.env.EDUVIJNA_LIVE_CHECKPOINT_DIR || join(__dirname, '..', '..', '.dev-api-submission-matrix-run');
+const runDir =
+  process.env.EDUVIJNA_LIVE_CHECKPOINT_DIR ||
+  join(__dirname, '..', '..', '.dev-api-submission-matrix-run');
 const manifestPath = join(runDir, 'manifest.json');
+const comparisonsPath = join(runDir, 'phase2-comparisons.json');
 
 type MatrixManifest = {
   apiBase: string;
@@ -38,20 +43,11 @@ function readManifest(): MatrixManifest {
   return JSON.parse(readFileSync(manifestPath, 'utf8')) as MatrixManifest;
 }
 
-function defaultMatrixQuestions(): PlayableQuizQuestion[] {
-  return [
-    {
-      id: 'q-0',
-      question: 'Matrix verify: 2 + 2 = ?',
-      options: ['3', '4', '5', '6'],
-      answer: 'B',
-      correctAnswer: 'B',
-      explanation: null,
-    },
-  ];
-}
+async function loadPlayableQuestions(sessionId: string, token: string): Promise<PlayableQuizQuestion[]> {
+  await apiClient
+    .get('/api/v1/quiz', { params: { session_id: sessionId } })
+    .catch(() => undefined);
 
-async function loadPlayableQuestions(sessionId: string, token: string) {
   const res = await apiClient.get('/api/v1/quiz', {
     params: { session_id: sessionId },
     headers: { Authorization: `Bearer ${token}` },
@@ -73,14 +69,13 @@ async function loadPlayableQuestions(sessionId: string, token: string) {
 }
 
 function buildSubmitInput(manifest: MatrixManifest, questions: PlayableQuizQuestion[]) {
-  const selected = manifest.selectedAnswer;
   return {
     quizId: manifest.quizId,
     studentId: manifest.studentId,
     sessionId: manifest.sessionId,
     classroomId: manifest.classroomId,
     questions,
-    selectedAnswers: { 0: selected },
+    selectedAnswers: { 0: manifest.selectedAnswer },
     startedAtIso: new Date().toISOString(),
     scorePercent: 100,
     questionCount: questions.length,
@@ -97,9 +92,7 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
     mkdirSync(runDir, { recursive: true });
     const manifest = readManifest();
     if (manifest.apiBase.replace(/\/$/, '') !== API_BASE_URL.replace(/\/$/, '')) {
-      throw new Error(
-        `api_origin_mismatch manifest=${manifest.apiBase} client=${API_BASE_URL}`,
-      );
+      throw new Error(`api_origin_mismatch manifest=${manifest.apiBase} client=${API_BASE_URL}`);
     }
     (TokenStorage.getAccessToken as jest.Mock).mockResolvedValue(manifest.studentToken);
   });
@@ -107,11 +100,10 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
   if (PHASE === '1') {
     it('interrupts after attempt update and persists checkpoint to disk', async () => {
       const manifest = readManifest();
-      await apiClient
-        .get('/api/v1/quiz', { params: { session_id: manifest.sessionId } })
-        .catch(() => undefined);
-      const loaded = await loadPlayableQuestions(manifest.sessionId, manifest.studentToken);
-      const questions = loaded.length > 0 ? loaded : defaultMatrixQuestions();
+      const questions = await loadPlayableQuestions(manifest.sessionId, manifest.studentToken);
+      if (questions.length === 0) {
+        throw new Error('fixture_returned_no_questions');
+      }
 
       const input = buildSubmitInput(manifest, questions);
       const actualSubmission = sharedApi.createQuizSubmission.bind(sharedApi);
@@ -131,7 +123,8 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
         manifest.sessionId,
       );
       expect(checkpoint?.attemptUpdated).toBe(true);
-      expect(checkpoint?.immutable).toBeTruthy();
+      expect(checkpoint?.immutable?.selectedAnswers?.[0]).toBe(manifest.selectedAnswer);
+      expect(checkpoint?.immutable?.scorePercent).toBe(100);
       writeFileSync(join(runDir, 'phase1.ok'), '1');
     });
     return;
@@ -139,8 +132,17 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
 
   it('recovers via submitAssignedQuiz and asserts persisted submission + completed visibility', async () => {
     const manifest = readManifest();
-    const loaded = await loadPlayableQuestions(manifest.sessionId, manifest.studentToken);
-    const questions = loaded.length > 0 ? loaded : defaultMatrixQuestions();
+    const checkpointBefore = await readQuizSubmissionCheckpoint(
+      manifest.studentId,
+      manifest.quizId,
+      manifest.sessionId,
+    );
+    expect(checkpointBefore?.immutable?.selectedAnswers?.[0]).toBe(manifest.selectedAnswer);
+
+    const questions = await loadPlayableQuestions(manifest.sessionId, manifest.studentToken);
+    if (questions.length === 0) {
+      throw new Error('fixture_returned_no_questions');
+    }
 
     const input = buildSubmitInput(manifest, questions);
     const result = await submitAssignedQuiz(input);
@@ -153,10 +155,41 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
       isTeacherView: false,
     });
     expect(persisted.status).toBe('ready');
-    if (persisted.status === 'ready') {
-      expect(String(persisted.data?.quiz_id ?? manifest.quizId)).toBe(String(manifest.quizId));
-      expect(String(persisted.data?.session_id ?? manifest.sessionId)).toBe(manifest.sessionId);
-      expect(String(persisted.data?.student_id ?? manifest.studentId)).toBe(manifest.studentId);
+    if (persisted.status !== 'ready') {
+      throw new Error('persisted_result_not_ready');
+    }
+
+    expect(persisted.score).toBe(100);
+    expect(persisted.userAnswers[0]).toBe(manifest.selectedAnswer);
+    expect(persisted.quizData.questions.length).toBe(questions.length);
+
+    const attended = await getAttendedQuiz({
+      student_id: manifest.studentId,
+      session_id: manifest.sessionId,
+      quiz_id: manifest.quizId,
+    });
+
+    const identityFromAttended: Record<string, unknown> = {};
+    const limitations: string[] = [];
+    if (attended.quiz_id != null) {
+      expect(String(attended.quiz_id)).toBe(String(manifest.quizId));
+      identityFromAttended.quiz_id = attended.quiz_id;
+    } else {
+      limitations.push('attended_quiz_missing_quiz_id');
+    }
+    if ((attended as { session_id?: string }).session_id) {
+      expect(String((attended as { session_id?: string }).session_id)).toBe(manifest.sessionId);
+      identityFromAttended.session_id = (attended as { session_id?: string }).session_id;
+    } else {
+      limitations.push('attended_quiz_missing_session_id');
+    }
+    if ((attended as { student_id?: string | number }).student_id != null) {
+      expect(String((attended as { student_id?: string | number }).student_id)).toBe(
+        manifest.studentId,
+      );
+      identityFromAttended.student_id = (attended as { student_id?: string | number }).student_id;
+    } else {
+      limitations.push('attended_quiz_missing_student_id');
     }
 
     const checkRes = await fetch(`${manifest.apiBase}/api/v1/quiz/check-record`, {
@@ -180,6 +213,27 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
         String(row.quiz_details?.session_id) === manifest.sessionId,
     );
     expect(hit).toBeTruthy();
+
+    writeFileSync(
+      comparisonsPath,
+      JSON.stringify(
+        {
+          checkpointImmutable: {
+            scorePercent: checkpointBefore?.immutable?.scorePercent,
+            selectedAnswer: checkpointBefore?.immutable?.selectedAnswers?.[0],
+          },
+          persisted: {
+            score: persisted.score,
+            userAnswer: persisted.userAnswers[0],
+            questionCount: persisted.quizData.questions.length,
+          },
+          identityFromAttended,
+          limitations,
+        },
+        null,
+        2,
+      ),
+    );
 
     writeFileSync(join(runDir, 'phase2.ok'), '1');
   });

@@ -1,5 +1,5 @@
 {
-  "probedAt": "2026-10-10T09:29:18.233Z",
+  "probedAt": "2026-10-10T12:40:14.127Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "mode": "read_only_record_inspection",
   "submissionParityExecuted": false,
@@ -389,10 +389,43 @@
               "has_time_limit": true,
               "question_count": 5
             }
+          },
+          {
+            "status": null,
+            "classid": "class_4d82c60e",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "easy"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000cd18",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-10-17T12:14:08.207+00:00",
+              "is_timer": false,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-10-10T12:14:08.543118+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:f7a37e2d",
+              "start_time": "2026-10-10T12:14:08.207+00:00",
+              "is_archived": false,
+              "student_level": "Class 5",
+              "has_time_limit": false,
+              "question_count": 1
+            }
           }
         ],
         "check_type": "pending",
-        "message": "10 record(s) found"
+        "message": "11 record(s) found"
       }
     },
     {
@@ -425,7 +458,7 @@
         ],
         "status_code": 422,
         "path": "/api/v1/dashboard/quiz-attempts",
-        "request_id": "f096de44e10aa55753cba2f7f94dae35",
+        "request_id": "644c83f1804b6048ad643c0bdafada41",
         "errors": [
           {
             "field": "query.quiz_id",
@@ -433,7 +466,7 @@
             "message": "Input should be a valid integer, unable to parse string as an integer"
           }
         ],
-        "timestamp": "2026-10-10T09:29:18.737451Z"
+        "timestamp": "2026-10-10T12:40:14.726128Z"
       }
     },
     {
@@ -456,7 +489,7 @@
         ],
         "status_code": 422,
         "path": "/api/v1/dashboard/attended-quiz",
-        "request_id": "31bd42e437d7a0fcef08b298a8d7066e",
+        "request_id": "a72a4bdaf210a9687095a1f78682f608",
         "errors": [
           {
             "field": "query.quiz_id",
@@ -464,7 +497,7 @@
             "message": "Input should be a valid integer, unable to parse string as an integer"
           }
         ],
-        "timestamp": "2026-10-10T09:29:18.786908Z"
+        "timestamp": "2026-10-10T12:40:14.758035Z"
       }
     }
   ]
