@@ -12,6 +12,7 @@ import {
 } from './checkRecordAssignmentIdentity';
 import { fetchPersistedQuizResult } from './quizResultRetrieval.service';
 import {
+  completedRowNeedsHydration,
   countCorrectAnswersFromPersistedResult,
   mapWithConcurrency,
 } from './completedQuizMetrics';
@@ -90,17 +91,12 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
   } as ParsedQuiz;
 }
 
-function completedMetricsSatisfied(quiz: ParsedQuiz): boolean {
-  if (quiz.status !== 'completed') return true;
-  return typeof quiz.correct_answers === 'number';
-}
-
 export async function hydrateCompletedParsedQuizMetrics(
   studentId: string,
   quizzes: ParsedQuiz[],
 ): Promise<ParsedQuiz[]> {
   return mapWithConcurrency(quizzes, HYDRATE_CONCURRENCY, async (quiz) => {
-    if (quiz.status !== 'completed' || completedMetricsSatisfied(quiz)) {
+    if (!completedRowNeedsHydration(quiz)) {
       return quiz;
     }
     const result = await fetchPersistedQuizResult({
