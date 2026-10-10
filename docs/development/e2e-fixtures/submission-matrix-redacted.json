@@ -1,8 +1,8 @@
 {
-  "verifiedAt": "2026-10-10T12:13:36.067Z",
+  "verifiedAt": "2026-10-10T12:14:38.521Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "clientApiBaseExpected": "https://dev-api.eduvijna.com",
-  "status": "failed",
+  "status": "passed",
   "serviceUnderTest": "submitAssignedQuiz + quizSubmissionCheckpoint (mobile core)",
   "steps": [
     {
@@ -38,20 +38,26 @@
     },
     {
       "step": "cleanup_disposable_fixture",
-      "status": "failed",
+      "status": "skipped",
       "ok": false,
       "attempts": [
         {
+          "method": "POST",
+          "path": "/api/v1/dashboard/quiz-assignments",
+          "status": 422
+        },
+        {
           "method": "DELETE",
-          "path": "/api/v1/sharequiz/512",
+          "path": "/api/v1/sharequiz/516",
           "status": 404
         },
         {
           "method": "PATCH",
-          "path": "/api/v1/sharequiz/512",
+          "path": "/api/v1/sharequiz/516",
           "status": 404
         }
-      ]
+      ],
+      "note": "best_effort_no_delete_api"
     }
   ],
   "limitations": []

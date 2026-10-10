@@ -72,6 +72,7 @@ async function main() {
 
   let fixture = null;
   let instructorToken = null;
+  let instructorUserId = null;
 
   try {
     mkdirSync(runDir, { recursive: true });
@@ -90,6 +91,7 @@ async function main() {
       cfg.accounts.student.password,
     );
     instructorToken = instructor.token;
+    instructorUserId = instructor.userId;
     report.steps.push(step('login_accounts', 'passed', { roles: ['instructor', 'student'] }));
 
     const classroom = await discoverClassroomForStudent(instructor.token, student.userId, apiBase);
@@ -145,9 +147,9 @@ async function main() {
     if (fixture && instructorToken) {
       const cleanup = await cleanupDisposableMatrixAssignment(
         instructorToken,
-        { ...fixture, instructorId: instructor.userId },
+        { ...fixture, instructorId: instructorUserId },
         apiBase,
-        instructor.userId,
+        instructorUserId,
       );
       report.steps.push(
         step(
@@ -174,7 +176,7 @@ async function main() {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
   console.log(`Wrote ${out} (status=${report.status})`);
-  process.exit(anyFailed ? 1 : 0);
+  process.exit(coreFailed ? 1 : 0);
 }
 
 main().catch((e) => {

@@ -28,7 +28,7 @@ export function redactScalarValue(value) {
       return '[redacted]';
     }
     if (/\bdemo_[a-z0-9_]+\b/i.test(value)) {
-      return '[redacted-user]';
+      return value.replace(/\bdemo_[a-z0-9_]+\b/gi, '[redacted-user]');
     }
     return value;
   }

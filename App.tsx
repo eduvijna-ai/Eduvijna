@@ -571,7 +571,12 @@ function AppContent() {
         case 'CreateHandwrittenQuizScreen':
           return <CreateHandwrittenQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'QuizPreviewScreen':
-          return <QuizPreviewScreen navigation={createWebNavigation('assessments')} />;
+          return (
+            <QuizPreviewScreen
+              navigation={createWebNavigation('assessments')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'QuizResultsScreen':
           return <QuizResultsScreen 
             navigation={createWebNavigation('assessments')} 
