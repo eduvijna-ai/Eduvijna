@@ -1,29 +1,43 @@
 /**
  * Resolve expo/eas shims to `node <cli-entry.js> ...` for reliable Windows spawning.
- * Local eas-cli (devDependency) is authoritative — no global fallback.
+ * eas-cli must live under this repository's node_modules (no require.resolve / NODE_PATH).
  */
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join, basename } from 'node:path';
+import { dirname, join, basename, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoEasRoot = join(repoRoot, 'node_modules', 'eas-cli');
 
-function expoCliEntry() {
-  return join(repoRoot, 'node_modules', 'expo', 'bin', 'cli');
+const EAS_CLI_ENTRY_CANDIDATES = [
+  join(repoEasRoot, 'build', 'bin', 'cli'),
+  join(repoEasRoot, 'bin', 'run'),
+];
+
+function assertRepoLocalEasEntry(entryPath) {
+  const normalizedEntry = resolve(entryPath);
+  const normalizedRoot = resolve(repoEasRoot);
+  const rootPrefix = process.platform === 'win32' ? normalizedRoot.toLowerCase() : normalizedRoot;
+  const entryPrefix = process.platform === 'win32' ? normalizedEntry.toLowerCase() : normalizedEntry;
+  const underRepoEas =
+    entryPrefix === rootPrefix || entryPrefix.startsWith(rootPrefix + sep);
+  if (!underRepoEas) {
+    throw new Error('EAS CLI entry must resolve under node_modules/eas-cli in this repository.');
+  }
+  return normalizedEntry;
 }
 
 function localEasCliEntry() {
-  try {
-    return require.resolve('eas-cli/build/bin/cli');
-  } catch {
-    try {
-      return require.resolve('eas-cli/bin/run');
-    } catch {
-      return null;
+  for (const candidate of EAS_CLI_ENTRY_CANDIDATES) {
+    if (existsSync(candidate)) {
+      return assertRepoLocalEasEntry(candidate);
     }
   }
+  return null;
+}
+
+function expoCliEntry() {
+  return join(repoRoot, 'node_modules', 'expo', 'bin', 'cli');
 }
 
 /**
