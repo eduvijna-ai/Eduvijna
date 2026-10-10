@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
+import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
 import { useAuth } from '@core/hooks/useAuth';
 import {
   isAssignedQuizRecoveryProbeError,
@@ -131,7 +132,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
   // Fetch data based on role
   const teacherData = useTeacherDashboard();
-  const { quizzes: storedQuizzes } = useDashboardStore();
+  const { quizzes: storedQuizzes, setQuizzes } = useDashboardStore();
 
   const {
     quizzes: teacherQuizzes = [],
@@ -141,13 +142,24 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   } = isTeacher ? teacherData : { quizzes: [], loading: false, error: null, refresh: () => {} };
 
   // For students, use dashboard store data (already loaded by StudentDashboard)
+  const [studentRefreshing, setStudentRefreshing] = useState(false);
   const studentQuizzes = isStudent ? storedQuizzes : [];
-  const studentLoading = false;
-  const studentError = null;
-  const studentRefresh = () => {};
 
-  const loading = isTeacher ? teacherLoading : studentLoading;
-  const error = isTeacher ? teacherError : studentError;
+  const studentRefresh = useCallback(async () => {
+    if (!isStudent || !user?.id) return;
+    setStudentRefreshing(true);
+    try {
+      const { quizzes } = await loadStudentDashboardQuizzes(String(user.id));
+      setQuizzes(quizzes as any, quizzes.length);
+    } catch (refreshError) {
+      console.error('Assessments student refresh failed:', refreshError);
+    } finally {
+      setStudentRefreshing(false);
+    }
+  }, [isStudent, user?.id, setQuizzes]);
+
+  const loading = isTeacher ? teacherLoading : studentRefreshing;
+  const error = isTeacher ? teacherError : null;
   const refresh = isTeacher ? teacherRefresh : studentRefresh;
 
   // Filter tabs based on role

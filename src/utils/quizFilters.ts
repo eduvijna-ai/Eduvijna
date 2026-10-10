@@ -74,7 +74,11 @@ export const isStudentQuizActive = (quiz: any): boolean => {
   // Must be pending or in-progress (started) status
   // 'started' means the student opened the quiz but hasn't submitted yet—
   // it should still appear as actionable in the pending list.
-  if (quiz.status !== 'pending' && quiz.status !== 'started') {
+  if (
+    quiz.status !== 'pending' &&
+    quiz.status !== 'started' &&
+    quiz.status !== 'in_progress'
+  ) {
     return false;
   }
   
