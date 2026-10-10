@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T17:55:54.119Z",
+  "verifiedAt": "2026-10-10T18:04:53.090Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "profiles": [
     {
@@ -8,29 +8,31 @@
       "roleVerified": true,
       "steps": [
         {
-          "name": "[redacted]",
+          "check": "profile_read_initial",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_save",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_refetch",
           "httpStatus": 200,
           "ok": true,
           "markerVisible": true
         },
         {
-          "name": "[redacted]",
+          "check": "profile_restore",
           "httpStatus": 200,
           "ok": true,
           "attemptedAfterSaveLost": false
         },
         {
-          "name": "[redacted]",
+          "check": "profile_final_get",
           "httpStatus": 200,
           "ok": true,
           "valueMatchesOriginal": true
@@ -45,29 +47,31 @@
       "roleVerified": true,
       "steps": [
         {
-          "name": "[redacted]",
+          "check": "profile_read_initial",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_save",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_refetch",
           "httpStatus": 200,
           "ok": true,
           "markerVisible": true
         },
         {
-          "name": "[redacted]",
+          "check": "profile_restore",
           "httpStatus": 200,
           "ok": true,
           "attemptedAfterSaveLost": false
         },
         {
-          "name": "[redacted]",
+          "check": "profile_final_get",
           "httpStatus": 200,
           "ok": true,
           "valueMatchesOriginal": true
@@ -82,29 +86,31 @@
       "roleVerified": true,
       "steps": [
         {
-          "name": "[redacted]",
+          "check": "profile_read_initial",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_save",
           "httpStatus": 200,
-          "ok": true
+          "ok": true,
+          "parseError": null
         },
         {
-          "name": "[redacted]",
+          "check": "profile_refetch",
           "httpStatus": 200,
           "ok": true,
           "markerVisible": true
         },
         {
-          "name": "[redacted]",
+          "check": "profile_restore",
           "httpStatus": 200,
           "ok": true,
           "attemptedAfterSaveLost": false
         },
         {
-          "name": "[redacted]",
+          "check": "profile_final_get",
           "httpStatus": 200,
           "ok": true,
           "valueMatchesOriginal": true
@@ -120,26 +126,26 @@
       "role": "admin",
       "apiEvidence": [
         {
-          "name": "[redacted]",
+          "check": "notifications_history",
           "httpStatus": 200,
-          "ok": true,
+          "ok": false,
           "notificationCount": 0,
           "sampleTypes": []
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_preferences",
           "httpStatus": 200,
           "ok": true
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": true
+          "ok": false
         }
       ],
       "clientEvidence": [
         {
-          "name": "[redacted]",
+          "check": "bell_fetch_guard",
           "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
@@ -148,33 +154,33 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": true
+      "ok": false
     },
     {
       "accountLabel": "instructor",
       "role": "instructor",
       "apiEvidence": [
         {
-          "name": "[redacted]",
+          "check": "notifications_history",
           "httpStatus": 200,
-          "ok": true,
+          "ok": false,
           "notificationCount": 0,
           "sampleTypes": []
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_preferences",
           "httpStatus": 200,
           "ok": true
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": true
+          "ok": false
         }
       ],
       "clientEvidence": [
         {
-          "name": "[redacted]",
+          "check": "bell_fetch_guard",
           "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
@@ -183,33 +189,33 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": true
+      "ok": false
     },
     {
       "accountLabel": "student",
       "role": "student",
       "apiEvidence": [
         {
-          "name": "[redacted]",
+          "check": "notifications_history",
           "httpStatus": 200,
-          "ok": true,
+          "ok": false,
           "notificationCount": 0,
           "sampleTypes": []
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_preferences",
           "httpStatus": 200,
           "ok": true
         },
         {
-          "name": "[redacted]",
+          "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": true
+          "ok": false
         }
       ],
       "clientEvidence": [
         {
-          "name": "[redacted]",
+          "check": "bell_fetch_guard",
           "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
         }
       ],
@@ -218,9 +224,9 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": true
+      "ok": false
     }
   ],
   "erpDeferred": true,
-  "status": "passed"
+  "status": "failed"
 }
