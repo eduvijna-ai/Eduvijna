@@ -123,12 +123,18 @@ async function verifyProfileRoundTrip(label, username, password) {
       const restore = await updateProfile(auth.token, { bio: originalBio });
       const final = await fetchProfile(auth.token);
       const finalBio = final.data?.bio === undefined ? null : final.data?.bio;
-      block.restored = finalBio === originalBio;
+      block.restored = final.ok && finalBio === originalBio;
       block.steps.push({
         name: 'profile_restore',
         httpStatus: restore.status,
         ok: restore.ok && block.restored,
         attemptedAfterSaveLost: !savedOk,
+      });
+      block.steps.push({
+        name: 'profile_final_get',
+        httpStatus: final.status,
+        ok: final.ok && block.restored,
+        valueMatchesOriginal: finalBio === originalBio,
       });
     } catch (error) {
       block.steps.push({
@@ -184,6 +190,9 @@ async function verifyNotifications(label, username, password) {
     httpStatus: devices.status,
     ok: devices.ok,
   });
+  if (!devices.ok) {
+    block.ok = false;
+  }
 
   block.clientEvidence.push({
     name: 'bell_fetch_guard',
@@ -229,6 +238,7 @@ async function main() {
       p.abortedBeforeMutation ||
       !p.steps.every((s) => s.ok !== false) ||
       !p.restored ||
+      !p.steps.some((s) => s.name === 'profile_final_get' && s.ok) ||
       !p.steps.some((s) => s.name === 'profile_refetch' && s.markerVisible),
   );
   const notificationFailed = report.notifications.some((n) => !n.ok);
