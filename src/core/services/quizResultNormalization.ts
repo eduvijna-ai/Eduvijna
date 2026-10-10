@@ -194,6 +194,23 @@ export function resolvePersistedScore(
   return scoreFromUnknown(logData?.score);
 }
 
+/** Prefer attended time; fall back to log time_spent_seconds or log duration (seconds). */
+export function resolvePersistedTimeSpentSeconds(
+  attendedSeconds: number | null | undefined,
+  logData: Record<string, unknown> | null | undefined,
+): number | null {
+  if (typeof attendedSeconds === 'number' && Number.isFinite(attendedSeconds)) {
+    return attendedSeconds;
+  }
+  if (typeof logData?.time_spent_seconds === 'number' && Number.isFinite(logData.time_spent_seconds)) {
+    return logData.time_spent_seconds;
+  }
+  if (typeof logData?.duration === 'number' && Number.isFinite(logData.duration)) {
+    return logData.duration;
+  }
+  return null;
+}
+
 export function userAnswersFromLogDataEntries(
   logData: Record<string, unknown> | null | undefined,
   questions: PlayableQuizQuestion[],
@@ -210,7 +227,7 @@ export function normalizeAttendedQuizResponse(
   const meta = {
     score: resolvePersistedScore(attended.score, logData),
     logData,
-    timeSpentSeconds: attended.time_spent_seconds,
+    timeSpentSeconds: resolvePersistedTimeSpentSeconds(attended.time_spent_seconds, logData),
     completedAt: attended.submitted_at,
   };
 

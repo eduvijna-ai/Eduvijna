@@ -2,6 +2,7 @@ import {
   normalizeAttendedQuizResponse,
   normalizeQuestionsAndAnswersFromLogData,
   resolvePersistedScore,
+  resolvePersistedTimeSpentSeconds,
 } from '../core/services/quizResultNormalization';
 import type { AttendedQuizResponse } from '../core/types/attendedQuiz.types';
 
@@ -88,6 +89,18 @@ describe('quizResultNormalization', () => {
     expect(resolvePersistedScore(0, null)).toBe(0);
     expect(resolvePersistedScore(undefined, null)).toBeNull();
     expect(resolvePersistedScore(undefined, { score: 0 })).toBe(0);
+  });
+
+  it('uses log duration when attended time_spent_seconds is null', () => {
+    expect(resolvePersistedTimeSpentSeconds(null, { duration: 88 })).toBe(88);
+    const normalized = normalizeAttendedQuizResponse(
+      attendedFixture({
+        time_spent_seconds: null,
+        log_data: { duration: 88, answers: [] },
+        items: completeItems,
+      }),
+    );
+    expect(normalized?.timeSpentSeconds).toBe(88);
   });
 
   it('uses complete items when log_data.answers is sparse', () => {
