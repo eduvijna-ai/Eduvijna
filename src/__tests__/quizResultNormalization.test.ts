@@ -91,6 +91,48 @@ describe('quizResultNormalization', () => {
     expect(resolvePersistedScore(undefined, { score: 0 })).toBe(0);
   });
 
+  it('preserves attended student_answer when matched log entry lacks usable answer', () => {
+    const normalized = normalizeAttendedQuizResponse(
+      attendedFixture({
+        items: [
+          {
+            question_id: 1,
+            question: '2+2?',
+            options: ['3', '4'],
+            student_answer: 'B',
+            answer_key: 'B',
+            is_correct: true,
+          },
+        ],
+        log_data: {
+          answers: [{ question: '2+2?', options: ['3', '4'], userAnswer: null }],
+        },
+      }),
+    );
+    expect(normalized?.userAnswers[0]).toBe('4');
+  });
+
+  it('keeps genuine unanswered when log and attended are both empty', () => {
+    const normalized = normalizeAttendedQuizResponse(
+      attendedFixture({
+        items: [
+          {
+            question_id: 1,
+            question: '2+2?',
+            options: ['3', '4'],
+            student_answer: null,
+            answer_key: 'B',
+            is_correct: null,
+          },
+        ],
+        log_data: {
+          answers: [{ question: '2+2?', options: ['3', '4'], userAnswer: '' }],
+        },
+      }),
+    );
+    expect(normalized?.userAnswers[0]).toBe('');
+  });
+
   it('uses log duration when attended time_spent_seconds is null', () => {
     expect(resolvePersistedTimeSpentSeconds(null, { duration: 88 })).toBe(88);
     const normalized = normalizeAttendedQuizResponse(
