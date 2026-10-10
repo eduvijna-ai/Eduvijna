@@ -914,7 +914,6 @@ export function checkRecordToQuiz(
     student_id: item.student_id,
     status: item.status === null ? 'pending' : item.status,
     score: item.status === 'completed' ? completedScore : null,
-    correct_answers: 0,
     question_count: d.question_count,
     time_spent_seconds: null,
     attempt_number: null,
@@ -922,7 +921,6 @@ export function checkRecordToQuiz(
       item.status === 'completed'
         ? (d as { completed_at?: string }).completed_at ||
           (item as { completed_at?: string }).completed_at ||
-          d.end_time ||
           null
         : null,
     started_at: (d as { started_at?: string }).started_at || null,

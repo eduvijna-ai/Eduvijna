@@ -30,6 +30,31 @@ describe('studentDashboardData', () => {
     expect(row.classroom_name).toBe('Grade 8 — Algebra');
   });
 
+  it('does not use due date as completed_at when completion timestamp missing', () => {
+    const row = checkRecordToQuiz({
+      status: 'completed',
+      classid: 'class_abc',
+      student_id: 's1',
+      quiz_details: {
+        quiz_id: 2,
+        topic: 'Done',
+        summary: '',
+        session_id: 'sess-2',
+        start_time: '2026-01-01T00:00:00.000Z',
+        end_time: '2026-01-10T00:00:00.000Z',
+        duration: 30,
+        has_time_limit: true,
+        question_count: 5,
+        questions: { quizzes: [] },
+        status: 'active',
+        is_active: true,
+        is_public: false,
+      },
+    });
+    expect(row.completed_at).toBeNull();
+    expect(row.correct_answers).toBeUndefined();
+  });
+
   it('dedupes by quiz_id + session_id keeping completed row', () => {
     const merged = dedupeStudentDashboardQuizzes([
       {

@@ -28,9 +28,10 @@ import {
   isAssignedQuizLoadError,
   navigateStudentToQuizTaking,
   resolveStudentAssignedQuizStart,
-  resolveStudentAssignedQuizViewResults,
+  executeStudentAssignedQuizViewResults,
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
+import { isStudentQuizOngoing } from '../utils/quizFilters';
 import { DateFilterType } from '../utils/dateFilters';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
@@ -282,7 +283,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       const counts: Record<FilterTab, number> = {
         all: baseFilteredQuizzes.length,
         upcoming: baseFilteredQuizzes.filter((q: any) => q.status === 'available_soon' || q.status === 'pending').length,
-        ongoing: baseFilteredQuizzes.filter((q: any) => q.status === 'pending' && q.availability_status === 'active').length,
+        ongoing: baseFilteredQuizzes.filter(isStudentQuizOngoing).length,
         completed: baseFilteredQuizzes.filter((q: any) => q.status === 'completed').length,
         missed: baseFilteredQuizzes.filter((q: any) => q.status === 'missed').length,
         // Teacher-only tabs (not used for students)
@@ -316,7 +317,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       
       // Ongoing: quizzes that are in progress (started but not completed)
       if (selectedTab === 'ongoing') {
-        return quiz.status === 'pending' && quiz.availability_status === 'active';
+        return isStudentQuizOngoing(quiz);
       }
       
       // Completed: quizzes that have been completed
@@ -380,34 +381,17 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
       setLoadingQuizId(correctQuizId);
       try {
-        const viewResult = await resolveStudentAssignedQuizViewResults({
-          studentId: studentIdForApi,
-          quizId: correctQuizId,
-          sessionId: correctSessionId,
-          classroomId: correctClassroomId,
-          attemptData,
-          quizName: attemptData?.quiz_name,
-        });
-
-        if (viewResult.kind === 'recovery_retry') {
-          navigateStudentToQuizTaking(navigation, onNavigate, viewResult.params);
-          return;
-        }
-
-        if (viewResult.kind === 'probe_failed') {
-          Alert.alert(
-            'Connection Error',
-            'Could not verify your saved submission. Please check your connection and try again.',
-          );
-          return;
-        }
-
-        const resultParams = viewResult.resultParams;
-        if (onNavigate) {
-          onNavigate('QuizResultsScreen', resultParams);
-        } else if (navigation) {
-          navigation.navigate('QuizResultsScreen', resultParams);
-        }
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: studentIdForApi,
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            attemptData,
+            quizName: attemptData?.quiz_name,
+          },
+          { navigation, onNavigate },
+        );
       } catch (error) {
         if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
           Alert.alert(
