@@ -742,7 +742,7 @@ export default function AdminTeacherDetailScreen() {
                   }
                 />
                 <ReadRow icon="male-female-outline" label="Gender" value={displayOrDash(activeMember.gender)} />
-                <ReadRow icon="cake-outline" label="Date of Birth" value={dobLabel} last />
+                <ReadRow icon="cafe-outline" label="Date of Birth" value={dobLabel} last />
               </SurfaceCard>
 
               <SurfaceCard padded={false}>

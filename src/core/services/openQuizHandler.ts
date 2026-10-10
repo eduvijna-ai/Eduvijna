@@ -78,59 +78,6 @@ interface NavigationAdapter {
 }
 
 /**
- * Check quiz availability based on start_time and end_time
- * Returns availability status with formatted time strings
- */
-function checkQuizAvailability(quizData: any): {
-  available: boolean;
-  startTime: string;
-  endTime: string;
-  expired?: boolean;
-} {
-  // Only check for assigned quizzes (those with start_time/end_time)
-  if (!quizData?.start_time || !quizData?.end_time) {
-    return { available: true, startTime: '', endTime: '' };
-  }
-
-  const now = new Date();
-  const startTime = new Date(quizData.start_time);
-  const endTime = new Date(quizData.end_time);
-
-  // Format dates for display
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (now < startTime) {
-    // Quiz hasn't started yet
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-    };
-  }
-
-  if (now > endTime) {
-    // Quiz has ended
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-      expired: true,
-    };
-  }
-
-  // Quiz is currently available
-  return { available: true, startTime: '', endTime: '' };
-}
-
-/**
  * Normalize quiz data to consistent structure
  * Handles both self-assessment and teacher-assigned quizzes
  */

@@ -21,7 +21,7 @@ Target API: **`https://dev-api.eduvijna.com`**. No production deployment or OTA 
 | Jest: submission, recovery integration, retrieval, navigation, `QuizTakingScreen` recovery | **Verified** | 34 tests (see PR #18 CI / local `npm test` filter) |
 | `tokenStorage` dev/prod isolation + SecureStore key format | **Verified** | `tokenStorage.apiEnvironment.test.ts`, `auth.api.nativeStorage.test.ts` (PR #16) |
 | `npm run config:verify` / `cli:verify` | **Verified** | Stack branches |
-| TS vs baseline (`e6fde43` parent) | **Verified** | 199 head / 193 baseline errors; **1 new** in touched code: `openQuizAvailability` unused (pre-existing in file); no new errors in `tokenStorage`, `Assessments`, `QuizTakingScreen`, `assessmentQuizStart` |
+| TS vs `main` (same `node_modules`, `tsc --noEmit`) | **Verified** | **186** head / **193** main — **0 diagnostics added** on branch vs main after fixes (13 prior deltas resolved: `apiEnvironment.test.ts`, `quizResultRetrieval`/`quizResultNormalization`, `config.ts`, `openQuizHandler`, `AuthErrorHandling.example`, ERP icon names, `QuizStudentMyAnalyticsScreen`) |
 | Live dev-api TLS reachability | **Verified** | `curl.exe` → dev-api host responds on HTTPS (no credentials used) |
 | Live dev-api login | **Not executed** | `POST /api/v1/auth/login` returned **405** when probed without credentials — **not** counted as successful login |
 | Emulator `emulator-5554` | **Verified** | `adb devices` → `device`; `sys.boot_completed=1` (emulator not restarted) |

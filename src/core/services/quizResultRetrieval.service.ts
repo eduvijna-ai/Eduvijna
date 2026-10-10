@@ -9,7 +9,7 @@ import type { PlayableQuizQuestion } from '../utils/answerMappingUtils';
 import {
   normalizeAttendedQuizResponse,
   normalizeQuestionsAndAnswersFromLogData,
-  userAnswersFromLogData as userAnswersFromLogDataEntries,
+  userAnswersFromLogDataEntries,
 } from './quizResultNormalization';
 
 export type QuizResultLoadState =
@@ -89,7 +89,7 @@ async function fetchTeacherAttemptBundle(params: {
     return { status: 'missing' };
   }
 
-  const quiz = response.data[0] as Record<string, unknown>;
+  const quiz = response.data[0] as unknown as Record<string, unknown>;
   const attempts =
     typeof quiz.attempts === 'string' ? JSON.parse(quiz.attempts) : quiz.attempts;
   if (!Array.isArray(attempts)) {

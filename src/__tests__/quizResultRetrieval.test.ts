@@ -119,7 +119,7 @@ describe('fetchPersistedQuizResult', () => {
           },
         ],
         pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
-      } as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
     });
 
     it('loads only when quiz, student, and session align', async () => {

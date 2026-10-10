@@ -34,7 +34,6 @@ import {
   generateStudentKPITiles,
   getDefaultDateRange,
   formatDate,
-  formatDuration,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
 

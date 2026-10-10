@@ -94,7 +94,7 @@ export function resolvePersistedScore(
   attendedScore: number | null | undefined,
   logData: Record<string, unknown> | null | undefined,
 ): number | null {
-  if (attendedScore != null && attendedScore !== '') {
+  if (attendedScore != null) {
     return Number(attendedScore);
   }
   if (logData?.score != null && logData.score !== '') {
