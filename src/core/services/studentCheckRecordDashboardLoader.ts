@@ -97,10 +97,8 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
   };
 }
 
-export async function loadStudentCheckRecordDashboard(studentId: string): Promise<{
-  quizzes: ParsedQuiz[];
-  stats: DashboardStats;
-}> {
+/** Pending + completed scopes merged and deduped (shared by Phase 1 home and Phase 2 parity loader). */
+export async function fetchStudentCheckRecordRows(studentId: string): Promise<CheckRecordQuiz[]> {
   const [pendingRes, completedRes] = await Promise.all([
     fetchQuizCheckRecord(studentId, 'pending'),
     fetchQuizCheckRecord(studentId, 'completed'),
@@ -109,7 +107,14 @@ export async function loadStudentCheckRecordDashboard(studentId: string): Promis
     ...(pendingRes.result || []),
     ...(completedRes.result || []),
   ];
-  const mapped = combined.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
-  const parsed = dedupeCheckRecordQuizzes(mapped);
+  return dedupeCheckRecordQuizzes(combined);
+}
+
+export async function loadStudentCheckRecordDashboard(studentId: string): Promise<{
+  quizzes: ParsedQuiz[];
+  stats: DashboardStats;
+}> {
+  const rows = await fetchStudentCheckRecordRows(studentId);
+  const parsed = rows.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
   return { quizzes: parsed, stats: computeCheckRecordDashboardStats(parsed) };
 }
