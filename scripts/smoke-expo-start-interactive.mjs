@@ -70,11 +70,22 @@ child.on('exit', (code, signal) => {
   } catch {
     // ignore
   }
+  const intentionalShutdown = signal === 'SIGINT' || signal === 'SIGTERM';
+  const unexpectedExit = code !== 0 && code !== null && !intentionalShutdown;
+
   if (!sawMetroStartup) {
     console.error('Smoke failed: Metro startup was not observed in Expo output.');
     process.exit(1);
   }
-  console.log(`Expo smoke passed (Metro observed). exit code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+  if (unexpectedExit) {
+    console.error(
+      `Smoke failed: process exited with code ${code} after Metro startup (not an intentional shutdown).`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `Expo smoke passed (Metro observed). exit code=${code ?? 'null'} signal=${signal ?? 'null'}`,
+  );
   process.exit(0);
 });
 
