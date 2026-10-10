@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCommandArgv } from './resolve-cli-entry.mjs';
 
 const require = createRequire(import.meta.url);
 const {
@@ -83,18 +84,28 @@ if (command.length === 0) {
 const env = { ...process.env };
 applyMode(mode, env);
 
-const result = spawnSync(command[0], command.slice(1), {
-  stdio: 'pipe',
+let resolved;
+try {
+  resolved = resolveCommandArgv(command);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+
+const result = spawnSync(resolved.executable, resolved.args, {
+  stdio: 'inherit',
   shell: false,
   env,
-  encoding: 'utf8',
 });
 
-if (result.stdout) {
-  process.stdout.write(result.stdout);
+if (result.error) {
+  console.error(`Failed to launch: ${resolved.display}`);
+  console.error(result.error.message);
+  process.exit(1);
 }
-if (result.stderr) {
-  process.stderr.write(result.stderr);
+
+if (result.signal) {
+  console.error(`Command terminated by signal ${result.signal}: ${resolved.display}`);
+  process.exit(1);
 }
 
 process.exit(result.status ?? 1);

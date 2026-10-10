@@ -6,6 +6,7 @@ import {
   API_ENV_VAR,
   resolveApiOriginForProcess,
 } from '../config/apiEnvironment.cjs';
+import { resolveCommandArgv } from './resolve-cli-entry.mjs';
 
 function buildProcessEnv(overrides = {}) {
   const env = { ...process.env };
@@ -15,10 +16,11 @@ function buildProcessEnv(overrides = {}) {
 }
 
 function expoConfigResult(processEnv) {
-  return spawnSync('npx expo config --type public --json', {
+  const { executable, args } = resolveCommandArgv(['expo', 'config', '--type', 'public', '--json']);
+  return spawnSync(executable, args, {
     env: processEnv,
     encoding: 'utf8',
-    shell: true,
+    shell: false,
   });
 }
 
