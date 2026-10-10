@@ -121,6 +121,7 @@ describe('resolveStudentAssignedQuizViewResults', () => {
       expect(result.resultParams.studentId).toBe('student-1');
     }
     expect(mockGetQuiz).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeItem).toHaveBeenCalled();
   });
 
   it('surfaces probe failure for Assessments retry alert', async () => {

@@ -1,0 +1,7 @@
+{
+  "verifiedAt": null,
+  "status": "pending_credentials",
+  "instructions": "Set EDUVIJNA_DEV_USERNAME and EDUVIJNA_DEV_PASSWORD in the local shell (not committed), then run: node scripts/dev-api-technical-verify.mjs",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "expectedLoginContract": "POST /api/v1/auth/login with username_or_email, password, remember_me, device_info, client_type mobile"
+}

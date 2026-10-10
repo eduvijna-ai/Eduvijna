@@ -17,7 +17,7 @@ import { useAuth } from '@core/hooks/useAuth';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { FONT_FAMILY } from '../theme/fonts';
 import { useDashboardStore } from '@core/store/dashboard.store';
-import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
+import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   ParsedQuiz,
@@ -25,6 +25,12 @@ import {
   getDisplayName,
 } from '@core/types';
 import { isStudentQuizActive } from '../utils/quizFilters';
+import { formatVerifiedCorrectAnswerCount } from '../utils/quizDisplayUtils';
+import {
+  executeStudentAssignedQuizViewResults,
+  isAssignedQuizLoadError,
+} from '@core/services/assessmentQuizStart.service';
+import { isAssignedQuizRecoveryProbeError } from '@core/services/assignedQuizRecovery.service';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
 
 interface Props {
@@ -73,6 +79,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
   });
   const [allQuizzes, setAllQuizzes] = useState<ParsedQuiz[]>([]);
   const [selectedClassroom] = useState<string>('ALL');
+  const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
 
   const isWeb = width >= 768;
   const isTablet = width >= 600 && width < 1024;
@@ -96,160 +103,15 @@ export default function StudentDashboard({ navigation, route }: Props) {
     try {
       setLoading(true);
 
-      // Fetch quizzes using the check-record endpoint
-      // status: null → pending   |   status: "completed" → completed
-      const response = await fetchQuizCheckRecord(user.id, 'pending');
+      const { quizzes: parsed, stats: nextStats } = await loadStudentDashboardQuizzes(
+        String(user.id),
+      );
 
-      const data = (response.result || []).map(checkRecordToQuiz);
-      
-      // DEBUG: Log sample data to verify structure
-      if (data.length > 0) {
-        console.log('📊 Student Quiz Data Sample:', {
-          totalQuizzes: data.length,
-          firstQuiz: {
-            quiz_id: data[0].quiz_id,
-            quiz_name: data[0].quiz_name,
-            session_id: data[0].session_id,
-            classroom_id: data[0].classroom_id,
-            classroom_name: data[0].classroom_name,
-            student_status: data[0].student_status,
-            question_count: data[0].question_count,
-            dataTypes: {
-              quiz_name: typeof data[0].quiz_name,
-              classroom_name: typeof data[0].classroom_name,
-              question_count: typeof data[0].question_count,
-            }
-          }
-        });
-      }
-
-      if (data.length > 0) {
-        // Data is already in StudentQuiz format - map to ParsedQuiz with type safety
-        const allParsed: ParsedQuiz[] = data.map((quiz: any) => {
-          // Ensure required fields have proper types and defaults
-          const now = new Date();
-          const dueDate = quiz.due_date ? new Date(quiz.due_date) : null;
-          const isOverdue = dueDate ? now > dueDate : false;
-          const daysUntilDue = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : undefined;
-
-          return {
-            // Core quiz info - ensure proper types
-            quiz_id: Number(quiz.quiz_id) || 0,
-            class_id: String(quiz.classroom_id || quiz.class_id || ''),
-            classroom_name: String(quiz.classroom_name || 'Unknown Class'),
-            quiz_name: String(quiz.quiz_name || 'Untitled Quiz'),
-            
-            // Status & scoring
-            status: (quiz.student_status || 'pending') as 'pending' | 'completed' | 'missed',
-            score: typeof quiz.score === 'number' ? quiz.score : null,
-            correct_answers: typeof quiz.score === 'number' ? Math.round((quiz.score / 100) * (quiz.question_count || 0)) : 0,
-            
-            // Dates - ensure strings
-            end_time: String(quiz.end_time || quiz.due_date || new Date().toISOString()),
-            created_at: String(quiz.created_at || quiz.assigned_at || new Date().toISOString()),
-            completed_at: quiz.completed_at ? String(quiz.completed_at) : null,
-            started_at: quiz.started_at ? String(quiz.started_at) : null,
-            
-            // Timing
-            time_spent_seconds: typeof quiz.time_spent_seconds === 'number' ? quiz.time_spent_seconds : null,
-            attempt_number: typeof quiz.attempt_number === 'number' ? quiz.attempt_number : null,
-            
-            // Computed fields
-            question_count: Number(quiz.question_count) || 0,
-            is_overdue: isOverdue,
-            days_until_due: daysUntilDue,
-            
-            // Extra fields for UI (these extend ParsedQuiz)
-            session_id: String(quiz.session_id || ''),
-            attempt_id: quiz.attempt_id ? String(quiz.attempt_id) : null,
-            log_data: quiz.log_data,
-            availability_status: quiz.availability_status || 'active',
-            duration: typeof quiz.duration === 'number' ? quiz.duration : null,
-            start_time: quiz.start_time || quiz.assigned_at,
-            topic: String(quiz.topic || ''),
-            subject: String(quiz.subject || ''),
-            due_date: quiz.due_date || quiz.end_time,
-            assigned_at: quiz.assigned_at || quiz.created_at,
-            has_time_limit: Boolean(quiz.has_time_limit),
-            attempts_allowed: typeof quiz.attempts_allowed === 'number' ? quiz.attempts_allowed : null,
-          } as any; // Cast to any since ParsedQuiz doesn't include all extended fields
-        });
-
-        // Deduplicate quizzes - keep the latest attempt for each unique quiz_id + session_id combination
-        const quizMap = new Map<string, any>();
-        allParsed.forEach(quiz => {
-          const key = `${quiz.quiz_id}_${(quiz as any).session_id}`;
-          const existing = quizMap.get(key);
-          
-          if (!existing) {
-            quizMap.set(key, quiz);
-          } else {
-            // Keep the one with latest attempt or completed status
-            const currentDate = new Date(quiz.created_at).getTime();
-            const existingDate = new Date(existing.created_at).getTime();
-            
-            // Prioritize: completed > in_progress > pending, then by date
-            const shouldReplace = 
-              (quiz.status === 'completed' && existing.status !== 'completed') ||
-              (quiz.status === existing.status && currentDate > existingDate) ||
-              (quiz.attempt_number && existing.attempt_number && quiz.attempt_number > existing.attempt_number);
-            
-            if (shouldReplace) {
-              quizMap.set(key, quiz);
-            }
-          }
-        });
-
-        const parsed = Array.from(quizMap.values());
-
-        console.log('📊 Quiz Processing:', {
-          totalFromAPI: allParsed.length,
-          afterDeduplication: parsed.length,
-          deduplicated: allParsed.length - parsed.length
-        });
-
-        // Calculate stats
-        const completed = parsed.filter(q => q.status === 'completed');
-        
-        // Pending quizzes: Use common filter utility
-        const pending = parsed.filter(isStudentQuizActive);
-        
-        const missed = parsed.filter(q => q.status === 'missed');
-
-        const scores = completed.filter(q => q.score !== null && q.score !== undefined).map(q => q.score!);
-        const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-        const totalTime = completed.reduce((sum, q) => sum + (q.time_spent_seconds || 0), 0);
-
-        // Calculate total unique classes - handle potential undefined values
-        const uniqueClasses = new Set(parsed.map(q => q.class_id).filter(id => id && id !== ''));
-        const totalClasses = uniqueClasses.size;
-
-        setStats({
-          total_quizzes: parsed.length, // Use parsed.length instead of data.length
-          completed_count: completed.length,
-          pending_count: pending.length,
-          missed_count: missed.length,
-          average_score: Math.round(avgScore),
-          total_time_spent: totalTime,
-          total_questions_attempted: parsed.reduce((sum, q) => sum + (q.question_count || 0), 0),
-          total_classes: totalClasses,
-        });
-
-        setAllQuizzes(parsed);
-        
-        // Store parsed quizzes in dashboard store for ClassesList to reuse
+      if (parsed.length > 0) {
+        setStats(nextStats);
+        setAllQuizzes(parsed as ParsedQuiz[]);
         setQuizzes(parsed as any, parsed.length);
-        console.log('✅ Stored', parsed.length, 'quizzes in dashboard store');
-        console.log('📈 Stats:', {
-          total: parsed.length,
-          completed: completed.length,
-          pending: pending.length,
-          missed: missed.length,
-          avgScore: Math.round(avgScore),
-        });
       } else {
-        // No data
         setStats({
           total_quizzes: 0,
           completed_count: 0,
@@ -261,6 +123,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
           total_classes: 0,
         });
         setAllQuizzes([]);
+        setQuizzes([], 0);
       }
     } catch (error: any) {
       console.error('❌ Error fetching student dashboard:', {
@@ -330,6 +193,38 @@ export default function StudentDashboard({ navigation, route }: Props) {
       const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
       return dateB - dateA;
     });
+
+  const handleRecentCompletionPress = async (quiz: ParsedQuiz) => {
+    if (!user?.id || !quiz.session_id) {
+      Alert.alert('Unavailable', 'This result is missing assignment session context.');
+      return;
+    }
+    setLoadingRecentQuizId(quiz.quiz_id);
+    try {
+      await executeStudentAssignedQuizViewResults(
+        {
+          studentId: String(user.id),
+          quizId: quiz.quiz_id,
+          sessionId: String(quiz.session_id),
+          classroomId: String(quiz.classroom_id || quiz.class_id || ''),
+          attemptData: quiz as Record<string, unknown>,
+          quizName: quiz.quiz_name,
+        },
+        { navigation },
+      );
+    } catch (error) {
+      if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
+        Alert.alert(
+          'Connection Error',
+          'Could not verify your saved submission. Please check your connection and try again.',
+        );
+      } else {
+        Alert.alert('Error', 'Could not open results. Please try again.');
+      }
+    } finally {
+      setLoadingRecentQuizId(null);
+    }
+  };
 
   const focusRefetch =
     Platform.OS !== 'web' ? <NativeFocusRefetch onFocus={fetchDashboardData} /> : null;
@@ -558,7 +453,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
                   const sc = quiz.score ?? 0;
                   const scoreColor = sc >= 75 ? theme.colors.success : sc >= 50 ? theme.colors.warning : theme.colors.danger;
                   const scoreText = quiz.score !== null ? `${quiz.score}%` : 'N/A';
-                  const correctText = quiz.correct_answers !== undefined ? `${quiz.correct_answers}/${quiz.question_count}` : '';
+                  const correctText = formatVerifiedCorrectAnswerCount(quiz);
 
                   return (
                     <TouchableOpacity
@@ -570,13 +465,8 @@ export default function StudentDashboard({ navigation, route }: Props) {
                           borderBottomColor: theme.colors.border,
                         },
                       ]}
-                      onPress={() => navigation?.navigate('QuizResultsScreen', {
-                        quizId: quiz.quiz_id,
-                        quizName: quiz.quiz_name,
-                        sessionId: quiz.session_id,
-                        studentId: user?.id ? String(user.id) : undefined,
-                        isTeacherView: false,
-                      })}
+                      onPress={() => handleRecentCompletionPress(quiz)}
+                      disabled={loadingRecentQuizId === quiz.quiz_id}
                       activeOpacity={0.7}
                       accessibilityRole="button"
                       accessibilityLabel={`${quiz.quiz_name}, score ${scoreText}`}

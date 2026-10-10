@@ -6,8 +6,10 @@ import { checkQuizAttempt, getQuizBySessionId } from './sharedApi';
 import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
+  isSubmissionPersistedOnServer,
   type AssignedQuizRecoveryResumeParams,
 } from './assignedQuizRecovery.service';
+import { clearQuizSubmissionCheckpointBestEffort } from './quizSubmissionCheckpoint';
 
 export class AssignedQuizLoadError extends Error {
   readonly code = 'ASSIGNED_QUIZ_FETCH_FAILED';
@@ -249,6 +251,12 @@ export async function resolveStudentAssignedQuizViewResults(args: {
     };
   }
 
+  await clearStaleCheckpointWhenPersistedOnServer(
+    args.studentId,
+    args.quizId,
+    args.sessionId,
+  );
+
   return {
     kind: 'view_results',
     resultParams: {
@@ -259,6 +267,60 @@ export async function resolveStudentAssignedQuizViewResults(args: {
       isTeacherView: false,
     },
   };
+}
+
+async function clearStaleCheckpointWhenPersistedOnServer(
+  studentId: string,
+  quizId: string | number,
+  sessionId: string,
+): Promise<void> {
+  try {
+    const persisted = await isSubmissionPersistedOnServer(studentId, sessionId, quizId);
+    if (persisted) {
+      await clearQuizSubmissionCheckpointBestEffort(studentId, quizId, sessionId);
+    }
+  } catch {
+    // Best-effort cleanup must not block opening results.
+  }
+}
+
+export type StudentViewResultsNavigationAdapters = {
+  navigation?: { navigate: (screen: string, params?: unknown) => void };
+  onNavigate?: (screen: string, params?: unknown) => void;
+};
+
+/**
+ * Shared Home / Assessments / Analytics entry: recovery probe then navigate.
+ */
+export async function executeStudentAssignedQuizViewResults(
+  args: {
+    studentId: string;
+    quizId: number | string;
+    sessionId: string;
+    classroomId: string;
+    attemptData?: Record<string, unknown> | null;
+    quizName?: string;
+  },
+  adapters: StudentViewResultsNavigationAdapters,
+): Promise<StudentAssignedQuizViewResultsResult> {
+  const viewResult = await resolveStudentAssignedQuizViewResults(args);
+
+  if (viewResult.kind === 'recovery_retry') {
+    navigateStudentToQuizTaking(adapters.navigation, adapters.onNavigate, viewResult.params);
+    return viewResult;
+  }
+
+  if (viewResult.kind === 'view_results') {
+    const resultParams = viewResult.resultParams;
+    if (adapters.onNavigate) {
+      adapters.onNavigate('QuizResultsScreen', resultParams);
+    } else if (adapters.navigation) {
+      adapters.navigation.navigate('QuizResultsScreen', resultParams);
+    }
+    return viewResult;
+  }
+
+  return viewResult;
 }
 
 export function navigateStudentToQuizTaking(
