@@ -18,6 +18,8 @@ const out = join(
   'profile-notification-verification-redacted.json',
 );
 
+const REQUIRED_ACCOUNTS = ['admin', 'instructor', 'student'];
+
 async function fetchProfile(token) {
   const res = await fetch(`${getDevApiBase()}/api/v1/auth/profile`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -53,9 +55,32 @@ async function probeGet(token, path) {
   return { status: res.status, ok: res.ok, data: redactDeep(data) };
 }
 
+function roleMatchesAccount(label, role) {
+  const normalized = String(role || '').toLowerCase();
+  if (label === 'admin') return normalized.includes('admin');
+  if (label === 'instructor') {
+    return normalized.includes('instructor') || normalized.includes('teacher');
+  }
+  if (label === 'student') return normalized.includes('student');
+  return false;
+}
+
 async function verifyProfileRoundTrip(label, username, password) {
   const auth = await loginDevApi(username, password);
-  const block = { accountLabel: label, role: auth.role, steps: [], restored: false };
+  const block = {
+    accountLabel: label,
+    role: auth.role,
+    roleVerified: roleMatchesAccount(label, auth.role),
+    steps: [],
+    restored: false,
+    abortedBeforeMutation: false,
+  };
+
+  if (!block.roleVerified) {
+    block.steps.push({ name: 'role_check', ok: false, role: auth.role });
+    block.abortedBeforeMutation = true;
+    return block;
+  }
 
   const before = await fetchProfile(auth.token);
   block.steps.push({
@@ -64,41 +89,54 @@ async function verifyProfileRoundTrip(label, username, password) {
     ok: before.ok,
   });
 
+  if (!before.ok || !before.data || typeof before.data !== 'object') {
+    block.abortedBeforeMutation = true;
+    return block;
+  }
+
   const marker = `DEV_VERIFY_${Date.now()}`;
-  const originalBio = before.data?.bio ?? '';
-  const patch = { bio: `${originalBio ? `${originalBio} ` : ''}${marker}`.trim() };
+  const originalBio = before.data.bio === undefined ? null : before.data.bio;
+  const patch = {
+    bio: originalBio == null ? marker : `${originalBio} ${marker}`.trim(),
+  };
 
-  const saved = await updateProfile(auth.token, patch);
-  block.steps.push({
-    name: 'profile_save',
-    httpStatus: saved.status,
-    ok: saved.ok,
-  });
-
-  const refetch = await fetchProfile(auth.token);
-  const bioAfter = refetch.data?.bio ?? '';
-  block.steps.push({
-    name: 'profile_refetch',
-    httpStatus: refetch.status,
-    ok: refetch.ok,
-    markerVisible: bioAfter.includes(marker),
-  });
-
+  let savedOk = false;
   try {
-    const restore = await updateProfile(auth.token, { bio: originalBio });
-    const final = await fetchProfile(auth.token);
-    block.restored = (final.data?.bio ?? '') === originalBio;
+    const saved = await updateProfile(auth.token, patch);
+    savedOk = saved.ok;
     block.steps.push({
-      name: 'profile_restore',
-      httpStatus: restore.status,
-      ok: restore.ok && block.restored,
+      name: 'profile_save',
+      httpStatus: saved.status,
+      ok: saved.ok,
     });
-  } catch (error) {
+
+    const refetch = await fetchProfile(auth.token);
+    const bioAfter = refetch.data?.bio ?? null;
     block.steps.push({
-      name: 'profile_restore',
-      ok: false,
-      error: error?.message || String(error),
+      name: 'profile_refetch',
+      httpStatus: refetch.status,
+      ok: refetch.ok,
+      markerVisible: typeof bioAfter === 'string' && bioAfter.includes(marker),
     });
+  } finally {
+    try {
+      const restore = await updateProfile(auth.token, { bio: originalBio });
+      const final = await fetchProfile(auth.token);
+      const finalBio = final.data?.bio === undefined ? null : final.data?.bio;
+      block.restored = finalBio === originalBio;
+      block.steps.push({
+        name: 'profile_restore',
+        httpStatus: restore.status,
+        ok: restore.ok && block.restored,
+        attemptedAfterSaveLost: !savedOk,
+      });
+    } catch (error) {
+      block.steps.push({
+        name: 'profile_restore',
+        ok: false,
+        error: error?.message || String(error),
+      });
+    }
   }
 
   return block;
@@ -113,18 +151,21 @@ async function verifyNotifications(label, username, password) {
     clientEvidence: [],
     deviceReceipt: { status: 'not_collected', reason: 'No physical device push receipt in CI matrix' },
     limitations: [],
+    ok: true,
   };
 
   const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
+  const historyOk = history.ok;
   block.apiEvidence.push({
     name: 'notifications_history',
     httpStatus: history.status,
-    ok: history.ok,
+    ok: historyOk,
     notificationCount: history.data?.notifications?.length ?? history.data?.total ?? 0,
     sampleTypes: (history.data?.notifications ?? [])
       .slice(0, 5)
       .map((n) => n.type || n.data?.type || 'unknown'),
   });
+  if (!historyOk) block.ok = false;
 
   const prefs = await probeGet(auth.token, '/api/notifications/preferences');
   block.apiEvidence.push({
@@ -134,6 +175,7 @@ async function verifyNotifications(label, username, password) {
   });
   if (!prefs.ok) {
     block.limitations.push('Preferences endpoint may be unavailable; see http status in apiEvidence.');
+    block.ok = false;
   }
 
   const devices = await probeGet(auth.token, '/api/notifications/devices');
@@ -144,38 +186,9 @@ async function verifyNotifications(label, username, password) {
   });
 
   block.clientEvidence.push({
-    name: 'useNotifications_fetch_disabled',
-    detail: 'Mobile useNotifications.ts intentionally disables history polling (rate-limit guard).',
+    name: 'bell_fetch_guard',
+    detail: 'useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6).',
   });
-  block.clientEvidence.push({
-    name: 'PushNotificationService_paths',
-    detail: 'POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device.',
-  });
-
-  if (auth.role === 'student') {
-    const assigned = (history.data?.notifications ?? []).filter(
-      (n) =>
-        String(n.type || '').includes('quiz') ||
-        String(n.data?.session_id || n.data?.sessionId || '').length > 0,
-    );
-    block.apiEvidence.push({
-      name: 'student_bell_candidate_rows',
-      count: assigned.length,
-      hasSessionDestination: assigned.some(
-        (n) => n.data?.session_id || n.data?.sessionId,
-      ),
-    });
-  }
-
-  if (auth.role === 'instructor' || auth.role === 'admin') {
-    block.apiEvidence.push({
-      name: 'teacher_submission_notification_probe',
-      detail: 'Inspect history sampleTypes for graded/submission types when present on dev-api.',
-      sampleTypes: (history.data?.notifications ?? [])
-        .slice(0, 10)
-        .map((n) => n.type || 'unknown'),
-    });
-  }
 
   return block;
 }
@@ -187,6 +200,12 @@ async function main() {
   }
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const accounts = cfg.accounts ?? {};
+  const missing = REQUIRED_ACCOUNTS.filter((k) => !accounts[k]?.username);
+  if (missing.length) {
+    console.error(`Missing required dev-api accounts: ${missing.join(', ')}`);
+    process.exit(2);
+  }
+
   const report = {
     verifiedAt: new Date().toISOString(),
     apiBase: getDevApiBase(),
@@ -196,9 +215,8 @@ async function main() {
     status: 'pending',
   };
 
-  for (const label of ['admin', 'instructor', 'student']) {
+  for (const label of REQUIRED_ACCOUNTS) {
     const cred = accounts[label];
-    if (!cred) continue;
     report.profiles.push(await verifyProfileRoundTrip(label, cred.username, cred.password));
     report.notifications.push(
       await verifyNotifications(label, cred.username, cred.password),
@@ -206,14 +224,20 @@ async function main() {
   }
 
   const profileFailed = report.profiles.some(
-    (p) => !p.steps.every((s) => s.ok !== false) || !p.restored,
+    (p) =>
+      !p.roleVerified ||
+      p.abortedBeforeMutation ||
+      !p.steps.every((s) => s.ok !== false) ||
+      !p.restored ||
+      !p.steps.some((s) => s.name === 'profile_refetch' && s.markerVisible),
   );
-  report.status = profileFailed ? 'failed' : 'passed';
+  const notificationFailed = report.notifications.some((n) => !n.ok);
+  report.status = profileFailed || notificationFailed ? 'failed' : 'passed';
 
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
   console.log(`Wrote ${out} (status=${report.status})`);
-  process.exit(profileFailed ? 1 : 0);
+  process.exit(profileFailed || notificationFailed ? 1 : 0);
 }
 
 main().catch((e) => {
