@@ -2,6 +2,8 @@
 
 Last updated: 2026-10-10 (Cursor). API: `https://dev-api.eduvijna.com` only.
 
+**Stack:** PR [#18](https://github.com/eduvijna-ai/Eduvijna/pull/18) `0089cf4` → PR [#19](https://github.com/eduvijna-ai/Eduvijna/pull/19) `a6bd174` → PR [#20](https://github.com/eduvijna-ai/Eduvijna/pull/20) docs seeds.
+
 | ID | Requirement | Implementation | Review | Technical verification | Founder E2E |
 |----|-------------|----------------|--------|------------------------|-------------|
 | P1 | Assigned quiz PUT→POST + `attended-quiz` | PR #18 services | Codex requested | Jest + parity doc | Pending |
