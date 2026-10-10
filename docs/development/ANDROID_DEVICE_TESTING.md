@@ -184,7 +184,7 @@ Until the above exists, **phone verification remains pending**.
 
 - **`stdio: 'inherit'`**, **`shell: false`**, production-release guards unchanged.
 - **`expo`** → `node node_modules/expo/bin/cli`.
-- **`eas`** → `node` + local **`eas-cli`** (devDependency) or global `npm root -g` fallback — not the Expo CLI entry.
+- **`eas`** → `node` + pinned local **`eas-cli@16.27.0`** (run `npm ci` if missing) — not the Expo CLI entry.
 - Wrapper tests use `scripts/env-marker.mjs` and a temp file.
 
 ## Native camera / gallery / document picker (smoke)
