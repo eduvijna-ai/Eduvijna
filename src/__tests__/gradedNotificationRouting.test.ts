@@ -1,5 +1,5 @@
 import { resolveStudentGradedAssignmentSession } from '../core/services/gradedNotificationRouting.service';
-import { fetchQuizCheckRecord } from '../core/services/dashboardApi';
+import { fetchQuizCheckRecord, type CheckRecordResponse } from '../core/services/dashboardApi';
 
 jest.mock('../core/services/dashboardApi', () => ({
   fetchQuizCheckRecord: jest.fn(),
@@ -13,12 +13,33 @@ describe('resolveStudentGradedAssignmentSession', () => {
   });
 
   it('resolves a single matching assignment session', async () => {
-    mockFetch.mockImplementation(async (_studentId, type) => ({
+    mockFetch.mockImplementation(async (_studentId, type): Promise<CheckRecordResponse> => ({
+      success: true,
+      check_type: type ?? 'pending',
+      message: '',
       result:
         type === 'completed'
           ? [
               {
-                quiz_details: { quiz_id: 9, session_id: 'sess-9', classroom_id: 'class-9' },
+                status: 'completed',
+                classid: 'class-9',
+                student_id: 'student-1',
+                quiz_details: {
+                  quiz_id: 9,
+                  session_id: 'sess-9',
+                  classroom_id: 'class-9',
+                  topic: '',
+                  summary: '',
+                  start_time: '',
+                  end_time: '',
+                  duration: 0,
+                  has_time_limit: false,
+                  question_count: 0,
+                  questions: { quizzes: [] },
+                  status: 'completed',
+                  is_active: false,
+                  is_public: false,
+                },
               },
             ]
           : [],
@@ -29,9 +50,50 @@ describe('resolveStudentGradedAssignmentSession', () => {
 
   it('returns ambiguous when multiple sessions share the quiz', async () => {
     mockFetch.mockResolvedValue({
+      success: true,
+      check_type: 'completed',
+      message: '',
       result: [
-        { quiz_details: { quiz_id: 9, session_id: 'a' } },
-        { quiz_details: { quiz_id: 9, session_id: 'b' } },
+        {
+          status: 'completed',
+          classid: 'c1',
+          student_id: 'student-1',
+          quiz_details: {
+            quiz_id: 9,
+            session_id: 'a',
+            topic: '',
+            summary: '',
+            start_time: '',
+            end_time: '',
+            duration: 0,
+            has_time_limit: false,
+            question_count: 0,
+            questions: { quizzes: [] },
+            status: 'completed',
+            is_active: false,
+            is_public: false,
+          },
+        },
+        {
+          status: 'completed',
+          classid: 'c2',
+          student_id: 'student-1',
+          quiz_details: {
+            quiz_id: 9,
+            session_id: 'b',
+            topic: '',
+            summary: '',
+            start_time: '',
+            end_time: '',
+            duration: 0,
+            has_time_limit: false,
+            question_count: 0,
+            questions: { quizzes: [] },
+            status: 'completed',
+            is_active: false,
+            is_public: false,
+          },
+        },
       ],
     });
     const result = await resolveStudentGradedAssignmentSession('student-1', 9);

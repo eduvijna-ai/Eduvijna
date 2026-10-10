@@ -73,6 +73,12 @@ module.exports = {
     'react-hooks/exhaustive-deps': 'warn',
   },
   overrides: [
+    {
+      files: ['src/__tests__/**/*.{ts,tsx}'],
+      rules: {
+        'no-restricted-imports': 'off',
+      },
+    },
     // Screens: STRICT rules
     {
       files: ['src/platforms/*/screens/**/*.tsx', 'src/platforms/*/screens/**/*.ts'],

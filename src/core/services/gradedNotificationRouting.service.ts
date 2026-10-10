@@ -32,8 +32,8 @@ export async function resolveStudentGradedAssignmentSession(
     if (!sessionId) continue;
     const classroomId =
       row.quiz_details?.classroom_id ??
-      row.classroom_id ??
       row.quiz_details?.class_id ??
+      row.classid ??
       '';
     sessions.set(String(sessionId), String(classroomId ?? ''));
   }

@@ -19,30 +19,9 @@ import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNoti
 import { Alert } from 'react-native';
 
 
-type WebNavScreen =
-  | 'dashboard'
-  | 'assessments'
-  | 'analytics'
-  | 'profile'
-  | 'notifications'
-  | 'theme'
-  | 'students'
-  | 'classes'
-  | 'ClassesList'
-  | 'StudentList'
-  | 'Assessments'
-  | 'CreateAIQuizScreen'
-  | 'CreateDocumentQuizScreen'
-  | 'CreateImageQuizScreen'
-  | 'CreateYouTubeQuizScreen'
-  | 'CreateWebsiteQuizScreen'
-  | 'CreateHandwrittenQuizScreen'
-  | 'QuizPreviewScreen'
-  | 'QuizResultsScreen'
-  | 'QuizTakingScreen'
-  | 'QuizStatusScreen'
-  | 'QuizLoadingScreen'
-  | 'ERP';
+import type { WebShellScreen } from '../webShellScreens';
+
+type WebNavScreen = WebShellScreen;
 
 interface WebNavigationProps {
   activeScreen: WebNavScreen;
@@ -85,7 +64,9 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     const openQuizUser = authUser ?? user;
 
     if (type === 'quiz_graded' && openQuizUser) {
-      const gradedParams = buildQuizGradedResultsNavigationParams(data ?? {});
+      const gradedParams = buildQuizGradedResultsNavigationParams(
+        (data ?? {}) as Parameters<typeof buildQuizGradedResultsNavigationParams>[0],
+      );
       let gradedSessionId =
         typeof gradedParams?.sessionId === 'string' ? gradedParams.sessionId : null;
       let gradedClassroomId = String(data?.classroom_id ?? data?.classroomId ?? '');

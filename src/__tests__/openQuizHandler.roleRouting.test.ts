@@ -59,7 +59,7 @@ describe('handleOpenQuiz role routing precedence', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCheckpoint.mockResolvedValue(null);
-    mockViewResults.mockResolvedValue(undefined);
+    mockViewResults.mockResolvedValue({ navigated: true });
   });
 
   it('routes instructor public quiz notifications to teacher preview', async () => {

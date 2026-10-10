@@ -1,3 +1,4 @@
+import type { Notification } from '../core/api/notifications.api';
 import {
   guardedNotificationFetch,
   resetNotificationFetchGuardForAccount,
@@ -11,7 +12,7 @@ describe('notificationFetchGuard', () => {
 
   it('dedupes concurrent in-flight fetches per account', async () => {
     let calls = 0;
-    const slow = async () => {
+    const slow = async (): Promise<Notification[]> => {
       calls += 1;
       await new Promise((resolve) => setTimeout(resolve, 30));
       return [{ id: 1, title: 't', body: 'b', status: 'sent', priority: 'normal', created_at: '' }];
@@ -46,7 +47,9 @@ describe('notificationFetchGuard', () => {
       throw err;
     });
     expect(rateLimited.kind).toBe('suppressed');
-    expect(rateLimited.reason).toBe('rate_limited');
+    if (rateLimited.kind === 'suppressed') {
+      expect(rateLimited.reason).toBe('rate_limited');
+    }
     expect(rateLimited.notifications[0]?.title).toBe('before-429');
   });
 
