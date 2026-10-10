@@ -2,6 +2,15 @@
 
 Prepares **Expo development builds** against **`https://dev-api.eduvijna.com`** for emulator and physical Wi‑Fi testing. Depends on API environment work in **PR #16** (`chore/mobile-api-environments-from-main`); this device setup lives on **`chore/android-device-setup`**.
 
+## Handoff status
+
+| Target | Status | Notes |
+|--------|--------|--------|
+| **Emulator** | **Ready** | AVD `Eduvijna_Android_Dev` boots; `adb devices` shows `emulator-5554 device`; debug dev client `com.eduvijna.app` v1.0.0 installed from local `expo run:android` (development env). |
+| **Physical phone (Wi‑Fi)** | **Pending — Founder** | No USB/Wi‑Fi `adb` device was connected during setup. Same Android `package` as production (`com.eduvijna.app` in `app.json`); a debug APK **cannot** install alongside the Play Store build without a signature conflict — see [Production vs debug package](#production-vs-debug-package). |
+
+Merge order: land **PR #16** first, then **PR #17** (stacked on the API env branch).
+
 ## Prerequisites
 
 | Component | Expected |
@@ -117,8 +126,26 @@ npm run config:verify
 1. Phone and PC on the **same trusted Wi‑Fi** (not guest/isolated VLAN).
 2. Note PC **LAN IPv4** privately (Settings → Network; do not commit to git).
 3. `npm run start:device` — confirm Metro advertises `http://<LAN-IP>:8081`.
-4. **Windows Firewall:** allow **Node.js** / Metro on **Private** networks only (port **8081**). Do not disable the firewall.
-5. Install **development** APK (`expo run:android` with USB or `adb install` of debug APK). **Do not** replace the Founder’s **production** Play Store app (`com.eduvijna.app` production signing). If install fails with signature/package conflict, stop and report the exact `adb` error before uninstalling anything.
+4. **Windows Firewall (Private profile only):**
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Expo Metro 8081 (Private)" `
+     -Direction Inbound -Protocol TCP -LocalPort 8081 -Action Allow -Profile Private
+   ```
+
+   Or allow the **Node.js** executable when Windows prompts on first LAN connection. Do not disable the firewall.
+
+5. Install **development** APK (`expo run:android` with USB or `adb install -r android\app\build\outputs\apk\debug\app-debug.apk`). **Do not** uninstall the Founder’s production app or clear its data without explicit approval.
+
+### Production vs debug package
+
+Both production and local development builds use **`com.eduvijna.app`** (production identity preserved). If the Play Store app is already installed, `adb install` typically fails with:
+
+```text
+INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package com.eduvijna.app signatures do not match
+```
+
+Stop and choose a path with the Founder (e.g. test on emulator only, USB-only side-by-side workflow, or a future dev-only `applicationId` — out of scope for this setup PR).
 6. Open dev client → scan QR or enter development URL.
 7. Confirm requests hit **dev-api** (login screen / network inspector). Optional: temporary UI text change → Fast Refresh → revert.
 8. **Wireless debugging (optional):** Android Studio → *Pair Devices Using Wi‑Fi*, or `adb pair` / `adb connect` using **pairing port** and **connection port** from the phone (often different). Do not commit pairing codes or device serials.
@@ -135,6 +162,18 @@ npm run config:verify
 - `scripts/with-eduvijna-api-env.mjs` uses **`stdio: 'inherit'`** for real commands.
 - Expo/EAS invoked as **`process.execPath` + `node_modules/expo/bin/cli`** (not `.cmd` shims).
 - Wrapper tests use `scripts/env-marker.mjs` writing to a **temp file** (production path stays inherit-only).
+
+## Native camera / gallery / document picker (smoke, no uploads)
+
+On **emulator** (logged in or guest — do **not** complete real document uploads to production backends):
+
+1. Launch dev client: `adb shell am start -n com.eduvijna.app/.MainActivity`
+2. Navigate to **Document Upload** (tab or workspace entry).
+3. Tap **Gallery** — expect system photo picker (emulator may offer sample images).
+4. Tap **Camera** — expect camera UI (emulator virtual camera; cancel without saving).
+5. Tap **Upload file** — expect `expo-document-picker` sheet; cancel without selecting.
+
+Confirm permission prompts appear once and the app does not crash. Revert any temporary UI edits used for Fast Refresh checks.
 
 ## OTA / production
 
