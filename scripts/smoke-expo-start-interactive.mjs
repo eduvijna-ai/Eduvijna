@@ -40,7 +40,6 @@ const child = spawn(
     '--',
     'expo',
     'start',
-    '--non-interactive',
     '--port',
     SMOKE_PORT,
   ],
