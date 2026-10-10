@@ -50,7 +50,7 @@ export function parseTypeScriptDiagnosticLine(line) {
 export function collectTypeScriptIdentities(output) {
   const identities = new Set();
   for (const line of String(output).split('\n')) {
-    const parsed = parseTypeScriptDiagnosticLine(line);
+    const parsed = parseTypeScriptDiagnosticLine(line.replace(/\r$/, ''));
     if (parsed) {
       identities.add(parsed.identity);
     }

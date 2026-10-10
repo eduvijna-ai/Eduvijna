@@ -289,8 +289,6 @@ try {
   mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
-  const shouldFail = cliOpts.smoke
-    ? Boolean(report.error)
-    : report.status !== 'passed';
+  const shouldFail = report.status !== 'passed' || Boolean(report.error);
   process.exit(shouldFail ? 1 : 0);
 }
