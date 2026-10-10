@@ -45,16 +45,33 @@ npm run update:production
 
 **Production OTA publication remains blocked** until EAS **channel/branch** and **environment policy** are verified with the account owner. Do not run `update:production` or publish from this repo without Founder approval.
 
+## CLI wrapper (Expo + EAS)
+
+`scripts/with-eduvijna-api-env.mjs` runs child processes with **`stdio: 'inherit'`** and **`shell: false`**.
+
+| Command | Resolution |
+|---------|------------|
+| `expo …` | `node node_modules/expo/bin/cli …` |
+| `eas …` | `node` + local **`eas-cli`** (devDependency, installed by `npm ci`), or global install under `npm root -g` if local is absent |
+
+Do not invoke `expo.cmd` / `eas.cmd` shims from the wrapper — paths with spaces break under piped stdio.
+
+Global `npm install -g eas-cli` remains valid for ad-hoc terminal use; **`npm run update:production`** and verification use the wrapper resolution above.
+
 ## Verification
 
 ```bash
 npm run config:verify
+npm run cli:verify
 npm run bundle:verify:development
 npm run bundle:verify:production
 npm test -- --watch=false src/__tests__/withEduvijnaApiEnv.wrapper.test.ts
+npm test -- --watch=false src/__tests__/resolveCliEntry.test.ts
 ```
 
 `config:verify` clears inherited `EDUVIJNA_API_ENV` / `EDUVIJNA_REQUIRE_PRODUCTION` before the default-development Expo check.
+
+`cli:verify` runs `eas --version` through the wrapper (non-publishing).
 
 ## Runtime
 

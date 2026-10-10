@@ -45,11 +45,12 @@ node --version  # Minimum: v18.x
 # npm (v9+)
 npm --version
 
-# Expo CLI
+# Optional global CLIs (ad-hoc terminal use)
 npm install -g @expo/cli
-
-# EAS CLI (for builds)
 npm install -g eas-cli
+
+# Repo scripts resolve Expo/EAS via `node` + local entries (`npm ci` installs eas-cli).
+# See docs/development/API_ENVIRONMENT.md — wrapper uses stdio inherit on Windows.
 
 # Android Studio (for Android emulator) OR
 # Xcode (for iOS simulator, macOS only)
