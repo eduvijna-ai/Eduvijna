@@ -51,11 +51,30 @@ Hyper-V is active on this host. If the emulator fails to start, enable **Intel V
 
 ### SDK command-line tools
 
-If `sdkmanager` reports invalid SDK root:
+If `sdkmanager` / `avdmanager` report an invalid SDK root, missing tools, or “Could not find or load main class”:
 
-```powershell
-sdkmanager.bat --sdk_root="$env:ANDROID_SDK_ROOT" ...
-```
+1. **Confirm the SDK path** — open Android Studio → **Settings → Languages & Frameworks → Android SDK** and note the **Android SDK Location** (must match what you pass to setup).
+2. **Re-run setup with the correct path** (same PowerShell session before any `sdkmanager` calls):
+
+   ```powershell
+   cd C:\Users\kanne\dev\Eduvijna
+   . .\scripts\setup-android-env.ps1 -SdkPath "C:\Users\<you>\AppData\Local\Android\Sdk"
+   java -version
+   Test-Path "$env:ANDROID_SDK_ROOT\platform-tools\adb.exe"
+   Test-Path "$env:ANDROID_SDK_ROOT\emulator\emulator.exe"
+   ```
+
+3. **Repair Command-line Tools layout** — Google expects `%ANDROID_SDK_ROOT%\cmdline-tools\latest\bin\sdkmanager.bat`. If only a flat `%ANDROID_SDK_ROOT%\cmdline-tools\bin` exists, either:
+   - Install **Android SDK Command-line Tools (latest)** from Android Studio **SDK Manager → SDK Tools**, or
+   - Download [commandlinetools-win](https://developer.android.com/studio#command-line-tools-only), extract, and place the inner `cmdline-tools` folder so `latest\bin\sdkmanager.bat` exists under your SDK root.
+4. **Verify** (after dot-sourcing):
+
+   ```powershell
+   sdkmanager --version
+   sdkmanager --list_installed | Select-String "platform-tools|emulator|cmdline-tools"
+   ```
+
+Do **not** stop a Founder-running emulator to repair the SDK; use a separate PowerShell window for SDK checks only.
 
 Google’s recommended layout is `%ANDROID_SDK_ROOT%\cmdline-tools\latest\bin`; this host also has `%ANDROID_SDK_ROOT%\cmdline-tools\bin` — the setup script picks the first verified install.
 
