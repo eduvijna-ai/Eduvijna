@@ -573,7 +573,9 @@ export default function StudentDashboard({ navigation, route }: Props) {
                       onPress={() => navigation?.navigate('QuizResultsScreen', {
                         quizId: quiz.quiz_id,
                         quizName: quiz.quiz_name,
-                        isTeacherView: true,
+                        sessionId: quiz.session_id,
+                        studentId: user?.id ? String(user.id) : undefined,
+                        isTeacherView: false,
                       })}
                       activeOpacity={0.7}
                       accessibilityRole="button"

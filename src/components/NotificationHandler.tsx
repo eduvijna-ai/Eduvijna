@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 //import type { Notification } from '@core/api/notifications.api';
@@ -103,16 +104,19 @@ export default function NotificationHandler() {
         }
         break;
 
-      case 'quiz_graded':
-        // Quiz graded - show results
-        if (quizId) {
-          console.log('➡️ Navigating to QuizResultsScreen:', quizId);
-          (navigationRef.current as any).navigate('QuizResultsScreen', {
-            quizId,
-            studentId,
-          });
+      case 'quiz_graded': {
+        const resultParams = buildQuizGradedResultsNavigationParams({
+          quiz_id: quizId,
+          session_id: sessionId,
+          student_id: studentId ?? user?.id,
+          quiz_title: quizTitle,
+        });
+        if (resultParams) {
+          console.log('➡️ Navigating to QuizResultsScreen:', resultParams);
+          (navigationRef.current as any).navigate('QuizResultsScreen', resultParams);
         }
         break;
+      }
 
       case 'classroom_invite':
         // Classroom invitation - navigate to classes (could add classroom detail screen)

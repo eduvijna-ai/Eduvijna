@@ -25,11 +25,15 @@ Source: `GET https://dev-api.eduvijna.com/openapi.json` (`Eduvijna Educational P
 
 `log_data` is an unconstrained object. **Do not treat `log_data.attempt_id` as an API attachment key** — it is not in the schema.
 
-**Backend dependency (blocking a client sequencing change):** the only documented way to persist assigned-quiz answers is `POST /quiz-submissions`, and that operation is **not** specified to attach to an existing `quiz_attempts` row. OpenAPI does not describe a side-effect that inserts another attempt, nor a field that prevents one. Reordering PUT/POST, omitting POST, or sending an undocumented top-level `attempt_id` would be an unverified workaround.
+**Mobile contract (supported today):** persist answers only via `POST /quiz-submissions` after `PUT` completes the in-flight attempt; keep informational `log_data.attempt_id` only (no undocumented top-level fields).
 
-**Authorized development fixture:** **Pending.** Record `GET /quiz-attempts` id+status immediately before and after one `POST /quiz-submissions` for a known `started` attempt. No unauthenticated login probe this pass.
+**Authorized development fixture (informational):** optional `GET /quiz-attempts` before/after one `POST /quiz-submissions` — see `MOBILE_QUIZ_REACT_REQUEST_PARITY.md` and `scripts/compare-assigned-quiz-dev-api.mjs`. Not a PR #18 merge gate.
 
-## Backend inspection — `create_quiz_submission` (eduvijna-api)
+## Backend observations (factual — out of scope for mobile PRs)
+
+The following documents **dev-api behavior** for engineers; it does **not** block mobile merge or require deployment.
+
+### Backend inspection — `create_quiz_submission` (eduvijna-api)
 
 **Reference commit (requested):** `7229a15941b63f4b8e80f8a94fa9f61480b78c36` (`main` at 2026-10-10; merge PR #394 captcha hotfix only — no diff in this method vs dev pin below).
 
@@ -69,7 +73,7 @@ Source: `GET https://dev-api.eduvijna.com/openapi.json` (`Eduvijna Educational P
 - Rejects new start when a **completed** or **started/in_progress** attempt already exists for `(student_id, quiz_id)`.
 - Client flow (Quiz-React `OpenQuizPage.tsx`, mobile `assignedQuizSubmission.service.ts`): **PUT** finalize existing attempt, then **POST** submission with answers in `log_data` (including informational `attempt_id` in log only).
 
-### Observed semantic gap (why PR #18 stays blocked)
+### Observed semantic gap (server — informational)
 
 | Client expectation | dev-api (`67b5a374` / `7229a159`) |
 |--------------------|-----------------------------------|
@@ -78,9 +82,9 @@ Source: `GET https://dev-api.eduvijna.com/openapi.json` (`Eduvijna Educational P
 | Idempotent retry after PUT+POST partial failure | Each successful POST creates a **new** submission; attempt side-effect is non-idempotent |
 | Assignment scoped by `classroom_id` / `session_id` | Submission `classroom_id` derived from quiz lookup, not validated against request |
 
-**Out of scope for mobile workarounds:** reordering PUT/POST, omitting POST, deleting duplicate attempts, or dropping answer persistence.
+Mobile mitigations: immutable checkpoint, View Results recovery probe, earliest-`started` attempt selection. **No** client reorder/omit/delete workarounds.
 
-## Proposed backend change (eduvijna-api — proposal only; no implementation/deploy)
+### Proposed backend change (eduvijna-api — proposal only; not in mobile scope)
 
 **Goal:** Atomically persist `quiz_submissions` and finalize the **selected** `quiz_attempts` row when clients use the explicit-attempt path, while keeping legacy POST behavior for worksheets and old clients.
 
@@ -141,17 +145,18 @@ Source: `GET https://dev-api.eduvijna.com/openapi.json` (`Eduvijna Educational P
 | Eduvijna mobile | Same; blocked until dev-api ships |
 | Worksheet `OpenWorksheetPage.tsx` | No `attempt_id`; legacy path + `_prepare_worksheet_submission` |
 
-### 6. Mobile dependency (PR #18)
+### 6. Mobile PR #18 checklist (client-only)
 
 | Item | Status |
 |------|--------|
-| Recovery probe on Start/Resume **and** completed-card View Results | **Done** (this branch) |
+| Recovery probe on Start/Resume **and** completed-card View Results | **Done** |
 | Immutable recovery: read-only answers + explicit retry save | **Done** |
 | Checkpoint cleanup best-effort after server persistence | **Done** |
-| Top-level `attempt_id` on POST | **Blocked** until backend explicit path on dev-api |
-| Live before/after `quiz-attempts` fixture | **Pending** (Founder E2E deferred) |
+| Quiz-React PUT → POST + `attended-quiz` identity | **Done** (see `MOBILE_QUIZ_REACT_REQUEST_PARITY.md`) |
+| Top-level `attempt_id` on POST | **Not used** (unsupported in OpenAPI; log-only `attempt_id`) |
+| Live trace fixture | **Optional** (`compare-assigned-quiz-dev-api.mjs`); Founder E2E deferred |
 
-**Merge rule:** PR #18 mobile UX may merge when review passes; **submission semantics sign-off** remains blocked until backend + live fixture.
+**Merge rule:** PR #18 merges on mobile review + tests; backend proposal/deploy is separate track.
 
 ### Related endpoints (unchanged)
 
@@ -172,7 +177,7 @@ Source: `GET https://dev-api.eduvijna.com/openapi.json` (`Eduvijna Educational P
 | Emulator `emulator-5554` | **Verified** | `adb devices` → `device` (Founder emulator not restarted) |
 | Metro **8082** | **Pending / preserved** | Existing Metro session must remain on **8082**; not reset this pass |
 | Authenticated emulator checks (login, recovery, attended-quiz read) | **Pending** | Not executed until Founder-authenticated device login |
-| Authorized before/after attempt list around one `POST /quiz-submissions` | **Pending** | Requires a development student token; OpenAPI contract recorded above |
+| Authorized before/after attempt list around one `POST /quiz-submissions` | **Optional** | `scripts/compare-assigned-quiz-dev-api.mjs` when credentials available |
 
 ## Manual matrix (when authenticated)
 
