@@ -20,12 +20,52 @@ const out = join(
 
 const REQUIRED_ACCOUNTS = ['admin', 'instructor', 'student'];
 
+function parseJsonResponse(text) {
+  if (!text || !String(text).trim()) {
+    return { ok: false, error: 'empty_body' };
+  }
+  try {
+    const data = JSON.parse(text);
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, error: 'unexpected_json_shape' };
+    }
+    if (Object.keys(data).length === 0) {
+      return { ok: false, error: 'empty_object' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'malformed_json' };
+  }
+}
+
+function assertProfileShape(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return false;
+  }
+  if (Object.keys(data).length === 0) {
+    return false;
+  }
+  const id = data.id ?? data.user_id;
+  return id != null && String(id).trim() !== '';
+}
+
+function profileIdentityMatches(data, authUserId) {
+  const id = data.id ?? data.user_id;
+  return String(id) === String(authUserId);
+}
+
 async function fetchProfile(token) {
   const res = await fetch(`${getDevApiBase()}/api/v1/auth/profile`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const data = await res.json().catch(() => ({}));
-  return { status: res.status, ok: res.ok, data };
+  const text = await res.text();
+  const parsed = parseJsonResponse(text);
+  return {
+    status: res.status,
+    ok: res.ok && parsed.ok,
+    data: parsed.ok ? parsed.data : null,
+    parseError: parsed.ok ? null : parsed.error,
+  };
 }
 
 async function updateProfile(token, body) {
@@ -37,8 +77,14 @@ async function updateProfile(token, body) {
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
-  return { status: res.status, ok: res.ok, data };
+  const text = await res.text();
+  const parsed = parseJsonResponse(text);
+  return {
+    status: res.status,
+    ok: res.ok && parsed.ok,
+    data: parsed.ok ? parsed.data : null,
+    parseError: parsed.ok ? null : parsed.error,
+  };
 }
 
 async function probeGet(token, path) {
@@ -46,13 +92,9 @@ async function probeGet(token, path) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { _preview: text.slice(0, 160) };
-  }
-  return { status: res.status, ok: res.ok, data: redactDeep(data) };
+  const parsed = parseJsonResponse(text);
+  const data = parsed.ok ? redactDeep(parsed.data) : { parseError: parsed.error };
+  return { status: res.status, ok: res.ok && parsed.ok, data };
 }
 
 function roleMatchesAccount(label, role) {
@@ -77,19 +119,28 @@ async function verifyProfileRoundTrip(label, username, password) {
   };
 
   if (!block.roleVerified) {
-    block.steps.push({ name: 'role_check', ok: false, role: auth.role });
+    block.steps.push({ check: 'role_check', ok: false, role: auth.role });
     block.abortedBeforeMutation = true;
     return block;
   }
 
   const before = await fetchProfile(auth.token);
   block.steps.push({
-    name: 'profile_read_initial',
+    check: 'profile_read_initial',
     httpStatus: before.status,
-    ok: before.ok,
+    ok:
+      before.ok &&
+      assertProfileShape(before.data) &&
+      profileIdentityMatches(before.data, auth.userId),
+    parseError: before.parseError,
   });
 
-  if (!before.ok || !before.data || typeof before.data !== 'object') {
+  if (
+    !before.ok ||
+    !before.data ||
+    !assertProfileShape(before.data) ||
+    !profileIdentityMatches(before.data, auth.userId)
+  ) {
     block.abortedBeforeMutation = true;
     return block;
   }
@@ -105,17 +156,18 @@ async function verifyProfileRoundTrip(label, username, password) {
     const saved = await updateProfile(auth.token, patch);
     savedOk = saved.ok;
     block.steps.push({
-      name: 'profile_save',
+      check: 'profile_save',
       httpStatus: saved.status,
       ok: saved.ok,
+      parseError: saved.parseError,
     });
 
     const refetch = await fetchProfile(auth.token);
     const bioAfter = refetch.data?.bio ?? null;
     block.steps.push({
-      name: 'profile_refetch',
+      check: 'profile_refetch',
       httpStatus: refetch.status,
-      ok: refetch.ok,
+      ok: refetch.ok && assertProfileShape(refetch.data),
       markerVisible: typeof bioAfter === 'string' && bioAfter.includes(marker),
     });
   } finally {
@@ -125,20 +177,20 @@ async function verifyProfileRoundTrip(label, username, password) {
       const finalBio = final.data?.bio === undefined ? null : final.data?.bio;
       block.restored = final.ok && finalBio === originalBio;
       block.steps.push({
-        name: 'profile_restore',
+        check: 'profile_restore',
         httpStatus: restore.status,
         ok: restore.ok && block.restored,
         attemptedAfterSaveLost: !savedOk,
       });
       block.steps.push({
-        name: 'profile_final_get',
+        check: 'profile_final_get',
         httpStatus: final.status,
         ok: final.ok && block.restored,
         valueMatchesOriginal: finalBio === originalBio,
       });
     } catch (error) {
       block.steps.push({
-        name: 'profile_restore',
+        check: 'profile_restore',
         ok: false,
         error: error?.message || String(error),
       });
@@ -163,7 +215,7 @@ async function verifyNotifications(label, username, password) {
   const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
   const historyOk = history.ok;
   block.apiEvidence.push({
-    name: 'notifications_history',
+    check: 'notifications_history',
     httpStatus: history.status,
     ok: historyOk,
     notificationCount: history.data?.notifications?.length ?? history.data?.total ?? 0,
@@ -175,7 +227,7 @@ async function verifyNotifications(label, username, password) {
 
   const prefs = await probeGet(auth.token, '/api/notifications/preferences');
   block.apiEvidence.push({
-    name: 'notifications_preferences',
+    check: 'notifications_preferences',
     httpStatus: prefs.status,
     ok: prefs.ok,
   });
@@ -186,7 +238,7 @@ async function verifyNotifications(label, username, password) {
 
   const devices = await probeGet(auth.token, '/api/notifications/devices');
   block.apiEvidence.push({
-    name: 'notifications_devices_list',
+    check: 'notifications_devices_list',
     httpStatus: devices.status,
     ok: devices.ok,
   });
@@ -195,7 +247,7 @@ async function verifyNotifications(label, username, password) {
   }
 
   block.clientEvidence.push({
-    name: 'bell_fetch_guard',
+    check: 'bell_fetch_guard',
     detail: 'useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6).',
   });
 
@@ -238,8 +290,8 @@ async function main() {
       p.abortedBeforeMutation ||
       !p.steps.every((s) => s.ok !== false) ||
       !p.restored ||
-      !p.steps.some((s) => s.name === 'profile_final_get' && s.ok) ||
-      !p.steps.some((s) => s.name === 'profile_refetch' && s.markerVisible),
+      !p.steps.some((s) => s.check === 'profile_final_get' && s.ok) ||
+      !p.steps.some((s) => s.check === 'profile_refetch' && s.markerVisible),
   );
   const notificationFailed = report.notifications.some((n) => !n.ok);
   report.status = profileFailed || notificationFailed ? 'failed' : 'passed';
