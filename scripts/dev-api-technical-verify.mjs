@@ -354,6 +354,13 @@ function evaluateTechnicalReport(report) {
           return true;
         }
       }
+      if (
+        check.name === 'attended_quiz_load' &&
+        check.status === 404 &&
+        check.executedBecauseCheckRecordHadRows
+      ) {
+        continue;
+      }
       if (typeof check.status === 'number' && check.status >= 400 && check.name !== 'notifications_preferences') {
         return true;
       }
