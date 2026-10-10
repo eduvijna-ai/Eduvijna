@@ -65,6 +65,17 @@ describe('studentAssignmentClassification', () => {
     expect(status).toBe('pending');
   });
 
+  it('marks inactive timed assignments as expired (excluded from pending)', () => {
+    const row = classifyStudentAssignmentRow({
+      recordStatus: null,
+      ...activeWindow,
+      is_active: false,
+      now: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    expect(row.availability_status).toBe('expired');
+    expect(row.status).toBe('missed');
+  });
+
   it('in_progress within window stays ongoing', () => {
     const row = classifyStudentAssignmentRow({
       recordStatus: null,

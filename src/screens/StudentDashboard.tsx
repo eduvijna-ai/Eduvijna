@@ -121,15 +121,23 @@ export default function StudentDashboard({ navigation, route }: Props) {
     try {
       setLoading(true);
 
-      const { quizzes: parsed, stats: dashboardStats } = await loadStudentDashboardQuizzes(
-        String(user.id),
-      );
+      const studentId = String(user.id);
+      const loadGeneration =
+        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+      const { quizzes: parsed } = await loadStudentDashboardQuizzes(studentId);
+
+      const committed = useStudentAssignmentDashboardStore
+        .getState()
+        .commitLoad(studentId, loadGeneration, parsed as any);
+      if (!committed) {
+        return;
+      }
+
+      const dashboardStats = useStudentAssignmentDashboardStore.getState().getStats();
 
       if (parsed.length > 0) {
-        setRawQuizzes(parsed as any);
         setStats(dashboardStats);
       } else {
-        setRawQuizzes([]);
         setStats({
           total_quizzes: 0,
           completed_count: 0,

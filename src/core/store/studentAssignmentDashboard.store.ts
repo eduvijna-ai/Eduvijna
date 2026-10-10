@@ -9,20 +9,47 @@ import {
 } from '../../utils/studentAssignmentClassification';
 
 type StudentAssignmentDashboardState = {
+  ownerUserId: string | null;
+  loadGeneration: number;
   rawQuizzes: Row[];
   classificationNow: Date;
   setRawQuizzes: (rows: Row[]) => void;
   bumpClassificationNow: () => void;
+  resetForAccount: (userId: string | null) => void;
+  beginLoad: (userId: string) => number;
+  commitLoad: (userId: string, generation: number, rows: Row[]) => boolean;
   getClassifiedQuizzes: () => Row[];
   getStats: () => DashboardStats;
 };
 
 export const useStudentAssignmentDashboardStore = create<StudentAssignmentDashboardState>(
   (set, get) => ({
+    ownerUserId: null,
+    loadGeneration: 0,
     rawQuizzes: [],
     classificationNow: new Date(),
     setRawQuizzes: (rows) => set({ rawQuizzes: rows }),
     bumpClassificationNow: () => set({ classificationNow: new Date() }),
+    resetForAccount: (userId) =>
+      set((state) => ({
+        ownerUserId: userId,
+        loadGeneration: state.loadGeneration + 1,
+        rawQuizzes: [],
+        classificationNow: new Date(),
+      })),
+    beginLoad: (userId) => {
+      const generation = get().loadGeneration + 1;
+      set({ ownerUserId: userId, loadGeneration: generation });
+      return generation;
+    },
+    commitLoad: (userId, generation, rows) => {
+      const state = get();
+      if (state.ownerUserId !== userId || state.loadGeneration !== generation) {
+        return false;
+      }
+      set({ rawQuizzes: rows });
+      return true;
+    },
     getClassifiedQuizzes: () => {
       const { rawQuizzes, classificationNow } = get();
       return rawQuizzes.map((quiz) =>
@@ -62,6 +89,10 @@ export const useStudentAssignmentDashboardStore = create<StudentAssignmentDashbo
     },
   }),
 );
+
+export function resetStudentAssignmentDashboardStore(userId: string | null = null): void {
+  useStudentAssignmentDashboardStore.getState().resetForAccount(userId);
+}
 
 export function selectStudentDashboardStatsFromStore(): DashboardStats {
   return useStudentAssignmentDashboardStore.getState().getStats();

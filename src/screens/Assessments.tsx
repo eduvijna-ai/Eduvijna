@@ -159,8 +159,16 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     if (!isStudent || !user?.id) return;
     setStudentRefreshing(true);
     try {
-      const { quizzes } = await loadStudentDashboardQuizzes(String(user.id));
-      setRawQuizzes(quizzes as any);
+      const studentId = String(user.id);
+      const loadGeneration =
+        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+      const { quizzes } = await loadStudentDashboardQuizzes(studentId);
+      const committed = useStudentAssignmentDashboardStore
+        .getState()
+        .commitLoad(studentId, loadGeneration, quizzes as any);
+      if (!committed) {
+        return;
+      }
       const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
       setQuizzes(classified as any, classified.length);
     } catch (refreshError) {
