@@ -970,6 +970,7 @@ export function checkRecordToQuiz(
     status: classified.status,
     student_status: classified.student_status,
     score: item.status === 'completed' ? completedScore : null,
+    correct_answers: undefined,
     question_count: d.question_count,
     time_spent_seconds: null,
     attempt_number: null,

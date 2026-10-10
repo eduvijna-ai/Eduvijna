@@ -10,7 +10,9 @@ import {
 import {
   dedupeCheckRecordQuizzes,
   fetchStudentCheckRecordRows,
+  hydrateCompletedParsedQuizMetrics,
 } from './studentCheckRecordDashboardLoader';
+import type { ParsedQuiz } from '../types';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 import type { DashboardStats } from '../types';
 import {
@@ -138,7 +140,11 @@ export async function loadStudentDashboardQuizzes(
   ]);
   const classroomNames = mergeClassroomNameLookups(classroomLookup, combined);
   const mapped = combined.map((item) => mapCheckRecordRow(item, classroomNames));
-  const parsed = dedupeStudentDashboardQuizzes(mapped);
-  const stats = computeStudentDashboardStats(parsed);
-  return { quizzes: parsed, stats };
+  const deduped = dedupeStudentDashboardQuizzes(mapped);
+  const hydrated = (await hydrateCompletedParsedQuizMetrics(
+    studentId,
+    deduped as ParsedQuiz[],
+  )) as StudentDashboardQuizRow[];
+  const stats = computeStudentDashboardStats(hydrated);
+  return { quizzes: hydrated, stats };
 }
