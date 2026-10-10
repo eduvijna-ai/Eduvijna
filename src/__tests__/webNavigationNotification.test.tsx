@@ -3,8 +3,6 @@ import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import WebNavigation from '../platforms/web/navigation/WebNavigation';
 import { handleOpenQuiz } from '../core/services/openQuizHandler';
-import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
-
 jest.mock('../core/services/openQuizHandler', () => ({
   handleOpenQuiz: jest.fn().mockResolvedValue(undefined),
 }));

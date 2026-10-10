@@ -328,7 +328,24 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
   );
 }
 
-function NavItem({ title, active, onPress, styles }: { title: string; active: boolean; onPress: () => void; styles: any }) {
+type NavItemStyles = {
+  navItem: object;
+  navItemActive: object;
+  navItemText: object;
+  navItemTextActive: object;
+};
+
+function NavItem({
+  title,
+  active,
+  onPress,
+  styles,
+}: {
+  title: string;
+  active: boolean;
+  onPress: () => void;
+  styles: NavItemStyles;
+}) {
   return (
     <TouchableOpacity
       style={[styles.navItem, active && styles.navItemActive]}
@@ -339,7 +356,7 @@ function NavItem({ title, active, onPress, styles }: { title: string; active: bo
   );
 }
 
-const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
+const createStyles = (colors: Record<string, string>, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
