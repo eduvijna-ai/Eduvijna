@@ -32,8 +32,17 @@ describe('fetchPersistedQuizResult', () => {
         log_data: {
           answers: [{ userAnswer: 'A', isCorrect: false }],
         },
-        counts: { total_questions: 1, questions_answered: 0, questions_skipped: 1 },
-        items: [],
+        counts: { total_questions: 1, questions_answered: 1, questions_skipped: 0 },
+        items: [
+          {
+            question_id: 1,
+            question: '2+2?',
+            options: ['3', '4', '5', '6'],
+            student_answer: 'A',
+            answer_key: 'B',
+            is_correct: false,
+          },
+        ],
       },
     });
 
@@ -47,12 +56,37 @@ describe('fetchPersistedQuizResult', () => {
     expect(result.status).toBe('ready');
     if (result.status === 'ready') {
       expect(result.score).toBe(0);
-      expect(result.userAnswers[0]).toBe('A');
+      expect(result.quizData.questions).toHaveLength(1);
+      expect(result.quizData.questions[0].question).toBe('2+2?');
+      expect(result.userAnswers[0]).toBe('3');
     }
     expect(mockGet).toHaveBeenCalledWith(
       expect.stringContaining('attended-quiz'),
     );
     expect(mockGet.mock.calls[0][0]).toContain('session_id=session-a');
+  });
+
+  it('returns missing when attended items are empty and log answers lack question data', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        student_id: 's1',
+        classroom_id: 'session-a',
+        quiz_id: 10,
+        session_id: 'session-a',
+        score: 0,
+        log_data: { answers: [{ userAnswer: 'A', isCorrect: false }] },
+        counts: { total_questions: 1, questions_answered: 0, questions_skipped: 1 },
+        items: [],
+      },
+    });
+
+    const result = await fetchPersistedQuizResult({
+      quizId: 10,
+      sessionId: 'session-a',
+      studentId: 's1',
+      isTeacherView: false,
+    });
+    expect(result.status).toBe('missing');
   });
 
   it('returns error when student sessionId is missing', async () => {
@@ -182,15 +216,42 @@ describe('userAnswersFromAttended', () => {
         time_spent_seconds: null,
         log_data: {
           answers: [
-            { userAnswer: 'B' },
-            { userAnswer: null },
+            {
+              questionNumber: 1,
+              question: 'Q1',
+              options: ['a', 'b'],
+              userAnswer: 'B',
+            },
+            {
+              questionNumber: 2,
+              question: 'Q2',
+              options: ['c', 'd'],
+              userAnswer: null,
+            },
           ],
         },
         counts: { total_questions: 2, questions_answered: 1, questions_skipped: 1 },
-        items: [],
+        items: [
+          {
+            question_id: 1,
+            question: 'Q1',
+            options: ['a', 'b'],
+            student_answer: null,
+            answer_key: 'A',
+            is_correct: null,
+          },
+          {
+            question_id: 2,
+            question: 'Q2',
+            options: ['c', 'd'],
+            student_answer: null,
+            answer_key: 'B',
+            is_correct: null,
+          },
+        ],
       },
       2,
     );
-    expect(answers).toEqual(['B', '']);
+    expect(answers).toEqual(['b', '']);
   });
 });

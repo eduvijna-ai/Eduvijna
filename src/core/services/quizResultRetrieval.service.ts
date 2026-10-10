@@ -47,12 +47,13 @@ export function userAnswersFromAttended(
   questionCount: number,
 ): string[] {
   const normalized = normalizeAttendedQuizResponse(attended);
-  if (normalized.userAnswers.length >= questionCount) {
-    return normalized.userAnswers.slice(0, questionCount);
+  const answers = normalized?.userAnswers ?? [];
+  if (answers.length >= questionCount) {
+    return answers.slice(0, questionCount);
   }
   return [
-    ...normalized.userAnswers,
-    ...Array.from({ length: questionCount - normalized.userAnswers.length }, () => ''),
+    ...answers,
+    ...Array.from({ length: questionCount - answers.length }, () => ''),
   ];
 }
 
@@ -60,10 +61,6 @@ export function userAnswersFromLogData(
   logData: Record<string, unknown> | null | undefined,
   questions: PlayableQuizQuestion[],
 ): string[] {
-  const fromLog = normalizeQuestionsAndAnswersFromLogData(logData);
-  if (fromLog) {
-    return fromLog.userAnswers;
-  }
   return userAnswersFromLogDataEntries(logData, questions);
 }
 
@@ -223,6 +220,9 @@ export async function fetchPersistedQuizResult(params: {
         quiz_id: quizId,
       });
       const normalized = normalizeAttendedQuizResponse(attended);
+      if (!normalized) {
+        return { status: 'missing' };
+      }
       return {
         status: 'ready',
         quizData: { questions: normalized.questions },

@@ -232,7 +232,16 @@ describe('alreadySubmitted persisted result', () => {
         submitted_at: '2026-01-02T00:00:00.000Z',
         time_spent_seconds: 45,
         log_data: {
-          answers: [{ userAnswer: 'B', isCorrect: true, options: ['3', '4', '5', '6'] }],
+          answers: [
+            {
+              questionNumber: 1,
+              question: '2+2?',
+              options: ['3', '4', '5', '6'],
+              correctAnswer: 'B',
+              userAnswer: 'B',
+              isCorrect: true,
+            },
+          ],
         },
         counts: { total_questions: 1, questions_answered: 1, questions_skipped: 0 },
         items: [],

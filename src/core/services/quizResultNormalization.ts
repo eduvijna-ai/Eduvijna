@@ -2,7 +2,7 @@
  * Central normalization for persisted quiz results (student + teacher paths).
  */
 
-import type { AttendedQuizResponse } from '../types/attendedQuiz.types';
+import type { AttendedQuizQuestion, AttendedQuizResponse } from '../types/attendedQuiz.types';
 import {
   letterToOptionString,
   type LetterOption,
@@ -41,15 +41,121 @@ function letterOrTextToDisplayAnswer(
   return String(raw);
 }
 
+function readLogAnswerEntries(
+  logData: Record<string, unknown> | null | undefined,
+): LogAnswerEntry[] {
+  const answersRaw = logData?.answers;
+  if (!Array.isArray(answersRaw)) {
+    return [];
+  }
+  return answersRaw as LogAnswerEntry[];
+}
+
+function normalizeQuestionText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function logEntryHasQuestionStructure(entry: LogAnswerEntry): boolean {
+  return (
+    normalizeQuestionText(entry.question).length > 0 &&
+    Array.isArray(entry.options) &&
+    entry.options.length > 0
+  );
+}
+
+function logAnswersHaveSufficientQuestionData(entries: LogAnswerEntry[]): boolean {
+  return entries.length > 0 && entries.every(logEntryHasQuestionStructure);
+}
+
+function attendedItemsHaveQuestionStructure(
+  items: AttendedQuizQuestion[] | undefined,
+): items is AttendedQuizQuestion[] {
+  if (!items?.length) {
+    return false;
+  }
+  return items.every((item) => normalizeQuestionText(item.question).length > 0);
+}
+
+function extractUserAnswer(entry: LogAnswerEntry | undefined, options: string[]): string {
+  if (!entry) return '';
+  const raw = entry.userAnswer ?? entry.user_answer ?? entry.selected_option ?? null;
+  return letterOrTextToDisplayAnswer(raw, options);
+}
+
+function matchLogEntryToQuestion(
+  questionText: string,
+  index: number,
+  entries: LogAnswerEntry[],
+  verifiedOrder: boolean,
+): LogAnswerEntry | undefined {
+  const targetText = normalizeQuestionText(questionText);
+  if (targetText) {
+    const textMatches = entries.filter(
+      (entry) => normalizeQuestionText(entry.question) === targetText,
+    );
+    if (textMatches.length === 1) {
+      return textMatches[0];
+    }
+  }
+
+  const numbered = entries.filter((entry) => Number(entry.questionNumber) === index + 1);
+  if (numbered.length === 1) {
+    return numbered[0];
+  }
+
+  if (verifiedOrder) {
+    return entries[index];
+  }
+
+  return undefined;
+}
+
+function questionsFromAttendedItems(items: AttendedQuizQuestion[]): PlayableQuizQuestion[] {
+  return items.map((item, index) => ({
+    id: `q-${index}`,
+    question: item.question,
+    options: item.options ?? [],
+    answer: item.answer_key ?? '',
+    correctAnswer: item.answer_key ?? '',
+    explanation: null,
+  }));
+}
+
+function mergeUserAnswersOntoQuestions(
+  questions: PlayableQuizQuestion[],
+  items: AttendedQuizQuestion[] | undefined,
+  entries: LogAnswerEntry[],
+): string[] {
+  const verifiedOrder = entries.length === questions.length;
+  return questions.map((question, index) => {
+    const matched = matchLogEntryToQuestion(question.question, index, entries, verifiedOrder);
+    if (matched) {
+      return extractUserAnswer(matched, question.options ?? []);
+    }
+    const item = items?.[index];
+    return letterOrTextToDisplayAnswer(item?.student_answer, question.options ?? []);
+  });
+}
+
+function scoreFromUnknown(value: unknown): number | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function normalizeQuestionsAndAnswersFromLogData(
   logData: Record<string, unknown> | null | undefined,
 ): NormalizedPersistedQuizResult | null {
-  const answersRaw = logData?.answers;
-  if (!Array.isArray(answersRaw) || answersRaw.length === 0) {
+  const entries = readLogAnswerEntries(logData);
+  if (!logAnswersHaveSufficientQuestionData(entries)) {
     return null;
   }
 
-  const entries = answersRaw as LogAnswerEntry[];
   const questions: PlayableQuizQuestion[] = entries.map((entry, index) => {
     const options = Array.isArray(entry.options) ? entry.options : [];
     const correctRaw = entry.correctAnswer ?? '';
@@ -63,29 +169,17 @@ export function normalizeQuestionsAndAnswersFromLogData(
     };
   });
 
-  const userAnswers = entries.map((entry, index) => {
-    const raw =
-      entry.userAnswer ??
-      entry.user_answer ??
-      entry.selected_option ??
-      null;
-    return letterOrTextToDisplayAnswer(raw, questions[index]?.options ?? []);
-  });
-
-  const scoreFromLog =
-    logData?.score != null && logData.score !== ''
-      ? Number(logData.score)
-      : null;
+  const userAnswers = entries.map((entry, index) =>
+    extractUserAnswer(entry, questions[index]?.options ?? []),
+  );
 
   return {
     questions,
     userAnswers,
-    score: Number.isFinite(scoreFromLog as number) ? (scoreFromLog as number) : null,
+    score: scoreFromUnknown(logData?.score),
     logData: logData ?? null,
     timeSpentSeconds:
-      typeof logData?.time_spent_seconds === 'number'
-        ? logData.time_spent_seconds
-        : null,
+      typeof logData?.time_spent_seconds === 'number' ? logData.time_spent_seconds : null,
     completedAt: null,
   };
 }
@@ -97,66 +191,46 @@ export function resolvePersistedScore(
   if (attendedScore != null) {
     return Number(attendedScore);
   }
-  if (logData?.score != null && logData.score !== '') {
-    return Number(logData.score);
-  }
-  return null;
+  return scoreFromUnknown(logData?.score);
 }
 
 export function userAnswersFromLogDataEntries(
   logData: Record<string, unknown> | null | undefined,
   questions: PlayableQuizQuestion[],
 ): string[] {
-  const fromLog = normalizeQuestionsAndAnswersFromLogData(logData);
-  if (fromLog) {
-    return fromLog.userAnswers;
-  }
-  return Array.from({ length: questions.length }, () => '');
+  const entries = readLogAnswerEntries(logData);
+  return mergeUserAnswersOntoQuestions(questions, undefined, entries);
 }
 
 export function normalizeAttendedQuizResponse(
   attended: AttendedQuizResponse,
-): NormalizedPersistedQuizResult {
+): NormalizedPersistedQuizResult | null {
   const logData = (attended.log_data as Record<string, unknown> | null) ?? null;
-  const fromLog = normalizeQuestionsAndAnswersFromLogData(logData);
-
-  if (fromLog) {
-    return {
-      ...fromLog,
-      score: resolvePersistedScore(attended.score, logData),
-      timeSpentSeconds: attended.time_spent_seconds,
-      completedAt: attended.submitted_at,
-    };
-  }
-
-  if (attended.items?.length) {
-    const questions: PlayableQuizQuestion[] = attended.items.map((item, index) => ({
-      id: `q-${index}`,
-      question: item.question,
-      options: item.options ?? [],
-      answer: item.answer_key ?? '',
-      correctAnswer: item.answer_key ?? '',
-      explanation: null,
-    }));
-    const userAnswers = attended.items.map((item) =>
-      letterOrTextToDisplayAnswer(item.student_answer, item.options ?? []),
-    );
-    return {
-      questions,
-      userAnswers,
-      score: resolvePersistedScore(attended.score, logData),
-      logData,
-      timeSpentSeconds: attended.time_spent_seconds,
-      completedAt: attended.submitted_at,
-    };
-  }
-
-  return {
-    questions: [],
-    userAnswers: [],
+  const entries = readLogAnswerEntries(logData);
+  const meta = {
     score: resolvePersistedScore(attended.score, logData),
     logData,
     timeSpentSeconds: attended.time_spent_seconds,
     completedAt: attended.submitted_at,
   };
+
+  if (attendedItemsHaveQuestionStructure(attended.items)) {
+    const questions = questionsFromAttendedItems(attended.items);
+    return {
+      questions,
+      userAnswers: mergeUserAnswersOntoQuestions(questions, attended.items, entries),
+      ...meta,
+    };
+  }
+
+  const fromLog = normalizeQuestionsAndAnswersFromLogData(logData);
+  if (fromLog) {
+    return {
+      ...fromLog,
+      ...meta,
+      score: meta.score,
+    };
+  }
+
+  return null;
 }

@@ -18,16 +18,15 @@ Target API: **`https://dev-api.eduvijna.com`**. No production deployment or OTA 
 
 | Check | Status | Evidence |
 |-------|--------|----------|
-| Jest: submission, recovery integration, retrieval, navigation, `QuizTakingScreen` recovery | **Verified** | 34 tests (see PR #18 CI / local `npm test` filter) |
+| Jest: submission, recovery integration, retrieval, navigation, `QuizTakingScreen` recovery, normalization | **Verified** | Assigned-quiz + results suites including sparse-log / unanswered / score-0 cases |
 | `tokenStorage` dev/prod isolation + SecureStore key format | **Verified** | `tokenStorage.apiEnvironment.test.ts`, `auth.api.nativeStorage.test.ts` (PR #16) |
 | `npm run config:verify` / `cli:verify` | **Verified** | Stack branches |
-| TS vs `main` (same `node_modules`, `tsc --noEmit`) | **Verified** | **186** head / **193** main — **0 diagnostics added** on branch vs main after fixes (13 prior deltas resolved: `apiEnvironment.test.ts`, `quizResultRetrieval`/`quizResultNormalization`, `config.ts`, `openQuizHandler`, `AuthErrorHandling.example`, ERP icon names, `QuizStudentMyAnalyticsScreen`) |
-| Live dev-api TLS reachability | **Verified** | `curl.exe` → dev-api host responds on HTTPS (no credentials used) |
-| Live dev-api login | **Not executed** | `POST /api/v1/auth/login` returned **405** when probed without credentials — **not** counted as successful login |
-| Emulator `emulator-5554` | **Verified** | `adb devices` → `device`; `sys.boot_completed=1` (emulator not restarted) |
-| Metro **8082** | **Verified** | Existing dev session preserved (no port reset in this pass) |
-| Authenticated partial submit → force-stop → Assessments/OpenQuiz recovery | **Blocked (Founder)** | Dev student login on device; partial submit; force-stop; reopen from Assessments and OpenQuiz |
-| Attended-quiz read after live submit on device | **Blocked (Founder)** | Same login; complete or partial submit; confirm `GET /dashboard/attended-quiz` on device |
+| TS vs PR #17 base (same `node_modules`, `tsc --noEmit`) | **Verified** | **186** (#18) / **195** (#17) — **0 diagnostics added**. Removed vs #17: `apiEnvironment.test.ts` ProcessEnv (2), unused `url` in `config.ts`, unused `checkQuizAvailability` in `openQuizHandler.ts`, ERP `cake-outline` (2), `AuthErrorHandling.example` token setters (2), unused `formatDuration` in `QuizStudentMyAnalyticsScreen.tsx`. No `quizResultNormalization.ts` errors. |
+| Live dev-api TLS reachability | **Verified** | Existing stack host check; no additional unauthenticated login probes |
+| Live dev-api login | **Pending** | Authenticated login not executed this pass |
+| Emulator `emulator-5554` | **Verified** | `adb devices` → `device` (Founder emulator not restarted) |
+| Metro **8082** | **Pending / preserved** | Existing Metro session must remain on **8082**; not reset this pass |
+| Authenticated emulator checks (login, recovery, attended-quiz read) | **Pending** | Not executed until Founder-authenticated device login |
 
 ## Manual matrix (when authenticated)
 
