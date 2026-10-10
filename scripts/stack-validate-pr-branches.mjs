@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import {
   collectTypeScriptIdentities,
   diffIdentities,
+  normalizeRelativeFilePath,
   parseEslintJsonReport,
 } from './lib/diagnostic-identities.mjs';
 import {
@@ -70,6 +71,35 @@ function diffAddedIdentities(headIds, baseIds) {
     tsAdded: diffIdentities(headIds.ts, baseIds.ts),
     eslintAdded: diffIdentities(headIds.eslint, baseIds.eslint),
   };
+}
+
+function listFilesChangedBetween(monorepoRoot, fromSha, toSha) {
+  const raw = git(`diff --name-only ${fromSha}..${toSha}`, monorepoRoot);
+  if (!raw) {
+    return new Set();
+  }
+  const changedFiles = new Set();
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim().replace(/\\/g, '/');
+    if (!trimmed) continue;
+    changedFiles.add(trimmed);
+    changedFiles.add(normalizeRelativeFilePath(trimmed));
+  }
+  return changedFiles;
+}
+
+function identityFileInChangedSet(identity, changedFiles) {
+  const rawFile = (identity.split('|')[0] ?? '').replace(/\\/g, '/');
+  const normalized = normalizeRelativeFilePath(rawFile);
+  return (
+    changedFiles.has(rawFile) ||
+    changedFiles.has(normalized) ||
+    changedFiles.has(`src/${normalized}`)
+  );
+}
+
+function scopeIdentitiesToChangedFiles(identities, changedFiles) {
+  return identities.filter((identity) => identityFileInChangedSet(identity, changedFiles));
 }
 
 function runDiagnostics(repoRoot) {
@@ -164,6 +194,18 @@ function validateStackBranch(row, options = {}) {
 
   const exports = skipExports ? {} : runExports(worktreeRoot, branchKey);
   const identityDelta = diffAddedIdentities(headDiag.identities, immediateBaseDiag.identities);
+  const filesChangedVsImmediateBase = listFilesChangedBetween(
+    monorepoRoot,
+    immediateBaseSha,
+    head,
+  );
+  const scopedIdentitiesAdded = {
+    tsAdded: scopeIdentitiesToChangedFiles(identityDelta.tsAdded, filesChangedVsImmediateBase),
+    eslintAdded: scopeIdentitiesToChangedFiles(
+      identityDelta.eslintAdded,
+      filesChangedVsImmediateBase,
+    ),
+  };
 
   return {
     pr: row.pr,
@@ -179,7 +221,10 @@ function validateStackBranch(row, options = {}) {
       immediateBase: immediateBaseDiag,
       tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
       eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
-      identitiesAdded: identityDelta,
+      identitiesAdded: scopedIdentitiesAdded,
+      identitiesAddedUnscoped: identityDelta,
+      filesChangedVsImmediateBase: [...filesChangedVsImmediateBase].sort(),
+      baselineDebt: headDiag.baselineDebt,
       toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
     },
     exports,
@@ -215,6 +260,7 @@ const report = {
     noPrimaryCheckoutFallback: true,
     failOnDiagnosticToolFailure: true,
     failOnAnyIdentityRegression: true,
+    regressionScope: 'identities_in_files_changed_vs_immediate_base',
   },
   supersededPriorSweep:
     priorReport?.checkoutMode !== 'isolated_worktree_detached_at_origin_sha'
