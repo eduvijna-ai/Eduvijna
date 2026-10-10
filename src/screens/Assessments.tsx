@@ -27,6 +27,7 @@ import {
   isAssignedQuizLoadError,
   navigateStudentToQuizTaking,
   resolveStudentAssignedQuizStart,
+  resolveStudentAssignedQuizViewResults,
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
@@ -355,24 +356,52 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       return;
     }
     
-    // Student-specific action: View assessment results
+    // Student-specific action: View assessment results (probe pending recovery first)
     if (!isTeacher && action === 'viewResults' && attemptData) {
+      const correctQuizId = attemptData?.quiz_id || quizId;
       const correctSessionId = attemptData?.session_id || '';
+      const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
       const studentIdForApi =
         (attemptData?.student_id != null ? attemptData.student_id.toString() : null) ??
         user?.id?.toString() ??
         '';
-      const resultParams = {
-        quizId: attemptData?.quiz_id || quizId,
-        quizName: attemptData.quiz_name,
-        sessionId: correctSessionId,
-        studentId: studentIdForApi,
-        isTeacherView: false,
-      };
-      if (onNavigate) {
-        onNavigate('QuizResultsScreen', resultParams);
-      } else if (navigation) {
-        navigation.navigate('QuizResultsScreen', resultParams);
+
+      setLoadingQuizId(correctQuizId);
+      try {
+        const viewResult = await resolveStudentAssignedQuizViewResults({
+          studentId: studentIdForApi,
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
+          attemptData,
+          quizName: attemptData?.quiz_name,
+        });
+
+        if (viewResult.kind === 'recovery_retry') {
+          navigateStudentToQuizTaking(navigation, onNavigate, viewResult.params);
+          return;
+        }
+
+        const resultParams = viewResult.resultParams;
+        if (onNavigate) {
+          onNavigate('QuizResultsScreen', resultParams);
+        } else if (navigation) {
+          navigation.navigate('QuizResultsScreen', resultParams);
+        }
+      } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
+        Alert.alert(
+          'Connection Error',
+          'Could not open results. Please check your connection and try again.',
+        );
+      } finally {
+        setTimeout(() => setLoadingQuizId(null), 1000);
       }
       return;
     }
@@ -875,11 +904,22 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       {/* STUDENT LOGIC: Completed quizzes - View Results button */}
                       {quiz.status === 'completed' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }]}
+                          style={[
+                            styles.smallButton,
+                            { backgroundColor: theme.colors.primary },
+                            loadingQuizId === quiz.quiz_id && { opacity: 0.6 },
+                          ]}
                           onPress={() => handleAction('viewResults', quiz.quiz_id, quiz)}
+                          disabled={loadingQuizId === quiz.quiz_id}
                         >
-                          <Ionicons name="document-text" size={14} color="#FFFFFF" />
-                          <Text style={styles.smallButtonText}>Results</Text>
+                          {loadingQuizId === quiz.quiz_id ? (
+                            <LoadingSpinner size={14} />
+                          ) : (
+                            <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.smallButtonText}>
+                            {loadingQuizId === quiz.quiz_id ? 'Loading...' : 'Results'}
+                          </Text>
                         </TouchableOpacity>
                       )}
                       

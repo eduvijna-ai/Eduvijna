@@ -361,6 +361,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     !showActionButtons 
   );
 
+  const isImmutableRecoveryRetry = submissionRecovery?.mode === 'immutable_retry';
+
   // Extract session and classroom IDs for submission (used in backend submission logic)
   const normalizedSessionId = quizSource?.sessionId || quiz?.session_id || null;
   const normalizedClassroomId = quizSource?.classroomId || quiz?.classroom_id || null;
@@ -819,6 +821,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleSelectAnswer = (optionIndex: number) => {
+    if (isImmutableRecoveryRetry) {
+      return;
+    }
     const option = currentQuestion.options[optionIndex];
     setSelectedAnswers({
       ...selectedAnswers,
@@ -839,6 +844,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleSubmitQuiz = async () => {
+    if (isImmutableRecoveryRetry) {
+      submitQuiz();
+      return;
+    }
+
     const unanswered = totalQuestions - Object.keys(selectedAnswers).length;
     
     if (unanswered > 0) {
@@ -1266,6 +1276,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {!showResults && isImmutableRecoveryRetry && (
+        <View
+          style={[
+            styles.recoveryBanner,
+            { backgroundColor: colors.primary + '18', borderColor: colors.primary },
+          ]}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+          <Text style={[styles.recoveryBannerText, { color: colors.text }]}>
+            Your answers are saved on this device but were not confirmed on the server. Review them
+            below (read-only), then tap Retry save submission.
+          </Text>
+        </View>
+      )}
+
       {!showResults && (
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.headerTop}>
@@ -1322,8 +1347,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     isCorrectAnswer && { backgroundColor: '#E8F5E9', borderColor: '#4CAF50', borderWidth: 2 },
                     isWrongSelection && { backgroundColor: '#FFEBEE', borderColor: '#F44336', borderWidth: 2 }
                   ]}
-                  onPress={() => !showResults && handleSelectAnswer(index)}
-                  disabled={showResults}
+                  onPress={() =>
+                    !showResults && !isImmutableRecoveryRetry && handleSelectAnswer(index)
+                  }
+                  disabled={showResults || isImmutableRecoveryRetry}
                 >
                   <View style={[
                     styles.optionBullet,
@@ -1461,7 +1488,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                 {submitting ? <LoadingSpinner size={20} /> : (
                   <>
                     <Ionicons name="checkmark-done" size={20} color="#fff" />
-                    <Text style={[styles.navButtonText, { color: '#fff' }]}>Submit</Text>
+                    <Text style={[styles.navButtonText, { color: '#fff' }]}>
+                      {isImmutableRecoveryRetry ? 'Retry save submission' : 'Submit'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1518,6 +1547,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  recoveryBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  recoveryBannerText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   container: { flex: 1 },
   backButton: {
     flexDirection: 'row',

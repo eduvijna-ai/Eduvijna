@@ -18,7 +18,7 @@ import {
 } from './quizResultRetrieval.service';
 import { isSubmissionPersistedOnServer } from './assignedQuizRecovery.service';
 import {
-  clearQuizSubmissionCheckpoint,
+  clearQuizSubmissionCheckpointBestEffort,
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
   readQuizSubmissionCheckpoint,
   writeQuizSubmissionCheckpoint,
@@ -293,7 +293,11 @@ export async function submitAssignedQuiz(
       );
     }
     if (already) {
-      await clearQuizSubmissionCheckpoint(input.studentId, input.quizId, input.sessionId);
+      await clearQuizSubmissionCheckpointBestEffort(
+        input.studentId,
+        input.quizId,
+        input.sessionId,
+      );
       await invalidateStudentQuizCaches({
         classroomId: input.classroomId,
         sessionId: input.sessionId,
@@ -435,7 +439,11 @@ export async function submitAssignedQuiz(
       );
     }
 
-    await clearQuizSubmissionCheckpoint(input.studentId, input.quizId, input.sessionId);
+    await clearQuizSubmissionCheckpointBestEffort(
+      input.studentId,
+      input.quizId,
+      input.sessionId,
+    );
     await invalidateStudentQuizCaches({
       classroomId: input.classroomId,
       sessionId: input.sessionId,

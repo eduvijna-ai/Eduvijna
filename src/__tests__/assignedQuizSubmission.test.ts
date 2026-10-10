@@ -389,6 +389,60 @@ describe('submitAssignedQuiz', () => {
 
     expect(mockCreateSubmission).toHaveBeenCalledWith(expect.objectContaining({ score: 0 }));
   });
+
+  it('succeeds when checkpoint cleanup fails after successful POST', async () => {
+    const { invalidateStudentQuizCaches } = jest.requireMock(
+      '../core/services/studentQuizCacheInvalidation',
+    ) as { invalidateStudentQuizCaches: jest.Mock };
+
+    mockListAttempts.mockResolvedValue([
+      {
+        id: 3,
+        quiz_id: 42,
+        student_id: 'student-1',
+        class_id: 'session-uuid',
+        attempt_number: 1,
+        score: null,
+        status: 'started',
+        started_at: '2026-01-01T00:00:00.000Z',
+        completed_at: null,
+        time_spent_seconds: null,
+      },
+    ]);
+    mockUpdateAttempt.mockResolvedValue({
+      id: 3,
+      quiz_id: 42,
+      student_id: 'student-1',
+      class_id: 'session-uuid',
+      attempt_number: 1,
+      score: 100,
+      status: 'completed',
+      started_at: input.startedAtIso,
+      completed_at: input.startedAtIso,
+      time_spent_seconds: 60,
+    });
+    mockCreateSubmission.mockResolvedValue({
+      submission_id: 1,
+      quiz_id: 42,
+      student_id: 'student-1',
+      classroom_id: 'session-uuid',
+      score: 100,
+      summary: null,
+      log_data: null,
+      submitted_at: input.startedAtIso,
+    });
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValue(new Error('storage locked'));
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await submitAssignedQuiz(input);
+
+    expect(result.alreadySubmitted).toBe(false);
+    expect(result.attemptId).toBe(3);
+    expect(invalidateStudentQuizCaches).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
 });
 
 describe('selectAttemptForSubmission', () => {

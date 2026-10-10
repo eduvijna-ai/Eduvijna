@@ -83,3 +83,18 @@ export async function clearQuizSubmissionCheckpoint(
 ): Promise<void> {
   await AsyncStorage.removeItem(checkpointKey(userId, String(quizId), sessionId));
 }
+
+/**
+ * Clears local checkpoint after confirmed server persistence. Failures are logged only.
+ */
+export async function clearQuizSubmissionCheckpointBestEffort(
+  userId: string,
+  quizId: string | number,
+  sessionId: string,
+): Promise<void> {
+  try {
+    await clearQuizSubmissionCheckpoint(userId, quizId, sessionId);
+  } catch (error: unknown) {
+    console.warn('[assigned-quiz] checkpoint cleanup failed (ignored):', error);
+  }
+}

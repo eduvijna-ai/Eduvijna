@@ -143,6 +143,19 @@ export type StudentAssignedQuizStartResult =
     }
   | { kind: 'lookup_failed' };
 
+export interface StudentQuizResultsNavigationParams {
+  quizId: number | string;
+  quizName?: string;
+  sessionId: string;
+  studentId: string;
+  isTeacherView: false;
+}
+
+export type StudentAssignedQuizViewResultsResult =
+  | { kind: 'recovery_retry'; params: QuizTakingNavigationParams }
+  | { kind: 'view_results'; resultParams: StudentQuizResultsNavigationParams }
+  | { kind: 'probe_failed' };
+
 /**
  * Student Assessments start/resume: never navigates on recovery-probe or quiz-load
  * failure, and never falls back to a metadata-only dashboard row.
@@ -200,6 +213,51 @@ export async function resolveStudentAssignedQuizStart(args: {
   return {
     kind: 'navigate',
     params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions),
+  };
+}
+
+/**
+ * Completed-card "View Results": probe pending immutable recovery before results screen.
+ */
+export async function resolveStudentAssignedQuizViewResults(args: {
+  studentId: string;
+  quizId: number | string;
+  sessionId: string;
+  classroomId: string;
+  attemptData?: Record<string, unknown> | null;
+  quizName?: string;
+}): Promise<StudentAssignedQuizViewResultsResult> {
+  const startCtx: AssignedQuizStartContext = {
+    correctQuizId: args.quizId,
+    correctSessionId: args.sessionId,
+    correctClassroomId: args.classroomId,
+    attemptData: args.attemptData,
+  };
+
+  const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+    args.studentId,
+    args.quizId,
+    args.sessionId,
+  );
+
+  if (pendingCheckpoint) {
+    const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+    const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+    return {
+      kind: 'recovery_retry',
+      params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
+    };
+  }
+
+  return {
+    kind: 'view_results',
+    resultParams: {
+      quizId: args.quizId,
+      quizName: args.quizName ?? String(args.attemptData?.quiz_name ?? 'Assessment'),
+      sessionId: args.sessionId,
+      studentId: args.studentId,
+      isTeacherView: false,
+    },
   };
 }
 

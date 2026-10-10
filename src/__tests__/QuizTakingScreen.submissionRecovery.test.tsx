@@ -60,6 +60,7 @@ describe('QuizTakingScreen submissionRecovery', () => {
               startedAtIso: '2026-01-01T00:00:00.000Z',
               scorePercent: 100,
               questionCount: 1,
+              mode: 'immutable_retry',
             },
           },
         }}
@@ -69,5 +70,41 @@ describe('QuizTakingScreen submissionRecovery', () => {
     await waitFor(() => {
       expect(getByText('checkmark-circle')).toBeTruthy();
     });
+  });
+
+  it('shows read-only retry UI in immutable retry mode', async () => {
+    const { getByText, queryAllByText } = render(
+      <QuizTakingScreen
+        navigation={{ navigate: jest.fn(), replace: jest.fn(), goBack: jest.fn() }}
+        route={{
+          params: {
+            quizData: {
+              quiz_id: 42,
+              session_id: 'sess',
+              classroom_id: 'room',
+              title: 'Test',
+              questions: baseQuestions,
+            },
+            submissionRecovery: {
+              quizId: 42,
+              sessionId: 'sess',
+              selectedAnswers: { 0: '4' },
+              startedAtIso: '2026-01-01T00:00:00.000Z',
+              scorePercent: 100,
+              questionCount: 1,
+              mode: 'immutable_retry',
+            },
+          },
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByText('checkmark-circle')).toBeTruthy();
+    });
+
+    expect(getByText(/read-only/i)).toBeTruthy();
+    expect(getByText('Retry save submission')).toBeTruthy();
+    expect(queryAllByText('checkmark-circle').length).toBe(1);
   });
 });

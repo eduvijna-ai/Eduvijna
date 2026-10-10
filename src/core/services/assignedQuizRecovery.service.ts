@@ -82,6 +82,8 @@ export async function findPendingSubmissionCheckpoint(
   return checkpoint;
 }
 
+export type AssignedQuizRecoveryMode = 'resume' | 'immutable_retry';
+
 export interface AssignedQuizRecoveryResumeParams {
   quizId: string | number;
   sessionId: string;
@@ -91,6 +93,8 @@ export interface AssignedQuizRecoveryResumeParams {
   scorePercent: number;
   questionCount: number;
   attemptId?: number;
+  /** Immutable local submit not yet on server — read-only answers, explicit retry only. */
+  mode: AssignedQuizRecoveryMode;
 }
 
 export function buildRecoveryResumeParams(
@@ -105,5 +109,6 @@ export function buildRecoveryResumeParams(
     scorePercent: checkpoint.immutable.scorePercent,
     questionCount: checkpoint.immutable.questionCount,
     attemptId: checkpoint.attemptId,
+    mode: 'immutable_retry',
   };
 }
