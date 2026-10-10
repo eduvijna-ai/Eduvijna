@@ -1,9 +1,9 @@
 /**
- * Isolated stack validation per PR worktree: exports + TS/ESLint identity delta vs immediate base.
- * Does not checkout or mutate the primary workspace branch (Metro 8082 safe).
+ * Isolated stack validation: detach each PR worktree at recorded origin SHA,
+ * assert HEAD, run diagnostics + exports. Never uses primary checkout fallback.
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -15,7 +15,9 @@ import {
 } from './lib/diagnostic-identities.mjs';
 import {
   resolveMonorepoRoot,
-  resolveWorktreeCheckout,
+  resolveRemoteBranchSha,
+  prepareWorktreeAtSha,
+  requireWorktreeRoot,
 } from './lib/stack-worktree-paths.mjs';
 
 const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,9 +45,9 @@ function git(args, cwd) {
   return execSync(`git ${args}`, { cwd, encoding: 'utf8' }).trim();
 }
 
-function resolveBaseRef(baseBranch, cwd) {
+function resolveBaseRef(baseBranch) {
   try {
-    git(`rev-parse --verify origin/${baseBranch}`, cwd);
+    git(`rev-parse --verify origin/${baseBranch}`, monorepoRoot);
     return `origin/${baseBranch}`;
   } catch {
     return baseBranch;
@@ -70,23 +72,6 @@ function diffAddedIdentities(headIds, baseIds) {
   };
 }
 
-function isAllowedIntroducedIdentity(identity) {
-  const file = String(identity).split('|')[0] || '';
-  return (
-    file.includes('/__tests__/') ||
-    file.includes('\\__tests__\\') ||
-    file.startsWith('scripts/') ||
-    file.startsWith('scripts\\')
-  );
-}
-
-function filterBlockingIdentities(added) {
-  return {
-    tsAdded: (added?.tsAdded ?? []).filter((id) => !isAllowedIntroducedIdentity(id)),
-    eslintAdded: (added?.eslintAdded ?? []).filter((id) => !isAllowedIntroducedIdentity(id)),
-  };
-}
-
 function runDiagnostics(repoRoot) {
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
@@ -105,13 +90,15 @@ function runDiagnostics(repoRoot) {
   const lintErrOut = `${lint.stderr || ''}`;
   const lintCombinedForCount = `${lintJsonOut}\n${lintErrOut}`;
   const identities = extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot);
+  const parseFailure =
+    (type.status !== 0 && identities.ts.length === 0 && /error TS\d+:/.test(typeOut)) ||
+    (lint.status !== 0 && identities.eslint.length === 0 && lintJsonOut.trim() === '');
   const toolFailure =
     type.status === null ||
     lint.status === null ||
-    type.error ||
-    lint.error ||
-    (type.status !== 0 && identities.ts.length === 0 && typeOut.includes('error')) ||
-    (lint.status !== 0 && identities.eslint.length === 0 && lintCombinedForCount.includes('error'));
+    Boolean(type.error) ||
+    Boolean(lint.error) ||
+    parseFailure;
   return {
     typeCheckExit: type.status ?? 1,
     eslintExit: lint.status ?? 1,
@@ -123,6 +110,8 @@ function runDiagnostics(repoRoot) {
     baselineDebt: {
       tsIdentities: identities.ts,
       eslintIdentities: identities.eslint,
+      tsErrorCount: countDiagnostics(typeOut, /error TS\d+:/g),
+      eslintErrorCount: countDiagnostics(lintCombinedForCount, /"severity":\s*2/g),
     },
     toolFailure: Boolean(toolFailure),
   };
@@ -155,32 +144,33 @@ function runExports(repoRoot, branchKey) {
   return results;
 }
 
-export function validateStackBranch(row, options = {}) {
+function validateStackBranch(row, options = {}) {
   const skipExports = options.skipExports === true;
-  const cwd = resolveWorktreeCheckout(monorepoRoot, row.branch);
-  execSync('git fetch origin', { cwd: monorepoRoot, stdio: 'ignore' });
+  const expectedHead = resolveRemoteBranchSha(monorepoRoot, row.branch);
+  const { worktreeRoot, head } = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
 
-  const head = git(`rev-parse origin/${row.branch}`, cwd);
-  const baseRef = resolveBaseRef(row.base, cwd);
+  const baseRef = resolveBaseRef(row.base);
   const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
   const mergeBaseSha = git(`merge-base ${head} ${baseRef}`, monorepoRoot);
   const branchKey = `pr${row.pr}`;
 
-  const headDiag = runDiagnostics(cwd);
-  const immediateBaseCheckout = resolveWorktreeCheckout(monorepoRoot, row.base);
-  const immediateBaseDiag =
-    immediateBaseCheckout === cwd && immediateBaseSha !== head
-      ? runDiagnostics(immediateBaseCheckout)
-      : runDiagnostics(immediateBaseCheckout);
+  const headDiag = runDiagnostics(worktreeRoot);
 
-  const exports = skipExports ? {} : runExports(cwd, branchKey);
+  const baseBranchForWorktree = row.base === 'main' ? row.branch : row.base;
+  const baseWorktree = requireWorktreeRoot(monorepoRoot, baseBranchForWorktree);
+  prepareWorktreeAtSha(monorepoRoot, baseBranchForWorktree, immediateBaseSha);
+  const immediateBaseDiag = runDiagnostics(baseWorktree);
+  prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
+
+  const exports = skipExports ? {} : runExports(worktreeRoot, branchKey);
   const identityDelta = diffAddedIdentities(headDiag.identities, immediateBaseDiag.identities);
 
   return {
     pr: row.pr,
     branch: row.branch,
     head,
-    worktreeRoot: cwd,
+    headMatchesOrigin: head === expectedHead,
+    worktreeRoot,
     baseRef,
     immediateBaseSha,
     mergeBaseSha,
@@ -202,16 +192,38 @@ function parseCli() {
   const onlyPr = args.find((a) => /^pr\d+$/i.test(a) || /^\d+$/.test(a));
   let prFilter = null;
   if (onlyPr) {
-    const digits = onlyPr.replace(/^pr/i, '');
-    prFilter = Number(digits);
+    prFilter = Number(onlyPr.replace(/^pr/i, ''));
   }
   return { smoke, prFilter };
+}
+
+let priorReport = null;
+if (existsSync(reportPath)) {
+  try {
+    priorReport = JSON.parse(readFileSync(reportPath, 'utf8'));
+  } catch {
+    priorReport = null;
+  }
 }
 
 const report = {
   validatedAt: new Date().toISOString(),
   monorepoRoot,
-  checkoutMode: 'isolated_stack_worktrees',
+  checkoutMode: 'isolated_worktree_detached_at_origin_sha',
+  safeguards: {
+    assertHeadEqualsOriginSha: true,
+    noPrimaryCheckoutFallback: true,
+    failOnDiagnosticToolFailure: true,
+    failOnAnyIdentityRegression: true,
+  },
+  supersededPriorSweep:
+    priorReport?.checkoutMode !== 'isolated_worktree_detached_at_origin_sha'
+      ? {
+          priorValidatedAt: priorReport?.validatedAt ?? null,
+          priorCheckoutMode: priorReport?.checkoutMode ?? null,
+          reason: 'missing_sha_pin_and_tool_failure_gates',
+        }
+      : null,
   commands: {
     export:
       'node scripts/with-eduvijna-api-env.mjs development -- expo export --platform <android|ios|web> --output-dir <worktree>/.stack-export-check/<pr>/<platform>',
@@ -230,10 +242,10 @@ try {
   if (smoke && rows.length === 0) {
     throw new Error('Smoke mode requires a valid --smoke pr24 (or numeric PR id)');
   }
-  const targetRows = smoke ? [rows[0] ?? STACK[STACK.length - 1]] : rows;
+  const targetRows = smoke ? [rows[rows.length - 1]] : rows;
 
   for (const row of targetRows) {
-    console.log(`\n=== PR #${row.pr} ${row.branch} (worktree) ===`);
+    console.log(`\n=== PR #${row.pr} ${row.branch} (pinned worktree) ===`);
     const entry = validateStackBranch(row, { skipExports: smoke });
     report.branches.push(entry);
     if (smoke) {
@@ -245,33 +257,40 @@ try {
   const exportFailures = report.branches.some((b) =>
     Object.values(b.exports).some((e) => e.exitCode !== 0),
   );
+  const toolFailures = report.branches.some((b) => b.diagnostics?.toolFailure);
   const diagnosticRegression = report.branches.some((b) => {
-    const blocking = filterBlockingIdentities(b.diagnostics?.identitiesAdded);
-    b.diagnostics.identitiesAddedBlocking = blocking;
-    return blocking.tsAdded.length > 0 || blocking.eslintAdded.length > 0;
+    const added = b.diagnostics?.identitiesAdded;
+    const tsNew = added?.tsAdded?.length ?? 0;
+    const eslintNew = added?.eslintAdded?.length ?? 0;
+    return tsNew > 0 || eslintNew > 0;
   });
+  const headMismatch = report.branches.some((b) => !b.headMatchesOrigin);
+
   report.status = exportFailures
     ? 'export_failures'
-    : diagnosticRegression
-      ? 'diagnostic_regression'
-      : 'passed';
+    : toolFailures
+      ? 'diagnostic_tool_failure'
+      : headMismatch
+        ? 'head_sha_mismatch'
+        : diagnosticRegression
+          ? 'diagnostic_regression'
+          : 'passed';
   report.exportStatus = exportFailures ? 'failed' : 'passed';
-  report.diagnosticStatus = diagnosticRegression ? 'regression' : 'passed';
+  report.diagnosticStatus = toolFailures
+    ? 'tool_failure'
+    : diagnosticRegression
+      ? 'regression'
+      : 'passed';
 } catch (error) {
   report.status = 'failed';
   report.error = error?.message || String(error);
   throw error;
 } finally {
-  const outDir = dirname(reportPath);
-  mkdirSync(outDir, { recursive: true });
+  mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
   const shouldFail = cliOpts.smoke
     ? Boolean(report.error)
-    : report.status !== 'passed' ||
-      report.branches?.some((b) => {
-        const blocking = b.diagnostics?.identitiesAddedBlocking ?? filterBlockingIdentities(b.diagnostics?.identitiesAdded);
-        return blocking.tsAdded.length > 0 || blocking.eslintAdded.length > 0;
-      });
+    : report.status !== 'passed';
   process.exit(shouldFail ? 1 : 0);
 }

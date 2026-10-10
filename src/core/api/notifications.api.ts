@@ -11,6 +11,7 @@ import {
   getCachedNotificationsForAccount,
 } from './notificationFetchGuard';
 import { loadReadNotificationIds, persistReadNotificationId } from './notificationReadState';
+import { normalizeNotificationHistoryPayload } from './notificationHistoryNormalize';
 
 export type NotificationType =
   | 'quiz_assigned'
@@ -71,8 +72,12 @@ export async function getNotifications(params?: {
       if (params?.offset) queryParams.append('offset', params.offset.toString());
 
       const endpoint = `/api/notifications/history?${queryParams.toString()}`;
-      const response = await get<{ notifications: Notification[]; total: number }>(endpoint);
-      const rows = response?.notifications || [];
+      const response = await get<unknown>(endpoint);
+      const normalized = normalizeNotificationHistoryPayload(response);
+      if (!normalized.ok) {
+        throw new Error(`notification_history_shape:${normalized.responseShape}:${normalized.error}`);
+      }
+      const rows = normalized.notifications as Notification[];
       const seen = new Set<number>();
       return rows.filter((n) => {
         if (seen.has(n.id)) return false;

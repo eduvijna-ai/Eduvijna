@@ -131,12 +131,19 @@ function mergeUserAnswersOntoQuestions(
 ): string[] {
   const verifiedOrder = entries.length === questions.length;
   return questions.map((question, index) => {
+    const item = items?.[index];
+    const attendedAnswer = letterOrTextToDisplayAnswer(
+      item?.student_answer,
+      question.options ?? [],
+    );
     const matched = matchLogEntryToQuestion(question.question, index, entries, verifiedOrder);
     if (matched) {
-      return extractUserAnswer(matched, question.options ?? []);
+      const fromLog = extractUserAnswer(matched, question.options ?? []);
+      if (fromLog !== '') {
+        return fromLog;
+      }
     }
-    const item = items?.[index];
-    return letterOrTextToDisplayAnswer(item?.student_answer, question.options ?? []);
+    return attendedAnswer;
   });
 }
 

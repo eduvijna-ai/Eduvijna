@@ -269,6 +269,15 @@ export function useAuth(): UseAuthReturn {
     }
   }, [setUser, setAuthenticated, setSchoolId]);
 
+  const resetNotificationGuardBestEffort = async (accountKey: string | null) => {
+    try {
+      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
+      resetNotificationFetchGuardForAccount(accountKey);
+    } catch {
+      // Notification guard is phase6-only; logout must still complete if cleanup is unavailable.
+    }
+  };
+
   /**
    * Logout user
    */
@@ -280,8 +289,7 @@ export function useAuth(): UseAuthReturn {
       const accountKey = useUserStore.getState().userId != null
         ? String(useUserStore.getState().userId)
         : null;
-      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
-      resetNotificationFetchGuardForAccount(accountKey);
+      await resetNotificationGuardBestEffort(accountKey);
       const { resetInitialDeepLinkCache } = await import('../services/deepLinkService');
       resetInitialDeepLinkCache();
 
@@ -295,11 +303,10 @@ export function useAuth(): UseAuthReturn {
       clearQuizNavCache();
       // Clear store (clears user and tokens)
       logoutStore();
-      resetNotificationFetchGuardForAccount(null);
+      await resetNotificationGuardBestEffort(null);
     } catch (err) {
       console.error('Logout API failed:', err);
-      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
-      resetNotificationFetchGuardForAccount(null);
+      await resetNotificationGuardBestEffort(null);
       // Still clear stores even if API call fails
       useTeacherDashboardStore.getState().reset();
       resetStudentAssignmentDashboardStore(null);
