@@ -6,6 +6,20 @@ const PII_VALUE_PATTERNS = [
   /@.+\..+/,
 ];
 
+export function redactScalarValue(value) {
+  if (value == null) return value;
+  if (typeof value === 'string') {
+    if (PII_VALUE_PATTERNS.some((re) => re.test(value))) {
+      return '[redacted]';
+    }
+    if (/\bdemo_[a-z0-9_]+\b/i.test(value)) {
+      return '[redacted-user]';
+    }
+    return value;
+  }
+  return value;
+}
+
 export function redactValue(key, value) {
   if (value == null) return value;
   if (SENSITIVE_KEYS.test(String(key))) {
@@ -13,14 +27,14 @@ export function redactValue(key, value) {
     if (typeof value === 'number') return '[redacted-id]';
     return '[redacted]';
   }
-  if (typeof value === 'string' && PII_VALUE_PATTERNS.some((re) => re.test(value))) {
-    return '[redacted]';
-  }
-  return value;
+  return redactScalarValue(value);
 }
 
 export function redactDeep(input, depth = 0) {
   if (depth > 12) return '[truncated-depth]';
+  if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
+    return redactScalarValue(input);
+  }
   if (Array.isArray(input)) {
     return input.map((item) => redactDeep(item, depth + 1));
   }
