@@ -15,6 +15,7 @@ import useNotifications from '@core/hooks/useNotifications';
 import { handleOpenQuiz } from '@core/services/openQuizHandler';
 import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
 import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
+import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
 import { Alert } from 'react-native';
 
 
@@ -85,8 +86,9 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
 
     if (type === 'quiz_graded' && openQuizUser) {
       const gradedParams = buildQuizGradedResultsNavigationParams(data ?? {});
-      const gradedSessionId =
+      let gradedSessionId =
         typeof gradedParams?.sessionId === 'string' ? gradedParams.sessionId : null;
+      let gradedClassroomId = String(data?.classroom_id ?? data?.classroomId ?? '');
       const gradedStudentId =
         typeof gradedParams?.studentId === 'string'
           ? gradedParams.studentId
@@ -94,13 +96,32 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
             ? String(openQuizUser.id)
             : undefined;
 
+      if (
+        gradedParams &&
+        !gradedSessionId &&
+        openQuizUser.role === 'student' &&
+        gradedStudentId
+      ) {
+        const resolved = await resolveStudentGradedAssignmentSession(
+          gradedStudentId,
+          gradedParams.quizId as string | number,
+        );
+        if (resolved.kind === 'resolved') {
+          gradedSessionId = resolved.sessionId;
+          gradedClassroomId = resolved.classroomId;
+        } else if (resolved.kind === 'ambiguous') {
+          onNavigate('assessments');
+          return;
+        }
+      }
+
       if (gradedParams && gradedSessionId && gradedStudentId && openQuizUser.role === 'student') {
         await executeStudentAssignedQuizViewResults(
           {
             studentId: gradedStudentId,
             quizId: gradedParams.quizId as string | number,
             sessionId: gradedSessionId,
-            classroomId: String(data?.classroom_id ?? data?.classroomId ?? ''),
+            classroomId: gradedClassroomId,
             quizName: gradedParams.quizName as string | undefined,
           },
           {
@@ -119,7 +140,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
         return;
       }
 
-      if (gradedParams) {
+      if (gradedParams && gradedSessionId) {
         onNavigate('QuizResultsScreen', gradedParams);
         return;
       }

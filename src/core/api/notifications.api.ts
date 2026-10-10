@@ -63,7 +63,6 @@ export async function getNotifications(params?: {
     return [];
   }
   const accountKey = params.accountKey;
-  const readIds = await loadReadNotificationIds(accountKey);
   try {
     const result = await guardedNotificationFetch(accountKey, async () => {
       const queryParams = new URLSearchParams();
@@ -81,10 +80,12 @@ export async function getNotifications(params?: {
         return true;
       });
     });
+    const readIds = await loadReadNotificationIds(accountKey);
     return applyClientReadState(result.notifications, readIds);
   } catch (error) {
     console.error('Failed to fetch notifications:', error);
     const cached = getCachedNotificationsForAccount(accountKey);
+    const readIds = await loadReadNotificationIds(accountKey);
     return applyClientReadState(cached, readIds);
   }
 }

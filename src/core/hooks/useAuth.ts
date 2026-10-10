@@ -282,6 +282,8 @@ export function useAuth(): UseAuthReturn {
         : null;
       const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
       resetNotificationFetchGuardForAccount(accountKey);
+      const { resetInitialDeepLinkCache } = await import('../services/deepLinkService');
+      resetInitialDeepLinkCache();
 
       // Call logout API (clears tokens automatically)
       await AuthAPI.logout();

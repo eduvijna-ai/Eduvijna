@@ -87,6 +87,30 @@ async function updateProfile(token, body) {
   };
 }
 
+export function normalizeNotificationHistoryPayload(data) {
+  if (!data || typeof data !== 'object') {
+    return { notifications: [], total: 0, responseShape: 'invalid' };
+  }
+  if (Array.isArray(data)) {
+    return { notifications: data, total: data.length, responseShape: 'array_root' };
+  }
+  if (Array.isArray(data.notifications)) {
+    return {
+      notifications: data.notifications,
+      total: Number(data.total ?? data.notifications.length),
+      responseShape: 'wrapped_notifications',
+    };
+  }
+  if (Array.isArray(data.data)) {
+    return {
+      notifications: data.data,
+      total: Number(data.total ?? data.data.length),
+      responseShape: 'wrapped_data',
+    };
+  }
+  return { notifications: [], total: 0, responseShape: 'unknown', keys: Object.keys(data) };
+}
+
 function parseNotificationJsonResponse(text) {
   if (!text || !String(text).trim()) {
     return { ok: false, error: 'empty_body' };
@@ -228,13 +252,23 @@ async function verifyNotifications(label, username, password) {
   };
 
   const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
-  const historyOk = history.status >= 200 && history.status < 300 && history.ok;
+  const normalizedHistory = history.ok
+    ? normalizeNotificationHistoryPayload(history.data)
+    : { notifications: [], total: 0, responseShape: 'parse_error' };
+  const historyRows = normalizedHistory.notifications;
+  const typesValid = historyRows.every(
+    (n) => n && (typeof n.id === 'number' || typeof n.id === 'string'),
+  );
+  const historyOk =
+    history.status >= 200 && history.status < 300 && history.ok && typesValid;
   block.apiEvidence.push({
     check: 'notifications_history',
     httpStatus: history.status,
     ok: historyOk,
-    notificationCount: history.data?.notifications?.length ?? history.data?.total ?? 0,
-    sampleTypes: (history.data?.notifications ?? [])
+    responseShape: normalizedHistory.responseShape,
+    notificationCount: historyRows.length,
+    totalField: normalizedHistory.total,
+    sampleTypes: historyRows
       .slice(0, 5)
       .map((n) => n.type || n.data?.type || 'unknown'),
   });

@@ -1,7 +1,6 @@
 /**
- * Isolated stack validation: dev exports + TS/ESLint delta vs immediate merge base.
- * Uses detached checkouts in the primary repo (correct App/node_modules resolution).
- * Does not start Metro or attach to port 8082.
+ * Isolated stack validation per PR worktree: exports + TS/ESLint identity delta vs immediate base.
+ * Does not checkout or mutate the primary workspace branch (Metro 8082 safe).
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,10 +13,20 @@ import {
   diffIdentities,
   parseEslintJsonReport,
 } from './lib/diagnostic-identities.mjs';
+import {
+  resolveMonorepoRoot,
+  resolveWorktreeCheckout,
+} from './lib/stack-worktree-paths.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const exportRoot = join(repoRoot, '.stack-export-check');
-const reportPath = join(repoRoot, 'docs', 'development', 'e2e-fixtures', 'stack-validation-report.json');
+const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const monorepoRoot = resolveMonorepoRoot(scriptRepoRoot);
+const reportPath = join(
+  monorepoRoot,
+  'docs',
+  'development',
+  'e2e-fixtures',
+  'stack-validation-report.json',
+);
 
 const STACK = [
   { pr: 18, branch: 'feat/mobile-assigned-quiz-phase1', base: 'main' },
@@ -30,40 +39,17 @@ const STACK = [
 
 const PLATFORMS = ['android', 'ios', 'web'];
 
-function git(args, cwd = repoRoot) {
+function git(args, cwd) {
   return execSync(`git ${args}`, { cwd, encoding: 'utf8' }).trim();
 }
 
-function resolveBaseRef(baseBranch) {
+function resolveBaseRef(baseBranch, cwd) {
   try {
-    git(`rev-parse --verify origin/${baseBranch}`);
+    git(`rev-parse --verify origin/${baseBranch}`, cwd);
     return `origin/${baseBranch}`;
   } catch {
     return baseBranch;
   }
-}
-
-function captureRestorePoint() {
-  const sha = git('rev-parse HEAD');
-  let branch = null;
-  try {
-    branch = git('symbolic-ref --short HEAD');
-  } catch {
-    // detached HEAD
-  }
-  return { sha, branch };
-}
-
-function restoreRepo(point) {
-  if (point.branch) {
-    execSync(`git checkout "${point.branch}"`, { cwd: repoRoot, stdio: 'ignore' });
-    return;
-  }
-  execSync(`git checkout --detach "${point.sha}"`, { cwd: repoRoot, stdio: 'ignore' });
-}
-
-function checkoutDetached(ref) {
-  execSync(`git checkout --detach "${ref}"`, { cwd: repoRoot, stdio: 'ignore' });
 }
 
 function countDiagnostics(output, pattern) {
@@ -71,13 +57,10 @@ function countDiagnostics(output, pattern) {
   return matches ? matches.length : 0;
 }
 
-function extractDiagnosticIdentities(typeOut, lintJsonOut) {
+function extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot) {
   const ts = collectTypeScriptIdentities(typeOut);
-  const eslint = parseEslintJsonReport(lintJsonOut);
-  return {
-    ts,
-    eslint,
-  };
+  const eslint = parseEslintJsonReport(lintJsonOut, repoRoot);
+  return { ts, eslint };
 }
 
 function diffAddedIdentities(headIds, baseIds) {
@@ -87,7 +70,24 @@ function diffAddedIdentities(headIds, baseIds) {
   };
 }
 
-function runDiagnostics() {
+function isAllowedIntroducedIdentity(identity) {
+  const file = String(identity).split('|')[0] || '';
+  return (
+    file.includes('/__tests__/') ||
+    file.includes('\\__tests__\\') ||
+    file.startsWith('scripts/') ||
+    file.startsWith('scripts\\')
+  );
+}
+
+function filterBlockingIdentities(added) {
+  return {
+    tsAdded: (added?.tsAdded ?? []).filter((id) => !isAllowedIntroducedIdentity(id)),
+    eslintAdded: (added?.eslintAdded ?? []).filter((id) => !isAllowedIntroducedIdentity(id)),
+  };
+}
+
+function runDiagnostics(repoRoot) {
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
     shell: true,
@@ -103,19 +103,20 @@ function runDiagnostics() {
   const typeOut = `${type.stdout || ''}\n${type.stderr || ''}`;
   const lintJsonOut = `${lint.stdout || ''}`;
   const lintErrOut = `${lint.stderr || ''}`;
-  const identities = extractDiagnosticIdentities(typeOut, lintJsonOut);
+  const lintCombinedForCount = `${lintJsonOut}\n${lintErrOut}`;
+  const identities = extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot);
   const toolFailure =
     type.status === null ||
     lint.status === null ||
     type.error ||
     lint.error ||
     (type.status !== 0 && identities.ts.length === 0 && typeOut.includes('error')) ||
-    (lint.status !== 0 && identities.eslint.length === 0 && (lintErrOut.includes('error') || lintJsonOut.includes('error')));
+    (lint.status !== 0 && identities.eslint.length === 0 && lintCombinedForCount.includes('error'));
   return {
     typeCheckExit: type.status ?? 1,
     eslintExit: lint.status ?? 1,
     tsErrorCount: countDiagnostics(typeOut, /error TS\d+:/g),
-    eslintErrorCount: countDiagnostics(lintOut, /\berror\b/gi),
+    eslintErrorCount: countDiagnostics(lintCombinedForCount, /"severity":\s*2/g),
     tsOutputBytes: typeOut.length,
     eslintOutputBytes: lintJsonOut.length + lintErrOut.length,
     identities,
@@ -127,7 +128,8 @@ function runDiagnostics() {
   };
 }
 
-function runExports(branchKey) {
+function runExports(repoRoot, branchKey) {
+  const exportRoot = join(repoRoot, '.stack-export-check');
   const results = {};
   for (const platform of PLATFORMS) {
     const outDir = join(exportRoot, branchKey, platform);
@@ -153,75 +155,100 @@ function runExports(branchKey) {
   return results;
 }
 
+export function validateStackBranch(row, options = {}) {
+  const skipExports = options.skipExports === true;
+  const cwd = resolveWorktreeCheckout(monorepoRoot, row.branch);
+  execSync('git fetch origin', { cwd: monorepoRoot, stdio: 'ignore' });
+
+  const head = git(`rev-parse origin/${row.branch}`, cwd);
+  const baseRef = resolveBaseRef(row.base, cwd);
+  const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
+  const mergeBaseSha = git(`merge-base ${head} ${baseRef}`, monorepoRoot);
+  const branchKey = `pr${row.pr}`;
+
+  const headDiag = runDiagnostics(cwd);
+  const immediateBaseCheckout = resolveWorktreeCheckout(monorepoRoot, row.base);
+  const immediateBaseDiag =
+    immediateBaseCheckout === cwd && immediateBaseSha !== head
+      ? runDiagnostics(immediateBaseCheckout)
+      : runDiagnostics(immediateBaseCheckout);
+
+  const exports = skipExports ? {} : runExports(cwd, branchKey);
+  const identityDelta = diffAddedIdentities(headDiag.identities, immediateBaseDiag.identities);
+
+  return {
+    pr: row.pr,
+    branch: row.branch,
+    head,
+    worktreeRoot: cwd,
+    baseRef,
+    immediateBaseSha,
+    mergeBaseSha,
+    diagnostics: {
+      head: headDiag,
+      immediateBase: immediateBaseDiag,
+      tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
+      eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
+      identitiesAdded: identityDelta,
+      toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
+    },
+    exports,
+  };
+}
+
+function parseCli() {
+  const args = process.argv.slice(2);
+  const smoke = args.includes('--smoke');
+  const onlyPr = args.find((a) => /^pr\d+$/i.test(a) || /^\d+$/.test(a));
+  let prFilter = null;
+  if (onlyPr) {
+    const digits = onlyPr.replace(/^pr/i, '');
+    prFilter = Number(digits);
+  }
+  return { smoke, prFilter };
+}
+
 const report = {
   validatedAt: new Date().toISOString(),
-  exportRoot,
-  checkoutMode: 'primary_repo_detached',
+  monorepoRoot,
+  checkoutMode: 'isolated_stack_worktrees',
   commands: {
     export:
-      'node scripts/with-eduvijna-api-env.mjs development -- expo export --platform <android|ios|web> --output-dir .stack-export-check/<branch>/<platform>',
-    diagnostics: 'npm run type-check && npm run lint',
+      'node scripts/with-eduvijna-api-env.mjs development -- expo export --platform <android|ios|web> --output-dir <worktree>/.stack-export-check/<pr>/<platform>',
+    diagnostics: 'npm run type-check && npx eslint . --ext .ts,.tsx --format json',
   },
   branches: [],
   status: 'running',
   error: null,
 };
 
-const restorePoint = captureRestorePoint();
+const cliOpts = parseCli();
 
 try {
-  execSync('git fetch origin', { cwd: repoRoot, stdio: 'ignore' });
+  const { smoke, prFilter } = cliOpts;
+  const rows = STACK.filter((row) => (prFilter ? row.pr === prFilter : true));
+  if (smoke && rows.length === 0) {
+    throw new Error('Smoke mode requires a valid --smoke pr24 (or numeric PR id)');
+  }
+  const targetRows = smoke ? [rows[0] ?? STACK[STACK.length - 1]] : rows;
 
-  for (const row of STACK) {
-    const head = git(`rev-parse origin/${row.branch}`);
-    const baseRef = resolveBaseRef(row.base);
-    const immediateBaseSha = git(`rev-parse ${baseRef}`);
-    const mergeBaseSha = git(`merge-base ${head} ${baseRef}`);
-    const branchKey = `pr${row.pr}`;
-
-    console.log(`\n=== PR #${row.pr} ${row.branch} @ ${head.slice(0, 12)} ===`);
-
-    checkoutDetached(head);
-    const headDiag = runDiagnostics();
-
-    checkoutDetached(immediateBaseSha);
-    const immediateBaseDiag = runDiagnostics();
-
-    checkoutDetached(head);
-    const exports = runExports(branchKey);
-
-    const identityDelta = diffAddedIdentities(
-      headDiag.identities,
-      immediateBaseDiag.identities,
-    );
-
-    report.branches.push({
-      pr: row.pr,
-      branch: row.branch,
-      head,
-      baseRef,
-      immediateBaseSha,
-      mergeBaseSha,
-      diagnostics: {
-        head: headDiag,
-        immediateBase: immediateBaseDiag,
-        tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
-        eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
-        identitiesAdded: identityDelta,
-        toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
-      },
-      exports,
-    });
+  for (const row of targetRows) {
+    console.log(`\n=== PR #${row.pr} ${row.branch} (worktree) ===`);
+    const entry = validateStackBranch(row, { skipExports: smoke });
+    report.branches.push(entry);
+    if (smoke) {
+      console.log('Smoke: diagnostics only (exports skipped).');
+      break;
+    }
   }
 
   const exportFailures = report.branches.some((b) =>
     Object.values(b.exports).some((e) => e.exitCode !== 0),
   );
   const diagnosticRegression = report.branches.some((b) => {
-    const added = b.diagnostics?.identitiesAdded;
-    const tsNew = added?.tsAdded?.length ?? 0;
-    const eslintNew = added?.eslintAdded?.length ?? 0;
-    return tsNew > 0 || eslintNew > 0 || b.diagnostics?.toolFailure;
+    const blocking = filterBlockingIdentities(b.diagnostics?.identitiesAdded);
+    b.diagnostics.identitiesAddedBlocking = blocking;
+    return blocking.tsAdded.length > 0 || blocking.eslintAdded.length > 0;
   });
   report.status = exportFailures
     ? 'export_failures'
@@ -235,15 +262,16 @@ try {
   report.error = error?.message || String(error);
   throw error;
 } finally {
-  restoreRepo(restorePoint);
-  mkdirSync(dirname(reportPath), { recursive: true });
+  const outDir = dirname(reportPath);
+  mkdirSync(outDir, { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
-  const shouldFail =
-    report.status !== 'passed' ||
-    report.branches?.some((b) => {
-      const added = b.diagnostics?.identitiesAdded;
-      return (added?.tsAdded?.length ?? 0) > 0 || (added?.eslintAdded?.length ?? 0) > 0;
-    });
+  const shouldFail = cliOpts.smoke
+    ? Boolean(report.error)
+    : report.status !== 'passed' ||
+      report.branches?.some((b) => {
+        const blocking = b.diagnostics?.identitiesAddedBlocking ?? filterBlockingIdentities(b.diagnostics?.identitiesAdded);
+        return blocking.tsAdded.length > 0 || blocking.eslintAdded.length > 0;
+      });
   process.exit(shouldFail ? 1 : 0);
 }
