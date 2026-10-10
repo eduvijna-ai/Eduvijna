@@ -1,0 +1,222 @@
+/**
+ * Profile + notification API verification (reversible profile edits, redacted).
+ */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getDevApiBase, loginDevApi } from './lib/dev-api-auth.mjs';
+import { redactDeep } from './lib/trace-redact.mjs';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const credFile = join(repoRoot, '.dev-api-credentials.local.json');
+const out = join(
+  repoRoot,
+  'docs',
+  'development',
+  'e2e-fixtures',
+  'profile-notification-verification-redacted.json',
+);
+
+async function fetchProfile(token) {
+  const res = await fetch(`${getDevApiBase()}/api/v1/auth/profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, ok: res.ok, data };
+}
+
+async function updateProfile(token, body) {
+  const res = await fetch(`${getDevApiBase()}/api/v1/auth/profile`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, ok: res.ok, data };
+}
+
+async function probeGet(token, path) {
+  const res = await fetch(`${getDevApiBase()}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = { _preview: text.slice(0, 160) };
+  }
+  return { status: res.status, ok: res.ok, data: redactDeep(data) };
+}
+
+async function verifyProfileRoundTrip(label, username, password) {
+  const auth = await loginDevApi(username, password);
+  const block = { accountLabel: label, role: auth.role, steps: [], restored: false };
+
+  const before = await fetchProfile(auth.token);
+  block.steps.push({
+    name: 'profile_read_initial',
+    httpStatus: before.status,
+    ok: before.ok,
+  });
+
+  const marker = `DEV_VERIFY_${Date.now()}`;
+  const originalBio = before.data?.bio ?? '';
+  const patch = { bio: `${originalBio ? `${originalBio} ` : ''}${marker}`.trim() };
+
+  const saved = await updateProfile(auth.token, patch);
+  block.steps.push({
+    name: 'profile_save',
+    httpStatus: saved.status,
+    ok: saved.ok,
+  });
+
+  const refetch = await fetchProfile(auth.token);
+  const bioAfter = refetch.data?.bio ?? '';
+  block.steps.push({
+    name: 'profile_refetch',
+    httpStatus: refetch.status,
+    ok: refetch.ok,
+    markerVisible: bioAfter.includes(marker),
+  });
+
+  try {
+    const restore = await updateProfile(auth.token, { bio: originalBio });
+    const final = await fetchProfile(auth.token);
+    block.restored = (final.data?.bio ?? '') === originalBio;
+    block.steps.push({
+      name: 'profile_restore',
+      httpStatus: restore.status,
+      ok: restore.ok && block.restored,
+    });
+  } catch (error) {
+    block.steps.push({
+      name: 'profile_restore',
+      ok: false,
+      error: error?.message || String(error),
+    });
+  }
+
+  return block;
+}
+
+async function verifyNotifications(label, username, password) {
+  const auth = await loginDevApi(username, password);
+  const block = {
+    accountLabel: label,
+    role: auth.role,
+    apiEvidence: [],
+    clientEvidence: [],
+    deviceReceipt: { status: 'not_collected', reason: 'No physical device push receipt in CI matrix' },
+    limitations: [],
+  };
+
+  const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
+  block.apiEvidence.push({
+    name: 'notifications_history',
+    httpStatus: history.status,
+    ok: history.ok,
+    notificationCount: history.data?.notifications?.length ?? history.data?.total ?? 0,
+    sampleTypes: (history.data?.notifications ?? [])
+      .slice(0, 5)
+      .map((n) => n.type || n.data?.type || 'unknown'),
+  });
+
+  const prefs = await probeGet(auth.token, '/api/notifications/preferences');
+  block.apiEvidence.push({
+    name: 'notifications_preferences',
+    httpStatus: prefs.status,
+    ok: prefs.ok,
+  });
+  if (!prefs.ok) {
+    block.limitations.push('Preferences endpoint may be unavailable; see http status in apiEvidence.');
+  }
+
+  const devices = await probeGet(auth.token, '/api/notifications/devices');
+  block.apiEvidence.push({
+    name: 'notifications_devices_list',
+    httpStatus: devices.status,
+    ok: devices.ok,
+  });
+
+  block.clientEvidence.push({
+    name: 'useNotifications_fetch_disabled',
+    detail: 'Mobile useNotifications.ts intentionally disables history polling (rate-limit guard).',
+  });
+  block.clientEvidence.push({
+    name: 'PushNotificationService_paths',
+    detail: 'POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device.',
+  });
+
+  if (auth.role === 'student') {
+    const assigned = (history.data?.notifications ?? []).filter(
+      (n) =>
+        String(n.type || '').includes('quiz') ||
+        String(n.data?.session_id || n.data?.sessionId || '').length > 0,
+    );
+    block.apiEvidence.push({
+      name: 'student_bell_candidate_rows',
+      count: assigned.length,
+      hasSessionDestination: assigned.some(
+        (n) => n.data?.session_id || n.data?.sessionId,
+      ),
+    });
+  }
+
+  if (auth.role === 'instructor' || auth.role === 'admin') {
+    block.apiEvidence.push({
+      name: 'teacher_submission_notification_probe',
+      detail: 'Inspect history sampleTypes for graded/submission types when present on dev-api.',
+      sampleTypes: (history.data?.notifications ?? [])
+        .slice(0, 10)
+        .map((n) => n.type || 'unknown'),
+    });
+  }
+
+  return block;
+}
+
+async function main() {
+  if (!existsSync(credFile)) {
+    console.error('Missing .dev-api-credentials.local.json');
+    process.exit(2);
+  }
+  const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
+  const accounts = cfg.accounts ?? {};
+  const report = {
+    verifiedAt: new Date().toISOString(),
+    apiBase: getDevApiBase(),
+    profiles: [],
+    notifications: [],
+    erpDeferred: true,
+    status: 'pending',
+  };
+
+  for (const label of ['admin', 'instructor', 'student']) {
+    const cred = accounts[label];
+    if (!cred) continue;
+    report.profiles.push(await verifyProfileRoundTrip(label, cred.username, cred.password));
+    report.notifications.push(
+      await verifyNotifications(label, cred.username, cred.password),
+    );
+  }
+
+  const profileFailed = report.profiles.some(
+    (p) => !p.steps.every((s) => s.ok !== false) || !p.restored,
+  );
+  report.status = profileFailed ? 'failed' : 'passed';
+
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
+  console.log(`Wrote ${out} (status=${report.status})`);
+  process.exit(profileFailed ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

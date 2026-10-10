@@ -1,0 +1,223 @@
+{
+  "verifiedAt": "2026-10-10T12:48:43.995Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "profiles": [
+    {
+      "accountLabel": "admin",
+      "role": "admin",
+      "steps": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "restored": true
+    },
+    {
+      "accountLabel": "instructor",
+      "role": "instructor",
+      "steps": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "restored": true
+    },
+    {
+      "accountLabel": "student",
+      "role": "student",
+      "steps": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "restored": true
+    }
+  ],
+  "notifications": [
+    {
+      "accountLabel": "admin",
+      "role": "admin",
+      "apiEvidence": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "notificationCount": 0,
+          "sampleTypes": []
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "detail": "Inspect history sampleTypes for graded/submission types when present on dev-api.",
+          "sampleTypes": []
+        }
+      ],
+      "clientEvidence": [
+        {
+          "name": "[redacted]",
+          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
+        },
+        {
+          "name": "[redacted]",
+          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": []
+    },
+    {
+      "accountLabel": "instructor",
+      "role": "instructor",
+      "apiEvidence": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "notificationCount": 0,
+          "sampleTypes": []
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "detail": "Inspect history sampleTypes for graded/submission types when present on dev-api.",
+          "sampleTypes": []
+        }
+      ],
+      "clientEvidence": [
+        {
+          "name": "[redacted]",
+          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
+        },
+        {
+          "name": "[redacted]",
+          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": []
+    },
+    {
+      "accountLabel": "student",
+      "role": "student",
+      "apiEvidence": [
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true,
+          "notificationCount": 0,
+          "sampleTypes": []
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "name": "[redacted]",
+          "count": 0,
+          "hasSessionDestination": false
+        }
+      ],
+      "clientEvidence": [
+        {
+          "name": "[redacted]",
+          "detail": "Mobile useNotifications.ts intentionally disables history polling (rate-limit guard)."
+        },
+        {
+          "name": "[redacted]",
+          "detail": "POST /api/notifications/devices and DELETE /api/notifications/devices/{id} implemented; native FCM requires Android device."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": []
+    }
+  ],
+  "erpDeferred": true,
+  "status": "passed"
+}
