@@ -91,6 +91,9 @@ export const isStudentQuizActive = (quiz: any): boolean => {
   return isQuizWithinTimeWindow(quiz);
 };
 
+/** Student "Ongoing" tab + pending stats (includes in_progress / started). */
+export const isStudentQuizOngoing = isStudentQuizActive;
+
 /**
  * Check if a quiz is upcoming for students
  * Upcoming = pending status + not started yet
@@ -159,9 +162,7 @@ export const filterUpcomingQuizzes = (quizzes: any[]): any[] => {
  * @returns Filtered array of ongoing quizzes (availability_status = 'active' AND status = 'pending')
  */
 export const filterPendingQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(quiz => 
-    quiz.availability_status === 'active' && quiz.status === 'pending'
-  );
+  return quizzes.filter(isStudentQuizActive);
 };
 
 /**
