@@ -11,8 +11,9 @@ Branch: `feat/mobile-phase2-student-dashboard-parity` (stacked after PR #18).
 | Assessments list | Same merged dataset via dashboard store | **Done** — shared `loadStudentDashboardQuizzes` |
 | Pull-to-refresh on Assessments (student) | Refetch store | **Done** |
 | Recent completed on Home | Sort by `completed_at` | **Existing** — relies on completed fetch |
-| Student Analytics filters / totals | Align with dashboard store scopes | **Partial** — still uses `fetchTeacherDashboardSummary`; audit follow-up |
-| Submission-dependent counts (duplicate attempts) | Single attempt per submit | **Blocked** — backend explicit `attempt_id` contract (see `PHASE1_ASSIGNED_QUIZ_API.md`) |
+| Student My Analytics — View Results | Recovery probe + `sessionId` like Assessments | **Done** — `resolveStudentAssignedQuizViewResults` |
+| Student Analytics filters / totals | Align with dashboard store scopes | **Deferred** — `StudentAnalyticsScreen` is teacher drill-down (teacher summary API) |
+| Duplicate attempt rows in analytics API | May inflate `student_total_details` attempt counts | **Informational** — Home/Assessments use check-record merge (see Phase 1 backend observations) |
 
 ## Quiz-React reference
 
