@@ -29,6 +29,31 @@ function parseApiEnvironment(raw) {
   return normalized;
 }
 
+/**
+ * Parse non-empty inherited EDUVIJNA_API_ENV or throw.
+ * @param {string | undefined} raw
+ * @returns {'development' | 'production' | undefined}
+ */
+function parseNonEmptyInheritedApiEnvironment(raw) {
+  if (raw === undefined || raw.trim() === '') {
+    return undefined;
+  }
+  return parseApiEnvironment(raw);
+}
+
+/**
+ * Validate inherited env before production-release overwrites (throws on invalid or development).
+ * @param {string | undefined} raw
+ */
+function assertProductionReleaseInheritedApiEnvironment(raw) {
+  const parsed = parseNonEmptyInheritedApiEnvironment(raw);
+  if (parsed === 'development') {
+    throw new ApiEnvironmentConfigError(
+      `Production release rejects ${API_ENV_VAR}=development. Unset it or use production.`,
+    );
+  }
+}
+
 function normalizeApiOrigin(raw) {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -69,17 +94,18 @@ function resolveApiEnvironmentFromProcess(processEnv = process.env) {
   const requireProduction = processEnv[REQUIRE_PRODUCTION_VAR] === '1';
 
   if (requireProduction) {
-    if (raw !== undefined && raw.trim() !== '' && parseApiEnvironment(raw) === 'development') {
-      throw new ApiEnvironmentConfigError(
-        `Production release rejects ${API_ENV_VAR}=development. Unset it or use production.`,
-      );
+    if (raw !== undefined && raw.trim() !== '') {
+      const parsed = parseApiEnvironment(raw);
+      if (parsed === 'development') {
+        throw new ApiEnvironmentConfigError(
+          `Production release rejects ${API_ENV_VAR}=development. Unset it or use production.`,
+        );
+      }
+      return parsed;
     }
-    if (raw === undefined || raw.trim() === '') {
-      throw new ApiEnvironmentConfigError(
-        `Production release requires ${API_ENV_VAR}=production (see docs/development/API_ENVIRONMENT.md).`,
-      );
-    }
-    return parseApiEnvironment(raw);
+    throw new ApiEnvironmentConfigError(
+      `Production release requires ${API_ENV_VAR}=production (see docs/development/API_ENVIRONMENT.md).`,
+    );
   }
 
   if (raw === undefined || raw.trim() === '') {
@@ -101,6 +127,8 @@ module.exports = {
   API_ORIGINS,
   ApiEnvironmentConfigError,
   parseApiEnvironment,
+  parseNonEmptyInheritedApiEnvironment,
+  assertProductionReleaseInheritedApiEnvironment,
   normalizeApiOrigin,
   resolveApiEnvironmentFromProcess,
   resolveApiOriginForProcess,

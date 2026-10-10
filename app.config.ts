@@ -1,12 +1,6 @@
 import type { ExpoConfig } from 'expo/config';
 import appJson from './app.json';
-
-const { resolveApiOriginForProcess } = require('./config/apiEnvironment.cjs') as {
-  resolveApiOriginForProcess: (env?: NodeJS.ProcessEnv) => {
-    environment: 'development' | 'production';
-    apiOrigin: string;
-  };
-};
+import { resolveApiOriginForProcess } from './config/apiEnvironment.cjs';
 
 const staticExpo = appJson.expo as ExpoConfig;
 
