@@ -35,14 +35,14 @@ cd C:\Users\kanne\dev\Eduvijna
 
 Sets `JAVA_HOME` to JDK **17**, `ANDROID_HOME` / `ANDROID_SDK_ROOT`, and prepends platform-tools, emulator, and resolved **cmdline-tools** `bin` (`latest`, flat `bin`, or versioned folder).
 
-Verify in a **new** PowerShell window after dot-sourcing:
+Verify in the **same** PowerShell session immediately after dot-sourcing (a **new** window does not inherit the script — dot-source again there):
 
 ```powershell
 java -version          # 17.x
 adb version            # 1.0.41+
 emulator -list-avds    # includes Eduvijna_Android_Dev
-sdkmanager --version          # functions preset --sdk_root when dot-sourced
-avdmanager list avd   # may warn on AVD path; prefer `emulator -list-avds` for boot checks
+sdkmanager --version   # dot-sourced helper presets --sdk_root for sdkmanager only
+avdmanager list avd    # uses ANDROID_SDK_ROOT; may warn on AVD path — prefer `emulator -list-avds` for boot checks
 ```
 
 ### Hardware acceleration

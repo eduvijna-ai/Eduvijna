@@ -89,7 +89,7 @@ try {
   Write-Host "JAVA_HOME=$env:JAVA_HOME"
   Write-Host "ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
   Write-Host "ANDROID_CMDLINE_TOOLS_BIN=$script:EduvijnaCmdlineBin"
-  Write-Host "Tip: use sdkmanager / avdmanager functions (sdk_root preset) when cmdline-tools are not under latest\."
+  Write-Host "Tip: dot-sourced sdkmanager presets --sdk_root; avdmanager uses ANDROID_SDK_ROOT. Re-dot-source in each new PowerShell window."
 }
 finally {
   $ErrorActionPreference = $previousErrorActionPreference
