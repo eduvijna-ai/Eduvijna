@@ -52,11 +52,11 @@ npm run update:production
 | Command | Resolution |
 |---------|------------|
 | `expo …` | `node node_modules/expo/bin/cli …` |
-| `eas …` | `node` + local **`eas-cli`** (devDependency, installed by `npm ci`), or global install under `npm root -g` if local is absent |
+| `eas …` | `node` + local **`eas-cli@16.27.0`** (devDependency — run **`npm ci`** if missing) |
 
 Do not invoke `expo.cmd` / `eas.cmd` shims from the wrapper — paths with spaces break under piped stdio.
 
-Global `npm install -g eas-cli` remains valid for ad-hoc terminal use; **`npm run update:production`** and verification use the wrapper resolution above.
+**`npm run update:production`** and **`npm run cli:verify`** always use the pinned local `eas-cli` via the wrapper.
 
 ## Verification
 

@@ -1,9 +1,8 @@
 /**
  * Resolve expo/eas shims to `node <cli-entry.js> ...` for reliable Windows spawning.
- * Local package entries are preferred; EAS falls back to the global npm root when documented.
+ * Local eas-cli (devDependency) is authoritative — no global fallback.
  */
 import { existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,56 +24,6 @@ function localEasCliEntry() {
       return null;
     }
   }
-}
-
-function globalNpmModulesRoot() {
-  const npmCli = join(repoRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  if (existsSync(npmCli)) {
-    const result = spawnSync(process.execPath, [npmCli, 'root', '-g'], {
-      encoding: 'utf8',
-      shell: false,
-    });
-    if (result.status === 0) {
-      const root = result.stdout.trim();
-      if (root && existsSync(root)) {
-        return root;
-      }
-    }
-  }
-
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    const appDataRoot = join(process.env.APPDATA, 'npm', 'node_modules');
-    if (existsSync(appDataRoot)) {
-      return appDataRoot;
-    }
-  }
-
-  return null;
-}
-
-function easEntryFromModuleRoot(modulesRoot) {
-  const candidates = [
-    join(modulesRoot, 'eas-cli', 'build', 'bin', 'cli'),
-    join(modulesRoot, 'eas-cli', 'bin', 'run'),
-  ];
-  for (const entry of candidates) {
-    if (existsSync(entry)) {
-      return entry;
-    }
-  }
-  return null;
-}
-
-function resolveEasCliEntry() {
-  const local = localEasCliEntry();
-  if (local) {
-    return local;
-  }
-  const globalRoot = globalNpmModulesRoot();
-  if (globalRoot) {
-    return easEntryFromModuleRoot(globalRoot);
-  }
-  return null;
 }
 
 /**
@@ -103,11 +52,9 @@ export function resolveCommandArgv(commandArgv) {
   }
 
   if (headBase === 'eas') {
-    const entry = resolveEasCliEntry();
+    const entry = localEasCliEntry();
     if (!entry) {
-      throw new Error(
-        'EAS CLI not found. Run npm ci (installs eas-cli locally) or npm install -g eas-cli.',
-      );
+      throw new Error('EAS CLI not found. Run npm ci to install the pinned eas-cli devDependency.');
     }
     return {
       executable: process.execPath,
