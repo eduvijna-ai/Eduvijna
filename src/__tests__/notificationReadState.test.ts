@@ -5,9 +5,20 @@ import {
   clearReadNotificationIds,
 } from '../core/api/notificationReadState';
 
+const store: Record<string, string> = {};
+
 describe('notificationReadState', () => {
-  beforeEach(async () => {
-    await AsyncStorage.clear();
+  beforeEach(() => {
+    for (const key of Object.keys(store)) {
+      delete store[key];
+    }
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store[key] ?? null);
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+      store[key] = value;
+    });
+    (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
+      delete store[key];
+    });
   });
 
   it('persists read ids per account', async () => {
