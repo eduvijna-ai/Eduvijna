@@ -1,40 +1,114 @@
 /**
  * Token Storage Service
- * Handles secure storage of JWT tokens across platforms
- * - Web: localStorage
- * - Mobile: AsyncStorage (with SecureStore for sensitive tokens)
+ * Handles secure storage of JWT tokens across platforms, scoped by API environment.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { resolveActiveApiEnvironment } from '../config/activeApiEnvironment';
+import type { ApiEnvironment } from '../config/apiEnvironment';
 
-const KEYS = {
+const LEGACY_KEYS = {
   ACCESS_TOKEN: 'auth_access_token',
   REFRESH_TOKEN: 'auth_refresh_token',
   TOKEN_EXPIRY: 'auth_token_expiry',
   USER_DATA: 'auth_user_data',
 } as const;
 
-/**
- * Check if we're running on web
- */
+const KEY_SUFFIX = {
+  ACCESS_TOKEN: 'access_token',
+  REFRESH_TOKEN: 'refresh_token',
+  TOKEN_EXPIRY: 'token_expiry',
+  USER_DATA: 'user_data',
+} as const;
+
+function scopedStorageKey(suffix: string, environment: ApiEnvironment): string {
+  return `eduvijna:auth:${environment}:${suffix}`;
+}
+
+function legacyKeysPresent(): boolean {
+  if (Platform.OS === 'web') {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    return (
+      window.localStorage.getItem(LEGACY_KEYS.ACCESS_TOKEN) != null ||
+      window.localStorage.getItem(LEGACY_KEYS.REFRESH_TOKEN) != null ||
+      window.localStorage.getItem(LEGACY_KEYS.USER_DATA) != null
+    );
+  }
+  return false;
+}
+
+async function legacyKeysPresentAsync(): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return legacyKeysPresent();
+  }
+  const [access, userData] = await Promise.all([
+    AsyncStorage.getItem(LEGACY_KEYS.ACCESS_TOKEN),
+    AsyncStorage.getItem(LEGACY_KEYS.USER_DATA),
+  ]);
+  let refresh: string | null = null;
+  try {
+    refresh = await SecureStore.getItemAsync(LEGACY_KEYS.REFRESH_TOKEN);
+  } catch {
+    refresh = null;
+  }
+  return Boolean(access || refresh || userData);
+}
+
 const isWeb = Platform.OS === 'web';
 
+async function readScopedString(key: string): Promise<string | null> {
+  if (isWeb) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+    return null;
+  }
+  return AsyncStorage.getItem(key);
+}
+
+async function writeScopedString(key: string, value: string): Promise<void> {
+  if (isWeb) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+    return;
+  }
+  await AsyncStorage.setItem(key, value);
+}
+
+async function removeScopedString(key: string): Promise<void> {
+  if (isWeb) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+    return;
+  }
+  await AsyncStorage.removeItem(key);
+}
+
 /**
- * Store access token
+ * Legacy unscoped tokens are never migrated into a selected environment — login required.
+ */
+export async function hasLegacyUnscopedAuthCredentials(): Promise<boolean> {
+  const environment = resolveActiveApiEnvironment();
+  const scopedAccess = await readScopedString(
+    scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment),
+  );
+  if (scopedAccess) {
+    return false;
+  }
+  return legacyKeysPresentAsync();
+}
+
+/**
+ * Store access token for the active API environment.
  */
 export async function storeAccessToken(token: string): Promise<void> {
   try {
-    if (isWeb) {
-      // Web: Use localStorage
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(KEYS.ACCESS_TOKEN, token);
-      }
-    } else {
-      // Mobile: Use AsyncStorage (non-sensitive, faster)
-      await AsyncStorage.setItem(KEYS.ACCESS_TOKEN, token);
-    }
+    const environment = resolveActiveApiEnvironment();
+    await writeScopedString(scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment), token);
   } catch (error) {
     console.error('Failed to store access token:', error);
     throw new Error('Failed to store access token');
@@ -42,37 +116,35 @@ export async function storeAccessToken(token: string): Promise<void> {
 }
 
 /**
- * Get access token
+ * Access token for the active API environment only (never legacy / other env).
  */
 export async function getAccessToken(): Promise<string | null> {
   try {
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(KEYS.ACCESS_TOKEN);
-      }
-      return null;
-    } else {
-      return await AsyncStorage.getItem(KEYS.ACCESS_TOKEN);
+    const environment = resolveActiveApiEnvironment();
+    const scoped = await readScopedString(
+      scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment),
+    );
+    if (scoped) {
+      return scoped;
     }
+    if (await legacyKeysPresentAsync()) {
+      return null;
+    }
+    return null;
   } catch (error) {
     console.error('Failed to get access token:', error);
     return null;
   }
 }
 
-/**
- * Store refresh token (more secure)
- */
 export async function storeRefreshToken(token: string): Promise<void> {
   try {
+    const environment = resolveActiveApiEnvironment();
+    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
     if (isWeb) {
-      // Web: Use localStorage (in production, consider httpOnly cookies)
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(KEYS.REFRESH_TOKEN, token);
-      }
+      await writeScopedString(key, token);
     } else {
-      // Mobile: Use SecureStore for sensitive data
-      await SecureStore.setItemAsync(KEYS.REFRESH_TOKEN, token);
+      await SecureStore.setItemAsync(key, token);
     }
   } catch (error) {
     console.error('Failed to store refresh token:', error);
@@ -80,60 +152,48 @@ export async function storeRefreshToken(token: string): Promise<void> {
   }
 }
 
-/**
- * Get refresh token
- */
 export async function getRefreshToken(): Promise<string | null> {
   try {
+    const environment = resolveActiveApiEnvironment();
+    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+    let scoped: string | null = null;
     if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(KEYS.REFRESH_TOKEN);
-      }
-      return null;
+      scoped = await readScopedString(key);
     } else {
-      return await SecureStore.getItemAsync(KEYS.REFRESH_TOKEN);
+      scoped = await SecureStore.getItemAsync(key);
     }
+    if (scoped) {
+      return scoped;
+    }
+    if (await legacyKeysPresentAsync()) {
+      return null;
+    }
+    return null;
   } catch (error) {
     console.error('Failed to get refresh token:', error);
     return null;
   }
 }
 
-/**
- * Store token expiry time
- */
 export async function storeTokenExpiry(expiresIn: number): Promise<void> {
   try {
-    const expiryTime = Date.now() + expiresIn * 1000; // Convert seconds to milliseconds
-    const expiryString = expiryTime.toString();
-
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(KEYS.TOKEN_EXPIRY, expiryString);
-      }
-    } else {
-      await AsyncStorage.setItem(KEYS.TOKEN_EXPIRY, expiryString);
-    }
+    const environment = resolveActiveApiEnvironment();
+    const expiryTime = Date.now() + expiresIn * 1000;
+    await writeScopedString(
+      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment),
+      expiryTime.toString(),
+    );
   } catch (error) {
     console.error('Failed to store token expiry:', error);
   }
 }
 
-/**
- * Get token expiry time
- */
 export async function getTokenExpiry(): Promise<number | null> {
   try {
-    let expiryString: string | null = null;
-
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        expiryString = window.localStorage.getItem(KEYS.TOKEN_EXPIRY);
-      }
-    } else {
-      expiryString = await AsyncStorage.getItem(KEYS.TOKEN_EXPIRY);
-    }
-
+    const environment = resolveActiveApiEnvironment();
+    const expiryString = await readScopedString(
+      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment),
+    );
     return expiryString ? parseInt(expiryString, 10) : null;
   } catch (error) {
     console.error('Failed to get token expiry:', error);
@@ -141,16 +201,12 @@ export async function getTokenExpiry(): Promise<number | null> {
   }
 }
 
-/**
- * Check if token is expired
- */
 export async function isTokenExpired(): Promise<boolean> {
   try {
     const expiry = await getTokenExpiry();
     if (!expiry) return true;
 
     const now = Date.now();
-    // Consider token expired 1 minute before actual expiry for safety
     const bufferTime = 60 * 1000;
     return now >= expiry - bufferTime;
   } catch (error) {
@@ -159,86 +215,99 @@ export async function isTokenExpired(): Promise<boolean> {
   }
 }
 
-/**
- * Store user data (for quick access without API call)
- */
 export async function storeUserData(userData: string): Promise<void> {
   try {
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(KEYS.USER_DATA, userData);
-      }
-    } else {
-      await AsyncStorage.setItem(KEYS.USER_DATA, userData);
-    }
+    const environment = resolveActiveApiEnvironment();
+    await writeScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment), userData);
   } catch (error) {
     console.error('Failed to store user data:', error);
   }
 }
 
-/**
- * Get stored user data
- */
 export async function getUserData(): Promise<string | null> {
   try {
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(KEYS.USER_DATA);
-      }
-      return null;
-    } else {
-      return await AsyncStorage.getItem(KEYS.USER_DATA);
+    const environment = resolveActiveApiEnvironment();
+    const scoped = await readScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment));
+    if (scoped) {
+      return scoped;
     }
+    if (await legacyKeysPresentAsync()) {
+      return null;
+    }
+    return null;
   } catch (error) {
     console.error('Failed to get user data:', error);
     return null;
   }
 }
 
-/**
- * Clear all stored authentication data
- */
+async function clearLegacyAuthData(): Promise<void> {
+  if (isWeb) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(LEGACY_KEYS.ACCESS_TOKEN);
+      window.localStorage.removeItem(LEGACY_KEYS.REFRESH_TOKEN);
+      window.localStorage.removeItem(LEGACY_KEYS.TOKEN_EXPIRY);
+      window.localStorage.removeItem(LEGACY_KEYS.USER_DATA);
+    }
+    return;
+  }
+  await AsyncStorage.multiRemove([
+    LEGACY_KEYS.ACCESS_TOKEN,
+    LEGACY_KEYS.TOKEN_EXPIRY,
+    LEGACY_KEYS.USER_DATA,
+  ]);
+  try {
+    await SecureStore.deleteItemAsync(LEGACY_KEYS.REFRESH_TOKEN);
+  } catch {
+    // ignore
+  }
+}
+
+async function clearScopedEnvironment(environment: ApiEnvironment): Promise<void> {
+  const accessKey = scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment);
+  const expiryKey = scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment);
+  const userKey = scopedStorageKey(KEY_SUFFIX.USER_DATA, environment);
+  const refreshKey = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+
+  await removeScopedString(accessKey);
+  await removeScopedString(expiryKey);
+  await removeScopedString(userKey);
+
+  if (isWeb) {
+    await removeScopedString(refreshKey);
+  } else {
+    try {
+      await SecureStore.deleteItemAsync(refreshKey);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export async function clearAuthData(): Promise<void> {
   try {
-    if (isWeb) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(KEYS.ACCESS_TOKEN);
-        window.localStorage.removeItem(KEYS.REFRESH_TOKEN);
-        window.localStorage.removeItem(KEYS.TOKEN_EXPIRY);
-        window.localStorage.removeItem(KEYS.USER_DATA);
-      }
-    } else {
-      // Clear AsyncStorage
-      await AsyncStorage.multiRemove([
-        KEYS.ACCESS_TOKEN,
-        KEYS.TOKEN_EXPIRY,
-        KEYS.USER_DATA,
-      ]);
-
-      // Clear SecureStore (ignore missing-item errors on fresh installs)
-      try {
-        await SecureStore.deleteItemAsync(KEYS.REFRESH_TOKEN);
-      } catch {
-        // Item may not exist
-      }
-    }
+    const environment = resolveActiveApiEnvironment();
+    await clearScopedEnvironment(environment);
+    await clearLegacyAuthData();
   } catch (error) {
     console.error('Failed to clear auth data:', error);
     throw new Error('Failed to clear authentication data');
   }
 }
 
-/**
- * Store complete auth tokens
- */
 export async function storeAuthTokens(
   accessToken: string,
   refreshToken: string,
-  expiresIn: number
+  expiresIn: number,
 ): Promise<void> {
   await Promise.all([
     storeAccessToken(accessToken),
     storeRefreshToken(refreshToken),
     storeTokenExpiry(expiresIn),
   ]);
+}
+
+/** @internal test helper */
+export function __testScopedKey(suffix: string, environment: ApiEnvironment): string {
+  return scopedStorageKey(suffix, environment);
 }
