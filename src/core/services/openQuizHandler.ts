@@ -277,7 +277,22 @@ export async function handleOpenQuiz(
     const isTeacher = user.role === 'instructor' || user.role === 'admin';
 
     // ==========================================
-    // 6. STUDENT FLOW - Complete validation chain
+    // 6. TEACHER FLOW - Preview (before public/student branch)
+    // ==========================================
+    if (isTeacher) {
+      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
+
+      navigationAdapter.navigate('QuizPreviewScreen', {
+        quiz: normalizedQuiz,
+        quizId: normalizedQuiz.quizId,
+        sessionId: normalizedQuiz.sessionId,
+        quizData: normalizedQuiz,
+      });
+      return;
+    }
+
+    // ==========================================
+    // 7. STUDENT / PUBLIC FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
       const pendingCheckpoint = await findPendingSubmissionCheckpoint(
@@ -398,23 +413,6 @@ export async function handleOpenQuiz(
         classroomId: normalizedQuiz.classroomId,
         quizData: normalizedQuiz,
         is_public: quizData.is_public,
-      });
-      return;
-    }
-
-    // ==========================================
-    // 7. TEACHER FLOW - Preview quiz
-    // ==========================================
-    if (isTeacher) {
-      // Normalize quiz data for teacher preview
-      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
-
-      navigationAdapter.navigate('QuizPreviewScreen', {
-        quiz: normalizedQuiz,
-        // Legacy params for backward compatibility
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        quizData: normalizedQuiz,
       });
       return;
     }
