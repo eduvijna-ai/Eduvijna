@@ -4,23 +4,30 @@
 
 import { checkRecordToQuiz, fetchQuizCheckRecord, type CheckRecordQuiz } from './dashboardApi';
 import type { DashboardStats, ParsedQuiz } from '../types';
+import {
+  checkRecordAssignmentKey,
+  checkRecordRowEffectiveStatus,
+  checkRecordRowSortTime,
+  type CheckRecordAssignableRow,
+} from './checkRecordAssignmentIdentity';
+import { fetchPersistedQuizResult } from './quizResultRetrieval.service';
 
-export function dedupeCheckRecordQuizzes<T extends { quiz_id: number; session_id: string; status: string; created_at: string; attempt_number?: number | null }>(
-  rows: T[],
-): T[] {
+export function dedupeCheckRecordQuizzes<T extends CheckRecordAssignableRow>(rows: T[]): T[] {
   const quizMap = new Map<string, T>();
   for (const quiz of rows) {
-    const key = `${quiz.quiz_id}_${quiz.session_id}`;
+    const key = checkRecordAssignmentKey(quiz);
     const existing = quizMap.get(key);
     if (!existing) {
       quizMap.set(key, quiz);
       continue;
     }
-    const currentDate = new Date(quiz.created_at).getTime();
-    const existingDate = new Date(existing.created_at).getTime();
+    const status = checkRecordRowEffectiveStatus(quiz);
+    const existingStatus = checkRecordRowEffectiveStatus(existing);
+    const currentDate = checkRecordRowSortTime(quiz);
+    const existingDate = checkRecordRowSortTime(existing);
     const shouldReplace =
-      (quiz.status === 'completed' && existing.status !== 'completed') ||
-      (quiz.status === existing.status && currentDate > existingDate) ||
+      (status === 'completed' && existingStatus !== 'completed') ||
+      (status === existingStatus && currentDate > existingDate) ||
       (quiz.attempt_number &&
         existing.attempt_number &&
         quiz.attempt_number > existing.attempt_number);
@@ -39,17 +46,20 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
     ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     : undefined;
 
+  const status = (quiz.student_status || quiz.status || 'pending') as
+    | 'pending'
+    | 'completed'
+    | 'missed'
+    | 'in_progress';
+
   return {
     quiz_id: Number(quiz.quiz_id) || 0,
     class_id: String(quiz.classroom_id || quiz.class_id || ''),
     classroom_name: String(quiz.classroom_name || 'Unknown Class'),
     quiz_name: String(quiz.quiz_name || 'Untitled Quiz'),
-    status: (quiz.student_status || quiz.status || 'pending') as 'pending' | 'completed' | 'missed',
+    status,
     score: typeof quiz.score === 'number' ? quiz.score : null,
-    correct_answers:
-      typeof quiz.score === 'number'
-        ? Math.round((quiz.score / 100) * (quiz.question_count || 0))
-        : 0,
+    correct_answers: typeof quiz.correct_answers === 'number' ? quiz.correct_answers : undefined,
     end_time: String(quiz.end_time || quiz.due_date || new Date().toISOString()),
     created_at: String(quiz.created_at || quiz.assigned_at || new Date().toISOString()),
     completed_at: quiz.completed_at ? String(quiz.completed_at) : null,
@@ -74,6 +84,47 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
   } as ParsedQuiz;
 }
 
+export async function hydrateCompletedParsedQuizMetrics(
+  studentId: string,
+  quizzes: ParsedQuiz[],
+): Promise<ParsedQuiz[]> {
+  return Promise.all(
+    quizzes.map(async (quiz) => {
+      if (quiz.status !== 'completed') return quiz;
+      if (
+        quiz.score != null &&
+        quiz.time_spent_seconds != null &&
+        quiz.completed_at != null
+      ) {
+        return quiz;
+      }
+      const result = await fetchPersistedQuizResult({
+        quizId: quiz.quiz_id,
+        sessionId: quiz.session_id,
+        studentId,
+        isTeacherView: false,
+      });
+      if (result.status !== 'ready') {
+        return quiz;
+      }
+      const answeredCount = result.userAnswers.filter((a) => String(a).trim().length > 0).length;
+      return {
+        ...quiz,
+        score: result.score ?? quiz.score,
+        time_spent_seconds: result.timeSpentSeconds ?? quiz.time_spent_seconds ?? null,
+        completed_at: result.completedAt ?? quiz.completed_at,
+        log_data: result.logData ?? quiz.log_data,
+        correct_answers:
+          typeof quiz.correct_answers === 'number'
+            ? quiz.correct_answers
+            : answeredCount > 0
+              ? answeredCount
+              : undefined,
+      };
+    }),
+  );
+}
+
 export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): DashboardStats {
   const completed = parsed.filter((q) => q.status === 'completed');
   const pending = parsed.filter((q) => q.status === 'pending' || q.status === 'in_progress');
@@ -82,7 +133,10 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
     .filter((q) => q.score !== null && q.score !== undefined)
     .map((q) => q.score!);
   const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const totalTime = completed.reduce((sum, q) => sum + (q.time_spent_seconds || 0), 0);
+  const totalTime = completed.reduce(
+    (sum, q) => sum + (typeof q.time_spent_seconds === 'number' ? q.time_spent_seconds : 0),
+    0,
+  );
   const uniqueClasses = new Set(parsed.map((q) => q.class_id).filter((id) => id && id !== ''));
 
   return {
@@ -90,7 +144,7 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
     completed_count: completed.length,
     pending_count: pending.length,
     missed_count: missed.length,
-    average_score: Math.round(avgScore),
+    average_score: scores.length > 0 ? Math.round(avgScore) : 0,
     total_time_spent: totalTime,
     total_questions_attempted: parsed.reduce((sum, q) => sum + (q.question_count || 0), 0),
     total_classes: uniqueClasses.size,
@@ -115,6 +169,7 @@ export async function loadStudentCheckRecordDashboard(studentId: string): Promis
   stats: DashboardStats;
 }> {
   const rows = await fetchStudentCheckRecordRows(studentId);
-  const parsed = rows.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
-  return { quizzes: parsed, stats: computeCheckRecordDashboardStats(parsed) };
+  const mapped = rows.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
+  const hydrated = await hydrateCompletedParsedQuizMetrics(studentId, mapped);
+  return { quizzes: hydrated, stats: computeCheckRecordDashboardStats(hydrated) };
 }
