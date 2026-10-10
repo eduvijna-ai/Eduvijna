@@ -40,8 +40,7 @@ import {
   isAssignedQuizRecoveryProbeError,
 } from '../core/services/assignedQuizRecovery.service';
 import {
-  navigateStudentToQuizTaking,
-  resolveStudentAssignedQuizViewResults,
+  executeStudentAssignedQuizViewResults,
 } from '../core/services/assessmentQuizStart.service';
 
 type DrillLevel = 'overview' | 'class';
@@ -181,23 +180,16 @@ export default function QuizStudentMyAnalyticsScreen() {
 
     setViewingQuizId(quiz.quiz_id);
     try {
-      const outcome = await resolveStudentAssignedQuizViewResults({
-        studentId: String(user.id),
-        quizId: quiz.quiz_id,
-        sessionId: quiz.session_id,
-        classroomId: quiz.classroom_id,
-        quizName: quiz.quiz_name,
-      });
-
-      if (outcome.kind === 'recovery_retry') {
-        navigateStudentToQuizTaking(navigation, undefined, outcome.params);
-        return;
-      }
-      if (outcome.kind === 'view_results') {
-        navigation.navigate('QuizResultsScreen', outcome.resultParams);
-        return;
-      }
-      setError('Could not open results. Please try again.');
+      await executeStudentAssignedQuizViewResults(
+        {
+          studentId: String(user.id),
+          quizId: quiz.quiz_id,
+          sessionId: quiz.session_id,
+          classroomId: quiz.classroom_id,
+          quizName: quiz.quiz_name,
+        },
+        { navigation },
+      );
     } catch (viewErr) {
       if (isAssignedQuizRecoveryProbeError(viewErr)) {
         setError(viewErr.message);
