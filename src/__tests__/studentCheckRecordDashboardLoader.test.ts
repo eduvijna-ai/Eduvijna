@@ -77,10 +77,14 @@ describe('studentCheckRecordDashboardLoader', () => {
   it('hydrates completed metrics from attended-quiz without fabricating zeros', async () => {
     mockFetch.mockResolvedValue({
       status: 'ready',
-      quizData: { questions: [{ id: 'q0', question: 'Q?', options: ['A', 'B'], correctAnswer: 'A', answer: 'A', explanation: null }] },
+      quizData: {
+        questions: [
+          { id: 'q0', question: 'Q?', options: ['A', 'B'], correctAnswer: 'A', answer: 'A', explanation: null },
+        ],
+      },
       userAnswers: ['A'],
       score: 100,
-      logData: { '0': { answer: 'A' } },
+      logData: { answers: [{ isCorrect: true }] },
       timeSpentSeconds: 42,
       completedAt: '2026-01-05T00:00:00Z',
     });
@@ -97,5 +101,32 @@ describe('studentCheckRecordDashboardLoader', () => {
     expect(hydrated.score).toBe(100);
     expect(hydrated.time_spent_seconds).toBe(42);
     expect(hydrated.correct_answers).toBe(1);
+  });
+
+  it('does not treat answered questions as correct without metadata', async () => {
+    mockFetch.mockResolvedValue({
+      status: 'ready',
+      quizData: {
+        questions: [
+          { id: 'q0', question: 'Q?', options: ['A', 'B'], correctAnswer: 'A', answer: 'A', explanation: null },
+        ],
+      },
+      userAnswers: ['B'],
+      score: 0,
+      logData: { answers: [{ isCorrect: false }] },
+      timeSpentSeconds: 12,
+      completedAt: '2026-01-05T00:00:00Z',
+    });
+    const [hydrated] = await hydrateCompletedParsedQuizMetrics('student-1', [
+      {
+        quiz_id: 3,
+        session_id: 'sess-3',
+        class_id: 'c1',
+        status: 'completed',
+        score: null,
+        question_count: 1,
+      } as any,
+    ]);
+    expect(hydrated.correct_answers).toBe(0);
   });
 });
