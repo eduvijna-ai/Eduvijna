@@ -467,6 +467,7 @@ export interface GenerateMultimodalParams {
   gradeLevel?: string;
   lessonTitle?: string;
   selectedPages?: number[];
+  additionalInstructions?: string;
 }
 
 // Web parity (HandwrittenWorkspace.difficultyToApi): easy → '2', medium → 'mixed', hard → '6'.
@@ -928,6 +929,7 @@ export async function generateFromBook(params: {
   subject?: string;
   gradeLevel?: string;
   lessonTitle?: string;
+  additionalInstructions?: string;
 }): Promise<{
   questions: Array<{
     id: string;
@@ -953,6 +955,7 @@ export async function generateFromBook(params: {
     subject: params.subject || '',
     grade_level: params.gradeLevel || '',
     lesson_title: params.lessonTitle || '',
+    additional_instructions: (params.additionalInstructions || '').trim(),
   };
 
   const response = await apiClient.post('/api/v1/study-materials/generate-from-book', body, {
@@ -1020,6 +1023,9 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
   formData.append('subject', params.subject || 'General');
   formData.append('grade_level', params.gradeLevel || 'Class 10');
   formData.append('lesson_title', params.lessonTitle || 'Document Assessment');
+  if (params.additionalInstructions?.trim()) {
+    formData.append('additional_instructions', params.additionalInstructions.trim());
+  }
   if (Array.isArray(params.selectedPages) && params.selectedPages.length > 0) {
     const cleaned = Array.from(
       new Set(

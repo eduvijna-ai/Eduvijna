@@ -45,6 +45,8 @@ import {
   upsertDocumentUploadBook,
   consumeDocumentUploadHomeReset,
 } from '@core/services/documentUploadStorage';
+import { resolvePickerAssetBlob } from '@core/utils/documentUploadPickerAsset';
+import { rememberDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
 
@@ -189,8 +191,15 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
 
       if (result.canceled || !result.assets?.length) return;
 
-      const asset = result.assets[0];
-      await processAssetAndNavigate(asset);
+      const asset = result.assets[0] as {
+        uri: string;
+        name?: string;
+        mimeType?: string;
+        size?: number;
+        file?: File | Blob;
+      };
+      const file = await resolvePickerAssetBlob(asset);
+      await processAssetAndNavigate({ ...asset, file });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to upload document.'));
     } finally {
@@ -249,6 +258,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     name?: string;
     mimeType?: string;
     size?: number;
+    file?: File | Blob;
   }) => {
     const fileName = asset.name || `document-${Date.now()}`;
     const mimeType = asset.mimeType || 'application/octet-stream';
@@ -264,6 +274,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileUri: asset.uri,
         fileName,
         mimeType,
+        file: asset.file,
         title,
         lessonTitle: title,
       });
@@ -296,6 +307,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileUri: asset.uri,
         fileName,
         mimeType,
+        file: asset.file,
         forceOcr: false,
       });
 
@@ -320,6 +332,9 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       };
     }
 
+    if (asset.file) {
+      rememberDocumentUploadFile(next.id, asset.file);
+    }
     await upsertDocumentUploadBook(next);
     setSelectedBook(next);
     setBookName(next.title);

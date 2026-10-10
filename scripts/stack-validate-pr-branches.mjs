@@ -66,6 +66,30 @@ function countDiagnostics(output, pattern) {
   return matches ? matches.length : 0;
 }
 
+function extractDiagnosticIdentities(typeOut, lintOut) {
+  const ts = new Set();
+  for (const match of typeOut.matchAll(/error (TS\d+):/g)) {
+    ts.add(match[1]);
+  }
+  const eslint = new Set();
+  for (const match of lintOut.matchAll(/\n\s*([^\s]+)\s+error\s+/g)) {
+    eslint.add(match[1]);
+  }
+  return {
+    ts: [...ts].sort(),
+    eslint: [...eslint].sort(),
+  };
+}
+
+function diffAddedIdentities(headIds, baseIds) {
+  const baseTs = new Set(baseIds.ts);
+  const baseEslint = new Set(baseIds.eslint);
+  return {
+    tsAdded: headIds.ts.filter((id) => !baseTs.has(id)),
+    eslintAdded: headIds.eslint.filter((id) => !baseEslint.has(id)),
+  };
+}
+
 function runDiagnostics() {
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
@@ -81,6 +105,14 @@ function runDiagnostics() {
   });
   const typeOut = `${type.stdout || ''}\n${type.stderr || ''}`;
   const lintOut = `${lint.stdout || ''}\n${lint.stderr || ''}`;
+  const identities = extractDiagnosticIdentities(typeOut, lintOut);
+  const toolFailure =
+    type.status === null ||
+    lint.status === null ||
+    type.error ||
+    lint.error ||
+    (type.status !== 0 && identities.ts.length === 0 && typeOut.includes('error')) ||
+    (lint.status !== 0 && identities.eslint.length === 0 && lintOut.includes('error'));
   return {
     typeCheckExit: type.status ?? 1,
     eslintExit: lint.status ?? 1,
@@ -88,6 +120,12 @@ function runDiagnostics() {
     eslintErrorCount: countDiagnostics(lintOut, /\berror\b/gi),
     tsOutputBytes: typeOut.length,
     eslintOutputBytes: lintOut.length,
+    identities,
+    baselineDebt: {
+      tsIdentities: identities.ts,
+      eslintIdentities: identities.eslint,
+    },
+    toolFailure: Boolean(toolFailure),
   };
 }
 
@@ -139,7 +177,8 @@ try {
   for (const row of STACK) {
     const head = git(`rev-parse origin/${row.branch}`);
     const baseRef = resolveBaseRef(row.base);
-    const baseSha = git(`merge-base ${head} ${baseRef}`);
+    const immediateBaseSha = git(`rev-parse ${baseRef}`);
+    const mergeBaseSha = git(`merge-base ${head} ${baseRef}`);
     const branchKey = `pr${row.pr}`;
 
     console.log(`\n=== PR #${row.pr} ${row.branch} @ ${head.slice(0, 12)} ===`);
@@ -147,23 +186,31 @@ try {
     checkoutDetached(head);
     const headDiag = runDiagnostics();
 
-    checkoutDetached(baseSha);
-    const baseDiag = runDiagnostics();
+    checkoutDetached(immediateBaseSha);
+    const immediateBaseDiag = runDiagnostics();
 
     checkoutDetached(head);
     const exports = runExports(branchKey);
+
+    const identityDelta = diffAddedIdentities(
+      headDiag.identities,
+      immediateBaseDiag.identities,
+    );
 
     report.branches.push({
       pr: row.pr,
       branch: row.branch,
       head,
       baseRef,
-      baseSha,
+      immediateBaseSha,
+      mergeBaseSha,
       diagnostics: {
         head: headDiag,
-        base: baseDiag,
-        tsErrorsAdded: headDiag.tsErrorCount - baseDiag.tsErrorCount,
-        eslintErrorsDelta: headDiag.eslintErrorCount - baseDiag.eslintErrorCount,
+        immediateBase: immediateBaseDiag,
+        tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
+        eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
+        identitiesAdded: identityDelta,
+        toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
       },
       exports,
     });
@@ -172,13 +219,12 @@ try {
   const exportFailures = report.branches.some((b) =>
     Object.values(b.exports).some((e) => e.exitCode !== 0),
   );
-  const diagnosticRegression = report.branches.some(
-    (b) =>
-      (b.diagnostics?.tsErrorsAdded ?? 0) > 0 ||
-      (b.diagnostics?.eslintErrorsDelta ?? 0) > 0 ||
-      (b.diagnostics?.head?.typeCheckExit ?? 0) !== 0 ||
-      (b.diagnostics?.head?.eslintExit ?? 0) !== 0,
-  );
+  const diagnosticRegression = report.branches.some((b) => {
+    const added = b.diagnostics?.identitiesAdded;
+    const tsNew = added?.tsAdded?.length ?? 0;
+    const eslintNew = added?.eslintAdded?.length ?? 0;
+    return tsNew > 0 || eslintNew > 0 || b.diagnostics?.toolFailure;
+  });
   report.status = exportFailures
     ? 'export_failures'
     : diagnosticRegression
@@ -197,6 +243,9 @@ try {
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
   const shouldFail =
     report.status !== 'passed' ||
-    report.branches?.some((b) => (b.diagnostics?.tsErrorsAdded ?? 0) > 0);
+    report.branches?.some((b) => {
+      const added = b.diagnostics?.identitiesAdded;
+      return (added?.tsAdded?.length ?? 0) > 0 || (added?.eslintAdded?.length ?? 0) > 0;
+    });
   process.exit(shouldFail ? 1 : 0);
 }

@@ -26,6 +26,7 @@ import {
 } from './src/core/services/deepLinkService';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
+import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -260,8 +261,9 @@ function AppContent() {
 
   // Handle navigation between screens with params support
   const handleNavigate = (screen: string, params?: any) => {
+    const resolved = resolveWebShellScreen(screen);
     webNavStackRef.current.push({ screen: activeScreen, params: navigationParams });
-    setActiveScreen(screen as any);
+    setActiveScreen(resolved as WebShellScreen);
     setNavigationParams(params || {});
   };
 
@@ -271,8 +273,8 @@ function AppContent() {
   const createWebNavigation = (defaultBackScreen: string = 'dashboard') => ({
     navigate: (screen: string, params?: any) => handleNavigate(screen, params),
     replace: (screen: string, params?: any) => {
-      webNavStackRef.current.pop();
-      handleNavigate(screen, params);
+      setActiveScreen(resolveWebShellScreen(screen) as WebShellScreen);
+      setNavigationParams(params || {});
     },
     goBack: () => {
       const previous = webNavStackRef.current.pop();

@@ -48,6 +48,7 @@ import {
   removeDocumentUploadBook,
 } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
+import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
@@ -140,6 +141,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   );
   const [questionCount, setQuestionCount] = useState<number>(
     restoredForm?.questionCount ?? route?.params?.presetQuestionCount ?? 5,
+  );
+  const [additionalInstructions, setAdditionalInstructions] = useState(
+    String(route?.params?.presetInstructions ?? readDocumentWorkspacePreset(route)?.additionalInstructions ?? ''),
   );
   const [selectedPages, setSelectedPages] = useState<Set<number>>(
     () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
@@ -558,13 +562,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           subject: resolvedSubject,
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
+          additionalInstructions,
         });
         questions = result.questions;
       } else if (bookState?.fileUri) {
+        const uploadFile = getDocumentUploadFile(bookState.id);
         const result = await generateMultimodalAssessmentFromDocument({
           fileUri: bookState.fileUri,
           fileName: bookState.originalName || 'document.pdf',
           mimeType: bookState.mimeType || 'application/pdf',
+          file: uploadFile,
           questionCount,
           difficulty,
           language: 'English',
@@ -572,6 +579,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
           selectedPages: pageNumbers,
+          additionalInstructions,
         });
         questions = result.quizData.questions;
       }
