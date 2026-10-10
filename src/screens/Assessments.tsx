@@ -27,8 +27,9 @@ import {
 } from '@core/services/assignedQuizRecovery.service';
 import {
   buildQuizTakingNavigationParams,
-  loadAssignedQuizDataForSession,
+  isAssignedQuizLoadError,
   navigateStudentToQuizTaking,
+  navigateToAssignedQuizTaking,
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
@@ -434,11 +435,11 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             correctClassroomId,
             attemptData,
           };
-          const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
-          navigateStudentToQuizTaking(
+          await navigateToAssignedQuizTaking(
             navigation,
             onNavigate,
-            buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
+            startCtx,
+            recovery,
           );
           return;
         }
@@ -461,13 +462,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           correctClassroomId,
           attemptData,
         };
-        const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
-        navigateStudentToQuizTaking(
-          navigation,
-          onNavigate,
-          buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions),
-        );
-      } catch {
+        await navigateToAssignedQuizTaking(navigation, onNavigate, startCtx);
+      } catch (error) {
+        if (isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not load quiz questions. Please check your connection and try again.',
+          );
+          return;
+        }
         // If the attempt-check fails, proceed to the quiz so the student
         // is never blocked by a network error.
         const startCtx = {

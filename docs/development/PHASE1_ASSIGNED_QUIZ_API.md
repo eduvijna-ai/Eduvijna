@@ -19,14 +19,15 @@ Target API: **`https://dev-api.eduvijna.com`**. No production deployment or OTA 
 | Check | Status | Evidence |
 |-------|--------|----------|
 | Jest: submission, recovery integration, retrieval, navigation, `QuizTakingScreen` recovery | **Verified** | 34 tests (see PR #18 CI / local `npm test` filter) |
-| `tokenStorage` dev/prod isolation + legacy | **Verified** | `tokenStorage.apiEnvironment.test.ts` (PR #16) |
+| `tokenStorage` dev/prod isolation + SecureStore key format | **Verified** | `tokenStorage.apiEnvironment.test.ts`, `auth.api.nativeStorage.test.ts` (PR #16) |
 | `npm run config:verify` / `cli:verify` | **Verified** | Stack branches |
 | TS vs baseline (`e6fde43` parent) | **Verified** | 199 head / 193 baseline errors; **1 new** in touched code: `openQuizAvailability` unused (pre-existing in file); no new errors in `tokenStorage`, `Assessments`, `QuizTakingScreen`, `assessmentQuizStart` |
-| Live dev-api reachability | **Verified** | `curl.exe` → `POST /api/v1/auth/login` **405** (route exists; method guard); TLS reachable |
+| Live dev-api TLS reachability | **Verified** | `curl.exe` → dev-api host responds on HTTPS (no credentials used) |
+| Live dev-api login | **Not executed** | `POST /api/v1/auth/login` returned **405** when probed without credentials — **not** counted as successful login |
 | Emulator `emulator-5554` | **Verified** | `adb devices` → `device`; `sys.boot_completed=1` (emulator not restarted) |
 | Metro **8082** | **Verified** | Existing dev session preserved (no port reset in this pass) |
-| Authenticated partial submit → force-stop → Assessments/OpenQuiz recovery | **Blocked** | No dev credentials in repo; Document Upload / assigned-quiz E2E requires Founder or isolated test account |
-| Attended-quiz read after live submit on device | **Blocked** | Same auth gap |
+| Authenticated partial submit → force-stop → Assessments/OpenQuiz recovery | **Blocked (Founder)** | Dev student login on device; partial submit; force-stop; reopen from Assessments and OpenQuiz |
+| Attended-quiz read after live submit on device | **Blocked (Founder)** | Same login; complete or partial submit; confirm `GET /dashboard/attended-quiz` on device |
 
 ## Manual matrix (when authenticated)
 

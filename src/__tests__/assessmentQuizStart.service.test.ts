@@ -1,8 +1,10 @@
 import { getQuizBySessionId } from '../core/services/sharedApi';
 import {
+  AssignedQuizLoadError,
   loadAssignedQuizDataForSession,
   navigateStudentToQuizTaking,
   buildQuizTakingNavigationParams,
+  navigateToAssignedQuizTaking,
 } from '../core/services/assessmentQuizStart.service';
 
 jest.mock('../core/services/sharedApi', () => ({
@@ -44,6 +46,43 @@ describe('assessmentQuizStart.service', () => {
     expect((result.questions as { question: string }[])[0].question).toBe('Q1');
     expect(result.session_id).toBe('session-1');
     expect(result.quiz_id).toBe(42);
+  });
+
+  it('throws retryable error when full quiz fetch fails instead of metadata-only fallback', async () => {
+    mockGetQuiz.mockRejectedValue(new Error('network down'));
+
+    await expect(
+      loadAssignedQuizDataForSession({
+        correctQuizId: 42,
+        correctSessionId: 'session-1',
+        correctClassroomId: 'class-1',
+        attemptData: { quiz_id: 42, session_id: 'session-1' },
+      }),
+    ).rejects.toMatchObject({
+      name: 'AssignedQuizLoadError',
+      retryable: true,
+      code: 'ASSIGNED_QUIZ_FETCH_FAILED',
+    });
+  });
+
+  it('does not navigate when assigned quiz load fails', async () => {
+    mockGetQuiz.mockRejectedValue(new Error('timeout'));
+    const navigation = { navigate: jest.fn() };
+
+    await expect(
+      navigateToAssignedQuizTaking(
+        navigation,
+        undefined,
+        {
+          correctQuizId: 1,
+          correctSessionId: 'sess',
+          correctClassroomId: 'room',
+          attemptData: { quiz_id: 1 },
+        },
+      ),
+    ).rejects.toBeInstanceOf(AssignedQuizLoadError);
+
+    expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
   it('navigates via onNavigate on web with recovery params', () => {

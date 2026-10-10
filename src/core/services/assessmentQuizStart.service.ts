@@ -5,6 +5,23 @@
 import { getQuizBySessionId } from './sharedApi';
 import type { AssignedQuizRecoveryResumeParams } from './assignedQuizRecovery.service';
 
+export class AssignedQuizLoadError extends Error {
+  readonly code = 'ASSIGNED_QUIZ_FETCH_FAILED';
+  readonly retryable = true;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'AssignedQuizLoadError';
+    if (cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = cause;
+    }
+  }
+}
+
+export function isAssignedQuizLoadError(error: unknown): boolean {
+  return error instanceof AssignedQuizLoadError;
+}
+
 export interface AssignedQuizStartContext {
   correctQuizId: number | string;
   correctSessionId: string;
@@ -35,37 +52,62 @@ export async function loadAssignedQuizDataForSession(
 
   try {
     const quizResponse = await getQuizBySessionId(correctSessionId);
-    if (quizResponse.success && quizResponse.quiz_data) {
-      const fetchedQuiz = quizResponse.quiz_data;
-      const allQuestions = fetchedQuiz.questions?.quizzes ?? [];
-      const questionLimit = fetchedQuiz.question_count || allQuestions.length;
-      const questions = allQuestions.slice(0, questionLimit).map((q: any, index: number) => ({
-        id: `q-${index}`,
-        question: q.quiz.question,
-        options: q.quiz.options,
-        correctAnswer: q.quiz.answer,
-        answer: q.answer,
-        explanation: null,
-      }));
-
-      quizDataWithQuestions = {
-        ...attemptData,
-        id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-        quiz_id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-        session_id: correctSessionId,
-        classroom_id: correctClassroomId,
-        title: fetchedQuiz.topic || attemptData?.quiz_name || 'Assessment',
-        duration: fetchedQuiz.duration || attemptData?.duration || 30,
-        has_time_limit: fetchedQuiz.has_time_limit ?? true,
-        is_public: fetchedQuiz.is_public ?? false,
-        questions,
-      };
+    if (!quizResponse.success || !quizResponse.quiz_data) {
+      throw new AssignedQuizLoadError(
+        'Assigned quiz payload was missing or unsuccessful',
+        quizResponse,
+      );
     }
+
+    const fetchedQuiz = quizResponse.quiz_data;
+    const allQuestions = fetchedQuiz.questions?.quizzes ?? [];
+    const questionLimit = fetchedQuiz.question_count || allQuestions.length;
+    const questions = allQuestions.slice(0, questionLimit).map((q: any, index: number) => ({
+      id: `q-${index}`,
+      question: q.quiz.question,
+      options: q.quiz.options,
+      correctAnswer: q.quiz.answer,
+      answer: q.answer,
+      explanation: null,
+    }));
+
+    quizDataWithQuestions = {
+      ...attemptData,
+      id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
+      quiz_id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
+      session_id: correctSessionId,
+      classroom_id: correctClassroomId,
+      title: fetchedQuiz.topic || attemptData?.quiz_name || 'Assessment',
+      duration: fetchedQuiz.duration || attemptData?.duration || 30,
+      has_time_limit: fetchedQuiz.has_time_limit ?? true,
+      is_public: fetchedQuiz.is_public ?? false,
+      questions,
+    };
   } catch (fetchErr) {
-    console.warn('⚠️ Could not fetch quiz questions, using assignment metadata only:', fetchErr);
+    if (fetchErr instanceof AssignedQuizLoadError) {
+      throw fetchErr;
+    }
+    throw new AssignedQuizLoadError('Could not load assigned quiz questions', fetchErr);
   }
 
   return quizDataWithQuestions;
+}
+
+/**
+ * Loads full quiz payload then navigates — used by Assessments start/resume and recovery.
+ */
+export async function navigateToAssignedQuizTaking(
+  navigation: { navigate: (screen: string, params?: unknown) => void } | undefined,
+  onNavigate: ((screen: string, params?: unknown) => void) | undefined,
+  startCtx: AssignedQuizStartContext,
+  submissionRecovery?: AssignedQuizRecoveryResumeParams | null,
+): Promise<void> {
+  const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+  navigateStudentToQuizTaking(
+    navigation,
+    onNavigate,
+    buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, submissionRecovery),
+  );
 }
 
 export function buildQuizTakingNavigationParams(
