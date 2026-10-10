@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T12:14:07.426Z",
+  "verifiedAt": "2026-10-10T12:42:21.148Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "accounts": [
     {
@@ -24,7 +24,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 163,
+              "total_count": 169,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -110,7 +110,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 12,
+              "total_count": 18,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -197,7 +197,7 @@
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 11,
+            "rowCount": 12,
             "sampleFields": [
               {
                 "status": null,
@@ -215,7 +215,7 @@
               }
             ]
           },
-          "rowCount": 11
+          "rowCount": 12
         },
         {
           "name": "[redacted]",
@@ -264,12 +264,12 @@
         {
           "name": "[redacted]",
           "status": 200,
-          "rowCount": 11,
+          "rowCount": 12,
           "fixtureSessionVisible": true,
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 11,
+            "rowCount": 12,
             "sampleFields": [
               {
                 "status": null,
@@ -291,8 +291,8 @@
         {
           "name": "[redacted]",
           "data": {
-            "quiz_id": "ref:d2396d4f",
-            "session_id": "ref:81b843ca",
+            "quiz_id": "ref:d2396d88",
+            "session_id": "ref:55a46b8c",
             "source": "run_fixture"
           }
         },
@@ -321,28 +321,13 @@
   ],
   "runFixture": {
     "topic": "[redacted]",
-    "quizId": 514,
-    "sessionId": "82aa2419-dff2-4a1b-8ec1-859727657af1",
-    "classroomId": "class_4d82c60e"
+    "quizId": "ref:d2396d88",
+    "sessionId": "ref:55a46b8c",
+    "classroomId": "ref:c6ec6d85"
   },
   "fixtureCleanup": {
     "ok": false,
-    "attempts": [
-      {
-        "method": "POST",
-        "path": "/api/v1/dashboard/quiz-assignments",
-        "status": 422
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/v1/sharequiz/514",
-        "status": 404
-      },
-      {
-        "method": "PATCH",
-        "path": "/api/v1/sharequiz/514",
-        "status": 404
-      }
-    ]
+    "skipped": true,
+    "limitation": "No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL."
   }
 }
