@@ -2,6 +2,27 @@ import { apiClient, API_BASE_URL } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { combineImagesToPdf } from './documentImageUtils';
+import { appendDocumentUploadPart } from '../utils/documentUploadMultipart';
+
+type DocumentUploadFilePart = {
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  file?: File | Blob;
+};
+
+function appendDocumentUploadFile(
+  formData: FormData,
+  fieldName: string,
+  part: DocumentUploadFilePart,
+): void {
+  appendDocumentUploadPart(formData, fieldName, {
+    uri: part.fileUri,
+    name: part.fileName,
+    mimeType: part.mimeType,
+    file: part.file,
+  });
+}
 
 export type DocumentUploadDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -221,11 +242,16 @@ export function aggregateOcrText(files: BatchOCRFileResult[]): string {
 }
 
 export async function runBatchOcrOnImages(
-  images: Array<{ uri: string; name: string; type: string }>,
+  images: Array<{ uri: string; name: string; type: string; file?: File | Blob }>,
 ): Promise<BatchOCRResponse> {
   const formData = new FormData();
   images.forEach((img) => {
-    formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
+    appendDocumentUploadFile(formData, 'files', {
+      fileUri: img.uri,
+      fileName: img.name,
+      mimeType: img.type,
+      file: img.file,
+    });
   });
 
   const response = await apiClient.post<BatchOCRResponse>('/api/v1/batch-ocr-upload', formData, {
@@ -432,6 +458,8 @@ export interface GenerateMultimodalParams {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  /** Web document picker File/Blob (preserved for multipart boundaries). */
+  file?: File | Blob;
   questionCount: number;
   difficulty: DocumentUploadDifficulty;
   language?: string;
@@ -687,17 +715,19 @@ export async function uploadDocumentToRag(params: {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  file?: File | Blob;
   gradeLevel?: string;
   subject?: string;
   lessonTitle?: string;
   forceOcr?: boolean;
 }): Promise<Partial<DocumentUploadBook>> {
   const formData = new FormData();
-  formData.append('file', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'file', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('auto_embed', 'true');
   formData.append('force_ocr', params.forceOcr ? 'true' : 'false');
 
@@ -813,6 +843,7 @@ export async function uploadBookWithMetadata(params: {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  file?: File | Blob;
   title: string;
   gradeLevel?: string;
   subject?: string;
@@ -820,11 +851,12 @@ export async function uploadBookWithMetadata(params: {
   subLesson?: string;
 }): Promise<ServerBook> {
   const formData = new FormData();
-  formData.append('file', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'file', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('title', params.title.trim());
   formData.append('grade_level', (params.gradeLevel || '').trim());
   formData.append('subject', (params.subject || '').trim());
@@ -976,11 +1008,12 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
   raw: any;
 }> {
   const formData = new FormData();
-  formData.append('files', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'files', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('question_count', String(Math.max(1, Math.min(30, params.questionCount))));
   formData.append('difficulty', toDifficultyPayload(params.difficulty));
   formData.append('language', params.language || 'English');
