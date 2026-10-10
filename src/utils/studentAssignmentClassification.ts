@@ -36,7 +36,7 @@ export function deriveStudentAssignmentAvailability(
   }
 
   if (!hasTimeLimit) {
-    return input.is_active === false ? 'expired' : 'active';
+    return 'active';
   }
 
   const startMs = input.start_time ? new Date(input.start_time).getTime() : NaN;
