@@ -25,8 +25,11 @@ import {
   getDisplayName,
 } from '@core/types';
 import { isStudentQuizActive, isStudentQuizUpcoming } from '../utils/quizFilters';
-import { reapplyStudentAssignmentClassification } from '../utils/reapplyStudentAssignmentClassification';
 import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import {
+  useStudentAssignmentDashboardStats,
+  useStudentAssignmentDashboardStore,
+} from '@core/store/studentAssignmentDashboard.store';
 import {
   executeStudentAssignedQuizViewResults,
   isAssignedQuizLoadError,
@@ -68,30 +71,23 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<DashboardStats>({
-    total_quizzes: 0,
-    completed_count: 0,
-    pending_count: 0,
-    missed_count: 0,
-    average_score: 0,
-    total_time_spent: 0,
-    total_questions_attempted: 0,
-    total_classes: 0,
-  });
-  const [allQuizzes, setAllQuizzes] = useState<ParsedQuiz[]>([]);
-  const [classificationNow, setClassificationNow] = useState(() => new Date());
+  const stats = useStudentAssignmentDashboardStats();
+  const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
+  const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
   const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
 
-  useStudentAssignmentBoundaryClock(allQuizzes, () => setClassificationNow(new Date()));
+  useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
 
-  const classifiedQuizzes = useMemo(
-    () =>
-      allQuizzes.map((quiz) =>
-        reapplyStudentAssignmentClassification(quiz as any, classificationNow),
-      ) as ParsedQuiz[],
-    [allQuizzes, classificationNow],
-  );
+  const classifiedQuizzes = useStudentAssignmentDashboardStore((s) =>
+    s.getClassifiedQuizzes(),
+  ) as ParsedQuiz[];
+
+  useEffect(() => {
+    const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+    setQuizzes(classified as any, classified.length);
+  }, [classificationNow, rawQuizzes, setQuizzes]);
 
   const isWeb = width >= 768;
   const isTablet = width >= 600 && width < 1024;
@@ -115,26 +111,19 @@ export default function StudentDashboard({ navigation, route }: Props) {
     try {
       setLoading(true);
 
-      const { quizzes: parsed, stats: dashboardStats } = await loadStudentDashboardQuizzes(
-        String(user.id),
-      );
+      const studentId = String(user.id);
+      const loadGeneration =
+        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+      const { quizzes: parsed } = await loadStudentDashboardQuizzes(studentId);
 
-      if (parsed.length > 0) {
-        setStats(dashboardStats);
-        setAllQuizzes(parsed as ParsedQuiz[]);
-        setQuizzes(parsed as any, parsed.length);
-      } else {
-        setStats({
-          total_quizzes: 0,
-          completed_count: 0,
-          pending_count: 0,
-          missed_count: 0,
-          average_score: 0,
-          total_time_spent: 0,
-          total_questions_attempted: 0,
-          total_classes: 0,
-        });
-        setAllQuizzes([]);
+      const committed = useStudentAssignmentDashboardStore
+        .getState()
+        .commitLoad(studentId, loadGeneration, parsed as any);
+      if (!committed) {
+        return;
+      }
+
+      if (parsed.length === 0) {
         setQuizzes([], 0);
       }
     } catch (error: any) {

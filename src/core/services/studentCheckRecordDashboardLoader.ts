@@ -11,6 +11,13 @@ import {
   type CheckRecordAssignableRow,
 } from './checkRecordAssignmentIdentity';
 import { fetchPersistedQuizResult } from './quizResultRetrieval.service';
+import {
+  completedRowNeedsHydration,
+  countCorrectAnswersFromPersistedResult,
+  mapWithConcurrency,
+} from './completedQuizMetrics';
+
+const HYDRATE_CONCURRENCY = 4;
 
 export function dedupeCheckRecordQuizzes<T extends CheckRecordAssignableRow>(rows: T[]): T[] {
   const quizMap = new Map<string, T>();
@@ -88,41 +95,32 @@ export async function hydrateCompletedParsedQuizMetrics(
   studentId: string,
   quizzes: ParsedQuiz[],
 ): Promise<ParsedQuiz[]> {
-  return Promise.all(
-    quizzes.map(async (quiz) => {
-      if (quiz.status !== 'completed') return quiz;
-      if (
-        quiz.score != null &&
-        quiz.time_spent_seconds != null &&
-        quiz.completed_at != null
-      ) {
-        return quiz;
-      }
-      const result = await fetchPersistedQuizResult({
-        quizId: quiz.quiz_id,
-        sessionId: quiz.session_id,
-        studentId,
-        isTeacherView: false,
-      });
-      if (result.status !== 'ready') {
-        return quiz;
-      }
-      const answeredCount = result.userAnswers.filter((a) => String(a).trim().length > 0).length;
-      return {
-        ...quiz,
-        score: result.score ?? quiz.score,
-        time_spent_seconds: result.timeSpentSeconds ?? quiz.time_spent_seconds ?? null,
-        completed_at: result.completedAt ?? quiz.completed_at,
-        log_data: result.logData ?? quiz.log_data,
-        correct_answers:
-          typeof quiz.correct_answers === 'number'
-            ? quiz.correct_answers
-            : answeredCount > 0
-              ? answeredCount
-              : undefined,
-      };
-    }),
-  );
+  return mapWithConcurrency(quizzes, HYDRATE_CONCURRENCY, async (quiz) => {
+    if (!completedRowNeedsHydration(quiz)) {
+      return quiz;
+    }
+    const result = await fetchPersistedQuizResult({
+      quizId: quiz.quiz_id,
+      sessionId: quiz.session_id,
+      studentId,
+      isTeacherView: false,
+    });
+    if (result.status !== 'ready') {
+      return quiz;
+    }
+    const correctCount =
+      typeof quiz.correct_answers === 'number'
+        ? quiz.correct_answers
+        : countCorrectAnswersFromPersistedResult(result);
+    return {
+      ...quiz,
+      score: result.score ?? quiz.score,
+      time_spent_seconds: result.timeSpentSeconds ?? quiz.time_spent_seconds ?? null,
+      completed_at: result.completedAt ?? quiz.completed_at,
+      log_data: result.logData ?? quiz.log_data,
+      correct_answers: correctCount,
+    };
+  });
 }
 
 export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): DashboardStats {
@@ -132,7 +130,8 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
   const scores = completed
     .filter((q) => q.score !== null && q.score !== undefined)
     .map((q) => q.score!);
-  const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const avgScore =
+    scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
   const totalTime = completed.reduce(
     (sum, q) => sum + (typeof q.time_spent_seconds === 'number' ? q.time_spent_seconds : 0),
     0,
@@ -144,7 +143,7 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
     completed_count: completed.length,
     pending_count: pending.length,
     missed_count: missed.length,
-    average_score: scores.length > 0 ? Math.round(avgScore) : 0,
+    average_score: avgScore != null ? Math.round(avgScore) : 0,
     total_time_spent: totalTime,
     total_questions_attempted: parsed.reduce((sum, q) => sum + (q.question_count || 0), 0),
     total_classes: uniqueClasses.size,

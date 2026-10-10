@@ -181,6 +181,7 @@ export async function resolveStudentAssignedQuizStart(args: {
     args.studentId,
     args.sessionId || undefined,
   );
+
   const pendingCheckpoint = await findPendingSubmissionCheckpoint(
     args.studentId,
     args.quizId,

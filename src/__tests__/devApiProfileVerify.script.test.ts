@@ -11,5 +11,8 @@ describe('dev-api-profile-notification-verify script', () => {
     expect(script).toContain('abortedBeforeMutation');
     expect(script).toContain('profile_restore');
     expect(script).toContain('notificationFailed');
+    expect(script).toContain('malformed_json');
+    expect(script).toContain("check: 'profile_read_initial'");
+    expect(script).toContain('profileIdentityMatches');
   });
 });

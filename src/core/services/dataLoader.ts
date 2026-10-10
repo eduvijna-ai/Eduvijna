@@ -13,6 +13,7 @@
 
 import { useUserStore } from '../store/user.store';
 import { useDashboardStore } from '../store/dashboard.store';
+import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import {
   fetchTeacherDashboardSummary,
   fetchTeacherClassrooms,
@@ -241,7 +242,8 @@ export function clearAllData(): void {
   // Clear stores
   const dashboardStore = useDashboardStore.getState();
   dashboardStore.clearData();
-  
+  resetStudentAssignmentDashboardStore(null);
+
   // Clear dropdown cache
   clearDropdownCache();
   
