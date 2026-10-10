@@ -8,7 +8,9 @@ import {
   TextInput,
   Modal,
   Image,
+  Platform,
 } from 'react-native';
+import DocumentUploadHomeScreen from './document-upload/DocumentUploadHomeScreen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
@@ -65,26 +67,13 @@ interface Props {
   };
 }
 
-export default function CreateDocumentQuizScreen({ navigation: propNavigation, route }: Props = {}) {
+function LegacyCreateDocumentQuizScreen({ navigation: propNavigation, route }: Props = {}) {
   const navigation = {
     navigate: () => {},
     goBack: () => {},
     addListener: () => () => {},
-    replace: () => {},
     ...(propNavigation || {}),
   };
-
-  // Legacy screen name — runtime document-quiz parity lives in the upload workspace.
-  useEffect(() => {
-    const params = route?.params ?? {};
-    if (typeof navigation.replace === 'function') {
-      navigation.replace('DocumentUploadHomeScreen', params);
-      return;
-    }
-    if (typeof navigation.navigate === 'function') {
-      navigation.navigate('DocumentUploadHomeScreen', params);
-    }
-  }, [navigation, route?.params]);
 
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
@@ -2942,3 +2931,29 @@ const createStyles = (colors: any) => StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default function CreateDocumentQuizScreen(props: Props = {}) {
+  const mobileRedirected = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    if (mobileRedirected.current || !props.navigation) {
+      return;
+    }
+    mobileRedirected.current = true;
+    const params = props.route?.params ?? {};
+    if (typeof props.navigation.replace === 'function') {
+      props.navigation.replace('DocumentUploadHomeScreen', params);
+      return;
+    }
+    props.navigation.navigate?.('DocumentUploadHomeScreen', params);
+  }, [props.navigation, props.route?.params]);
+
+  if (Platform.OS === 'web') {
+    return <DocumentUploadHomeScreen navigation={props.navigation} route={props.route} />;
+  }
+
+  return <LoadingSpinner />;
+}

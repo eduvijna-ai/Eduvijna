@@ -1,10 +1,13 @@
 {
-  "verifiedAt": "2026-10-10T11:40:44.460Z",
+  "verifiedAt": "2026-10-10T11:55:30.511Z",
   "apiBase": "https://dev-api.eduvijna.com",
-  "status": "pending_credentials",
-  "limitations": [
-    "Create .dev-api-credentials.local.json with instructor + student accounts to execute live matrix."
-  ],
-  "instructor": null,
-  "student": null
+  "status": "passed",
+  "serviceUnderTest": "submitAssignedQuiz + quizSubmissionCheckpoint (mobile core)",
+  "limitations": [],
+  "jest": {
+    "exitCode": 0,
+    "signal": null,
+    "stdoutTail": "\n> eduvijna@1.0.0 test\n> node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand --config jest.live.config.cjs --runInBand --forceExit\n\n",
+    "stderrTail": "[omitted-blob]"
+  }
 }

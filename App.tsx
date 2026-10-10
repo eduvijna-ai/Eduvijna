@@ -41,6 +41,13 @@ import StudentListWeb from './src/screens/StudentList';
 import ClassesListWeb from './src/screens/ClassesList';
 import CreateAIQuizScreen from './src/screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from './src/screens/CreateDocumentQuizScreen';
+import DocumentUploadHomeScreen from './src/screens/document-upload/DocumentUploadHomeScreen';
+import DocumentUploadPreviewScreen from './src/screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentUploadHistoryScreen from './src/screens/document-upload/DocumentUploadHistoryScreen';
+import DocumentUploadQuizScreen from './src/screens/document-upload/DocumentUploadQuizScreen';
+import DocumentLibraryScreen from './src/screens/document-upload/DocumentLibraryScreen';
+import BookPageViewerScreen from './src/screens/document-upload/BookPageViewerScreen';
+import type { WebShellScreen } from './src/platforms/web/webShellScreens';
 import CreateImageQuizScreen from './src/screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from './src/screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from './src/screens/CreateWebsiteQuizScreen';
@@ -62,7 +69,7 @@ installGlobalErrorHandlers();
 function AppContent() {
   const { isAuthenticated, isInitializing, user, logout } = useAuth();
   useNotificationPolling(); // Poll for notifications via API
-  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP'>('dashboard');
+  const [activeScreen, setActiveScreen] = useState<WebShellScreen>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
@@ -513,7 +520,48 @@ function AppContent() {
         case 'CreateAIQuizScreen':
           return <CreateAIQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateDocumentQuizScreen':
-          return <CreateDocumentQuizScreen navigation={createWebNavigation('dashboard')} />;
+        case 'DocumentUploadHomeScreen':
+          return (
+            <DocumentUploadHomeScreen
+              navigation={createWebNavigation('dashboard')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadPreviewScreen':
+          return (
+            <DocumentUploadPreviewScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadHistoryScreen':
+          return (
+            <DocumentUploadHistoryScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadQuizScreen':
+          return (
+            <DocumentUploadQuizScreen
+              navigation={createWebNavigation('DocumentUploadPreviewScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentLibraryScreen':
+          return (
+            <DocumentLibraryScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'BookPageViewerScreen':
+          return (
+            <BookPageViewerScreen
+              navigation={createWebNavigation('DocumentLibraryScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'CreateImageQuizScreen':
           return <CreateImageQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateYouTubeQuizScreen':

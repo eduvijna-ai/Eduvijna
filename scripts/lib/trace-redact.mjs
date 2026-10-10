@@ -45,6 +45,15 @@ export function redactValue(key, value) {
   return redactScalarValue(value);
 }
 
+export function redactFreeText(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+  return text
+    .replace(/\bdemo_[a-z0-9_]+\b/gi, '[redacted-user]')
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, '[redacted-email]');
+}
+
 export function redactDeep(input, depth = 0) {
   if (depth > 12) return '[truncated-depth]';
   if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
