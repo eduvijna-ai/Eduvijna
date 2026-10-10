@@ -25,6 +25,8 @@ import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
+import type { UserProfile } from '@core/types';
+import { getDisplayName } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 export default function Profile({ navigation }: any) {
@@ -407,7 +409,9 @@ export default function Profile({ navigation }: any) {
               <View style={[styles.statusDot, { backgroundColor: '#4CAF50', borderColor: colors.cardBackground }]} />
             </View>
 
-            <Text style={[styles.userName, { color: colors.text }]}>{formData.full_name || formData.username || 'User'}</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>
+              {getDisplayName(formData as UserProfile) || 'User'}
+            </Text>
 
             <View style={[styles.roleChip, { backgroundColor: isDark ? colors.primary + '20' : '#E8F4F8' }]}>
               <Text style={styles.roleIcon}>{getRoleIcon(formData.role)}</Text>
