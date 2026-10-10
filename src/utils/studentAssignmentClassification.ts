@@ -31,6 +31,10 @@ export function deriveStudentAssignmentAvailability(
   const now = input.now ?? new Date();
   const hasTimeLimit = input.has_time_limit ?? true;
 
+  if (input.is_active === false) {
+    return 'expired';
+  }
+
   if (!hasTimeLimit) {
     return input.is_active === false ? 'expired' : 'active';
   }

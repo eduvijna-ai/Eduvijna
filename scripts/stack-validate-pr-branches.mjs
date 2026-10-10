@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { execSync } from 'node:child_process';
+import { collectTypeScriptIdentities, diffIdentities } from './lib/diagnostic-identities.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const exportRoot = join(repoRoot, '.stack-export-check');
@@ -67,26 +68,23 @@ function countDiagnostics(output, pattern) {
 }
 
 function extractDiagnosticIdentities(typeOut, lintOut) {
-  const ts = new Set();
-  for (const match of typeOut.matchAll(/error (TS\d+):/g)) {
-    ts.add(match[1]);
-  }
+  const ts = collectTypeScriptIdentities(typeOut);
   const eslint = new Set();
-  for (const match of lintOut.matchAll(/\n\s*([^\s]+)\s+error\s+/g)) {
-    eslint.add(match[1]);
+  for (const match of lintOut.matchAll(/\n\s*([^\s]+)\s+error\s+([^\n]+)/g)) {
+    const file = match[1].replace(/\\/g, '/').replace(/^src\//, '');
+    const message = match[2].trim();
+    eslint.add(`${file}|${message}`);
   }
   return {
-    ts: [...ts].sort(),
+    ts,
     eslint: [...eslint].sort(),
   };
 }
 
 function diffAddedIdentities(headIds, baseIds) {
-  const baseTs = new Set(baseIds.ts);
-  const baseEslint = new Set(baseIds.eslint);
   return {
-    tsAdded: headIds.ts.filter((id) => !baseTs.has(id)),
-    eslintAdded: headIds.eslint.filter((id) => !baseEslint.has(id)),
+    tsAdded: diffIdentities(headIds.ts, baseIds.ts),
+    eslintAdded: diffIdentities(headIds.eslint, baseIds.eslint),
   };
 }
 
