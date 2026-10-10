@@ -36,6 +36,13 @@ import {
   formatDate,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
+import {
+  isAssignedQuizRecoveryProbeError,
+} from '../core/services/assignedQuizRecovery.service';
+import {
+  navigateStudentToQuizTaking,
+  resolveStudentAssignedQuizViewResults,
+} from '../core/services/assessmentQuizStart.service';
 
 type DrillLevel = 'overview' | 'class';
 
@@ -77,6 +84,7 @@ export default function QuizStudentMyAnalyticsScreen() {
     logData: null as string | null,
     submittedAt: null as string | null,
   });
+  const [viewingQuizId, setViewingQuizId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -158,6 +166,49 @@ export default function QuizStudentMyAnalyticsScreen() {
     });
   };
 
+  const handleViewResults = async (quiz: QuizListItem) => {
+    if (!user?.id || !quiz.session_id) {
+      setPopup({
+        visible: true,
+        quizName: quiz.quiz_name,
+        score: quiz.best_score ?? quiz.latest_score ?? quiz.score,
+        timeSpent: quiz.time_spent_seconds,
+        logData: quiz.log_data,
+        submittedAt: quiz.submitted_at,
+      });
+      return;
+    }
+
+    setViewingQuizId(quiz.quiz_id);
+    try {
+      const outcome = await resolveStudentAssignedQuizViewResults({
+        studentId: String(user.id),
+        quizId: quiz.quiz_id,
+        sessionId: quiz.session_id,
+        classroomId: quiz.classroom_id,
+        quizName: quiz.quiz_name,
+      });
+
+      if (outcome.kind === 'recovery_retry') {
+        navigateStudentToQuizTaking(navigation, undefined, outcome.params);
+        return;
+      }
+      if (outcome.kind === 'view_results') {
+        navigation.navigate('QuizResultsScreen', outcome.resultParams);
+        return;
+      }
+      setError('Could not open results. Please try again.');
+    } catch (viewErr) {
+      if (isAssignedQuizRecoveryProbeError(viewErr)) {
+        setError(viewErr.message);
+      } else {
+        setError('Could not open results. Please try again.');
+      }
+    } finally {
+      setViewingQuizId(null);
+    }
+  };
+
   const renderClassCard = (cls: ClassOverview) => (
     <TouchableOpacity
       key={cls.classroom_id}
@@ -224,29 +275,14 @@ export default function QuizStudentMyAnalyticsScreen() {
           {canView ? (
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: colors.primary }]}
-              onPress={() => {
-                if (quiz.session_id && user?.id) {
-                  navigation.navigate('QuizResultsScreen', {
-                    quizId: quiz.quiz_id,
-                    sessionId: quiz.session_id,
-                    studentId: String(user.id),
-                    isTeacherView: false,
-                    quizName: quiz.quiz_name,
-                    score,
-                  });
-                  return;
-                }
-                setPopup({
-                  visible: true,
-                  quizName: quiz.quiz_name,
-                  score,
-                  timeSpent: quiz.time_spent_seconds,
-                  logData: quiz.log_data,
-                  submittedAt: quiz.submitted_at,
-                });
-              }}
+              onPress={() => handleViewResults(quiz)}
+              disabled={viewingQuizId === quiz.quiz_id}
             >
-              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View</Text>
+              {viewingQuizId === quiz.quiz_id ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View</Text>
+              )}
             </TouchableOpacity>
           ) : null}
           {canStart ? (
