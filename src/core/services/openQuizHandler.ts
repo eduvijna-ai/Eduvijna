@@ -329,6 +329,8 @@ export async function handleOpenQuiz(
         navigationAdapter.navigate('QuizResultsScreen', {
           quizId: quizData.quiz_id,
           sessionId: quizData.session_id,
+          studentId: user.id,
+          isTeacherView: false,
           attemptData: validation.attemptData,
         });
         return;

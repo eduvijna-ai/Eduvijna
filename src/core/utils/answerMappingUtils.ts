@@ -224,6 +224,26 @@ export interface ExplanationReconcileResult {
   questionResults: Record<number, boolean>;
 }
 
+/** Local grading only — safe to run before persistence (no explanation API). */
+export function computeLocalQuizResults(
+  questions: PlayableQuizQuestion[],
+  selectedAnswers: Record<number, string>,
+): ExplanationReconcileResult {
+  const authoritativeCorrectAnswers: Record<number, string> = {};
+  const questionResults: Record<number, boolean> = {};
+
+  questions.forEach((question, index) => {
+    const selectedAnswer = selectedAnswers[index];
+    if (!selectedAnswer) {
+      questionResults[index] = false;
+      return;
+    }
+    questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+  });
+
+  return { authoritativeCorrectAnswers, questionResults };
+}
+
 /**
  * Reconcile local grading with explanation API correct_answer (source of truth when generate-strict is wrong).
  */

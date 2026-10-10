@@ -11,6 +11,7 @@ import {
   StatusBar,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -349,18 +350,22 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     
     // Student-specific action: View assessment results
     if (!isTeacher && action === 'viewResults' && attemptData) {
+      const correctSessionId = attemptData?.session_id || '';
+      const studentIdForApi =
+        (attemptData?.student_id != null ? attemptData.student_id.toString() : null) ??
+        user?.id?.toString() ??
+        '';
+      const resultParams = {
+        quizId: attemptData?.quiz_id || quizId,
+        quizName: attemptData.quiz_name,
+        sessionId: correctSessionId,
+        studentId: studentIdForApi,
+        isTeacherView: false,
+      };
       if (onNavigate) {
-        onNavigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
-        });
+        onNavigate('QuizResultsScreen', resultParams);
       } else if (navigation) {
-        navigation.navigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
-        });
+        navigation.navigate('QuizResultsScreen', resultParams);
       }
       return;
     }
@@ -398,6 +403,14 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           hasAttempted: attemptCheck.hasAttempted,
           status: attemptCheck.status,
         });
+
+        if (attemptCheck.lookupFailed) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your quiz status. Please check your connection and try again.',
+          );
+          return;
+        }
 
         if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
           // Quiz already completed — show modal instead of navigating.

@@ -12,8 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@core/hooks/useAuth';
-import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { updateQuestionExplanation } from '@core/services/sharedApi';
+import { fetchPersistedQuizResult } from '@core/services/quizResultRetrieval.service';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import {
@@ -44,6 +44,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     questions: passedQuestions,
     submission: passedSubmission,
     assessmentId,
+    sessionId,
   } = route.params || {};
 
   const theme = useTeacherTheme();
@@ -74,29 +75,82 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     }
   };
 
-  const [loading, setLoading] = useState(!initialQuizData && (!passedQuestions || !passedSubmission));
+  const [loading, setLoading] = useState(!initialQuizData && !initialUserAnswers);
   const [quizData, setQuizData] = useState<any>(initialQuizData);
   const [userAnswers, setUserAnswers] = useState<any>(initialUserAnswers);
   const [attemptData, setAttemptData] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadRetryable, setLoadRetryable] = useState(false);
+  const [persistedScore, setPersistedScore] = useState<number | null>(
+    typeof score === 'number' ? score : null,
+  );
 
   const effectiveStudentId = studentId || user?.id;
+  const teacherView = Boolean(isTeacherView);
+
+  const loadPersistedResults = async () => {
+    if (!quizId || !effectiveStudentId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      setLoadError(null);
+      setLoadRetryable(false);
+      const result = await fetchPersistedQuizResult({
+        quizId,
+        sessionId: sessionId ?? passedAttemptData?.session_id,
+        studentId: String(effectiveStudentId),
+        attemptId,
+        isTeacherView: teacherView,
+      });
+      if (result.status === 'loading') return;
+      if (result.status === 'error') {
+        setLoadError(result.message);
+        setLoadRetryable(result.retryable);
+        setQuizData(null);
+        setUserAnswers(null);
+        return;
+      }
+      if (result.status === 'missing') {
+        setLoadError('No saved results were found for this assignment.');
+        setLoadRetryable(false);
+        setQuizData(null);
+        setUserAnswers(null);
+        return;
+      }
+      setQuizData(result.quizData);
+      setUserAnswers(result.userAnswers);
+      setAttemptData(result.logData);
+      setPersistedScore(result.score);
+      setLoading(false);
+    } catch {
+      setLoadError('Could not load quiz results. Please try again.');
+      setLoadRetryable(true);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (quizId && (!quizData || !userAnswers)) {
-      if (passedAttemptData || passedSubmission || passedQuestions) {
-        handlePassedAttemptData();
-      } else {
-        fetchAttemptData();
-      }
+    if (initialQuizData && initialUserAnswers) {
+      setLoading(false);
+      return;
+    }
+    if (passedQuestions && passedSubmission) {
+      handlePassedAttemptData();
+      return;
+    }
+    if (quizId) {
+      loadPersistedResults();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quizId, passedAttemptData]);
+  }, [quizId, sessionId, passedAttemptData]);
 
   const handlePassedAttemptData = () => {
     try {
       setLoading(true);
       if (!passedQuestions || !passedSubmission) {
-        fetchAttemptData();
+        loadPersistedResults();
         return;
       }
       if (passedSubmission) {
@@ -142,78 +196,6 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     }
   };
 
-  const fetchAttemptData = async () => {
-    try {
-      setLoading(true);
-      const response = await fetchTeacherQuizzes({ view_type: 'all', quiz_id: quizId });
-      if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
-        const quiz = response.data[0];
-        const attempts = typeof quiz.attempts === 'string'
-          ? JSON.parse(quiz.attempts)
-          : quiz.attempts;
-        let attempt;
-        if (attemptId) {
-          attempt = attempts.find((a: any) => a.attempt_id === attemptId);
-        }
-        if (!attempt && effectiveStudentId) {
-          const studentAttempts = attempts.filter(
-            (a: any) => String(a.student_id) === String(effectiveStudentId)
-          );
-          attempt = studentAttempts.find((a: any) => a.status === 'completed') || studentAttempts[0];
-        }
-        if (attempt) {
-          const hasSubmission = attempt.submission?.log_data || attempt.log_data;
-          if (hasSubmission) {
-            const logData = attempt.submission?.log_data
-              ? (typeof attempt.submission.log_data === 'string'
-                ? JSON.parse(attempt.submission.log_data)
-                : attempt.submission.log_data)
-              : (typeof attempt.log_data === 'string'
-                ? JSON.parse(attempt.log_data)
-                : attempt.log_data);
-            setAttemptData(logData);
-            if (quiz.subject) {
-              const subjectData = typeof quiz.subject === 'string'
-                ? JSON.parse(quiz.subject)
-                : quiz.subject;
-              if (subjectData.quizzes && Array.isArray(subjectData.quizzes)) {
-                const questions = subjectData.quizzes.map((q: any) => ({
-                  question: q.quiz?.question || q.question || '',
-                  options: q.quiz?.options || q.options || [],
-                  answer: q.quiz?.answer || q.answer || '',
-                  correctAnswer: q.quiz?.answer || q.answer || '',
-                  explanation: q.explanation || null,
-                }));
-                setQuizData({ questions });
-                if (logData.answers) {
-                  let answers: string[];
-                  if (Array.isArray(logData.answers)) {
-                    answers = logData.answers.map((a: any) => a.userAnswer);
-                  } else if (typeof logData.answers === 'object') {
-                    answers = Object.keys(logData.answers)
-                      .sort((a, b) => parseInt(a) - parseInt(b))
-                      .map((key: string) => logData.answers[key]);
-                  } else {
-                    answers = [];
-                  }
-                  setUserAnswers(answers);
-                }
-              }
-            }
-          } else {
-            console.warn('⚠️ No submission data found in attempt');
-          }
-        } else {
-          console.warn('⚠️ Attempt not found for quizId:', quizId);
-        }
-      }
-    } catch (err) {
-      console.error('❌ Error fetching attempt data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading) {
     return (
       <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
@@ -234,7 +216,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           <View style={[styles.emptyIconWrap, { backgroundColor: theme.colors.tintTeal }]}>
             <Ionicons name="document-text-outline" size={32} color={theme.colors.primary} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>No Results Available</Text>
+          <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
+            {loadError ?? 'No Results Available'}
+          </Text>
+          {loadRetryable ? (
+            <TouchableOpacity
+              style={[styles.goBackBtn, { backgroundColor: theme.colors.primary, marginBottom: 12 }]}
+              onPress={() => loadPersistedResults()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading results"
+            >
+              <Text style={[styles.goBackBtnText, { color: theme.colors.textInverse }]}>Retry</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={[styles.goBackBtn, { backgroundColor: theme.colors.primary }]}
             onPress={() => navigation.goBack()}
@@ -262,7 +256,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
   };
 
   const results = calculateResults();
-  const finalScore = score !== undefined ? score : results.percentage;
+  const finalScore =
+    persistedScore !== null && persistedScore !== undefined
+      ? persistedScore
+      : score !== undefined
+        ? score
+        : results.percentage;
   const finalCorrect = correctCount !== undefined ? correctCount : results.correct;
   const finalTotal = totalQuestions !== undefined ? totalQuestions : results.total;
 

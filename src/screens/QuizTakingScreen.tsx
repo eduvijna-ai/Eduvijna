@@ -16,16 +16,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { 
-  findOrCreateAttempt,
-  updateQuizAttempt, 
   generateAIQuiz,
   updateAssessmentResponses,
   generateWorksheet,
   saveUserAssessment,
   getQuizExplanation,
 } from '../core/services/sharedApi';
+import { submitAssignedQuiz } from '../core/services/assignedQuizSubmission.service';
 import { useUserStore } from '../core/store/user.store';
-import { clearCacheEntry } from '../core/services/cacheService';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
@@ -38,6 +36,7 @@ import {
   isOptionTheCorrectAnswer,
   normalizeDocumentQuizQuestions,
   normalizeSelectedAnswer,
+  computeLocalQuizResults,
   reconcileResultsWithExplanations,
   withAuthoritativeCorrectAnswer,
   type PlayableQuizQuestion,
@@ -856,21 +855,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setSubmitting(true);
     
     try {
-      const reconciled = await reconcileResultsWithExplanations(
-        quiz.questions,
-        selectedAnswers,
-        async ({ questionId, questionText, options, selectedAnswer }) =>
-          getQuizExplanation({
-            question_id: questionId,
-            question_text: questionText,
-            options,
-            selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
-          }),
-      );
+      const localGrading = computeLocalQuizResults(quiz.questions, selectedAnswers);
+      let results = localGrading.questionResults;
+      let authoritativeCorrect = localGrading.authoritativeCorrectAnswers;
 
-      const results = reconciled.questionResults;
       const correctCount = Object.values(results).filter(Boolean).length;
-      setAuthoritativeCorrectAnswers(reconciled.authoritativeCorrectAnswers);
 
       const score = Math.round((correctCount / totalQuestions) * 100);
       const completedAt = new Date().toISOString();
@@ -923,74 +912,18 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         });
 
         try {
-          // Convert selectedAnswers to letter format for log_data
-          const answersAsLetters: Record<number, string> = {};
-          Object.keys(selectedAnswers).forEach((index) => {
-            const questionIndex = parseInt(index);
-            const selectedOption = selectedAnswers[questionIndex];
-            const question = quiz.questions[questionIndex];
-            if (question && selectedOption) {
-              const optionIndex = question.options.indexOf(selectedOption);
-              answersAsLetters[questionIndex] = ['A', 'B', 'C', 'D'][optionIndex] || '';
-            }
+          await submitAssignedQuiz({
+            quizId: quiz.quiz_id,
+            studentId: String(user.id),
+            sessionId,
+            questions: quiz.questions,
+            selectedAnswers,
+            startedAtIso: quizStartTime,
+            scorePercent: score,
+            questionCount: totalQuestions,
+            classroomId,
           });
-
-          // Use sessionId as the primary class identifier for all API calls
-          // (matches web OpenQuizPage which uses session_id from the URL as class_id).
-          // The user confirmed: quiz-attempts API uses session_id (UUID) as class_id.
-          // const apiClassId = sessionId || classroomId;
-          const apiClassId = sessionId;
-
-          // Step 1: Ensure attempt exists (create if not; reuse if already started)
-          // Mirrors web's ensureAttempt() which guards against duplicate 409 errors.
-          console.log('📤 Ensuring quiz attempt exists:', {
-            quiz_id: quiz.quiz_id,
-            student_id: user.id,
-            class_id: apiClassId,
-            started_at: quizStartTime,
-          });
-
-          const attemptId = await findOrCreateAttempt({
-            quiz_id: quiz.quiz_id,
-            student_id: String(user.id),
-            class_id: apiClassId,
-            started_at: quizStartTime,
-          });
-
-          console.log('✅ Attempt ID:', attemptId);
-
-          // Mark attempt as completed.
-          // NOTE: createQuizSubmission is intentionally NOT called here.
-          // The backend's POST quiz-submissions endpoint creates a NEW quiz_attempts
-          // record as a side-effect (started_at=submitted_at, attempt_number=max+1).
-          // That 'started' record gets picked up by findOrCreateAttempt on the next
-          // submission, creating a chain of duplicate records (1→2→3...).
-          // Using only findOrCreateAttempt + updateQuizAttempt gives exactly 1 record.
-          if (attemptId) {
-            try {
-              await updateQuizAttempt(attemptId, {
-                score,
-                status: 'completed',
-                completed_at: completedAt,
-                time_spent_seconds: timeSpent,
-              });
-              console.log('✅ Assessment attempt marked completed');
-            } catch (updateError: any) {
-              console.warn('⚠️ Could not update attempt status:', updateError?.message);
-            }
-          }
-
           console.log('✅ Quiz submission successful');
-
-          // Step 4: Invalidate student_quizzes cache so the quiz leaves Pending list
-          await clearCacheEntry('student_quizzes_all_100_0');
-          if (classroomId) {
-            await clearCacheEntry(`student_quizzes_${classroomId}_100_0`);
-          }
-          if (sessionId) {
-            await clearCacheEntry(`student_quizzes_${sessionId}_100_0`);
-          }
-          console.log('✅ Student quizzes cache invalidated');
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);
           console.error('Error details:', {
@@ -1011,7 +944,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         console.log('ℹ️ Self-Generated Assessment - skipping backend submission');
       }
 
-      // Store results and show them inline
+      try {
+        const reconciled = await reconcileResultsWithExplanations(
+          quiz.questions,
+          selectedAnswers,
+          async ({ questionId, questionText, options, selectedAnswer }) =>
+            getQuizExplanation({
+              question_id: questionId,
+              question_text: questionText,
+              options,
+              selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
+            }),
+        );
+        results = reconciled.questionResults;
+        authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
+      } catch {
+        // Explanations are optional for display; persistence already succeeded.
+      }
+
+      setAuthoritativeCorrectAnswers(authoritativeCorrect);
       setQuestionResults(results);
       setShowResults(true);
       setCurrentQuestionIndex(0);

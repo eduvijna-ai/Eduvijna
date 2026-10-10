@@ -358,6 +358,35 @@ export async function clearCacheEntry(key: string): Promise<void> {
 }
 
 /**
+ * Remove all cache entries whose logical key starts with `prefix` (L1 + L2).
+ */
+export async function clearCacheEntriesWithPrefix(prefix: string): Promise<void> {
+  const fullPrefix = generateCacheKey(prefix);
+  const timestamp = new Date().toISOString();
+
+  let memoryRemoved = 0;
+  for (const key of Array.from(memoryCache.keys())) {
+    if (key.startsWith(fullPrefix)) {
+      memoryCache.delete(key);
+      memoryRemoved += 1;
+    }
+  }
+
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const toRemove = allKeys.filter((k) => k.startsWith(fullPrefix));
+    if (toRemove.length > 0) {
+      await AsyncStorage.multiRemove(toRemove);
+    }
+    console.log(
+      `🗑️ [${timestamp}] [CACHE DELETE PREFIX] ${prefix} | L1=${memoryRemoved} L2=${toRemove.length}`,
+    );
+  } catch (error) {
+    console.warn(`⚠️ [${timestamp}] [CACHE DELETE PREFIX] ${prefix} failed on L2:`, error);
+  }
+}
+
+/**
  * Clear all cache entries from both layers
  */
 export async function clearAllCache(): Promise<void> {
