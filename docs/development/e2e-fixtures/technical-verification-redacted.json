@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:09:25.184Z",
+  "verifiedAt": "2026-10-10T18:28:54.247Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "accounts": [
     {
@@ -24,7 +24,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 177,
+              "total_count": 181,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -41,7 +41,7 @@
                 "question_count": 1
               },
               {
-                "classroom_id": "ref:c6ec6d85",
+                "classroom_id": "ref:be1a55e7",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
                 "has_time_limit": false,
@@ -110,7 +110,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 26,
+              "total_count": 30,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -127,7 +127,7 @@
                 "question_count": 1
               },
               {
-                "classroom_id": "ref:c6ec6d85",
+                "classroom_id": "ref:be1a55e7",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
                 "has_time_limit": false,
@@ -197,7 +197,7 @@
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 18,
+            "rowCount": 21,
             "sampleFields": [
               {
                 "status": null,
@@ -215,7 +215,7 @@
               }
             ]
           },
-          "rowCount": 18
+          "rowCount": 21
         },
         {
           "name": "[redacted]",
@@ -264,12 +264,12 @@
         {
           "name": "[redacted]",
           "status": 200,
-          "rowCount": 18,
+          "rowCount": 21,
           "fixtureSessionVisible": true,
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 18,
+            "rowCount": 21,
             "sampleFields": [
               {
                 "status": null,
@@ -291,8 +291,8 @@
         {
           "name": "[redacted]",
           "data": {
-            "quiz_id": "ref:d2396db8",
-            "session_id": "ref:e439e08f",
+            "quiz_id": "ref:d2396dc8",
+            "session_id": "ref:0d1b02d8",
             "source": "run_fixture"
           }
         },
@@ -321,8 +321,8 @@
   ],
   "runFixture": {
     "topic": "[redacted]",
-    "quizId": "ref:d2396db8",
-    "sessionId": "ref:e439e08f",
+    "quizId": "ref:d2396dc8",
+    "sessionId": "ref:0d1b02d8",
     "classroomId": "ref:c6ec6d85"
   },
   "fixtureCleanup": {

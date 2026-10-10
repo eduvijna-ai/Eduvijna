@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:10:20.906Z",
+  "verifiedAt": "2026-10-10T18:28:29.363Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "quizReactDeployedReference": "31ae140f50ccc79079cdfc8c28f2d03b60fde7",
   "steps": [
@@ -46,7 +46,7 @@
       "step": "student_visibility_pending",
       "status": "passed",
       "httpStatus": 200,
-      "rowCount": 19
+      "rowCount": 20
     },
     {
       "step": "upload_multimodal_generate",
@@ -56,10 +56,10 @@
       "totalQuestionsField": 1,
       "data": {
         "success": true,
-        "request_id": "2ac39b8d-54b5-414a-b1eb-4c5568ef0cf8",
+        "request_id": "35cdec15-53e5-4406-af4b-cbfca438895b",
         "questions": "[redacted]",
         "total_questions": 1,
-        "processing_time_seconds": 2.11,
+        "processing_time_seconds": 2.15,
         "raw_content": "[omitted-blob]",
         "pipeline_stages": {
           "files_ingested": 1,
@@ -81,5 +81,11 @@
     }
   ],
   "limitations": [],
+  "verificationInstructions": [
+    "Use authorized dev-api accounts only; disposable uploads and sharequiz rows.",
+    "From Books optional string fields must remain empty-string payloads, not null.",
+    "Quiz-React deployed reference is read-only parity context; no Quiz-React mutations.",
+    "Failed assertions and steps must fail overall status and exit code."
+  ],
   "status": "passed"
 }

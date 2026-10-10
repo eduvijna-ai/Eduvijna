@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:08:05.734Z",
+  "verifiedAt": "2026-10-10T18:28:50.884Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "profiles": [
     {
@@ -129,7 +129,9 @@
           "check": "notifications_history",
           "httpStatus": 200,
           "ok": true,
+          "responseShape": "array_root",
           "notificationCount": 0,
+          "totalField": 0,
           "sampleTypes": []
         },
         {
@@ -164,7 +166,9 @@
           "check": "notifications_history",
           "httpStatus": 200,
           "ok": true,
+          "responseShape": "array_root",
           "notificationCount": 0,
+          "totalField": 0,
           "sampleTypes": []
         },
         {
@@ -199,8 +203,16 @@
           "check": "notifications_history",
           "httpStatus": 200,
           "ok": true,
-          "notificationCount": 0,
-          "sampleTypes": []
+          "responseShape": "array_root",
+          "notificationCount": 20,
+          "totalField": 20,
+          "sampleTypes": [
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED"
+          ]
         },
         {
           "check": "notifications_preferences",
