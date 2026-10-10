@@ -1,12 +1,41 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  isProtectedAsyncStorageKey,
-  PROTECTED_ASYNC_STORAGE_PREFIXES,
-} from '../core/services/cacheService';
-import {
   readQuizSubmissionCheckpoint,
   writeQuizSubmissionCheckpoint,
 } from '../core/services/quizSubmissionCheckpoint';
+
+const {
+  isProtectedAsyncStorageKey,
+  PROTECTED_ASYNC_STORAGE_PREFIXES,
+  setCachedData,
+} = jest.requireActual('../core/services/cacheService') as typeof import('../core/services/cacheService');
+
+const store: Record<string, string> = {};
+
+beforeEach(() => {
+  for (const key of Object.keys(store)) {
+    delete store[key];
+  }
+  (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store[key] ?? null);
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+    store[key] = value;
+  });
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
+    delete store[key];
+  });
+  if (!AsyncStorage.getAllKeys) {
+    (AsyncStorage as { getAllKeys: jest.Mock }).getAllKeys = jest.fn();
+  }
+  if (!AsyncStorage.multiRemove) {
+    (AsyncStorage as { multiRemove: jest.Mock }).multiRemove = jest.fn();
+  }
+  (AsyncStorage.getAllKeys as jest.Mock).mockImplementation(async () => Object.keys(store));
+  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async (keys: string[]) => {
+    for (const key of keys) {
+      delete store[key];
+    }
+  });
+});
 
 describe('cacheService checkpoint protection', () => {
   it('marks assigned quiz checkpoint keys as protected', () => {
@@ -42,5 +71,36 @@ describe('cacheService checkpoint protection', () => {
     expect(raw).toContain('"scorePercent":80');
     const loaded = await readQuizSubmissionCheckpoint('student-1', 42, 'sess-a');
     expect(loaded?.immutable?.scorePercent).toBe(80);
+  });
+
+  it('keeps checkpoint keys when cache reclaim runs under storage pressure', async () => {
+    const checkpointKey = 'eduvijna:assigned_quiz_checkpoint:student-1:42:sess-a';
+    await AsyncStorage.setItem(
+      checkpointKey,
+      JSON.stringify({ immutable: { scorePercent: 80 } }),
+    );
+    const oldCacheKey = 'eduvijna:old-cache-entry';
+    await AsyncStorage.setItem(
+      oldCacheKey,
+      JSON.stringify({ data: {}, timestamp: 1, ttl: 300 }),
+    );
+    await AsyncStorage.setItem(
+      'eduvijna:newer-cache-entry',
+      JSON.stringify({ data: {}, timestamp: Date.now(), ttl: 300 }),
+    );
+
+    let failPressureWriteOnce = true;
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+      if (key === 'eduvijna:pressure-test' && failPressureWriteOnce) {
+        failPressureWriteOnce = false;
+        throw new Error('database or disk is full');
+      }
+      store[key] = value;
+    });
+
+    await setCachedData('pressure-test', { ok: true }, 300, 'TEST');
+
+    expect(store[checkpointKey]).toContain('scorePercent');
+    expect(store[oldCacheKey]).toBeUndefined();
   });
 });
