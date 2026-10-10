@@ -1,22 +1,62 @@
 /**
- * Regression tests for assigned quiz submission orchestration.
+ * Assigned quiz submission: OpenAPI-shaped POST, attempt reuse, retry semantics.
  */
 
-import { apiClient } from '../core/api/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  createQuizAttempt,
+  createQuizSubmission,
+  updateQuizAttempt,
+} from '../core/services/sharedApi';
+import {
+  listQuizAttempts,
+  QuizAttemptLookupError,
+  selectAttemptForSubmission,
+} from '../core/services/quizAttemptApi';
+import { getAttendedQuiz } from '../core/services/quizResultRetrieval.service';
 import {
   submitAssignedQuiz,
   AssignedQuizSubmissionInProgressError,
 } from '../core/services/assignedQuizSubmission.service';
-import { QuizAttemptLookupError } from '../core/services/quizAttemptApi';
 
 jest.mock('../core/services/studentQuizCacheInvalidation', () => ({
   invalidateStudentQuizCaches: jest.fn().mockResolvedValue(undefined),
 }));
 
-const mockGet = apiClient.get as jest.MockedFunction<typeof apiClient.get>;
-const mockPost = apiClient.post as jest.MockedFunction<typeof apiClient.post>;
-const mockPut = apiClient.put as jest.MockedFunction<typeof apiClient.put>;
+jest.mock('../core/services/sharedApi', () => ({
+  createQuizAttempt: jest.fn(),
+  createQuizSubmission: jest.fn(),
+  updateQuizAttempt: jest.fn(),
+}));
+
+jest.mock('../core/services/quizAttemptApi', () => {
+  const actual = jest.requireActual('../core/services/quizAttemptApi') as typeof import('../core/services/quizAttemptApi');
+  return {
+    ...actual,
+    listQuizAttempts: jest.fn(),
+  };
+});
+
+jest.mock('../core/services/quizResultRetrieval.service', () => ({
+  getAttendedQuiz: jest.fn(),
+  fetchPersistedQuizResult: jest.fn(),
+}));
+
+const mockCreateAttempt = createQuizAttempt as jest.MockedFunction<typeof createQuizAttempt>;
+const mockCreateSubmission = createQuizSubmission as jest.MockedFunction<typeof createQuizSubmission>;
+const mockUpdateAttempt = updateQuizAttempt as jest.MockedFunction<typeof updateQuizAttempt>;
+const mockListAttempts = listQuizAttempts as jest.MockedFunction<typeof listQuizAttempts>;
+const mockGetAttended = getAttendedQuiz as jest.MockedFunction<typeof getAttendedQuiz>;
+
+const OPENAPI_SUBMISSION_KEYS = [
+  'quiz_id',
+  'student_id',
+  'classroom_id',
+  'score',
+  'summary',
+  'log_data',
+  'submitted_at',
+] as const;
 
 const baseQuestion = {
   id: 'q-0',
@@ -34,8 +74,8 @@ beforeEach(() => {
   for (const key of Object.keys(asyncStorageStore)) {
     delete asyncStorageStore[key];
   }
-  (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
-    asyncStorageStore[key] ?? null,
+  (AsyncStorage.getItem as jest.Mock).mockImplementation(
+    async (key: string) => asyncStorageStore[key] ?? null,
   );
   (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
     asyncStorageStore[key] = value;
@@ -43,6 +83,7 @@ beforeEach(() => {
   (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
     delete asyncStorageStore[key];
   });
+  mockGetAttended.mockRejectedValue({ response: { status: 404 } });
 });
 
 describe('submitAssignedQuiz', () => {
@@ -58,68 +99,127 @@ describe('submitAssignedQuiz', () => {
     questionResults: { 0: true },
   };
 
-  it('persists attempt update and submission with session_id as classroom_id', async () => {
-    mockGet.mockImplementation(async (url: string) => {
-      if (url.includes('attended-quiz')) {
-        return Promise.reject({ response: { status: 404 } });
-      }
-      if (url.includes('quiz-attempts')) {
-        return { data: [] };
-      }
-      return { data: {} };
+  it('PUTs the selected attempt then POSTs OpenAPI submission fields (no top-level attempt_id)', async () => {
+    mockListAttempts.mockResolvedValue([]);
+    mockCreateAttempt.mockResolvedValue({
+      id: 99,
+      quiz_id: 42,
+      student_id: 'student-1',
+      class_id: 'session-uuid',
+      attempt_number: 1,
+      score: null,
+      status: 'started',
+      started_at: input.startedAtIso,
+      completed_at: null,
+      time_spent_seconds: null,
     });
-    mockPost.mockImplementation(async (url: string) => {
-      if (url.includes('quiz-attempts')) {
-        return { data: { id: 99 } };
-      }
-      if (url.includes('quiz-submissions')) {
-        return { data: { submission_id: 1 } };
-      }
-      return { data: {} };
+
+    const order: string[] = [];
+    mockUpdateAttempt.mockImplementation(async () => {
+      order.push('put-attempt');
+      return {
+        id: 99,
+        quiz_id: 42,
+        student_id: 'student-1',
+        class_id: 'session-uuid',
+        attempt_number: 1,
+        score: 100,
+        status: 'completed',
+        started_at: input.startedAtIso,
+        completed_at: input.startedAtIso,
+        time_spent_seconds: 0,
+      };
     });
-    mockPut.mockResolvedValue({ data: { id: 99, status: 'completed' } });
+    mockCreateSubmission.mockImplementation(async () => {
+      order.push('post-submission');
+      return {
+        submission_id: 1,
+        quiz_id: 42,
+        student_id: 'student-1',
+        classroom_id: 'session-uuid',
+        score: 100,
+        summary: null,
+        log_data: null,
+        submitted_at: input.startedAtIso,
+      };
+    });
 
     const result = await submitAssignedQuiz(input);
     expect(result.attemptId).toBe(99);
+    expect(order).toEqual(['put-attempt', 'post-submission']);
 
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/dashboard/quiz-submissions',
+    expect(mockUpdateAttempt).toHaveBeenCalledWith(
+      99,
+      expect.objectContaining({ status: 'completed', score: 100 }),
+    );
+    expect(mockUpdateAttempt.mock.calls[0][1]).not.toHaveProperty('log_data');
+
+    const submissionBody = mockCreateSubmission.mock.calls[0][0];
+    expect(Object.keys(submissionBody).sort()).toEqual([...OPENAPI_SUBMISSION_KEYS].sort());
+    expect(submissionBody).not.toHaveProperty('attempt_id');
+    expect(submissionBody.classroom_id).toBe('session-uuid');
+    expect(submissionBody.log_data).toEqual(
       expect.objectContaining({
-        classroom_id: 'session-uuid',
-        student_id: 'student-1',
-        quiz_id: 42,
-        log_data: expect.objectContaining({
-          questionCount: 1,
-          attempt_id: 99,
-        }),
+        questionCount: 1,
+        attempt_id: 99,
       }),
     );
   });
 
   it('does not create a new attempt when lookup fails', async () => {
-    mockGet.mockRejectedValue(new Error('network down'));
+    mockListAttempts.mockRejectedValue(new QuizAttemptLookupError('network down'));
 
     await expect(submitAssignedQuiz(input)).rejects.toBeTruthy();
-    expect(mockPost).not.toHaveBeenCalledWith(
-      '/api/v1/dashboard/quiz-attempts',
-      expect.anything(),
-    );
+    expect(mockCreateAttempt).not.toHaveBeenCalled();
+    expect(mockCreateSubmission).not.toHaveBeenCalled();
   });
 
   it('blocks concurrent submissions for the same assignment', async () => {
-    mockGet.mockImplementation(async (url: string) => {
-      if (url.includes('attended-quiz')) {
-        return Promise.reject({ response: { status: 404 } });
-      }
-      return { data: [{ id: 5, status: 'started', started_at: '2026-01-01T00:00:00.000Z' }] };
-    });
-    mockPut.mockImplementation(
+    mockListAttempts.mockResolvedValue([
+      {
+        id: 5,
+        quiz_id: 42,
+        student_id: 'student-1',
+        class_id: 'session-uuid',
+        attempt_number: 1,
+        score: null,
+        status: 'started',
+        started_at: '2026-01-01T00:00:00.000Z',
+        completed_at: null,
+        time_spent_seconds: null,
+      },
+    ]);
+    mockUpdateAttempt.mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(() => resolve({ data: { id: 5 } }), 50);
+          setTimeout(
+            () =>
+              resolve({
+                id: 5,
+                quiz_id: 42,
+                student_id: 'student-1',
+                class_id: 'session-uuid',
+                attempt_number: 1,
+                score: 100,
+                status: 'completed',
+                started_at: input.startedAtIso,
+                completed_at: input.startedAtIso,
+                time_spent_seconds: 0,
+              }),
+            50,
+          );
         }),
     );
-    mockPost.mockResolvedValue({ data: { submission_id: 1 } });
+    mockCreateSubmission.mockResolvedValue({
+      submission_id: 1,
+      quiz_id: 42,
+      student_id: 'student-1',
+      classroom_id: 'session-uuid',
+      score: 100,
+      summary: null,
+      log_data: null,
+      submitted_at: input.startedAtIso,
+    });
 
     const first = submitAssignedQuiz(input);
     await expect(submitAssignedQuiz(input)).rejects.toBeInstanceOf(
@@ -129,21 +229,26 @@ describe('submitAssignedQuiz', () => {
   });
 
   it('surfaces attempt update failure without calling submission', async () => {
-    mockGet.mockImplementation(async (url: string) => {
-      if (url.includes('attended-quiz')) {
-        return Promise.reject({ response: { status: 404 } });
-      }
-      return { data: [{ id: 7, status: 'started', started_at: '2026-01-01T00:00:00.000Z' }] };
-    });
-    mockPut.mockRejectedValue(new Error('put failed'));
+    mockListAttempts.mockResolvedValue([
+      {
+        id: 7,
+        quiz_id: 42,
+        student_id: 'student-1',
+        class_id: 'session-uuid',
+        attempt_number: 1,
+        score: null,
+        status: 'started',
+        started_at: '2026-01-01T00:00:00.000Z',
+        completed_at: null,
+        time_spent_seconds: null,
+      },
+    ]);
+    mockUpdateAttempt.mockRejectedValue(new Error('put failed'));
 
     await expect(submitAssignedQuiz(input)).rejects.toMatchObject({
       phase: 'attempt_update',
     });
-    expect(mockPost).not.toHaveBeenCalledWith(
-      '/api/v1/dashboard/quiz-submissions',
-      expect.anything(),
-    );
+    expect(mockCreateSubmission).not.toHaveBeenCalled();
   });
 
   it('rejects checkpoint owned by another account', async () => {
@@ -168,16 +273,16 @@ describe('submitAssignedQuiz', () => {
         },
       }),
     );
-    mockGet.mockRejectedValue({ response: { status: 404 } });
 
     await expect(submitAssignedQuiz(input)).rejects.toMatchObject({
       phase: 'validation',
     });
   });
 
-  it('recovers submission after partial completion (attempt updated only)', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-      JSON.stringify({
+  it('retries POST submission on the same attempt without creating another attempt', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (asyncStorageStore[key]) return asyncStorageStore[key];
+      return JSON.stringify({
         userId: 'student-1',
         quizId: '42',
         sessionId: 'session-uuid',
@@ -204,39 +309,76 @@ describe('submitAssignedQuiz', () => {
               },
             ],
             score: 100,
+            attempt_id: 12,
           },
           startedAt: input.startedAtIso,
           finalizedAt: input.startedAtIso,
         },
-      }),
-    );
-
-    mockGet.mockImplementation(async (url: string) => {
-      if (url.includes('attended-quiz')) {
-        return Promise.reject({ response: { status: 404 } });
-      }
-      return { data: [] };
+      });
     });
-    mockPost.mockResolvedValue({ data: { submission_id: 2 } });
 
-    const result = await submitAssignedQuiz(input);
-    expect(result.attemptId).toBe(12);
-    expect(mockPut).not.toHaveBeenCalled();
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/dashboard/quiz-submissions',
-      expect.any(Object),
-    );
+    mockCreateSubmission.mockRejectedValueOnce(new Error('post failed'));
+    await expect(submitAssignedQuiz(input)).rejects.toMatchObject({ phase: 'submission' });
+    expect(mockCreateAttempt).not.toHaveBeenCalled();
+    expect(mockUpdateAttempt).not.toHaveBeenCalled();
+    expect(mockListAttempts).not.toHaveBeenCalled();
+
+    mockCreateSubmission.mockResolvedValue({
+      submission_id: 2,
+      quiz_id: 42,
+      student_id: 'student-1',
+      classroom_id: 'session-uuid',
+      score: 100,
+      summary: null,
+      log_data: null,
+      submitted_at: input.startedAtIso,
+    });
+    const retried = await submitAssignedQuiz(input);
+    expect(retried.attemptId).toBe(12);
+    expect(mockCreateAttempt).not.toHaveBeenCalled();
+    expect(mockCreateSubmission).toHaveBeenCalledTimes(2);
+    const retryBody = mockCreateSubmission.mock.calls[1][0];
+    expect(retryBody).not.toHaveProperty('attempt_id');
+    expect(retryBody.log_data).toEqual(expect.objectContaining({ attempt_id: 12 }));
   });
 
   it('treats zero score as valid', async () => {
-    mockGet.mockImplementation(async (url: string) => {
-      if (url.includes('attended-quiz')) {
-        return Promise.reject({ response: { status: 404 } });
-      }
-      return { data: [{ id: 3, status: 'started', started_at: '2026-01-01T00:00:00.000Z' }] };
+    mockListAttempts.mockResolvedValue([
+      {
+        id: 3,
+        quiz_id: 42,
+        student_id: 'student-1',
+        class_id: 'session-uuid',
+        attempt_number: 1,
+        score: null,
+        status: 'started',
+        started_at: '2026-01-01T00:00:00.000Z',
+        completed_at: null,
+        time_spent_seconds: null,
+      },
+    ]);
+    mockUpdateAttempt.mockResolvedValue({
+      id: 3,
+      quiz_id: 42,
+      student_id: 'student-1',
+      class_id: 'session-uuid',
+      attempt_number: 1,
+      score: 0,
+      status: 'completed',
+      started_at: input.startedAtIso,
+      completed_at: input.startedAtIso,
+      time_spent_seconds: 0,
     });
-    mockPut.mockResolvedValue({ data: { id: 3 } });
-    mockPost.mockResolvedValue({ data: { submission_id: 1 } });
+    mockCreateSubmission.mockResolvedValue({
+      submission_id: 1,
+      quiz_id: 42,
+      student_id: 'student-1',
+      classroom_id: 'session-uuid',
+      score: 0,
+      summary: null,
+      log_data: null,
+      submitted_at: input.startedAtIso,
+    });
 
     await submitAssignedQuiz({
       ...input,
@@ -245,23 +387,40 @@ describe('submitAssignedQuiz', () => {
       questionResults: { 0: false },
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      '/api/v1/dashboard/quiz-submissions',
-      expect.objectContaining({ score: 0 }),
-    );
+    expect(mockCreateSubmission).toHaveBeenCalledWith(expect.objectContaining({ score: 0 }));
   });
 });
 
-describe('listQuizAttempts errors', () => {
-  it('throws QuizAttemptLookupError instead of empty list', async () => {
-    const { listQuizAttempts } = require('../core/services/quizAttemptApi');
-    mockGet.mockRejectedValue(new Error('timeout'));
-    await expect(
-      listQuizAttempts({
-        quiz_id: 1,
-        student_id: 's',
-        class_id: 'sess',
-      }),
-    ).rejects.toBeInstanceOf(QuizAttemptLookupError);
+describe('selectAttemptForSubmission', () => {
+  it('prefers the earliest started attempt, not a later row', () => {
+    const selected = selectAttemptForSubmission(
+      [
+        {
+          id: 20,
+          quiz_id: 1,
+          student_id: 's',
+          class_id: 'c',
+          attempt_number: 2,
+          score: null,
+          status: 'started',
+          started_at: '2026-01-02T00:00:00.000Z',
+          completed_at: null,
+          time_spent_seconds: null,
+        },
+        {
+          id: 10,
+          quiz_id: 1,
+          student_id: 's',
+          class_id: 'c',
+          attempt_number: 1,
+          score: null,
+          status: 'started',
+          started_at: '2026-01-01T00:00:00.000Z',
+          completed_at: null,
+          time_spent_seconds: null,
+        },
+      ],
+    );
+    expect(selected?.id).toBe(10);
   });
 });

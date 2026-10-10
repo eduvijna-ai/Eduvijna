@@ -20,16 +20,13 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
-import { checkQuizAttempt } from '@core/services/sharedApi';
 import {
-  buildRecoveryResumeParams,
-  findPendingSubmissionCheckpoint,
+  isAssignedQuizRecoveryProbeError,
 } from '@core/services/assignedQuizRecovery.service';
 import {
-  buildQuizTakingNavigationParams,
   isAssignedQuizLoadError,
   navigateStudentToQuizTaking,
-  navigateToAssignedQuizTaking,
+  resolveStudentAssignedQuizStart,
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
@@ -397,24 +394,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           user?.id?.toString() ??
           '';
 
-        // Check via API whether this student has already completed this quiz.
-        // GET /api/v1/dashboard/quiz-attempts?student_id={student_id}&quiz_id={quiz_id}&class_id={session_id}
-        // NOTE: the API's class_id field maps to session_id (UUID), not classroom_id.
-        const attemptCheck = await checkQuizAttempt(
-          correctQuizId,
-          studentIdForApi,
-          correctSessionId || undefined,
-        );
-
-        console.log('🎯 Attempt check result:', {
-          quiz_id: correctQuizId,
-          student_id: studentIdForApi,
-          session_id: correctSessionId,
-          hasAttempted: attemptCheck.hasAttempted,
-          status: attemptCheck.status,
+        const startResult = await resolveStudentAssignedQuizStart({
+          studentId: studentIdForApi,
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
+          attemptData,
         });
 
-        if (attemptCheck.lookupFailed) {
+        if (startResult.kind === 'lookup_failed') {
           Alert.alert(
             'Connection Error',
             'Could not verify your quiz status. Please check your connection and try again.',
@@ -422,48 +410,26 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           return;
         }
 
-        const pendingCheckpoint = await findPendingSubmissionCheckpoint(
-          studentIdForApi,
-          correctQuizId,
-          correctSessionId,
-        );
-        if (pendingCheckpoint) {
-          const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-          const startCtx = {
-            correctQuizId,
-            correctSessionId,
-            correctClassroomId,
-            attemptData,
-          };
-          await navigateToAssignedQuizTaking(
-            navigation,
-            onNavigate,
-            startCtx,
-            recovery,
-          );
-          return;
-        }
-
-        if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
-          // Quiz already completed — show modal instead of navigating.
+        if (startResult.kind === 'already_completed') {
           setCompletedAttemptModal({
-            quizName: attemptData?.quiz_name || 'Quiz',
-            score: attemptCheck.score ?? null,
-            completedAt: attemptCheck.completedAt ?? null,
-            quizId: correctQuizId,
-            attemptData,
+            quizName: startResult.quizName,
+            score: startResult.score,
+            completedAt: startResult.completedAt,
+            quizId: Number(startResult.quizId),
+            attemptData: startResult.attemptData,
           });
           return;
         }
 
-        const startCtx = {
-          correctQuizId,
-          correctSessionId,
-          correctClassroomId,
-          attemptData,
-        };
-        await navigateToAssignedQuizTaking(navigation, onNavigate, startCtx);
+        navigateStudentToQuizTaking(navigation, onNavigate, startResult.params);
       } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
         if (isAssignedQuizLoadError(error)) {
           Alert.alert(
             'Connection Error',
@@ -471,18 +437,9 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           );
           return;
         }
-        // If the attempt-check fails, proceed to the quiz so the student
-        // is never blocked by a network error.
-        const startCtx = {
-          correctQuizId,
-          correctSessionId,
-          correctClassroomId,
-          attemptData,
-        };
-        navigateStudentToQuizTaking(
-          navigation,
-          onNavigate,
-          buildQuizTakingNavigationParams(startCtx, attemptData ?? {}),
+        Alert.alert(
+          'Connection Error',
+          'Could not start this assessment. Please check your connection and try again.',
         );
       } finally {
         setTimeout(() => setLoadingQuizId(null), 1000);

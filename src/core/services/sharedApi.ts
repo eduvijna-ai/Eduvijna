@@ -213,6 +213,10 @@ export async function checkQuizAttempt(
 /**
  * Create a quiz submission
  * POST /api/v1/dashboard/quiz-submissions
+ *
+ * OpenAPI `QuizSubmissionCreateRequest` fields only: quiz_id, student_id,
+ * classroom_id, score, summary, log_data, submitted_at. There is no
+ * attempt_id property and no PUT/PATCH for this resource.
  */
 export async function createQuizSubmission(data: {
   quiz_id: number | string;
@@ -220,7 +224,7 @@ export async function createQuizSubmission(data: {
   classroom_id: string; // session_id
   score: number;
   summary?: string | null;
-  log_data?: Record<string, any> | null;
+  log_data?: Record<string, unknown> | null;
   submitted_at?: string | null;
 }): Promise<{
   submission_id: number;
@@ -229,7 +233,7 @@ export async function createQuizSubmission(data: {
   classroom_id: string;
   score: number;
   summary: string | null;
-  log_data: Record<string, any> | null;
+  log_data: Record<string, unknown> | null;
   submitted_at: string;
 }> {
   const response = await apiClient.post('/api/v1/dashboard/quiz-submissions', data);

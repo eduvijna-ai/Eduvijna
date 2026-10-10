@@ -277,11 +277,21 @@ export async function submitAssignedQuiz(
   inFlightKeys.add(lockKey);
 
   try {
-    const already = await isSubmissionPersistedOnServer(
-      input.studentId,
-      input.sessionId,
-      input.quizId,
-    );
+    let already: boolean;
+    try {
+      already = await isSubmissionPersistedOnServer(
+        input.studentId,
+        input.sessionId,
+        input.quizId,
+      );
+    } catch (probeError: unknown) {
+      throw new AssignedQuizSubmissionError(
+        probeError instanceof Error
+          ? probeError.message
+          : 'Could not verify whether this assignment was already submitted',
+        'validation',
+      );
+    }
     if (already) {
       await clearQuizSubmissionCheckpoint(input.studentId, input.quizId, input.sessionId);
       await invalidateStudentQuizCaches({

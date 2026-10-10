@@ -5,6 +5,23 @@
 import { readQuizSubmissionCheckpoint, type QuizSubmissionCheckpoint } from './quizSubmissionCheckpoint';
 import { getAttendedQuiz } from './quizResultRetrieval.service';
 
+export class AssignedQuizRecoveryProbeError extends Error {
+  readonly code = 'RECOVERY_PROBE_FAILED';
+  readonly retryable = true;
+
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'AssignedQuizRecoveryProbeError';
+    if (cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = cause;
+    }
+  }
+}
+
+export function isAssignedQuizRecoveryProbeError(error: unknown): boolean {
+  return error instanceof AssignedQuizRecoveryProbeError;
+}
+
 export async function isSubmissionPersistedOnServer(
   studentId: string,
   sessionId: string,
@@ -24,7 +41,10 @@ export async function isSubmissionPersistedOnServer(
   } catch (error: unknown) {
     const status = (error as { response?: { status?: number } })?.response?.status;
     if (status === 404) return false;
-    throw error;
+    throw new AssignedQuizRecoveryProbeError(
+      'Could not verify whether this assignment was already submitted. Please try again.',
+      error,
+    );
   }
 }
 

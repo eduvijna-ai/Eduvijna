@@ -2,8 +2,12 @@
  * Shared assigned-quiz start payload: fetch full questions + navigate to QuizTakingScreen.
  */
 
-import { getQuizBySessionId } from './sharedApi';
-import type { AssignedQuizRecoveryResumeParams } from './assignedQuizRecovery.service';
+import { checkQuizAttempt, getQuizBySessionId } from './sharedApi';
+import {
+  buildRecoveryResumeParams,
+  findPendingSubmissionCheckpoint,
+  type AssignedQuizRecoveryResumeParams,
+} from './assignedQuizRecovery.service';
 
 export class AssignedQuizLoadError extends Error {
   readonly code = 'ASSIGNED_QUIZ_FETCH_FAILED';
@@ -62,14 +66,17 @@ export async function loadAssignedQuizDataForSession(
     const fetchedQuiz = quizResponse.quiz_data;
     const allQuestions = fetchedQuiz.questions?.quizzes ?? [];
     const questionLimit = fetchedQuiz.question_count || allQuestions.length;
-    const questions = allQuestions.slice(0, questionLimit).map((q: any, index: number) => ({
-      id: `q-${index}`,
-      question: q.quiz.question,
-      options: q.quiz.options,
-      correctAnswer: q.quiz.answer,
-      answer: q.answer,
-      explanation: null,
-    }));
+    const questions = allQuestions.slice(0, questionLimit).map((entry, index) => {
+      const quiz = entry?.quiz;
+      return {
+        id: `q-${index}`,
+        question: quiz?.question ?? '',
+        options: Array.isArray(quiz?.options) ? quiz.options : [],
+        correctAnswer: quiz?.answer,
+        answer: entry?.answer,
+        explanation: null,
+      };
+    });
 
     quizDataWithQuestions = {
       ...attemptData,
@@ -121,6 +128,78 @@ export function buildQuizTakingNavigationParams(
     classroomId: ctx.correctClassroomId,
     quizData: quizDataWithQuestions,
     submissionRecovery: submissionRecovery ?? undefined,
+  };
+}
+
+export type StudentAssignedQuizStartResult =
+  | { kind: 'navigate'; params: QuizTakingNavigationParams }
+  | {
+      kind: 'already_completed';
+      quizName: string;
+      score: number | null;
+      completedAt: string | null;
+      quizId: number | string;
+      attemptData: Record<string, unknown> | null;
+    }
+  | { kind: 'lookup_failed' };
+
+/**
+ * Student Assessments start/resume: never navigates on recovery-probe or quiz-load
+ * failure, and never falls back to a metadata-only dashboard row.
+ */
+export async function resolveStudentAssignedQuizStart(args: {
+  studentId: string;
+  quizId: number | string;
+  sessionId: string;
+  classroomId: string;
+  attemptData?: Record<string, unknown> | null;
+}): Promise<StudentAssignedQuizStartResult> {
+  const startCtx: AssignedQuizStartContext = {
+    correctQuizId: args.quizId,
+    correctSessionId: args.sessionId,
+    correctClassroomId: args.classroomId,
+    attemptData: args.attemptData,
+  };
+
+  const attemptCheck = await checkQuizAttempt(
+    args.quizId,
+    args.studentId,
+    args.sessionId || undefined,
+  );
+  if (attemptCheck.lookupFailed) {
+    return { kind: 'lookup_failed' };
+  }
+
+  const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+    args.studentId,
+    args.quizId,
+    args.sessionId,
+  );
+
+  if (pendingCheckpoint) {
+    const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+    const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+    return {
+      kind: 'navigate',
+      params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
+    };
+  }
+
+  if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
+    return {
+      kind: 'already_completed',
+      quizName: String(args.attemptData?.quiz_name ?? 'Quiz'),
+      score: attemptCheck.score ?? null,
+      completedAt: attemptCheck.completedAt ?? null,
+      quizId: args.quizId,
+      attemptData: args.attemptData ?? null,
+    };
+  }
+
+  const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+  return {
+    kind: 'navigate',
+    params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions),
   };
 }
 
