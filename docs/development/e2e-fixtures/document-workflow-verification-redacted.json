@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:28:29.363Z",
+  "verifiedAt": "2026-10-10T18:36:50.721Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "quizReactDeployedReference": "31ae140f50ccc79079cdfc8c28f2d03b60fde7",
   "steps": [
@@ -46,7 +46,7 @@
       "step": "student_visibility_pending",
       "status": "passed",
       "httpStatus": 200,
-      "rowCount": 20
+      "rowCount": 22
     },
     {
       "step": "upload_multimodal_generate",
@@ -56,10 +56,10 @@
       "totalQuestionsField": 1,
       "data": {
         "success": true,
-        "request_id": "35cdec15-53e5-4406-af4b-cbfca438895b",
+        "request_id": "91f7e443-a0cf-4e96-87d3-1090bd5b9c2e",
         "questions": "[redacted]",
         "total_questions": 1,
-        "processing_time_seconds": 2.15,
+        "processing_time_seconds": 3.02,
         "raw_content": "[omitted-blob]",
         "pipeline_stages": {
           "files_ingested": 1,

@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:28:54.247Z",
+  "verifiedAt": "2026-10-10T18:37:26.844Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "accounts": [
     {
@@ -24,7 +24,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 181,
+              "total_count": 184,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -110,7 +110,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 30,
+              "total_count": 33,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -197,7 +197,7 @@
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 21,
+            "rowCount": 23,
             "sampleFields": [
               {
                 "status": null,
@@ -215,7 +215,7 @@
               }
             ]
           },
-          "rowCount": 21
+          "rowCount": 23
         },
         {
           "name": "[redacted]",
@@ -264,12 +264,12 @@
         {
           "name": "[redacted]",
           "status": 200,
-          "rowCount": 21,
+          "rowCount": 23,
           "fixtureSessionVisible": true,
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 21,
+            "rowCount": 23,
             "sampleFields": [
               {
                 "status": null,
@@ -291,8 +291,8 @@
         {
           "name": "[redacted]",
           "data": {
-            "quiz_id": "ref:d2396dc8",
-            "session_id": "ref:0d1b02d8",
+            "quiz_id": "ref:d2396dcb",
+            "session_id": "ref:422f04f0",
             "source": "run_fixture"
           }
         },
@@ -321,8 +321,8 @@
   ],
   "runFixture": {
     "topic": "[redacted]",
-    "quizId": "ref:d2396dc8",
-    "sessionId": "ref:0d1b02d8",
+    "quizId": "ref:d2396dcb",
+    "sessionId": "ref:422f04f0",
     "classroomId": "ref:c6ec6d85"
   },
   "fixtureCleanup": {
