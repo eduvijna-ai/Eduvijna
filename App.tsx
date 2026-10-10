@@ -445,11 +445,9 @@ function AppContent() {
   // Process pending deep link after authentication - REMOVED
   // Now handled directly in deep link handlers above with pendingSessionId
 
-  // Web /openquiz — queue session for login continuation or open immediately when authenticated
-  const webOpenQuizHandled = useRef(false);
+  // Web /openquiz — queue session for login continuation (survives logout/auth expiry without reload)
   useEffect(() => {
     if (!isWeb || typeof window === 'undefined') return;
-    if (webOpenQuizHandled.current) return;
 
     const path = window.location.pathname;
     const search = window.location.search;
@@ -457,22 +455,19 @@ function AppContent() {
       return;
     }
 
-    webOpenQuizHandled.current = true;
     const deepLinkData = parseDeepLink(`https://app.eduvijna.com/openquiz${search}`);
     if (deepLinkData?.type !== 'assessment' || !deepLinkData.sessionId) {
       return;
     }
 
     const sessionId = deepLinkData.sessionId;
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       setPendingSessionId(sessionId);
       return;
     }
 
-    if (user) {
-      resumePendingOpenQuiz(sessionId);
-    }
-  }, [isWeb, isAuthenticated, user, resumePendingOpenQuiz]);
+    setPendingSessionId(sessionId);
+  }, [isWeb, isAuthenticated, user]);
 
   // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
   // This prevents duplicate listener registration
