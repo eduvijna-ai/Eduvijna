@@ -13,6 +13,7 @@ import {
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
 import { API_BASE_URL } from '../api/config';
 import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
+import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -880,6 +881,42 @@ export async function fetchQuizCheckRecord(
 }
 
 /**
+ * Authorized classroom labels for the signed-in student (view_type=classes).
+ * Used so check-record rows never fall back to raw `class_*` ids in UI.
+ */
+export async function fetchStudentClassroomNameLookup(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const token = await TokenStorage.getAccessToken();
+  if (!token) {
+    return map;
+  }
+
+  const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=classes&limit=200&offset=0`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    return map;
+  }
+
+  const data = await response.json();
+  const rows = Array.isArray(data.data) ? data.data : [];
+  for (const row of rows) {
+    const id = row.classroom_id || row.class_id;
+    const name = row.classroom_name || row.name;
+    if (id && name && String(name) !== String(id)) {
+      map.set(String(id), String(name));
+    }
+  }
+  return map;
+}
+
+/**
  * Convert a CheckRecordQuiz item to a ParsedQuiz-compatible object used
  * by StudentDashboard and Notifications screens.
  * status: null → 'pending'   |   status: "completed" → 'completed'
@@ -892,11 +929,12 @@ export function checkRecordToQuiz(
   const now = new Date();
   const endDate = d.end_time ? new Date(d.end_time) : null;
   const classId = item.classid;
-  const classroomName =
-    (d as { classroom_name?: string }).classroom_name ||
-    (item as { classroom_name?: string }).classroom_name ||
-    options?.classroomNameLookup?.get(classId) ||
-    classId;
+  const classroomName = resolveClassroomDisplayName(String(classId || ''), {
+    recordName:
+      (d as { classroom_name?: string }).classroom_name ||
+      (item as { classroom_name?: string }).classroom_name,
+    lookup: options?.classroomNameLookup,
+  });
   const completedScore =
     typeof (d as { score?: number }).score === 'number'
       ? (d as { score?: number }).score

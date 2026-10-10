@@ -1,9 +1,5 @@
 /**
  * Multi-account dev-api technical verification (redacted output only).
- * Writes docs/development/e2e-fixtures/technical-verification-redacted.json
- *
- * Credentials via env or gitignored .dev-api-credentials.local.json at repo root:
- * { "accounts": { "admin": { "username", "password" }, "instructor": {...}, "student": {...} } }
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -50,6 +46,8 @@ function summarizeApiBody(data) {
       rowCount: data.data.length,
       sampleFields: data.data.slice(0, 2).map((row) =>
         redactDeep({
+          classroom_id: row.classroom_id,
+          classroom_name: row.classroom_name,
           availability_status: row.availability_status,
           has_time_limit: row.has_time_limit,
           quiz_status: row.quiz_status,
@@ -82,28 +80,14 @@ function summarizeApiBody(data) {
   });
 }
 
-async function getJson(token, path) {
+async function fetchRaw(token, method, path, body) {
   const res = await fetch(`${getDevApiBase()}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { _preview: text.slice(0, 120) };
-  }
-  return { status: res.status, data: summarizeApiBody(data) };
-}
-
-async function postJson(token, path, body) {
-  const res = await fetch(`${getDevApiBase()}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
   let data;
@@ -112,7 +96,29 @@ async function postJson(token, path, body) {
   } catch {
     data = { _preview: text.slice(0, 120) };
   }
-  return { status: res.status, data: summarizeApiBody(data) };
+  return { status: res.status, data };
+}
+
+function selectProbeTarget(pendingRaw, completedRaw) {
+  const pick = (rows) =>
+    (rows ?? []).find((row) => row.quiz_details?.quiz_id && row.quiz_details?.session_id);
+  const fromCompleted = pick(completedRaw?.result);
+  if (fromCompleted) {
+    return {
+      quiz_id: fromCompleted.quiz_details.quiz_id,
+      session_id: fromCompleted.quiz_details.session_id,
+      source: 'completed',
+    };
+  }
+  const fromPending = pick(pendingRaw?.result);
+  if (fromPending) {
+    return {
+      quiz_id: fromPending.quiz_details.quiz_id,
+      session_id: fromPending.quiz_details.session_id,
+      source: 'pending',
+    };
+  }
+  return null;
 }
 
 async function verifyAccount({ label, username, password }) {
@@ -128,57 +134,102 @@ async function verifyAccount({ label, username, password }) {
     limitations: [],
   };
 
+  const profileRaw = await fetchRaw(auth.token, 'GET', '/api/v1/auth/profile');
   block.checks.push({
     name: 'auth_profile',
-    ...(await getJson(auth.token, '/api/v1/auth/profile')),
+    status: profileRaw.status,
+    data: summarizeApiBody(profileRaw.data),
   });
 
   if (auth.role === 'student') {
-    const pending = await postJson(auth.token, '/api/v1/quiz/check-record', {
+    const pendingRaw = await fetchRaw(auth.token, 'POST', '/api/v1/quiz/check-record', {
       p_check_type: 'pending',
       p_student_id: auth.userId,
       p_session_id: '',
     });
-    block.checks.push({ name: 'check_record_pending', ...pending });
+    block.checks.push({
+      name: 'check_record_pending',
+      status: pendingRaw.status,
+      data: summarizeApiBody(pendingRaw.data),
+      rowCount: pendingRaw.data?.result?.length ?? 0,
+    });
 
-    const completed = await postJson(auth.token, '/api/v1/quiz/check-record', {
+    const completedRaw = await fetchRaw(auth.token, 'POST', '/api/v1/quiz/check-record', {
       p_check_type: 'completed',
       p_student_id: auth.userId,
       p_session_id: '',
     });
-    block.checks.push({ name: 'check_record_completed', ...completed });
+    block.checks.push({
+      name: 'check_record_completed',
+      status: completedRaw.status,
+      data: summarizeApiBody(completedRaw.data),
+      rowCount: completedRaw.data?.result?.length ?? 0,
+    });
 
-    const sample =
-      completed.data?.result?.[0]?.quiz_details || pending.data?.result?.[0]?.quiz_details;
-    if (sample?.quiz_id && sample?.session_id) {
+    const classesRaw = await fetchRaw(
+      auth.token,
+      'GET',
+      '/api/v1/dashboard/quizzes?view_type=classes&limit=50&offset=0',
+    );
+    block.checks.push({
+      name: 'student_classrooms_classes_view',
+      status: classesRaw.status,
+      data: summarizeApiBody(classesRaw.data),
+    });
+
+    const probe = selectProbeTarget(pendingRaw.data, completedRaw.data);
+    if (probe) {
+      block.checks.push({
+        name: 'probe_target_selected',
+        data: redactDeep(probe),
+      });
+      const attemptsRaw = await fetchRaw(
+        auth.token,
+        'GET',
+        `/api/v1/dashboard/quiz-attempts?student_id=${auth.userId}&quiz_id=${probe.quiz_id}&class_id=${probe.session_id}`,
+      );
       block.checks.push({
         name: 'quiz_attempts_list',
-        ...(await getJson(
-          auth.token,
-          `/api/v1/dashboard/quiz-attempts?student_id=${auth.userId}&quiz_id=${sample.quiz_id}&class_id=${sample.session_id}`,
-        )),
+        status: attemptsRaw.status,
+        data: summarizeApiBody(attemptsRaw.data),
+        executedBecauseCheckRecordHadRows: true,
       });
+      const attendedRaw = await fetchRaw(
+        auth.token,
+        'GET',
+        `/api/v1/dashboard/attended-quiz?student_id=${auth.userId}&session_id=${probe.session_id}&quiz_id=${probe.quiz_id}`,
+      );
       block.checks.push({
         name: 'attended_quiz_load',
-        ...(await getJson(
-          auth.token,
-          `/api/v1/dashboard/attended-quiz?student_id=${auth.userId}&session_id=${sample.session_id}&quiz_id=${sample.quiz_id}`,
-        )),
+        status: attendedRaw.status,
+        data: summarizeApiBody(attendedRaw.data),
+        executedBecauseCheckRecordHadRows: true,
       });
     } else {
-      block.limitations.push('No sample assignment row for attempt/attended probes.');
+      block.limitations.push(
+        'No check-record rows with quiz_id + session_id; attempt/attended probes skipped.',
+      );
     }
   } else if (auth.role === 'instructor' || auth.role === 'admin') {
+    const summaryRaw = await fetchRaw(
+      auth.token,
+      'GET',
+      '/api/v1/dashboard/quizzes?view_type=summary&limit=5&offset=0',
+    );
     block.checks.push({
       name: 'teacher_dashboard_summary',
-      ...(await getJson(
-        auth.token,
-        '/api/v1/dashboard/quizzes?view_type=summary&limit=5&offset=0',
-      )),
+      status: summaryRaw.status,
+      data: summarizeApiBody(summaryRaw.data),
     });
+    const classroomsRaw = await fetchRaw(
+      auth.token,
+      'GET',
+      '/api/v1/dashboard/quizzes?view_type=class_wise_students&limit=50&offset=0',
+    );
     block.checks.push({
-      name: 'classrooms_list',
-      ...(await getJson(auth.token, '/api/v1/dashboard/classrooms?limit=5&offset=0')),
+      name: 'classrooms_class_wise_students',
+      status: classroomsRaw.status,
+      data: summarizeApiBody(classroomsRaw.data),
     });
   } else {
     block.limitations.push(`Unhandled role: ${auth.role}`);
@@ -203,7 +254,7 @@ async function main() {
     submissionParityExecuted: false,
     notes: [
       'Output is redacted; no tokens, credentials, or personal profile fields.',
-      'Student submission/reopen/recovery matrix requires a disposable assigned quiz (Founder E2E).',
+      'Probe targets are chosen from raw check-record payloads before summarization.',
     ],
   };
 
@@ -214,7 +265,7 @@ async function main() {
   const outDir = join(repoRoot, 'docs', 'development', 'e2e-fixtures');
   mkdirSync(outDir, { recursive: true });
   const out = join(outDir, 'technical-verification-redacted.json');
-  writeFileSync(out, JSON.stringify(report, null, 2));
+  writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
   console.log(`Wrote ${out} (${report.accounts.length} account(s))`);
 }
 
