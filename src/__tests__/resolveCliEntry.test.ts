@@ -1,34 +1,43 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const repoRoot = join(__dirname, '..', '..');
 
-function runResolveSnippet(source: string, env?: NodeJS.ProcessEnv) {
+function runResolveSnippet(
+  source: string,
+  options?: { cwd?: string; env?: NodeJS.ProcessEnv },
+) {
   return spawnSync(process.execPath, ['--input-type=module', '-e', source], {
-    cwd: repoRoot,
+    cwd: options?.cwd ?? repoRoot,
     encoding: 'utf8',
     shell: false,
-    env: env ?? process.env,
+    env: options?.env ?? process.env,
   });
 }
 
-function globalEasNodeModulesRoot(): string | null {
-  const npmCli = join(repoRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  if (!existsSync(npmCli)) {
-    return null;
-  }
-  const result = spawnSync(process.execPath, [npmCli, 'root', '-g'], {
-    encoding: 'utf8',
-    shell: false,
-  });
-  if (result.status !== 0) {
-    return null;
-  }
-  const root = result.stdout.trim();
-  return root && existsSync(join(root, 'eas-cli')) ? root : null;
+function createIsolatedResolverCopy(): {
+  tempRoot: string;
+  moduleUrl: string;
+  fakeNodePathRoot: string;
+} {
+  const tempRoot = mkdtempSync(join(tmpdir(), 'eduvijna-no-eas-'));
+  const scriptsDir = join(tempRoot, 'scripts');
+  mkdirSync(scriptsDir);
+  copyFileSync(
+    join(repoRoot, 'scripts', 'resolve-cli-entry.mjs'),
+    join(scriptsDir, 'resolve-cli-entry.mjs'),
+  );
+
+  const fakeNodePathRoot = join(tempRoot, 'fake-node-path');
+  const fakeEasCli = join(fakeNodePathRoot, 'eas-cli', 'build', 'bin');
+  mkdirSync(fakeEasCli, { recursive: true });
+  writeFileSync(join(fakeEasCli, 'cli'), 'console.log("fake-global-eas");\n');
+
+  const moduleUrl = pathToFileURL(join(scriptsDir, 'resolve-cli-entry.mjs')).href;
+  return { tempRoot, moduleUrl, fakeNodePathRoot };
 }
 
 describe('resolve-cli-entry.mjs', () => {
@@ -55,43 +64,21 @@ describe('resolve-cli-entry.mjs', () => {
   });
 
   it('throws actionable error when repository-local eas-cli is missing', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'eduvijna-no-eas-'));
-    const scriptsDir = join(tempRoot, 'scripts');
-    mkdirSync(scriptsDir);
-    copyFileSync(
-      join(repoRoot, 'scripts', 'resolve-cli-entry.mjs'),
-      join(scriptsDir, 'resolve-cli-entry.mjs'),
+    const { moduleUrl, fakeNodePathRoot } = createIsolatedResolverCopy();
+    const childEnv = {
+      ...process.env,
+      NODE_PATH: fakeNodePathRoot,
+    };
+    const probe = spawnSync(
+      process.execPath,
+      ['-p', 'process.env.NODE_PATH || ""'],
+      { env: childEnv, encoding: 'utf8', shell: false },
     );
-    const moduleUrl = pathToFileURL(join(scriptsDir, 'resolve-cli-entry.mjs')).href;
-    const result = runResolveSnippet(`
-      import { resolveCommandArgv } from '${moduleUrl}';
-      try {
-        resolveCommandArgv(['eas', '--version']);
-        process.exit(9);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!message.includes('npm ci')) process.exit(10);
-      }
-    `);
-    expect(result.status).toBe(0);
-  });
+    expect(probe.stdout.trim()).toBe(fakeNodePathRoot);
 
-  it('does not resolve eas via NODE_PATH when repository-local eas-cli is absent', () => {
-    const globalRoot = globalEasNodeModulesRoot();
-    if (!globalRoot) {
-      return;
-    }
-
-    const tempRoot = mkdtempSync(join(tmpdir(), 'eduvijna-no-eas-nodepath-'));
-    const scriptsDir = join(tempRoot, 'scripts');
-    mkdirSync(scriptsDir);
-    copyFileSync(
-      join(repoRoot, 'scripts', 'resolve-cli-entry.mjs'),
-      join(scriptsDir, 'resolve-cli-entry.mjs'),
-    );
-    const moduleUrl = pathToFileURL(join(scriptsDir, 'resolve-cli-entry.mjs')).href;
     const result = runResolveSnippet(
       `
+      if (process.env.NODE_PATH !== ${JSON.stringify(fakeNodePathRoot)}) process.exit(11);
       import { resolveCommandArgv } from '${moduleUrl}';
       try {
         resolveCommandArgv(['eas', '--version']);
@@ -101,7 +88,32 @@ describe('resolve-cli-entry.mjs', () => {
         if (!message.includes('npm ci')) process.exit(10);
       }
     `,
-      { ...process.env, NODE_PATH: globalRoot },
+      { cwd: repoRoot, env: childEnv },
+    );
+    expect(result.status).toBe(0);
+  });
+
+  it('does not resolve eas via NODE_PATH fake eas-cli when repository-local eas-cli is absent', () => {
+    const { moduleUrl, fakeNodePathRoot } = createIsolatedResolverCopy();
+    const childEnv = {
+      ...process.env,
+      NODE_PATH: fakeNodePathRoot,
+    };
+
+    const result = runResolveSnippet(
+      `
+      if (process.env.NODE_PATH !== ${JSON.stringify(fakeNodePathRoot)}) process.exit(11);
+      import { resolveCommandArgv } from '${moduleUrl}';
+      try {
+        const r = resolveCommandArgv(['eas', '--version']);
+        if (r.args[0].includes('fake-node-path')) process.exit(12);
+        process.exit(9);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('npm ci')) process.exit(10);
+      }
+    `,
+      { cwd: repoRoot, env: childEnv },
     );
     expect(result.status).toBe(0);
   });
