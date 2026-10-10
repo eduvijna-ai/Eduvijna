@@ -7,6 +7,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDevApiBase, loginDevApi } from './lib/dev-api-auth.mjs';
 import { redactDeep } from './lib/trace-redact.mjs';
+import {
+  cleanupDisposableMatrixAssignment,
+  createDisposableMatrixAssignment,
+  discoverClassroomForStudent,
+} from './lib/dev-api-disposable-assignment.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const credFile = join(repoRoot, '.dev-api-credentials.local.json');
@@ -121,7 +126,7 @@ function selectProbeTarget(pendingRaw, completedRaw) {
   return null;
 }
 
-async function verifyAccount({ label, username, password }) {
+async function verifyAccount({ label, username, password }, runContext = {}) {
   const auth = await loginDevApi(username, password);
   const block = {
     accountLabel: label,
@@ -177,7 +182,34 @@ async function verifyAccount({ label, username, password }) {
       data: summarizeApiBody(classesRaw.data),
     });
 
-    const probe = selectProbeTarget(pendingRaw.data, completedRaw.data);
+    if (runContext.runFixture && runContext.runFixture.sessionId) {
+      const fixturePending = await fetchRaw(auth.token, 'POST', '/api/v1/quiz/check-record', {
+        p_check_type: 'pending',
+        p_student_id: auth.userId,
+        p_session_id: runContext.runFixture.sessionId,
+      });
+      const fixtureRows = fixturePending.data?.result ?? [];
+      block.checks.push({
+        name: 'check_record_pending_run_fixture',
+        status: fixturePending.status,
+        rowCount: fixtureRows.length,
+        fixtureSessionVisible: fixtureRows.some(
+          (row) =>
+            String(row.quiz_details?.session_id) === String(runContext.runFixture.sessionId) &&
+            String(row.quiz_details?.quiz_id) === String(runContext.runFixture.quizId),
+        ),
+        data: summarizeApiBody(fixturePending.data),
+      });
+    }
+
+    const probe =
+      runContext.runFixture?.sessionId && runContext.runFixture?.quizId
+        ? {
+            quiz_id: runContext.runFixture.quizId,
+            session_id: runContext.runFixture.sessionId,
+            source: 'run_fixture',
+          }
+        : selectProbeTarget(pendingRaw.data, completedRaw.data);
     if (probe) {
       block.checks.push({
         name: 'probe_target_selected',
@@ -258,8 +290,44 @@ async function main() {
     ],
   };
 
-  for (const account of accounts) {
-    report.accounts.push(await verifyAccount(account));
+  let runFixture = null;
+  let instructorAuth = null;
+  const instructorCred = accounts.find((a) => a.label === 'instructor');
+  const studentCred = accounts.find((a) => a.label === 'student');
+  if (instructorCred && studentCred) {
+    try {
+      instructorAuth = await loginDevApi(instructorCred.username, instructorCred.password);
+      const studentAuth = await loginDevApi(studentCred.username, studentCred.password);
+      const classroom = await discoverClassroomForStudent(
+        instructorAuth.token,
+        studentAuth.userId,
+      );
+      runFixture = await createDisposableMatrixAssignment(
+        instructorAuth.token,
+        instructorAuth.userId,
+        classroom.classroomId,
+      );
+      report.runFixture = redactDeep({
+        topic: runFixture.topic,
+        quizId: runFixture.quizId,
+        sessionId: runFixture.sessionId,
+        classroomId: runFixture.classroomId,
+      });
+    } catch (error) {
+      report.runFixtureError = redactDeep({ message: error?.message || String(error) });
+    }
+  }
+
+  try {
+    for (const account of accounts) {
+      report.accounts.push(await verifyAccount(account, { runFixture }));
+    }
+  } finally {
+    if (runFixture && instructorAuth?.token) {
+      report.fixtureCleanup = redactDeep(
+        await cleanupDisposableMatrixAssignment(instructorAuth.token, runFixture),
+      );
+    }
   }
 
   const outDir = join(repoRoot, 'docs', 'development', 'e2e-fixtures');
