@@ -1,4 +1,5 @@
 import {
+  completedRowNeedsHydration,
   countCorrectAnswersFromPersistedResult,
   mapWithConcurrency,
 } from '../core/services/completedQuizMetrics';
@@ -54,6 +55,36 @@ describe('completedQuizMetrics', () => {
       completedAt: null,
     });
     expect(count).toBeUndefined();
+  });
+
+  it('needs hydration when any completed metric is missing', () => {
+    expect(
+      completedRowNeedsHydration({
+        status: 'completed',
+        score: 80,
+        time_spent_seconds: 30,
+        completed_at: '2026-01-01T00:00:00Z',
+        correct_answers: undefined,
+      }),
+    ).toBe(true);
+    expect(
+      completedRowNeedsHydration({
+        status: 'completed',
+        score: 80,
+        time_spent_seconds: 30,
+        completed_at: '2026-01-01T00:00:00Z',
+        correct_answers: 2,
+      }),
+    ).toBe(false);
+    expect(
+      completedRowNeedsHydration({
+        status: 'completed',
+        score: null,
+        time_spent_seconds: 30,
+        completed_at: '2026-01-01T00:00:00Z',
+        correct_answers: 2,
+      }),
+    ).toBe(true);
   });
 
   it('mapWithConcurrency preserves order under load', async () => {
