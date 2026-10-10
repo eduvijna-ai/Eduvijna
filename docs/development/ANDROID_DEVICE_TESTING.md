@@ -83,13 +83,27 @@ image.sysdir.1=system-images\android-36\google_apis_playstore\x86_64\
 
 (not `Sdk\system-images\...`).
 
-Cold start (validates image path after fix):
+Start (non-blocking — terminal stays open for `adb` checks):
 
 ```powershell
-adb -s emulator-5554 emu kill 2>$null
-emulator -avd Eduvijna_Android_Dev -no-snapshot-load
+. .\scripts\setup-android-env.ps1
+$emu = Join-Path $env:ANDROID_SDK_ROOT 'emulator\emulator.exe'
+Start-Process -FilePath $emu -ArgumentList '-avd','Eduvijna_Android_Dev'
 adb wait-for-device
 adb devices   # expect emulator-5554   device
+```
+
+Do **not** kill an emulator the Founder already has running just to re-run these checks.
+
+Optional cold start (validates image path; only when no emulator is needed):
+
+```powershell
+. .\scripts\setup-android-env.ps1
+$emu = Join-Path $env:ANDROID_SDK_ROOT 'emulator\emulator.exe'
+adb -s emulator-5554 emu kill 2>$null
+Start-Process -FilePath $emu -ArgumentList '-avd','Eduvijna_Android_Dev','-no-snapshot-load'
+adb wait-for-device
+adb devices
 ```
 
 ## Development build (local)
