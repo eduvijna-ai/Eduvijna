@@ -40,7 +40,7 @@ export interface Notification {
     quiz_title?: string;
     classroom_id?: string;
     classroom_name?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

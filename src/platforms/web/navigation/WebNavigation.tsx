@@ -51,7 +51,11 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     }
   };
 
-  const handleNotificationClick = async (notification: any) => {
+  const handleNotificationClick = async (notification: {
+    id: number | string;
+    type?: string;
+    data?: Record<string, unknown>;
+  }) => {
     // Mark as read
     await markNotificationRead(notification.id);
     
@@ -106,7 +110,8 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
             quizName: gradedParams.quizName as string | undefined,
           },
           {
-            onNavigate: (screen, params) => onNavigate(screen as WebNavScreen, params),
+            onNavigate: (screen, params) =>
+              onNavigate(screen as WebNavScreen, params as Record<string, unknown> | undefined),
           },
         );
         return;
@@ -314,7 +319,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
         onClose={() => setShowCreateModal(false)}
         navigation={{ navigate: (screen: string) => {
           setShowCreateModal(false);
-          onNavigate(screen as any);
+          onNavigate(screen as WebNavScreen);
         }}}
         theme={theme}
         isDark={isDark}
