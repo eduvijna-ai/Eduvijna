@@ -277,11 +277,6 @@ export function useAuth(): UseAuthReturn {
       setLoading(true);
       setError(null);
 
-      const accountKey = useUserStore.getState().userId != null
-        ? String(useUserStore.getState().userId)
-        : null;
-      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
-      resetNotificationFetchGuardForAccount(accountKey);
       const { resetInitialDeepLinkCache } = await import('../services/deepLinkService');
       resetInitialDeepLinkCache();
 
@@ -295,11 +290,8 @@ export function useAuth(): UseAuthReturn {
       clearQuizNavCache();
       // Clear store (clears user and tokens)
       logoutStore();
-      resetNotificationFetchGuardForAccount(null);
     } catch (err) {
       console.error('Logout API failed:', err);
-      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
-      resetNotificationFetchGuardForAccount(null);
       // Still clear stores even if API call fails
       useTeacherDashboardStore.getState().reset();
       resetStudentAssignmentDashboardStore(null);
