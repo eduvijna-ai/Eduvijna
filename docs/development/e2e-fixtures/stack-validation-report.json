@@ -1,7 +1,7 @@
 {
-  "validatedAt": "2026-10-10T12:59:17.495Z",
+  "validatedAt": "2026-10-10T13:10:11.486Z",
   "exportRoot": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check",
-  "worktreeRoot": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-worktrees",
+  "checkoutMode": "primary_repo_detached",
   "commands": {
     "export": "node scripts/with-eduvijna-api-env.mjs development -- expo export --platform <android|ios|web> --output-dir .stack-export-check/<branch>/<platform>",
     "diagnostics": "npm run type-check && npm run lint"
@@ -20,40 +20,40 @@
           "tsErrorCount": 190,
           "eslintErrorCount": 1701,
           "tsOutputBytes": 37376,
-          "eslintOutputBytes": 348165
+          "eslintOutputBytes": 339165
         },
         "base": {
           "typeCheckExit": 2,
           "eslintExit": 1,
           "tsErrorCount": 193,
           "eslintErrorCount": 1709,
-          "tsOutputBytes": 37225,
-          "eslintOutputBytes": 349032
+          "tsOutputBytes": 37125,
+          "eslintOutputBytes": 340282
         },
         "tsErrorsAdded": -3,
         "eslintErrorsDelta": -8
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6316,
+          "exitCode": 0,
+          "durationMs": 19640,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:3936) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-5bd2437a8e09ddfee186367f2c04d245.hbc (8.72 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6313,
+          "exitCode": 0,
+          "durationMs": 18926,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:13468) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-beb91c95c561205868565c377a3c15e3.hbc (8.69 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6439,
+          "exitCode": 0,
+          "durationMs": 39493,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:17008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 757ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-5c5eb7a3864fb4dfa41d8ddf4dcdf963.js (4.97 MB)\n_expo/static/js/web/studentAttendancePdf-d948effbde345dc8aab121e8380fce78.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-6b39c3626d9f1ea238fe0de492f9fa5e.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-15537d32c53bcd6b665da1a452a30282.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\web\n",
+          "stderrTail": ""
         }
       }
     },
@@ -70,7 +70,7 @@
           "tsErrorCount": 202,
           "eslintErrorCount": 1698,
           "tsOutputBytes": 41175,
-          "eslintOutputBytes": 349638
+          "eslintOutputBytes": 338597
         },
         "base": {
           "typeCheckExit": 2,
@@ -78,39 +78,39 @@
           "tsErrorCount": 190,
           "eslintErrorCount": 1701,
           "tsOutputBytes": 37376,
-          "eslintOutputBytes": 350145
+          "eslintOutputBytes": 339165
         },
         "tsErrorsAdded": 12,
         "eslintErrorsDelta": -3
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6357,
+          "exitCode": 0,
+          "durationMs": 19759,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:21880) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-fac6890d9d3f20bdae6626f36dc0d02e.hbc (8.73 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6390,
+          "exitCode": 0,
+          "durationMs": 19451,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:24308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "nityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-5448a0282437de53b1b7a3c40641e9a5.hbc (8.7 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6312,
+          "exitCode": 0,
+          "durationMs": 12781,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:5624) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 719ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-f4c1fc70820b1cf7bb48a9b4db30bde2.js (4.97 MB)\n_expo/static/js/web/studentAttendancePdf-51ea47be75bb76f20a845337725c4850.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-4f08ef7b00cd2f4e717f0f9fc7303a07.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-c1f3c95d8ebeb9e1c1aacaab9782e11d.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\web\n",
+          "stderrTail": ""
         }
       }
     },
     {
       "pr": 21,
       "branch": "feat/mobile-phase3-document-quiz-runtime",
-      "head": "f1d7ac4803a192c5c6fefc84089b50f231a80767",
+      "head": "588044dc875a602081723984ee645cd3b156f8ea",
       "baseRef": "origin/feat/mobile-phase2-student-dashboard-parity",
       "baseSha": "c358d251cabd42e1b394b74e33bdf4e7284bda3e",
       "diagnostics": {
@@ -120,7 +120,7 @@
           "tsErrorCount": 205,
           "eslintErrorCount": 1707,
           "tsOutputBytes": 42020,
-          "eslintOutputBytes": 350765
+          "eslintOutputBytes": 340151
         },
         "base": {
           "typeCheckExit": 2,
@@ -128,32 +128,32 @@
           "tsErrorCount": 202,
           "eslintErrorCount": 1698,
           "tsOutputBytes": 41175,
-          "eslintOutputBytes": 349095
+          "eslintOutputBytes": 338597
         },
         "tsErrorsAdded": 3,
         "eslintErrorsDelta": 9
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6437,
+          "exitCode": 0,
+          "durationMs": 19706,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:16528) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-60b3db220841f598df925268722a6712.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6457,
+          "exitCode": 0,
+          "durationMs": 19638,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:6184) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-5663d55fb7692e5984710b1fa93a9fbc.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6500,
+          "exitCode": 0,
+          "durationMs": 13109,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:20132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 779ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-85f73bf944ea7322d6b7982eda21559b.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\web\n",
+          "stderrTail": ""
         }
       }
     },
@@ -170,7 +170,7 @@
           "tsErrorCount": 208,
           "eslintErrorCount": 1706,
           "tsOutputBytes": 43949,
-          "eslintOutputBytes": 350223
+          "eslintOutputBytes": 339975
         },
         "base": {
           "typeCheckExit": 2,
@@ -178,32 +178,32 @@
           "tsErrorCount": 205,
           "eslintErrorCount": 1707,
           "tsOutputBytes": 42020,
-          "eslintOutputBytes": 350399
+          "eslintOutputBytes": 340151
         },
         "tsErrorsAdded": 3,
         "eslintErrorsDelta": -1
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6388,
+          "exitCode": 0,
+          "durationMs": 19208,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:18456) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-652f676bb301ed83ff158d7aac98decd.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6448,
+          "exitCode": 0,
+          "durationMs": 18966,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:18520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-fd9763a9ee494d816e3748c31f453f85.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6437,
+          "exitCode": 0,
+          "durationMs": 11856,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:7652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 697ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-5ef5910f214938fa04d596d21fff53b5.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\web\n",
+          "stderrTail": ""
         }
       }
     },
@@ -220,7 +220,7 @@
           "tsErrorCount": 211,
           "eslintErrorCount": 1707,
           "tsOutputBytes": 44472,
-          "eslintOutputBytes": 348779
+          "eslintOutputBytes": 340178
         },
         "base": {
           "typeCheckExit": 2,
@@ -228,32 +228,32 @@
           "tsErrorCount": 208,
           "eslintErrorCount": 1706,
           "tsOutputBytes": 43949,
-          "eslintOutputBytes": 348576
+          "eslintOutputBytes": 339975
         },
         "tsErrorsAdded": 3,
         "eslintErrorsDelta": 1
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6328,
+          "exitCode": 0,
+          "durationMs": 19630,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:10964) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-88a348388dfbe25043a48b063fb66c92.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6310,
+          "exitCode": 0,
+          "durationMs": 19351,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:21916) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-682d94e88213de4bccef50e421ceea88.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6353,
+          "exitCode": 0,
+          "durationMs": 12210,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:12656) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 720ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-f16deecd8d57cf4a6ecfc1835f958a5f.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\web\n",
+          "stderrTail": ""
         }
       }
     },
@@ -270,7 +270,7 @@
           "tsErrorCount": 209,
           "eslintErrorCount": 1707,
           "tsOutputBytes": 43744,
-          "eslintOutputBytes": 350243
+          "eslintOutputBytes": 340178
         },
         "base": {
           "typeCheckExit": 2,
@@ -278,36 +278,36 @@
           "tsErrorCount": 211,
           "eslintErrorCount": 1707,
           "tsOutputBytes": 44472,
-          "eslintOutputBytes": 350243
+          "eslintOutputBytes": 340178
         },
         "tsErrorsAdded": -2,
         "eslintErrorsDelta": 0
       },
       "exports": {
         "android": {
-          "exitCode": 1,
-          "durationMs": 6202,
+          "exitCode": 0,
+          "durationMs": 19168,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\android",
-          "stdoutTail": "Starting Metro Bundler\nAndroid ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:10900) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "droid.mjs|.native.mjs|.mjs|.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.cjs|.native.cjs|.cjs|.android.scss|.native.scss|.scss|.android.sass|.native.sass|.sass|.android.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-aec559adab1d7e1d1acf47faaefbb389.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\android\n",
+          "stderrTail": ""
         },
         "ios": {
-          "exitCode": 1,
-          "durationMs": 6485,
+          "exitCode": 0,
+          "durationMs": 19080,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\ios",
-          "stdoutTail": "Starting Metro Bundler\niOS ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:10508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n",
-          "stderrTail": "ts|.ios.tsx|.native.tsx|.tsx|.ios.mjs|.native.mjs|.mjs|.ios.js|.native.js|.js|.ios.jsx|.native.jsx|.jsx|.ios.json|.native.json|.json|.ios.cjs|.native.cjs|.cjs|.ios.scss|.native.scss|.scss|.ios.sass|.native.sass|.sass|.ios.css|.native.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-9062b77596ef128430fc1ef1122c3f2e.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\ios\n",
+          "stderrTail": ""
         },
         "web": {
-          "exitCode": 1,
-          "durationMs": 6359,
+          "exitCode": 0,
+          "durationMs": 11658,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\web",
-          "stdoutTail": "Starting Metro Bundler\nWeb ..\\..\\node_modules\\expo\\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)\n| (node:8848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.\n| (Use `node --trace-warnings ...` to show where the warning was created)\nWeb Bundling failed 684ms ..\\..\\node_modules\\expo\\AppEntry.js (1 module)\n",
-          "stderrTail": ":\\Users\\kanne\\dev\\Eduvijna\\node_modules\\expo\\AppEntry.js: \n\nNone of these files exist:\n  * ..\\..\\App(.web.ts|.ts|.web.tsx|.tsx|.web.mjs|.mjs|.web.js|.js|.web.jsx|.jsx|.web.json|.json|.web.cjs|.cjs|.web.scss|.scss|.web.sass|.sass|.web.css|.css)\n  * ..\\..\\App\n\u001b[0m \u001b[90m 1 |\u001b[39m \u001b[36mimport\u001b[39m registerRootComponent \u001b[36mfrom\u001b[39m \u001b[32m'expo/src/launch/registerRootComponent'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m 2 |\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 3 |\u001b[39m \u001b[36mimport\u001b[39m \u001b[33mApp\u001b[39m \u001b[36mfrom\u001b[39m \u001b[32m'../../App'\u001b[39m\u001b[33m;\u001b[39m\n \u001b[90m   |\u001b[39m                  \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 4 |\u001b[39m\n \u001b[90m 5 |\u001b[39m registerRootComponent(\u001b[33mApp\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 6 |\u001b[39m\u001b[0m\n\nImport stack:\n\n ..\\..\\node_modules\\expo\\AppEntry.js\n | import \"../../App\"\n\n \n | import \"./node_modules/expo/AppEntry.js\"\n\n"
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-a83735d75c1a4f3ab569026def500b3a.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\web\n",
+          "stderrTail": ""
         }
       }
     }
   ],
-  "status": "export_failures",
+  "status": "passed",
   "error": null
 }
