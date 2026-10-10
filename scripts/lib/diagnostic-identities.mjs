@@ -42,3 +42,30 @@ export function diffIdentities(headIdentities, baseIdentities) {
   const base = new Set(baseIdentities);
   return headIdentities.filter((id) => !base.has(id));
 }
+
+export function parseEslintJsonReport(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const identities = new Set();
+  for (const fileResult of parsed) {
+    const filePath = normalizeRelativeFilePath(fileResult.filePath || '');
+    for (const message of fileResult.messages ?? []) {
+      if (message.severity !== 2) {
+        continue;
+      }
+      const ruleId = message.ruleId || 'eslint/unknown';
+      const text = String(message.message || '').trim();
+      const line = message.line ?? 0;
+      const column = message.column ?? 0;
+      identities.add(`${filePath}|${ruleId}|${text}|${line}:${column}`);
+    }
+  }
+  return [...identities].sort();
+}

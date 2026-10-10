@@ -333,8 +333,33 @@ async function main() {
   const outDir = join(repoRoot, 'docs', 'development', 'e2e-fixtures');
   mkdirSync(outDir, { recursive: true });
   const out = join(outDir, 'technical-verification-redacted.json');
+  const failed = evaluateTechnicalReport(report);
+  report.overallStatus = failed ? 'failed' : 'passed';
   writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
-  console.log(`Wrote ${out} (${report.accounts.length} account(s))`);
+  console.log(`Wrote ${out} (${report.accounts.length} account(s), status=${report.overallStatus})`);
+  process.exit(failed ? 1 : 0);
+}
+
+function evaluateTechnicalReport(report) {
+  if (report.runFixtureError) {
+    return true;
+  }
+  for (const block of report.accounts ?? []) {
+    for (const check of block.checks ?? []) {
+      if (check.name === 'check_record_pending_run_fixture') {
+        if (check.status < 200 || check.status >= 300) {
+          return true;
+        }
+        if (!check.fixtureSessionVisible) {
+          return true;
+        }
+      }
+      if (typeof check.status === 'number' && check.status >= 400 && check.name !== 'notifications_preferences') {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 main().catch((e) => {

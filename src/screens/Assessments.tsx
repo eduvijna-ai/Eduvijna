@@ -150,6 +150,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // For students, use dashboard store data (already loaded by StudentDashboard)
   const [studentRefreshing, setStudentRefreshing] = useState(false);
   const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
+  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
   const studentQuizzes = isStudent
     ? (studentClassified.length > 0 ? studentClassified : storedQuizzes)
     : [];

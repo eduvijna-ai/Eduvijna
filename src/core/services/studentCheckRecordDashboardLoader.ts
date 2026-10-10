@@ -12,6 +12,7 @@ import {
 } from './checkRecordAssignmentIdentity';
 import { fetchPersistedQuizResult } from './quizResultRetrieval.service';
 import {
+  completedRowNeedsHydration,
   countCorrectAnswersFromPersistedResult,
   mapWithConcurrency,
 } from './completedQuizMetrics';
@@ -90,17 +91,12 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
   } as ParsedQuiz;
 }
 
-function completedMetricsSatisfied(quiz: ParsedQuiz): boolean {
-  if (quiz.status !== 'completed') return true;
-  return typeof quiz.correct_answers === 'number';
-}
-
 export async function hydrateCompletedParsedQuizMetrics(
   studentId: string,
   quizzes: ParsedQuiz[],
 ): Promise<ParsedQuiz[]> {
   return mapWithConcurrency(quizzes, HYDRATE_CONCURRENCY, async (quiz) => {
-    if (quiz.status !== 'completed' || completedMetricsSatisfied(quiz)) {
+    if (!completedRowNeedsHydration(quiz)) {
       return quiz;
     }
     const result = await fetchPersistedQuizResult({
@@ -134,7 +130,8 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
   const scores = completed
     .filter((q) => q.score !== null && q.score !== undefined)
     .map((q) => q.score!);
-  const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const avgScore =
+    scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
   const totalTime = completed.reduce(
     (sum, q) => sum + (typeof q.time_spent_seconds === 'number' ? q.time_spent_seconds : 0),
     0,
@@ -146,7 +143,7 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
     completed_count: completed.length,
     pending_count: pending.length,
     missed_count: missed.length,
-    average_score: scores.length > 0 ? Math.round(avgScore) : 0,
+    average_score: avgScore != null ? Math.round(avgScore) : 0,
     total_time_spent: totalTime,
     total_questions_attempted: parsed.reduce((sum, q) => sum + (q.question_count || 0), 0),
     total_classes: uniqueClasses.size,
