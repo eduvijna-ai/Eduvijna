@@ -4,14 +4,36 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export const QUIZ_SUBMISSION_CHECKPOINT_VERSION = 1;
+
+export type QuizSubmissionPersistenceStep =
+  | 'immutable_saved'
+  | 'attempt_ready'
+  | 'attempt_updated'
+  | 'submission_posted';
+
+export interface QuizSubmissionImmutablePayload {
+  version: typeof QUIZ_SUBMISSION_CHECKPOINT_VERSION;
+  userId: string;
+  quizId: string;
+  sessionId: string;
+  selectedAnswers: Record<number, string>;
+  scorePercent: number;
+  questionCount: number;
+  logData: Record<string, unknown>;
+  startedAt: string;
+  finalizedAt: string;
+}
+
 export interface QuizSubmissionCheckpoint {
   userId: string;
   quizId: string;
   sessionId: string;
   attemptId: number;
   startedAt: string;
-  /** Attempt PUT succeeded but submission POST may still be pending */
   attemptUpdated?: boolean;
+  immutable?: QuizSubmissionImmutablePayload;
+  persistenceStep?: QuizSubmissionPersistenceStep;
 }
 
 const KEY_PREFIX = 'eduvijna:assigned_quiz_checkpoint:';

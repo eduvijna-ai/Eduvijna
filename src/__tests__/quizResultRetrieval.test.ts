@@ -47,6 +47,19 @@ describe('fetchPersistedQuizResult', () => {
     expect(mockGet.mock.calls[0][0]).toContain('session_id=session-a');
   });
 
+  it('returns error when student sessionId is missing', async () => {
+    const result = await fetchPersistedQuizResult({
+      quizId: 10,
+      studentId: 's1',
+      isTeacherView: false,
+    });
+    expect(result.status).toBe('error');
+    if (result.status === 'error') {
+      expect(result.retryable).toBe(false);
+    }
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
   it('returns missing for 404 attended-quiz', async () => {
     mockGet.mockRejectedValue({ response: { status: 404 } });
     const result = await fetchPersistedQuizResult({

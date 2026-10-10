@@ -859,6 +859,34 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       let results = localGrading.questionResults;
       let authoritativeCorrect = localGrading.authoritativeCorrectAnswers;
 
+      try {
+        const reconciled = await reconcileResultsWithExplanations(
+          quiz.questions,
+          selectedAnswers,
+          async ({ questionId, questionText, options, selectedAnswer }) =>
+            getQuizExplanation({
+              question_id: questionId,
+              question_text: questionText,
+              options,
+              selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
+            }),
+        );
+        results = reconciled.questionResults;
+        authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
+      } catch {
+        // Explanation failures are tolerable; persist local/authoritative grading below.
+      }
+
+      const questionsForPersistence = quiz.questions.map((question, index) => {
+        const resolved = authoritativeCorrect[index];
+        if (!resolved) return question;
+        return {
+          ...question,
+          correctAnswer: resolved,
+          answer: resolved,
+        };
+      });
+
       const correctCount = Object.values(results).filter(Boolean).length;
 
       const score = Math.round((correctCount / totalQuestions) * 100);
@@ -912,18 +940,23 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         });
 
         try {
-          await submitAssignedQuiz({
+          const submissionResult = await submitAssignedQuiz({
             quizId: quiz.quiz_id,
             studentId: String(user.id),
             sessionId,
-            questions: quiz.questions,
+            questions: questionsForPersistence,
             selectedAnswers,
             startedAtIso: quizStartTime,
             scorePercent: score,
             questionCount: totalQuestions,
+            questionResults: results,
             classroomId,
           });
-          console.log('✅ Quiz submission successful');
+          if (submissionResult.alreadySubmitted) {
+            console.log('ℹ️ Quiz already persisted — loading saved result');
+          } else {
+            console.log('✅ Quiz submission successful');
+          }
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);
           console.error('Error details:', {
@@ -942,24 +975,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         console.log('ℹ️ Public Quiz - skipping backend submission');
       } else {
         console.log('ℹ️ Self-Generated Assessment - skipping backend submission');
-      }
-
-      try {
-        const reconciled = await reconcileResultsWithExplanations(
-          quiz.questions,
-          selectedAnswers,
-          async ({ questionId, questionText, options, selectedAnswer }) =>
-            getQuizExplanation({
-              question_id: questionId,
-              question_text: questionText,
-              options,
-              selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
-            }),
-        );
-        results = reconciled.questionResults;
-        authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
-      } catch {
-        // Explanations are optional for display; persistence already succeeded.
       }
 
       setAuthoritativeCorrectAnswers(authoritativeCorrect);

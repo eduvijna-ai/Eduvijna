@@ -19,8 +19,10 @@ import {
 import { getAttendedQuiz } from './quizResultRetrieval.service';
 import {
   clearQuizSubmissionCheckpoint,
+  QUIZ_SUBMISSION_CHECKPOINT_VERSION,
   readQuizSubmissionCheckpoint,
   writeQuizSubmissionCheckpoint,
+  type QuizSubmissionImmutablePayload,
 } from './quizSubmissionCheckpoint';
 import { buildAssignedQuizLogData } from '../utils/quizLogDataBuilder';
 import { invalidateStudentQuizCaches } from './studentQuizCacheInvalidation';
@@ -61,6 +63,7 @@ export interface SubmitAssignedQuizInput {
   startedAtIso: string;
   scorePercent: number;
   questionCount: number;
+  questionResults: Record<number, boolean>;
   classroomId?: string | null;
 }
 
@@ -92,12 +95,32 @@ async function hasPersistedSubmission(
   }
 }
 
+function assertCheckpointOwner(
+  checkpoint: Awaited<ReturnType<typeof readQuizSubmissionCheckpoint>>,
+  studentId: string,
+): void {
+  if (!checkpoint) return;
+  if (checkpoint.userId !== studentId) {
+    throw new AssignedQuizSubmissionError(
+      'Submission checkpoint belongs to a different account',
+      'validation',
+    );
+  }
+  if (checkpoint.immutable && checkpoint.immutable.userId !== studentId) {
+    throw new AssignedQuizSubmissionError(
+      'Submission checkpoint belongs to a different account',
+      'validation',
+    );
+  }
+}
+
 async function ensureAttemptId(input: SubmitAssignedQuizInput): Promise<number> {
   const checkpoint = await readQuizSubmissionCheckpoint(
     input.studentId,
     input.quizId,
     input.sessionId,
   );
+  assertCheckpointOwner(checkpoint, input.studentId);
 
   if (checkpoint?.attemptUpdated && checkpoint.attemptId) {
     return checkpoint.attemptId;
@@ -197,18 +220,12 @@ export async function submitAssignedQuiz(
       };
     }
 
-    const checkpoint = await readQuizSubmissionCheckpoint(
+    let checkpoint = await readQuizSubmissionCheckpoint(
       input.studentId,
       input.quizId,
       input.sessionId,
     );
-
-    let attemptId: number;
-    if (checkpoint?.attemptUpdated && checkpoint.attemptId) {
-      attemptId = checkpoint.attemptId;
-    } else {
-      attemptId = await ensureAttemptId(input);
-    }
+    assertCheckpointOwner(checkpoint, input.studentId);
 
     const completedAt = new Date().toISOString();
     const timeSpent = Math.max(
@@ -218,10 +235,65 @@ export async function submitAssignedQuiz(
       ),
     );
 
+    let attemptId: number;
+    if (checkpoint?.attemptUpdated && checkpoint.attemptId) {
+      attemptId = checkpoint.attemptId;
+    } else {
+      attemptId = await ensureAttemptId(input);
+      checkpoint = await readQuizSubmissionCheckpoint(
+        input.studentId,
+        input.quizId,
+        input.sessionId,
+      );
+    }
+
+    const log_data =
+      checkpoint?.immutable?.logData ??
+      buildAssignedQuizLogData({
+        questions: input.questions,
+        selectedAnswers: input.selectedAnswers,
+        questionCount: input.questionCount,
+        timeSpentSeconds: timeSpent,
+        attemptId,
+        scorePercent: checkpoint?.immutable?.scorePercent ?? input.scorePercent,
+        questionResults: input.questionResults,
+      });
+
+    const scoreToPersist = checkpoint?.immutable?.scorePercent ?? input.scorePercent;
+
+    if (!checkpoint?.immutable) {
+      const immutable: QuizSubmissionImmutablePayload = {
+        version: QUIZ_SUBMISSION_CHECKPOINT_VERSION,
+        userId: input.studentId,
+        quizId: String(input.quizId),
+        sessionId: input.sessionId,
+        selectedAnswers: input.selectedAnswers,
+        scorePercent: input.scorePercent,
+        questionCount: input.questionCount,
+        logData: log_data,
+        startedAt: input.startedAtIso,
+        finalizedAt: completedAt,
+      };
+      await writeQuizSubmissionCheckpoint({
+        userId: input.studentId,
+        quizId: String(input.quizId),
+        sessionId: input.sessionId,
+        attemptId,
+        startedAt: input.startedAtIso,
+        immutable,
+        persistenceStep: 'immutable_saved',
+      });
+      checkpoint = await readQuizSubmissionCheckpoint(
+        input.studentId,
+        input.quizId,
+        input.sessionId,
+      );
+    }
+
     if (!checkpoint?.attemptUpdated) {
       try {
         await updateQuizAttempt(attemptId, {
-          score: input.scorePercent,
+          score: scoreToPersist,
           status: 'completed',
           completed_at: completedAt,
           time_spent_seconds: timeSpent,
@@ -242,23 +314,17 @@ export async function submitAssignedQuiz(
         attemptId,
         startedAt: input.startedAtIso,
         attemptUpdated: true,
+        immutable: checkpoint?.immutable,
+        persistenceStep: 'attempt_updated',
       });
     }
-
-    const log_data = buildAssignedQuizLogData({
-      questions: input.questions,
-      selectedAnswers: input.selectedAnswers,
-      questionCount: input.questionCount,
-      timeSpentSeconds: timeSpent,
-      attemptId,
-    });
 
     try {
       await createQuizSubmission({
         quiz_id: input.quizId,
         student_id: input.studentId,
         classroom_id: input.sessionId,
-        score: input.scorePercent,
+        score: scoreToPersist,
         summary: 'Auto-scored client-side',
         log_data,
         submitted_at: completedAt,

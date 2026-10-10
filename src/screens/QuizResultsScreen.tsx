@@ -93,10 +93,10 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setLoadError(null);
+    setLoadRetryable(false);
     try {
-      setLoading(true);
-      setLoadError(null);
-      setLoadRetryable(false);
       const result = await fetchPersistedQuizResult({
         quizId,
         sessionId: sessionId ?? passedAttemptData?.session_id,
@@ -104,7 +104,9 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         attemptId,
         isTeacherView: teacherView,
       });
-      if (result.status === 'loading') return;
+      if (result.status === 'loading') {
+        return;
+      }
       if (result.status === 'error') {
         setLoadError(result.message);
         setLoadRetryable(result.retryable);
@@ -123,10 +125,10 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
       setUserAnswers(result.userAnswers);
       setAttemptData(result.logData);
       setPersistedScore(result.score);
-      setLoading(false);
     } catch {
       setLoadError('Could not load quiz results. Please try again.');
       setLoadRetryable(true);
+    } finally {
       setLoading(false);
     }
   };

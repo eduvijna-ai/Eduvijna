@@ -19,8 +19,18 @@ export function buildAssignedQuizLogData(params: {
   questionCount: number;
   timeSpentSeconds: number;
   attemptId: number;
+  scorePercent?: number;
+  questionResults?: Record<number, boolean>;
 }): Record<string, unknown> {
-  const { questions, selectedAnswers, questionCount, timeSpentSeconds, attemptId } = params;
+  const {
+    questions,
+    selectedAnswers,
+    questionCount,
+    timeSpentSeconds,
+    attemptId,
+    scorePercent,
+    questionResults,
+  } = params;
 
   const answers: QuizSubmissionAnswerLogEntry[] = questions.map((question, index) => {
     const selectedText = selectedAnswers[index];
@@ -32,6 +42,12 @@ export function buildAssignedQuizLogData(params: {
 
     const correctRaw = question.correctAnswer ?? question.answer ?? '';
     const userAnswer = letter != null ? String(letter) : null;
+    const isCorrect =
+      questionResults && Object.prototype.hasOwnProperty.call(questionResults, index)
+        ? Boolean(questionResults[index])
+        : selectedText
+          ? isQuizAnswerCorrect(selectedText, question)
+          : false;
 
     return {
       questionNumber: index + 1,
@@ -39,13 +55,14 @@ export function buildAssignedQuizLogData(params: {
       options: question.options,
       correctAnswer: correctRaw,
       userAnswer,
-      isCorrect: selectedText ? isQuizAnswerCorrect(selectedText, question) : false,
+      isCorrect,
     };
   });
 
   return {
     answers,
     questionCount,
+    score: scorePercent,
     time_spent_seconds: timeSpentSeconds,
     attempt_id: attemptId,
     client: { platform: 'eduvijna-mobile' },

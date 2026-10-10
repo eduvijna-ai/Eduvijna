@@ -44,6 +44,7 @@ describe('submitAssignedQuiz', () => {
     startedAtIso: '2026-01-01T00:00:00.000Z',
     scorePercent: 100,
     questionCount: 1,
+    questionResults: { 0: true },
   };
 
   it('persists attempt update and submission with session_id as classroom_id', async () => {
@@ -134,6 +135,35 @@ describe('submitAssignedQuiz', () => {
     );
   });
 
+  it('rejects checkpoint owned by another account', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        userId: 'student-1',
+        quizId: '42',
+        sessionId: 'session-uuid',
+        attemptId: 12,
+        startedAt: input.startedAtIso,
+        immutable: {
+          version: 1,
+          userId: 'other-user',
+          quizId: '42',
+          sessionId: 'session-uuid',
+          selectedAnswers: { 0: '4' },
+          scorePercent: 100,
+          questionCount: 1,
+          logData: { answers: [] },
+          startedAt: input.startedAtIso,
+          finalizedAt: input.startedAtIso,
+        },
+      }),
+    );
+    mockGet.mockRejectedValue({ response: { status: 404 } });
+
+    await expect(submitAssignedQuiz(input)).rejects.toMatchObject({
+      phase: 'validation',
+    });
+  });
+
   it('recovers submission after partial completion (attempt updated only)', async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
       JSON.stringify({
@@ -143,6 +173,30 @@ describe('submitAssignedQuiz', () => {
         attemptId: 12,
         startedAt: input.startedAtIso,
         attemptUpdated: true,
+        immutable: {
+          version: 1,
+          userId: 'student-1',
+          quizId: '42',
+          sessionId: 'session-uuid',
+          selectedAnswers: { 0: '4' },
+          scorePercent: 100,
+          questionCount: 1,
+          logData: {
+            answers: [
+              {
+                questionNumber: 1,
+                question: '2+2?',
+                options: ['3', '4', '5', '6'],
+                correctAnswer: 'B',
+                userAnswer: 'B',
+                isCorrect: true,
+              },
+            ],
+            score: 100,
+          },
+          startedAt: input.startedAtIso,
+          finalizedAt: input.startedAtIso,
+        },
       }),
     );
 
@@ -173,7 +227,12 @@ describe('submitAssignedQuiz', () => {
     mockPut.mockResolvedValue({ data: { id: 3 } });
     mockPost.mockResolvedValue({ data: { submission_id: 1 } });
 
-    await submitAssignedQuiz({ ...input, scorePercent: 0, selectedAnswers: {} });
+    await submitAssignedQuiz({
+      ...input,
+      scorePercent: 0,
+      selectedAnswers: {},
+      questionResults: { 0: false },
+    });
 
     expect(mockPost).toHaveBeenCalledWith(
       '/api/v1/dashboard/quiz-submissions',
