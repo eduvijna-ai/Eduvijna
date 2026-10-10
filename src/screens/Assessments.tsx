@@ -382,6 +382,14 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           return;
         }
 
+        if (viewResult.kind === 'probe_failed') {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
+
         const resultParams = viewResult.resultParams;
         if (onNavigate) {
           onNavigate('QuizResultsScreen', resultParams);
