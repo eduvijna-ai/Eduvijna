@@ -41,7 +41,7 @@ Verify in a **new** PowerShell window after dot-sourcing:
 java -version          # 17.x
 adb version            # 1.0.41+
 emulator -list-avds    # includes Eduvijna_Android_Dev
-sdkmanager --version
+sdkmanager --version          # functions preset --sdk_root when dot-sourced
 avdmanager list avd
 ```
 

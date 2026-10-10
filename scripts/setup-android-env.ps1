@@ -74,6 +74,15 @@ if ($env:Path) {
 
 $env:Path = (($prepend + $existingPath) | Select-Object -Unique) -join ';'
 
+function sdkmanager {
+  & (Join-Path $cmdlineBin 'sdkmanager.bat') --sdk_root=$SdkPath @args
+}
+
+function avdmanager {
+  & (Join-Path $cmdlineBin 'avdmanager.bat') --sdk_root=$SdkPath @args
+}
+
 Write-Host "JAVA_HOME=$env:JAVA_HOME"
 Write-Host "ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
 Write-Host "ANDROID_CMDLINE_TOOLS_BIN=$cmdlineBin"
+Write-Host "Tip: use sdkmanager / avdmanager functions (sdk_root preset) when cmdline-tools are not under latest\."
