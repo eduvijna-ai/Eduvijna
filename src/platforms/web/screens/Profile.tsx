@@ -22,6 +22,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useAuth } from '@core/hooks/useAuth';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
 import type { UserProfile } from '@core/types';
+import { getDisplayName } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 export default function Profile({ navigation }: any) {
@@ -320,7 +321,7 @@ export default function Profile({ navigation }: any) {
               <View style={[styles.statusDot, { backgroundColor: '#4CAF50' }]} />
             </View>
 
-            <Text style={styles.userName}>{formData.full_name || formData.username || 'User'}</Text>
+            <Text style={styles.userName}>{getDisplayName(formData as UserProfile) || 'User'}</Text>
 
             <View style={styles.roleChip}>
               <Text style={styles.roleIcon}>{getRoleIcon(formData.role)}</Text>
