@@ -5,6 +5,7 @@
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
+    "start:device": "node scripts/with-eduvijna-api-env.mjs development -- expo start --dev-client --lan",
     "start:production": "node scripts/with-eduvijna-api-env.mjs production -- expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -68,6 +69,7 @@
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
+    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-doctor": "^1.19.8",
     "expo-document-picker": "~14.0.8",
