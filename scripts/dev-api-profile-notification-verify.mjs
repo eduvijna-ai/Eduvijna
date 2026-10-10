@@ -87,12 +87,27 @@ async function updateProfile(token, body) {
   };
 }
 
+function parseNotificationJsonResponse(text) {
+  if (!text || !String(text).trim()) {
+    return { ok: false, error: 'empty_body' };
+  }
+  try {
+    const data = JSON.parse(text);
+    if (data === null || typeof data !== 'object') {
+      return { ok: false, error: 'unexpected_json_shape' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'malformed_json' };
+  }
+}
+
 async function probeGet(token, path) {
   const res = await fetch(`${getDevApiBase()}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const text = await res.text();
-  const parsed = parseJsonResponse(text);
+  const parsed = parseNotificationJsonResponse(text);
   const data = parsed.ok ? redactDeep(parsed.data) : { parseError: parsed.error };
   return { status: res.status, ok: res.ok && parsed.ok, data };
 }
@@ -213,7 +228,7 @@ async function verifyNotifications(label, username, password) {
   };
 
   const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
-  const historyOk = history.ok;
+  const historyOk = history.status >= 200 && history.status < 300 && history.ok;
   block.apiEvidence.push({
     check: 'notifications_history',
     httpStatus: history.status,

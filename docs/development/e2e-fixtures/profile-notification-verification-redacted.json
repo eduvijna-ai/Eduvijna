@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T18:04:53.090Z",
+  "verifiedAt": "2026-10-10T18:06:44.604Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "profiles": [
     {
@@ -128,7 +128,7 @@
         {
           "check": "notifications_history",
           "httpStatus": 200,
-          "ok": false,
+          "ok": true,
           "notificationCount": 0,
           "sampleTypes": []
         },
@@ -140,7 +140,7 @@
         {
           "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": false
+          "ok": true
         }
       ],
       "clientEvidence": [
@@ -154,7 +154,7 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": false
+      "ok": true
     },
     {
       "accountLabel": "instructor",
@@ -163,7 +163,7 @@
         {
           "check": "notifications_history",
           "httpStatus": 200,
-          "ok": false,
+          "ok": true,
           "notificationCount": 0,
           "sampleTypes": []
         },
@@ -175,7 +175,7 @@
         {
           "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": false
+          "ok": true
         }
       ],
       "clientEvidence": [
@@ -189,7 +189,7 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": false
+      "ok": true
     },
     {
       "accountLabel": "student",
@@ -198,7 +198,7 @@
         {
           "check": "notifications_history",
           "httpStatus": 200,
-          "ok": false,
+          "ok": true,
           "notificationCount": 0,
           "sampleTypes": []
         },
@@ -210,7 +210,7 @@
         {
           "check": "notifications_devices_list",
           "httpStatus": 200,
-          "ok": false
+          "ok": true
         }
       ],
       "clientEvidence": [
@@ -224,9 +224,9 @@
         "reason": "No physical device push receipt in CI matrix"
       },
       "limitations": [],
-      "ok": false
+      "ok": true
     }
   ],
   "erpDeferred": true,
-  "status": "failed"
+  "status": "passed"
 }
