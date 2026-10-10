@@ -103,19 +103,34 @@ import { fetchAnnouncements } from '@core/api/announcements.api'; // ❌ ESLint 
 
 ## Running the Application
 
+> **Workspace setup:** [docs/development/WORKSPACE_SETUP.md](docs/development/WORKSPACE_SETUP.md) · [AGENTS.md](AGENTS.md)  
+> Open `Eduvijna-MobileApps.code-workspace` — **Quiz-React Reference** is read-only.
+
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (reproducible)
+npm ci
 
-# Mobile
-npm run android
-npm run ios
+# API: set EDUVIJNA_API_ENV=development|production (see .env.example).
+# npm scripts below set it explicitly — dev → dev-api.eduvijna.com, prod → eduapi.eduvijna.com.
 
-# Web
+# Development (explicit dev API + dev client)
+npm run start:development
+npm run web:development
+
+# Production-profile local runs (same API as release builds)
+npm run start:production
 npm run web
 
-# Lint
+# Local native (requires Android SDK / Xcode; dev client for start:development)
+npm run android:development
+npm run android
+npm run ios                # macOS/Xcode only
+
+# Validation
+npm run type-check
 npm run lint
+npm test -- --watch=false
+npm run bundle:android
 ```
 
 ## OTA Updates (Expo)
@@ -142,67 +157,18 @@ Using Zustand for global state:
 
 ---
 
-## 🚀 Performance & Caching
+## Performance & Caching
 
-### Redis Fast-Path Caching
+**Current client cache** (`src/core/services/cacheService.ts`): in-memory L1 + AsyncStorage L2.
+There is **no Redis client connection** in the mobile app. Do not configure Redis/Pinecone/database credentials in Expo public env vars.
 
-The application implements a **dual-layer caching strategy** for optimal performance:
+Historical Redis-oriented notes may appear in older docs; see [docs/development/REPOSITORY_BASELINE.md](docs/development/REPOSITORY_BASELINE.md) and ADR-006 in `ARCHITECTURE_DECISIONS.md`.
 
-#### Features
-- **Redis Cache**: Fast-path caching with configurable TTL
-- **Memory Cache**: Fallback in-memory cache for instant access
-- **Circuit Breaker**: Automatic failover when Redis is unavailable
-- **Comprehensive Logging**: Track cache hits, misses, and API calls
-
-#### Configuration
-```bash
-# Redis Configuration (.env)
-EXPO_PUBLIC_REDIS_HOST=redis-prod.eduvijna.com
-EXPO_PUBLIC_REDIS_PORT=6379
-EXPO_PUBLIC_REDIS_PASSWORD=eduvijnaprod@cache
-EXPO_PUBLIC_REDIS_URL=redis://:eduvijnaprod@cache@redis-prod.eduvijna.com:6379/0
-EXPO_PUBLIC_REDIS_ENABLED=true
-EXPO_PUBLIC_REDIS_FAST_PATH_ENABLED=true
-EXPO_PUBLIC_REDIS_CIRCUIT_BREAKER_THRESHOLD=5
-EXPO_PUBLIC_REDIS_CIRCUIT_BREAKER_TIMEOUT=30
-```
-
-#### Cache TTL Settings
-- **Dashboard Summary**: 5 minutes
-- **Quiz Lists**: 10 minutes  
-- **Classrooms**: 30 minutes
-- **Students**: 15 minutes
-- **User Profile**: 1 hour
-- **Quiz Details**: 30 minutes
-
-#### Usage in Code
 ```typescript
-// Automatic caching - just call the API function
+// Automatic caching via cacheService helpers used by dashboard APIs
 const data = await fetchStudentQuizzes({ view_type: 'student_total_details' });
-
-// Force refresh (bypass cache)
 const freshData = await fetchStudentQuizzes({ view_type: 'student_total_details' }, true);
-
-// Clear specific cache
 clearCacheEntry('student_quizzes');
-
-// Clear all cache
-clearApiCache();
-```
-
-#### Cache Logging
-The application logs all cache operations:
-- `🔴 REDIS HIT`: Data served from Redis
-- `💾 MEMORY HIT`: Data served from memory cache  
-- `❌ CACHE MISS`: Cache miss, API call made
-- `🌐 API CALL`: API request initiated
-- `💾 MEMORY SET`: Data cached in memory
-- `🔴 REDIS SET`: Data cached in Redis
-
-#### Testing Cache
-```bash
-# Run cache functionality test
-node test-cache.js
 ```
 
 ---

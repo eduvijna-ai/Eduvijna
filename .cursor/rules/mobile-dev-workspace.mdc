@@ -1,0 +1,15 @@
+---
+description: Eduvijna mobile dev workspace — scope, API env, reference repo restriction
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Eduvijna Mobile — agent constraints
+
+- **Implementation repo only:** commit and change code in Eduvijna (`Eduvijna Mobile` workspace folder). **Quiz-React Reference** is read-only — no commits, pushes, installs, or formatters there.
+- **Backend-only networking:** use HTTPS APIs via `src/core/api/config.ts` / services. Never add direct DB, Redis, Pinecone, or LLM credentials to the app or `EXPO_PUBLIC_*` / Expo `extra`.
+- **API environment:** use `EDUVIJNA_API_ENV=development|production`. Development commands must use `npm run start:development`, `web:development`, or `android:development`. Origins are configured in `app.config.ts` → `expo.extra.API_BASE_URL` (no `/api/v1` suffix).
+- **Preserve production identity:** do not change app IDs, signing, EAS production profile behavior, or CI without explicit task scope.
+- **Validation before handoff:** `npm run type-check`, `npm run lint`, and targeted tests; document failures in `docs/development/WORKSPACE_VALIDATION.md`.
+- **Setup vs features:** workspace/docs/config tasks must not refactor auth, assessments, or screen UX unless specified.

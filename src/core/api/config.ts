@@ -8,17 +8,29 @@ import type { ApiError, AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
 import { initializeCache, closeCache } from '../services/cacheService';
-import Constants from "expo-constants";
-
+import Constants from 'expo-constants';
+import {
+  ApiEnvironmentConfigError,
+  normalizeApiOrigin,
+} from '../config/apiEnvironment';
 
 // Initialize cache service
 initializeCache().catch(error => {
   console.error('❌ Failed to initialize cache service:', error);
 });
 
-// Base API URL - configure via environment variables
-//const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.eduvijna.com';
-export const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'https://eduapi.eduvijna.com';
+function readApiBaseUrlFromExpoExtra(): string {
+  const raw = Constants.expoConfig?.extra?.API_BASE_URL;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    throw new ApiEnvironmentConfigError(
+      'Missing expo.extra.API_BASE_URL. Start Expo with EDUVIJNA_API_ENV=development or production (see docs/development/WORKSPACE_SETUP.md).',
+    );
+  }
+  return normalizeApiOrigin(raw);
+}
+
+/** Origin only (no /api/v1). Set via app.config.ts → expo.extra.API_BASE_URL. */
+export const API_BASE_URL = readApiBaseUrlFromExpoExtra();
 /**
  * Create axios instance with default configuration
  */

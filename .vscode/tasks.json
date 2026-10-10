@@ -1,19 +1,103 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "Build Android",
-			"type": "shell",
-			"command": "npx expo build:android",
-			"args": [],
-			"isBackground": false
-		},
-		{
-			"label": "Build Android with EAS",
-			"type": "shell",
-			"command": "eas build -p android",
-			"args": [],
-			"isBackground": false
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "mobile: start:development",
+      "type": "npm",
+      "script": "start:development",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "build"
+    },
+    {
+      "label": "mobile: web:development",
+      "type": "npm",
+      "script": "web:development",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "mobile: android",
+      "type": "npm",
+      "script": "android:development",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": "build"
+    },
+    {
+      "label": "mobile: type-check",
+      "type": "npm",
+      "script": "type-check",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": ["$tsc"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "mobile: lint",
+      "type": "npm",
+      "script": "lint",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": ["$eslint-stylish"],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "mobile: test",
+      "type": "npm",
+      "script": "test",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "mobile: bundle:android",
+      "type": "npm",
+      "script": "bundle:android",
+      "options": {
+        "cwd": "${workspaceFolder:Eduvijna Mobile}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
 }
+
