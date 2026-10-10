@@ -27,6 +27,12 @@ Branch: `feat/mobile-phase2-student-dashboard-parity` (stacked after PR #18).
 - `src/screens/StudentDashboard.tsx` — consumes shared loader
 - `src/screens/Assessments.tsx` — student refresh → store update
 
+## Assignment classification (PR #19)
+
+- `src/utils/studentAssignmentClassification.ts` — completion vs availability vs `has_time_limit`
+- `checkRecordToQuiz` applies classifier; Assessments Start/Resume use `canStudentStartAssignment` / `canStudentResumeAssignment`
+- Completed rows stay in **Completed** after expiry; expired unfinished → **Missed**; future → **Upcoming** (no Start)
+
 ## Follow-up (not in this pass)
 
 - Point `StudentAnalyticsScreen` at the same merged quiz set for filter chip counts.

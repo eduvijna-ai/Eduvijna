@@ -1,0 +1,471 @@
+{
+  "probedAt": "2026-10-10T09:29:18.233Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "mode": "read_only_record_inspection",
+  "submissionParityExecuted": false,
+  "auth": {
+    "loginContract": "POST /api/v1/auth/login",
+    "payloadFields": [
+      "username_or_email",
+      "password",
+      "remember_me",
+      "device_info",
+      "client_type"
+    ],
+    "role": "student",
+    "identityConfirmed": true
+  },
+  "quizReactParityNotes": {
+    "attemptClassIdEqualsSessionId": true,
+    "submissionClassroomIdEqualsSessionId": true,
+    "order": [
+      "GET quiz-attempts",
+      "PUT quiz-attempts/{id}",
+      "POST quiz-submissions"
+    ]
+  },
+  "steps": [
+    {
+      "name": "auth_profile",
+      "status": 200,
+      "data": {
+        "username": "[redacted]",
+        "email": "[redacted]",
+        "full_name": "[redacted]",
+        "bio": null,
+        "avatar_url": null,
+        "id": "[redacted]",
+        "role": "student",
+        "is_active": true,
+        "is_verified": true,
+        "created_at": "2026-07-08T08:08:02.845145",
+        "updated_at": "2026-07-08T08:08:02.845145",
+        "last_login": null,
+        "phone": "[redacted]",
+        "address": "[redacted]",
+        "date_of_birth": null,
+        "board_id": "[redacted-id]",
+        "grade_id": null,
+        "profile_picture": null,
+        "failed_login_attempts": 0,
+        "locked_until": null,
+        "role_id": "[redacted-id]",
+        "role_name": "student",
+        "school_id": "[redacted-id]"
+      }
+    },
+    {
+      "name": "check-record pending",
+      "status": 200,
+      "data": {
+        "success": true,
+        "result": [
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "medium"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c64e",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-08T09:30:00+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-08T08:31:59.783495+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:3b77b1ed",
+              "start_time": "2026-07-08T08:31:32+00:00",
+              "is_archived": false,
+              "student_level": "middle_school",
+              "has_time_limit": true,
+              "question_count": 4
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c671",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T04:07:40.433+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T04:08:21.549107+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:00614ea4",
+              "start_time": "2026-07-09T04:08:04.199+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c674",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T05:07:32.118+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T05:07:49.83911+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:16960410",
+              "start_time": "2026-07-09T05:07:42.557+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c68a",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T05:11:59.323+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T05:12:24.69608+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:8c771f7f",
+              "start_time": "2026-07-09T05:12:10.169+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c68c",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T05:56:51.022+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T05:57:29.525243+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:1c9a1dfd",
+              "start_time": "2026-07-09T05:57:02.772+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 10
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "worksheet",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c690",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T08:00:18+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T08:00:30.221806+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:aefa10db",
+              "start_time": "2026-07-09T08:00:18+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_3fc60728",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "worksheet",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000c93a",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-07-10T13:52:27.193+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-07-09T13:53:44.122116+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:8240fe0f",
+              "start_time": "2026-07-09T13:53:40.38+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 10
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_4d82c60e",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "beginner"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000ca11",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-08-26T06:36:03+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-08-25T06:36:18.550488+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:bb2a6c54",
+              "start_time": "2026-08-25T06:36:03+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 9
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_4d82c60e",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000ca2f",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-10-10T11:17:17.634+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-10-09T11:19:20.511219+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:e8801a62",
+              "start_time": "2026-10-09T11:17:24.535+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          },
+          {
+            "status": null,
+            "classid": "class_4d82c60e",
+            "student_id": "[redacted]",
+            "quiz_details": {
+              "tags": {
+                "subject": "[redacted]",
+                "difficulty": "intermediate"
+              },
+              "type": "multiple_choice",
+              "topic": "[redacted]",
+              "status": "active",
+              "quiz_id": "ref:0000ca30",
+              "summary": "[redacted]",
+              "duration": 30,
+              "end_time": "2026-10-10T15:20:58.015+00:00",
+              "is_timer": true,
+              "file_name": "[redacted]",
+              "is_active": true,
+              "is_public": false,
+              "questions": "[redacted]",
+              "created_at": "2026-10-09T15:21:23.305218+00:00",
+              "created_by": "[redacted]",
+              "is_deleted": false,
+              "is_dynamic": false,
+              "session_id": "ref:5369c774",
+              "start_time": "2026-10-09T15:21:03.674+00:00",
+              "is_archived": false,
+              "student_level": "elementary",
+              "has_time_limit": true,
+              "question_count": 5
+            }
+          }
+        ],
+        "check_type": "pending",
+        "message": "10 record(s) found"
+      }
+    },
+    {
+      "name": "check-record completed",
+      "status": 200,
+      "data": {
+        "success": true,
+        "result": [],
+        "check_type": "completed",
+        "message": "0 record(s) found"
+      }
+    },
+    {
+      "name": "quiz-attempts list",
+      "operation": "GET",
+      "status": 422,
+      "data": {
+        "code": "validation_failed",
+        "message": "Request validation failed",
+        "detail": [
+          {
+            "type": "int_parsing",
+            "loc": [
+              "query",
+              "quiz_id"
+            ],
+            "msg": "Input should be a valid integer, unable to parse string as an integer",
+            "input": "ref:0000c64e"
+          }
+        ],
+        "status_code": 422,
+        "path": "/api/v1/dashboard/quiz-attempts",
+        "request_id": "f096de44e10aa55753cba2f7f94dae35",
+        "errors": [
+          {
+            "field": "query.quiz_id",
+            "code": "validation_failed",
+            "message": "Input should be a valid integer, unable to parse string as an integer"
+          }
+        ],
+        "timestamp": "2026-10-10T09:29:18.737451Z"
+      }
+    },
+    {
+      "name": "attended-quiz load",
+      "operation": "GET",
+      "status": 422,
+      "data": {
+        "code": "validation_failed",
+        "message": "Request validation failed",
+        "detail": [
+          {
+            "type": "int_parsing",
+            "loc": [
+              "query",
+              "quiz_id"
+            ],
+            "msg": "Input should be a valid integer, unable to parse string as an integer",
+            "input": "ref:0000c64e"
+          }
+        ],
+        "status_code": 422,
+        "path": "/api/v1/dashboard/attended-quiz",
+        "request_id": "31bd42e437d7a0fcef08b298a8d7066e",
+        "errors": [
+          {
+            "field": "query.quiz_id",
+            "code": "validation_failed",
+            "message": "Input should be a valid integer, unable to parse string as an integer"
+          }
+        ],
+        "timestamp": "2026-10-10T09:29:18.786908Z"
+      }
+    }
+  ]
+}

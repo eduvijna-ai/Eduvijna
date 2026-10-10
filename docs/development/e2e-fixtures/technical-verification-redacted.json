@@ -1,7 +1,176 @@
 {
-  "verifiedAt": null,
-  "status": "pending_credentials",
-  "instructions": "Set EDUVIJNA_DEV_USERNAME and EDUVIJNA_DEV_PASSWORD in the local shell (not committed), then run: node scripts/dev-api-technical-verify.mjs",
+  "verifiedAt": "2026-10-10T09:29:15.734Z",
   "apiBase": "https://dev-api.eduvijna.com",
-  "expectedLoginContract": "POST /api/v1/auth/login with username_or_email, password, remember_me, device_info, client_type mobile"
+  "accounts": [
+    {
+      "accountLabel": "admin",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "admin",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "auth_profile",
+          "status": 200,
+          "data": {
+            "role": "admin",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "teacher_dashboard_summary",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 160,
+              "limit": 5,
+              "offset": 0,
+              "view_type": "summary"
+            },
+            "rowCount": 5,
+            "sampleFields": [
+              {
+                "availability_status": "active",
+                "has_time_limit": true,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 5
+              },
+              {
+                "availability_status": "active",
+                "has_time_limit": true,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "classrooms_list",
+          "status": 404,
+          "data": {}
+        }
+      ],
+      "limitations": []
+    },
+    {
+      "accountLabel": "instructor",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "instructor",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "auth_profile",
+          "status": 200,
+          "data": {
+            "role": "instructor",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "teacher_dashboard_summary",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 9,
+              "limit": 5,
+              "offset": 0,
+              "view_type": "summary"
+            },
+            "rowCount": 5,
+            "sampleFields": [
+              {
+                "availability_status": "active",
+                "has_time_limit": true,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 5
+              },
+              {
+                "availability_status": "active",
+                "has_time_limit": true,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 5
+              }
+            ]
+          }
+        },
+        {
+          "name": "classrooms_list",
+          "status": 404,
+          "data": {}
+        }
+      ],
+      "limitations": []
+    },
+    {
+      "accountLabel": "student",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "student",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "auth_profile",
+          "status": 200,
+          "data": {
+            "role": "student",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "check_record_pending",
+          "status": 200,
+          "data": {
+            "success": true,
+            "check_type": "pending",
+            "rowCount": 10,
+            "sampleFields": [
+              {
+                "status": null,
+                "quiz_id": "ref:0000c64e",
+                "session_id": "ref:3b77b1ed",
+                "has_time_limit": true,
+                "availability": "active"
+              },
+              {
+                "status": null,
+                "quiz_id": "ref:0000c671",
+                "session_id": "ref:00614ea4",
+                "has_time_limit": true,
+                "availability": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "check_record_completed",
+          "status": 200,
+          "data": {
+            "success": true,
+            "check_type": "completed",
+            "rowCount": 0,
+            "sampleFields": []
+          }
+        }
+      ],
+      "limitations": [
+        "No sample assignment row for attempt/attended probes."
+      ]
+    }
+  ],
+  "submissionParityExecuted": false,
+  "notes": [
+    "Output is redacted; no tokens, credentials, or personal profile fields.",
+    "Student submission/reopen/recovery matrix requires a disposable assigned quiz (Founder E2E)."
+  ]
 }

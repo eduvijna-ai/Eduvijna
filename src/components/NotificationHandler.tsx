@@ -6,6 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 //import type { Notification } from '@core/api/notifications.api';
@@ -111,10 +112,21 @@ export default function NotificationHandler() {
           student_id: studentId ?? user?.id,
           quiz_title: quizTitle,
         });
-        if (resultParams) {
-          console.log('➡️ Navigating to QuizResultsScreen:', resultParams);
-          (navigationRef.current as any).navigate('QuizResultsScreen', resultParams);
+        if (!resultParams || !sessionId || quizId == null || !user?.id) {
+          break;
         }
+        void executeStudentAssignedQuizViewResults(
+          {
+            studentId: String(studentId ?? user.id),
+            quizId,
+            sessionId: String(sessionId),
+            classroomId: String(sessionId),
+            quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
+          },
+          {
+            navigation: navigationRef.current as { navigate: (screen: string, params?: unknown) => void },
+          },
+        );
         break;
       }
 

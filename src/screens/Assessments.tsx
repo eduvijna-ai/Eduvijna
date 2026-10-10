@@ -32,6 +32,10 @@ import {
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { isStudentQuizOngoing } from '../utils/quizFilters';
+import {
+  canStudentResumeAssignment,
+  canStudentStartAssignment,
+} from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
@@ -310,12 +314,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       // Tab filter for students
       if (selectedTab === 'all') return true;
       
-      // Upcoming: pending quizzes (not started yet) that are available or coming soon
+      // Upcoming: not yet open (no Start)
       if (selectedTab === 'upcoming') {
-        return quiz.status === 'available_soon' || quiz.status === 'pending';
+        return quiz.status === 'upcoming';
       }
       
-      // Ongoing: quizzes that are in progress (started but not completed)
+      // Ongoing: actionable pending / in-progress within active window
       if (selectedTab === 'ongoing') {
         return isStudentQuizOngoing(quiz);
       }
@@ -874,7 +878,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                   {!isTeacher && (
                     <View style={styles.cardFooter}>
                       {/* STUDENT LOGIC: Pending quizzes - Start button */}
-                      {quiz.status === 'pending' && (
+                      {canStudentStartAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: theme.colors.primary }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('start', quiz.quiz_id, quiz)}
@@ -890,7 +894,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       )}
                       
                       {/* STUDENT LOGIC: In-progress quizzes - Resume button */}
-                      {quiz.status === 'in_progress' && (
+                      {canStudentResumeAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: '#06B6D4' }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('resume', quiz.quiz_id, quiz)}

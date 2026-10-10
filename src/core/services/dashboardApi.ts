@@ -12,6 +12,7 @@ import {
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
 import { API_BASE_URL } from '../api/config';
+import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -903,6 +904,17 @@ export function checkRecordToQuiz(
         ? (item as { score?: number }).score
         : null;
 
+  const recordStatus = item.status === null ? 'pending' : item.status;
+  const classified = classifyStudentAssignmentRow({
+    recordStatus,
+    started_at: (d as { started_at?: string }).started_at || null,
+    start_time: d.start_time,
+    end_time: d.end_time,
+    has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
+    now,
+  });
+
   return {
     quiz_id: d.quiz_id,
     quiz_name: d.topic,
@@ -912,7 +924,8 @@ export function checkRecordToQuiz(
     classroom_id: classId,
     classroom_name: classroomName,
     student_id: item.student_id,
-    status: item.status === null ? 'pending' : item.status,
+    status: classified.status,
+    student_status: classified.student_status,
     score: item.status === 'completed' ? completedScore : null,
     question_count: d.question_count,
     time_spent_seconds: null,
@@ -929,7 +942,7 @@ export function checkRecordToQuiz(
     due_date: d.end_time,
     created_at: d.created_at || d.start_time,
     assigned_at: d.created_at || d.start_time,
-    availability_status: d.is_active && endDate && now <= endDate ? 'active' : 'expired',
+    availability_status: classified.availability_status,
     duration: d.duration,
     has_time_limit: d.has_time_limit,
     is_overdue: endDate ? now > endDate : false,

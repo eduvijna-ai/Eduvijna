@@ -8,7 +8,11 @@ import {
   type CheckRecordQuiz,
 } from './dashboardApi';
 import type { DashboardStats } from '../types';
-import { isStudentQuizActive } from '../../utils/quizFilters';
+import {
+  isStudentAssignmentCompleted,
+  isStudentAssignmentMissed,
+  isStudentAssignmentOngoing,
+} from '../../utils/studentAssignmentClassification';
 
 export type StudentDashboardQuizRow = Record<string, unknown> & {
   quiz_id: number;
@@ -65,9 +69,9 @@ export function dedupeStudentDashboardQuizzes(
 export function computeStudentDashboardStats(
   parsed: StudentDashboardQuizRow[],
 ): DashboardStats {
-  const completed = parsed.filter((q) => q.status === 'completed');
-  const pending = parsed.filter(isStudentQuizActive);
-  const missed = parsed.filter((q) => q.status === 'missed');
+  const completed = parsed.filter((q) => isStudentAssignmentCompleted(q));
+  const pending = parsed.filter((q) => isStudentAssignmentOngoing(q));
+  const missed = parsed.filter((q) => isStudentAssignmentMissed(q));
 
   const scores = completed
     .filter((q) => q.score !== null && q.score !== undefined)
@@ -106,10 +110,8 @@ function mapCheckRecordRow(
     ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
     : undefined;
 
-  let status = String(base.status || 'pending');
-  if (status === 'pending' && base.started_at) {
-    status = 'in_progress';
-  }
+  const status = String(base.status || 'pending');
+  const studentStatus = String(base.student_status || status);
 
   return {
     ...base,
@@ -127,7 +129,7 @@ function mapCheckRecordRow(
     is_overdue: isOverdue,
     days_until_due: daysUntilDue,
     session_id: String(base.session_id || ''),
-    student_status: status,
+    student_status: studentStatus,
   } as StudentDashboardQuizRow;
 }
 

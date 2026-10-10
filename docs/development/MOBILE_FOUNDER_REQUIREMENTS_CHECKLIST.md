@@ -8,10 +8,13 @@ Last updated: 2026-10-10 (Cursor). API: `https://dev-api.eduvijna.com` only.
 |----|-------------|----------------|--------|------------------------|-------------|
 | P1 | Assigned quiz PUT→POST + `attended-quiz` | PR #18 services | Codex requested | Jest + parity doc | Pending |
 | P1 | Recovery checkpoint + View Results probe | PR #18 | Codex requested | Jest navigation suites | Pending |
-| P1 | Home Recent Completions → shared resolver | `executeStudentAssignedQuizViewResults` | PR #18 HEAD | `studentHomeViewResults` test | Pending |
+| P1 | Home Recent Completions → shared resolver | `executeStudentAssignedQuizViewResults` | PR #18 | `studentHomeViewResults` test | Pending |
+| P1 | Notifications + OpenQuiz + push graded → shared resolver | `executeStudentAssignedQuizViewResults` | PR #18/#19 | Jest + openQuiz flow | Pending |
 | P1 | Clear stale checkpoint after server persistence | `clearStaleCheckpointWhenPersistedOnServer` | PR #18 HEAD | View-results test expects `removeItem` | Pending |
 | P1 | Trace script (read-only, redacted) | `scripts/compare-assigned-quiz-dev-api.mjs` | — | Run with env creds → `e2e-fixtures/mobile-quiz-react-parity-traces.json` | N/A |
+| P2 | Assignment classifier (window, `has_time_limit`, missed/upcoming) | `studentAssignmentClassification.ts` + `checkRecordToQuiz` | PR #19 | `studentAssignmentClassification.test.ts` | Pending |
 | P2 | Ongoing includes `in_progress` / `started` | `isStudentQuizOngoing` | PR #19 | `quizFilters.ongoing.test.ts` | Pending |
+| P2 | Analytics View Results recovery | `executeStudentAssignedQuizViewResults` in `QuizStudentMyAnalyticsScreen` | PR #19 (not duplicated on #18) | navigation tests | Pending |
 | P2 | `completed_at` never from due date | `checkRecordToQuiz` | PR #19 | `studentDashboardData` test | Pending |
 | P2 | Correct counts only when verified | `formatVerifiedCorrectAnswerCount` | PR #19 | Unit + UI omit | Pending |
 | P2 | Shared dashboard list + refresh | `loadStudentDashboardQuizzes` | PR #19 | Jest | Pending |
@@ -27,7 +30,7 @@ Last updated: 2026-10-10 (Cursor). API: `https://dev-api.eduvijna.com` only.
 |----------|--------|
 | `docs/development/MOBILE_QUIZ_REACT_REQUEST_PARITY.md` | Static parity matrix |
 | `docs/development/e2e-fixtures/mobile-quiz-react-parity-traces.json` | Pending env login (`EDUVIJNA_DEV_USERNAME` / `EDUVIJNA_DEV_PASSWORD`) |
-| `docs/development/e2e-fixtures/technical-verification-redacted.json` | Pending `node scripts/dev-api-technical-verify.mjs` |
+| `docs/development/e2e-fixtures/technical-verification-redacted.json` | Pending `.dev-api-credentials.local.json` or env; run `node scripts/dev-api-technical-verify.mjs` |
 
 ## Auth contract (mobile = Quiz-React)
 

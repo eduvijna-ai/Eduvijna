@@ -19,7 +19,10 @@ import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
 } from './assignedQuizRecovery.service';
-import { loadAssignedQuizDataForSession } from './assessmentQuizStart.service';
+import {
+  executeStudentAssignedQuizViewResults,
+  loadAssignedQuizDataForSession,
+} from './assessmentQuizStart.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -312,15 +315,24 @@ export async function handleOpenQuiz(
         return;
       }
 
-      // A. Already attempted - show results
+      // A. Already attempted — shared recovery-aware View Results resolver
       if (validation.isAttempted) {
-        navigationAdapter.navigate('QuizResultsScreen', {
-          quizId: quizData.quiz_id,
-          sessionId: sessionId || quizData.session_id,
-          studentId: user.id,
-          isTeacherView: false,
-          attemptData: validation.attemptData,
-        });
+        const classroomId =
+          quizData.classroom_id || quizData.class_id || validation.attemptData?.classroom_id || '';
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: String(user.id),
+            quizId: quizData.quiz_id,
+            sessionId: sessionId || quizData.session_id,
+            classroomId: String(classroomId),
+            attemptData: validation.attemptData ?? quizData,
+            quizName: quizData.topic || quizData.title,
+          },
+          {
+            navigation: { navigate: (screen, params) => navigationAdapter.navigate(screen, params) },
+            onNavigate: navigationAdapter.onNavigate,
+          },
+        );
         return;
       }
 

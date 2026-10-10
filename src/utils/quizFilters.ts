@@ -3,12 +3,22 @@
  * Used across multiple screens to maintain consistent time-window and status logic
  */
 
+import {
+  isStudentAssignmentCompleted,
+  isStudentAssignmentMissed,
+  isStudentAssignmentOngoing,
+} from './studentAssignmentClassification';
+
 /**
  * Check if a quiz is within its active time window
  * @param quiz Quiz object with start_time and end_time
  * @returns true if quiz is currently active (started but not ended)
  */
 export const isQuizWithinTimeWindow = (quiz: any): boolean => {
+  if (quiz.has_time_limit === false) {
+    return true;
+  }
+
   const startTime = quiz.start_time;
   const endTime = quiz.end_time;
   
@@ -71,23 +81,9 @@ export const isQuizExpired = (quiz: any): boolean => {
  * @returns true if quiz is active and available for students
  */
 export const isStudentQuizActive = (quiz: any): boolean => {
-  // Must be pending or in-progress (started) status
-  // 'started' means the student opened the quiz but hasn't submitted yet—
-  // it should still appear as actionable in the pending list.
-  if (
-    quiz.status !== 'pending' &&
-    quiz.status !== 'started' &&
-    quiz.status !== 'in_progress'
-  ) {
+  if (!isStudentAssignmentOngoing(quiz)) {
     return false;
   }
-  
-  // Must have active availability status
-  if (quiz.availability_status !== 'active') {
-    return false;
-  }
-  
-  // Must be within time window
   return isQuizWithinTimeWindow(quiz);
 };
 
@@ -101,13 +97,7 @@ export const isStudentQuizOngoing = isStudentQuizActive;
  * @returns true if quiz is upcoming for students
  */
 export const isStudentQuizUpcoming = (quiz: any): boolean => {
-  // Must be pending status
-  if (quiz.status !== 'pending') {
-    return false;
-  }
-  
-  // Must not have started yet
-  return isQuizUpcoming(quiz);
+  return quiz.status === 'upcoming' || quiz.availability_status === 'coming soon';
 };
 
 /**
@@ -151,9 +141,7 @@ export const filterExpiredQuizzes = (quizzes: any[]): any[] => {
  * @returns Filtered array of upcoming quizzes (availability_status = 'coming soon' AND status = 'pending')
  */
 export const filterUpcomingQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(quiz => 
-    quiz.availability_status === 'coming soon' && quiz.status === 'pending'
-  );
+  return quizzes.filter(isStudentQuizUpcoming);
 };
 
 /**
@@ -171,9 +159,7 @@ export const filterPendingQuizzes = (quizzes: any[]): any[] => {
  * @returns Filtered array of completed quizzes (availability_status = 'active' AND status = 'completed')
  */
 export const filterCompletedQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(quiz => 
-    quiz.availability_status === 'active' && quiz.status === 'completed'
-  );
+  return quizzes.filter((quiz) => isStudentAssignmentCompleted(quiz));
 };
 
 /**
@@ -182,7 +168,5 @@ export const filterCompletedQuizzes = (quizzes: any[]): any[] => {
  * @returns Filtered array of missed quizzes (availability_status = 'expired' AND status = 'pending')
  */
 export const filterMissedQuizzes = (quizzes: any[]): any[] => {
-  return quizzes.filter(quiz => 
-    quiz.availability_status === 'expired' && quiz.status === 'pending'
-  );
+  return quizzes.filter((quiz) => isStudentAssignmentMissed(quiz));
 };
