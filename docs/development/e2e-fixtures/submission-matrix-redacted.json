@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T12:39:49.491Z",
+  "verifiedAt": "2026-10-10T12:50:39.137Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "clientApiBaseExpected": "https://dev-api.eduvijna.com",
   "status": "passed",
@@ -41,16 +41,25 @@
       "status": "skipped",
       "ok": false,
       "skipped": true,
-      "limitation": "No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL."
+      "limitation": "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
     }
   ],
   "limitations": [
-    "No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL."
+    "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
   ],
   "comparisons": {
+    "recoveryDecoy": {
+      "submittedSelectedAnswer": "3",
+      "submittedScorePercent": 0,
+      "submittedStartedAtIso": "2099-06-01T12:00:00.000Z",
+      "rejectedInFavorOfCheckpoint": true
+    },
     "checkpointImmutable": {
       "scorePercent": 100,
-      "selectedAnswer": "4"
+      "selectedAnswer": "4",
+      "startedAt": "2026-10-10T12:50:43.284Z",
+      "finalizedAt": "2026-10-10T12:50:43.607Z",
+      "timeSpentSeconds": 0
     },
     "persisted": {
       "score": 100,
@@ -58,8 +67,8 @@
       "questionCount": 1
     },
     "identityFromAttended": {
-      "quiz_id": "ref:d2396d7b",
-      "session_id": "ref:2be8996a",
+      "quiz_id": "ref:d2396d8c",
+      "session_id": "ref:ee70efb6",
       "student_id": "[redacted]"
     },
     "limitations": []

@@ -87,6 +87,39 @@ export async function createDisposableMatrixAssignment(
   const resolvedClassroomId = String(data.classroom_id || classroomId);
   const sessionId = String(data.session_id);
 
+  await linkSharedQuizToClassroom({
+    instructorToken,
+    instructorId,
+    classroomId: resolvedClassroomId,
+    quizId,
+    topic,
+    apiBase,
+    dueDate: data.due_date || end.toISOString(),
+    assignedAt: data.assigned_at || now.toISOString(),
+  });
+
+  return {
+    topic,
+    quizId,
+    sessionId,
+    classroomId: resolvedClassroomId,
+    apiBase,
+  };
+}
+
+export async function linkSharedQuizToClassroom({
+  instructorToken,
+  instructorId,
+  classroomId,
+  quizId,
+  topic,
+  apiBase = getMatrixApiBase(),
+  dueDate,
+  assignedAt,
+}) {
+  const end = dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const assigned = assignedAt || new Date().toISOString();
+
   const assignmentRes = await fetch(`${apiBase}/api/v1/dashboard/quiz-assignments`, {
     method: 'POST',
     headers: {
@@ -95,10 +128,10 @@ export async function createDisposableMatrixAssignment(
     },
     body: JSON.stringify({
       quiz_id: quizId,
-      class_id: resolvedClassroomId,
+      class_id: classroomId,
       assigned_by: instructorId,
-      assigned_at: data.assigned_at || now.toISOString(),
-      due_date: data.due_date || end.toISOString(),
+      assigned_at: assigned,
+      due_date: end,
       is_active: true,
     }),
   });
@@ -114,7 +147,7 @@ export async function createDisposableMatrixAssignment(
     },
     body: JSON.stringify({
       quiz_id: quizId,
-      classroom_id: resolvedClassroomId,
+      classroom_id: classroomId,
       instructor_id: instructorId,
       topic,
       date_created: new Date().toISOString(),
@@ -124,14 +157,6 @@ export async function createDisposableMatrixAssignment(
   if (!classroomQuizRes.ok) {
     throw new Error(`classroom_quiz_failed status=${classroomQuizRes.status}`);
   }
-
-  return {
-    topic,
-    quizId,
-    sessionId,
-    classroomId: resolvedClassroomId,
-    apiBase,
-  };
 }
 
 /** No documented disposable-delete API; record limitation only (does not mutate production data). */
@@ -143,6 +168,6 @@ export async function cleanupDisposableMatrixAssignment(_instructorToken, fixtur
     ok: false,
     skipped: true,
     limitation:
-      'No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL.',
+      'No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api.',
   };
 }

@@ -10,6 +10,10 @@ import {
   selectAttemptForSubmission,
   QuizAttemptLookupError,
 } from './quizAttemptApi';
+import {
+  buildWorksheetGeneratePayload,
+  type WorksheetGenerateInput,
+} from '../utils/worksheetGeneratePayload';
 
 // ============================================================================
 // QUIZ ATTEMPTS
@@ -618,21 +622,9 @@ export async function evaluateWorksheet(
   return response.data;
 }
 
-export async function generateWorksheet(data: {
-  class: string;
-  subject: string;
-  lesson: string;
-  level: string;
-  itext?: string;
-  count?: number;
-  mcq_count: number;
-  fitb_count: number;
-  tf_count: number;
-  short_q_count: number;
-  matching_count: number;
-  type?: string;
-}): Promise<any> {
-  const response = await apiClient.post('/api/v1/worksheet/generate', data);
+export async function generateWorksheet(data: WorksheetGenerateInput): Promise<any> {
+  const payload = buildWorksheetGeneratePayload(data);
+  const response = await apiClient.post('/api/v1/worksheet/generate', payload);
   return response.data;
 }
 

@@ -144,7 +144,14 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
       throw new Error('fixture_returned_no_questions');
     }
 
-    const input = buildSubmitInput(manifest, questions);
+    const decoyStartedAt = '2099-06-01T12:00:00.000Z';
+    const input = {
+      ...buildSubmitInput(manifest, questions),
+      selectedAnswers: { 0: '3' },
+      scorePercent: 0,
+      questionResults: { 0: false },
+      startedAtIso: decoyStartedAt,
+    };
     const result = await submitAssignedQuiz(input);
     expect(result.alreadySubmitted || result.attemptId).toBeTruthy();
 
@@ -214,13 +221,27 @@ describeLive(`assignedQuizSubmission dev-api live matrix phase ${PHASE}`, () => 
     );
     expect(hit).toBeTruthy();
 
+    const immutable = checkpointBefore?.immutable;
+    expect(immutable?.finalizedAt).toBeTruthy();
+    expect(immutable?.startedAt).toBeTruthy();
+    expect(immutable?.startedAt).not.toBe(decoyStartedAt);
+
     writeFileSync(
       comparisonsPath,
       JSON.stringify(
         {
+          recoveryDecoy: {
+            submittedSelectedAnswer: '3',
+            submittedScorePercent: 0,
+            submittedStartedAtIso: decoyStartedAt,
+            rejectedInFavorOfCheckpoint: true,
+          },
           checkpointImmutable: {
-            scorePercent: checkpointBefore?.immutable?.scorePercent,
-            selectedAnswer: checkpointBefore?.immutable?.selectedAnswers?.[0],
+            scorePercent: immutable?.scorePercent,
+            selectedAnswer: immutable?.selectedAnswers?.[0],
+            startedAt: immutable?.startedAt,
+            finalizedAt: immutable?.finalizedAt,
+            timeSpentSeconds: immutable?.logData?.time_spent_seconds,
           },
           persisted: {
             score: persisted.score,
