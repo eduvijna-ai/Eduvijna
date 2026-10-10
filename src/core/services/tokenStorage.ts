@@ -23,8 +23,9 @@ const KEY_SUFFIX = {
   USER_DATA: 'user_data',
 } as const;
 
+/** SecureStore allows only [A-Za-z0-9._-] — use dot-separated segments, not colons. */
 function scopedStorageKey(suffix: string, environment: ApiEnvironment): string {
-  return `eduvijna:auth:${environment}:${suffix}`;
+  return `eduvijna.auth.${environment}.${suffix}`;
 }
 
 function legacyKeysPresent(): boolean {
