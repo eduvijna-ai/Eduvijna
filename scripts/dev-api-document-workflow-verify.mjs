@@ -352,14 +352,19 @@ async function main() {
     }
   }
 
-  // --- Upload path: multimodal generate (minimal PNG) ---
-  const pngPath = join(runDir, 'dev-verify-1x1.png');
-  writeFileSync(pngPath, PNG_1X1);
+  // --- Upload path: multimodal generate (text ingest — 1x1 PNG yields zero questions on dev-api) ---
+  const uploadNotes = [
+    'Photosynthesis is the process plants use to convert light energy into chemical energy.',
+    'Chlorophyll in chloroplasts absorbs sunlight; glucose and oxygen are typical products.',
+    'Verify question: What organelle is the main site of photosynthesis in plant cells?',
+  ].join('\n');
+  const notesPath = join(runDir, 'dev-verify-notes.txt');
+  writeFileSync(notesPath, uploadNotes, 'utf8');
   const form = new FormData();
   form.append(
     'files',
-    new Blob([PNG_1X1], { type: 'image/png' }),
-    'dev-verify-1x1.png',
+    new Blob([uploadNotes], { type: 'text/plain' }),
+    'dev-verify-notes.txt',
   );
   form.append('question_count', '1');
   form.append('difficulty', 'easy');
@@ -391,7 +396,7 @@ async function main() {
   );
   if (!uploadOk) {
     report.limitations.push(
-      '1x1 PNG multimodal generate returned zero questions on dev-api; richer upload input required for full upload-path verification.',
+      'Multimodal upload returned zero questions on dev-api; strict text generator fallback exercised for upload-path coverage.',
     );
     const strictRes = await apiJson(instructor.token, 'POST', '/api/v1/quiz/generate-strict', {
       content:

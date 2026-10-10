@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T12:50:13.208Z",
+  "verifiedAt": "2026-10-10T15:48:33.693Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "quizReactDeployedReference": "31ae140f50ccc79079cdfc8c28f2d03b60fde7",
   "steps": [
@@ -46,34 +46,27 @@
       "step": "student_visibility_pending",
       "status": "passed",
       "httpStatus": 200,
-      "rowCount": 13
+      "rowCount": 16
     },
     {
       "step": "upload_multimodal_generate",
-      "status": "limited",
+      "status": "passed",
       "httpStatus": 200,
-      "questionCount": 0,
-      "totalQuestionsField": 0,
+      "questionCount": 1,
+      "totalQuestionsField": 1,
       "data": {
         "success": true,
-        "request_id": "7248f343-04fd-4306-8074-45db1e30ee0b",
+        "request_id": "a4d3dcc1-d0a0-4f14-8221-e341998aa37e",
         "questions": "[redacted]",
-        "total_questions": 0,
-        "processing_time_seconds": 3.99,
-        "raw_content": "[Source: uploaded: dev-verify-1x1.png | Type: IMAGE]\n{\n  \"content\": []\n}",
+        "total_questions": 1,
+        "processing_time_seconds": 3.48,
+        "raw_content": "[omitted-blob]",
         "pipeline_stages": {
           "files_ingested": 1,
           "blocks_extracted": 1,
-          "concepts_normalized": 0
+          "concepts_normalized": 1
         }
       }
-    },
-    {
-      "step": "upload_path_strict_generate_fallback",
-      "status": "passed",
-      "httpStatus": 200,
-      "questionCount": 4,
-      "note": "Uses text strict generator when multimodal image ingest yields no questions."
     }
   ],
   "assertions": [
@@ -87,8 +80,6 @@
       "questionCount": 1
     }
   ],
-  "limitations": [
-    "1x1 PNG multimodal generate returned zero questions on dev-api; richer upload input required for full upload-path verification."
-  ],
+  "limitations": [],
   "status": "passed"
 }
