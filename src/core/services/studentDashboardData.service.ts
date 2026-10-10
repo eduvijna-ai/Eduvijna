@@ -4,10 +4,13 @@
 
 import {
   checkRecordToQuiz,
-  fetchQuizCheckRecord,
   fetchStudentClassroomNameLookup,
   type CheckRecordQuiz,
 } from './dashboardApi';
+import {
+  dedupeCheckRecordQuizzes,
+  fetchStudentCheckRecordRows,
+} from './studentCheckRecordDashboardLoader';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 import type { DashboardStats } from '../types';
 import {
@@ -50,25 +53,7 @@ function mergeClassroomNameLookups(
 export function dedupeStudentDashboardQuizzes(
   rows: StudentDashboardQuizRow[],
 ): StudentDashboardQuizRow[] {
-  const quizMap = new Map<string, StudentDashboardQuizRow>();
-  for (const quiz of rows) {
-    const key = `${quiz.quiz_id}_${quiz.session_id}`;
-    const existing = quizMap.get(key);
-    if (!existing) {
-      quizMap.set(key, quiz);
-      continue;
-    }
-    const currentDate = new Date(quiz.created_at).getTime();
-    const existingDate = new Date(existing.created_at).getTime();
-    const shouldReplace =
-      (quiz.status === 'completed' && existing.status !== 'completed') ||
-      (quiz.status === existing.status && currentDate > existingDate) ||
-      ((quiz.attempt_number as number) > (existing.attempt_number as number));
-    if (shouldReplace) {
-      quizMap.set(key, quiz);
-    }
-  }
-  return Array.from(quizMap.values());
+  return dedupeCheckRecordQuizzes(rows) as StudentDashboardQuizRow[];
 }
 
 export function computeStudentDashboardStats(
@@ -147,15 +132,11 @@ function mapCheckRecordRow(
 export async function loadStudentDashboardQuizzes(
   studentId: string,
 ): Promise<{ quizzes: StudentDashboardQuizRow[]; stats: DashboardStats }> {
-  const [pendingRes, completedRes, classroomLookup] = await Promise.all([
-    fetchQuizCheckRecord(studentId, 'pending'),
-    fetchQuizCheckRecord(studentId, 'completed'),
+  const [combined, classroomLookup] = await Promise.all([
+    fetchStudentCheckRecordRows(studentId),
     fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
   ]);
-  const authorizedClassrooms = classroomLookup;
-
-  const combined = [...(pendingRes.result || []), ...(completedRes.result || [])];
-  const classroomNames = mergeClassroomNameLookups(authorizedClassrooms, combined);
+  const classroomNames = mergeClassroomNameLookups(classroomLookup, combined);
   const mapped = combined.map((item) => mapCheckRecordRow(item, classroomNames));
   const parsed = dedupeStudentDashboardQuizzes(mapped);
   const stats = computeStudentDashboardStats(parsed);
