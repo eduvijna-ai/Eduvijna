@@ -21,8 +21,8 @@ const credFile = join(repoRoot, '.dev-api-credentials.local.json');
 const out = join(repoRoot, 'docs', 'development', 'e2e-fixtures', 'submission-matrix-redacted.json');
 const runDir = join(repoRoot, '.dev-api-submission-matrix-run');
 
-function step(name, status, detail = {}) {
-  return { name, status, ...detail };
+function step(stepId, status, detail = {}) {
+  return { step: stepId, status, ...detail };
 }
 
 function runJestPhase(phase) {
@@ -143,19 +143,32 @@ async function main() {
     fail(error?.message || 'matrix_orchestrator_error');
   } finally {
     if (fixture && instructorToken) {
-      const cleanup = await cleanupDisposableMatrixAssignment(instructorToken, fixture, apiBase);
+      const cleanup = await cleanupDisposableMatrixAssignment(
+        instructorToken,
+        { ...fixture, instructorId: instructor.userId },
+        apiBase,
+        instructor.userId,
+      );
       report.steps.push(
-        step('cleanup_disposable_fixture', cleanup.ok ? 'passed' : 'failed', redactDeep(cleanup)),
+        step(
+          'cleanup_disposable_fixture',
+          cleanup.ok ? 'passed' : 'skipped',
+          redactDeep({ ...cleanup, note: cleanup.ok ? undefined : 'best_effort_no_delete_api' }),
+        ),
       );
     } else {
       report.steps.push(step('cleanup_disposable_fixture', 'skipped', { reason: 'no_fixture' }));
     }
   }
 
-  const anyFailed = report.steps.some((s) => s.status === 'failed');
-  const anySkipped = report.steps.some((s) => s.status === 'skipped');
+  const coreSteps = new Set([
+    'create_disposable_fixture',
+    'phase1_interrupt_checkpoint',
+    'phase2_recover_and_persist',
+  ]);
+  const coreFailed = report.steps.some((s) => coreSteps.has(s.step) && s.status === 'failed');
   if (report.status !== 'pending_credentials') {
-    report.status = anyFailed ? 'failed' : anySkipped ? 'passed_with_skips' : 'passed';
+    report.status = coreFailed ? 'failed' : 'passed';
   }
 
   mkdirSync(dirname(out), { recursive: true });

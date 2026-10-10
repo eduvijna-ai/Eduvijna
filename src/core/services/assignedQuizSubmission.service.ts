@@ -16,7 +16,10 @@ import {
   fetchPersistedQuizResult,
   type QuizResultLoadState,
 } from './quizResultRetrieval.service';
-import { isSubmissionPersistedOnServer } from './assignedQuizRecovery.service';
+import {
+  isAssignedQuizRecoveryProbeError,
+  isSubmissionPersistedOnServer,
+} from './assignedQuizRecovery.service';
 import {
   clearQuizSubmissionCheckpointBestEffort,
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
@@ -277,6 +280,12 @@ export async function submitAssignedQuiz(
   inFlightKeys.add(lockKey);
 
   try {
+    const recoveryCheckpoint = await readQuizSubmissionCheckpoint(
+      input.studentId,
+      input.quizId,
+      input.sessionId,
+    );
+
     let already: boolean;
     try {
       already = await isSubmissionPersistedOnServer(
@@ -285,12 +294,19 @@ export async function submitAssignedQuiz(
         input.quizId,
       );
     } catch (probeError: unknown) {
-      throw new AssignedQuizSubmissionError(
-        probeError instanceof Error
-          ? probeError.message
-          : 'Could not verify whether this assignment was already submitted',
-        'validation',
-      );
+      const canResumeFromCheckpoint =
+        recoveryCheckpoint?.immutable &&
+        recoveryCheckpoint.attemptUpdated &&
+        isAssignedQuizRecoveryProbeError(probeError);
+      if (!canResumeFromCheckpoint) {
+        throw new AssignedQuizSubmissionError(
+          probeError instanceof Error
+            ? probeError.message
+            : 'Could not verify whether this assignment was already submitted',
+          'validation',
+        );
+      }
+      already = false;
     }
     if (already) {
       await clearQuizSubmissionCheckpointBestEffort(

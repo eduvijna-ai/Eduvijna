@@ -1,13 +1,58 @@
 {
-  "verifiedAt": "2026-10-10T12:00:53.828Z",
+  "verifiedAt": "2026-10-10T12:13:36.067Z",
   "apiBase": "https://dev-api.eduvijna.com",
-  "status": "passed",
+  "clientApiBaseExpected": "https://dev-api.eduvijna.com",
+  "status": "failed",
   "serviceUnderTest": "submitAssignedQuiz + quizSubmissionCheckpoint (mobile core)",
-  "limitations": [],
-  "jest": {
-    "exitCode": 0,
-    "signal": null,
-    "stdoutTail": "\n> eduvijna@1.0.0 test\n> node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand --config jest.live.config.cjs --runInBand --forceExit\n\n",
-    "stderrTail": "[omitted-blob]"
-  }
+  "steps": [
+    {
+      "step": "load_credentials",
+      "status": "passed"
+    },
+    {
+      "step": "login_accounts",
+      "status": "passed",
+      "roles": [
+        "instructor",
+        "student"
+      ]
+    },
+    {
+      "step": "create_disposable_fixture",
+      "status": "passed",
+      "topic": "[redacted]"
+    },
+    {
+      "step": "phase1_interrupt_checkpoint",
+      "status": "passed",
+      "exitCode": 0,
+      "stdoutTail": "[omitted-blob]",
+      "stderrTail": "[omitted-blob]"
+    },
+    {
+      "step": "phase2_recover_and_persist",
+      "status": "passed",
+      "exitCode": 0,
+      "stdoutTail": "[omitted-blob]",
+      "stderrTail": "[omitted-blob]"
+    },
+    {
+      "step": "cleanup_disposable_fixture",
+      "status": "failed",
+      "ok": false,
+      "attempts": [
+        {
+          "method": "DELETE",
+          "path": "/api/v1/sharequiz/512",
+          "status": 404
+        },
+        {
+          "method": "PATCH",
+          "path": "/api/v1/sharequiz/512",
+          "status": 404
+        }
+      ]
+    }
+  ],
+  "limitations": []
 }
