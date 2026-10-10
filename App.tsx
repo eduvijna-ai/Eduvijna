@@ -208,39 +208,65 @@ function AppContent() {
     };
   }, [isMobile, isAuthenticated, user]); // Include auth state to handle login changes
 
-  // Process pending sessionId after successful login
-  useEffect(() => {
-    if (!isMobile || !isAuthenticated || !pendingSessionId || !user) return;
-
-    const sessionId = pendingSessionId;
-
-    // Clear pending sessionId
-    setPendingSessionId(null);
-
-    // Wait for navigation to be ready after login
-    const waitForNavigation = async () => {
-      if (!navigationRef.current) {
-        setTimeout(waitForNavigation, 100);
+  const resumePendingOpenQuiz = React.useCallback(
+    async (sessionId: string) => {
+      if (!user) {
+        setPendingSessionId(sessionId);
         return;
       }
 
-      // Use unified handler
-      const navigationAdapter = { 
-        navigate: (screen: string, params?: any) => {
-          if (navigationRef.current) {
-            (navigationRef.current as any).navigate(screen, params);
-          }
-        }, 
-        alert: Alert.alert 
+      const webNavigate = (screen: string, params?: any) => {
+        setActiveScreen(screen as WebShellScreen);
+        setNavigationParams(params || {});
       };
-      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch((error) => {
-        console.error('❌ Error in post-login handleOpenQuiz:', error);
-      });
-    };
 
-    // Start waiting for navigation
-    waitForNavigation();
-  }, [isMobile, isAuthenticated, pendingSessionId, user]);
+      const navigationAdapter = isMobile
+        ? {
+            navigate: (screen: string, params?: any) => {
+              if (navigationRef.current) {
+                (navigationRef.current as any).navigate(screen, params);
+              }
+            },
+            alert: Alert.alert,
+          }
+        : {
+            navigate: webNavigate,
+            alert: Alert.alert,
+          };
+
+      if (isMobile) {
+        const waitForNavigation = async () => {
+          if (!navigationRef.current) {
+            setTimeout(waitForNavigation, 100);
+            return;
+          }
+          await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
+            (error) => {
+              console.error('❌ Error in post-login handleOpenQuiz:', error);
+            },
+          );
+        };
+        waitForNavigation();
+        return;
+      }
+
+      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
+        (error) => {
+          console.error('❌ Error in post-login handleOpenQuiz (web):', error);
+        },
+      );
+    },
+    [isMobile, user],
+  );
+
+  // Process pending sessionId after successful login (mobile + web)
+  useEffect(() => {
+    if (!isAuthenticated || !pendingSessionId || !user) return;
+
+    const sessionId = pendingSessionId;
+    setPendingSessionId(null);
+    resumePendingOpenQuiz(sessionId);
+  }, [isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
 
   // Set up auth error navigation callback
   useEffect(() => {
@@ -419,37 +445,34 @@ function AppContent() {
   // Process pending deep link after authentication - REMOVED
   // Now handled directly in deep link handlers above with pendingSessionId
 
-  // Deep link handling for web - detect openquiz route and redirect to mobile
+  // Web /openquiz — queue session for login continuation or open immediately when authenticated
+  const webOpenQuizHandled = useRef(false);
   useEffect(() => {
-    if (!isWeb) return;
+    if (!isWeb || typeof window === 'undefined') return;
+    if (webOpenQuizHandled.current) return;
 
-    const detectAndRedirect = () => {
-      const path = window.location.pathname;
-      const search = window.location.search;
-      
-      // Match /openquiz pattern
-      if (path.includes('/openquiz') && search.includes('session_id')) {
-        // Build deep link URL
-        const deepLinkUrl = `eduvijna://openquiz${search}`;
-        
-        // Try to open mobile app
-        const attemptAppOpen = setTimeout(() => {
-          // If app didn't open after 2 seconds, user likely doesn't have it installed
-          // Continue with web experience - don't redirect to store
-        }, 2000);
-        
-        // Attempt to open the app silently
-        window.location.href = deepLinkUrl;
-        
-        // If user stays on web, clear timeout and continue normally
-        window.addEventListener('blur', () => {
-          clearTimeout(attemptAppOpen);
-        }, { once: true });
-      }
-    };
+    const path = window.location.pathname;
+    const search = window.location.search;
+    if (!path.includes('/openquiz') || !search.includes('session_id')) {
+      return;
+    }
 
-    detectAndRedirect();
-  }, [isWeb]);
+    webOpenQuizHandled.current = true;
+    const deepLinkData = parseDeepLink(`https://app.eduvijna.com/openquiz${search}`);
+    if (deepLinkData?.type !== 'assessment' || !deepLinkData.sessionId) {
+      return;
+    }
+
+    const sessionId = deepLinkData.sessionId;
+    if (!isAuthenticated) {
+      setPendingSessionId(sessionId);
+      return;
+    }
+
+    if (user) {
+      resumePendingOpenQuiz(sessionId);
+    }
+  }, [isWeb, isAuthenticated, user, resumePendingOpenQuiz]);
 
   // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
   // This prevents duplicate listener registration
