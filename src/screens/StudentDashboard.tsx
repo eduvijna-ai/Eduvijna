@@ -25,8 +25,8 @@ import {
   getDisplayName,
 } from '@core/types';
 import { isStudentQuizActive, isStudentQuizUpcoming } from '../utils/quizFilters';
-import { reapplyStudentAssignmentClassification } from '../utils/reapplyStudentAssignmentClassification';
 import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import { useStudentAssignmentDashboardStore } from '@core/store/studentAssignmentDashboard.store';
 import {
   executeStudentAssignedQuizViewResults,
   isAssignedQuizLoadError,
@@ -78,20 +78,26 @@ export default function StudentDashboard({ navigation, route }: Props) {
     total_questions_attempted: 0,
     total_classes: 0,
   });
-  const [allQuizzes, setAllQuizzes] = useState<ParsedQuiz[]>([]);
-  const [classificationNow, setClassificationNow] = useState(() => new Date());
+  const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
+  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
+  const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
   const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
 
-  useStudentAssignmentBoundaryClock(allQuizzes, () => setClassificationNow(new Date()));
+  useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
 
-  const classifiedQuizzes = useMemo(
-    () =>
-      allQuizzes.map((quiz) =>
-        reapplyStudentAssignmentClassification(quiz as any, classificationNow),
-      ) as ParsedQuiz[],
-    [allQuizzes, classificationNow],
-  );
+  const classifiedQuizzes = useStudentAssignmentDashboardStore((s) =>
+    s.getClassifiedQuizzes(),
+  ) as ParsedQuiz[];
+
+  const sharedStats = useStudentAssignmentDashboardStore((s) => s.getStats());
+
+  useEffect(() => {
+    setStats(sharedStats);
+    const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+    setQuizzes(classified as any, classified.length);
+  }, [sharedStats, classificationNow, rawQuizzes, setQuizzes]);
 
   const isWeb = width >= 768;
   const isTablet = width >= 600 && width < 1024;
@@ -120,10 +126,10 @@ export default function StudentDashboard({ navigation, route }: Props) {
       );
 
       if (parsed.length > 0) {
+        setRawQuizzes(parsed as any);
         setStats(dashboardStats);
-        setAllQuizzes(parsed as ParsedQuiz[]);
-        setQuizzes(parsed as any, parsed.length);
       } else {
+        setRawQuizzes([]);
         setStats({
           total_quizzes: 0,
           completed_count: 0,
@@ -134,7 +140,6 @@ export default function StudentDashboard({ navigation, route }: Props) {
           total_questions_attempted: 0,
           total_classes: 0,
         });
-        setAllQuizzes([]);
         setQuizzes([], 0);
       }
     } catch (error: any) {

@@ -20,6 +20,7 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
+import { useStudentAssignmentDashboardStore } from '@core/store/studentAssignmentDashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
 import {
   isAssignedQuizRecoveryProbeError,
@@ -148,14 +149,20 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
   // For students, use dashboard store data (already loaded by StudentDashboard)
   const [studentRefreshing, setStudentRefreshing] = useState(false);
-  const studentQuizzes = isStudent ? storedQuizzes : [];
+  const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
+  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
+  const studentQuizzes = isStudent
+    ? (studentClassified.length > 0 ? studentClassified : storedQuizzes)
+    : [];
 
   const studentRefresh = useCallback(async () => {
     if (!isStudent || !user?.id) return;
     setStudentRefreshing(true);
     try {
       const { quizzes } = await loadStudentDashboardQuizzes(String(user.id));
-      setQuizzes(quizzes as any, quizzes.length);
+      setRawQuizzes(quizzes as any);
+      const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+      setQuizzes(classified as any, classified.length);
     } catch (refreshError) {
       console.error('Assessments student refresh failed:', refreshError);
     } finally {
