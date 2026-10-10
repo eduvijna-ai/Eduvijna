@@ -109,40 +109,59 @@ async function fetchTeacherAttemptBundle(params: {
     completed_at?: string | null;
   };
 
-  let attempt: TeacherAttemptRow | undefined;
   const rows = attempts as TeacherAttemptRow[];
+  const studentMatches = rows.filter(
+    (a) => String(a.student_id) === String(params.studentId),
+  );
 
-  if (params.attemptId) {
-    attempt = rows.find((a) => a.attempt_id === params.attemptId);
+  const sessionMatches = params.sessionId
+    ? studentMatches.filter(
+        (a) =>
+          String(a.session_id) === String(params.sessionId) ||
+          String(a.class_id) === String(params.sessionId),
+      )
+    : studentMatches;
+
+  if (params.sessionId && sessionMatches.length === 0) {
+    return {
+      status: 'error',
+      message: 'No attempt matches the supplied student and assignment session.',
+      retryable: false,
+    };
   }
 
-  if (!attempt && params.sessionId) {
-    const sessionScoped = rows.filter(
-      (a) =>
-        String(a.student_id) === String(params.studentId) &&
-        (String(a.session_id) === String(params.sessionId) ||
-          String(a.class_id) === String(params.sessionId)),
-    );
-    attempt =
-      sessionScoped.find((a) => a.status === 'completed') || sessionScoped[0];
-  }
+  let attempt: TeacherAttemptRow | undefined;
 
-  if (!attempt) {
-    const studentAttempts = rows.filter(
-      (a) => String(a.student_id) === String(params.studentId),
-    );
-    if (params.attemptId) {
-      return { status: 'missing' };
-    }
-    if (studentAttempts.length > 1 && params.sessionId) {
+  if (params.attemptId != null) {
+    attempt = sessionMatches.find((a) => a.attempt_id === params.attemptId);
+    if (!attempt) {
       return {
         status: 'error',
-        message: 'Multiple attempts match this quiz; assignment session is required.',
+        message: 'No attempt matches the supplied attempt identifier.',
         retryable: false,
       };
     }
-    attempt =
-      studentAttempts.find((a) => a.status === 'completed') || studentAttempts[0];
+  } else if (params.sessionId) {
+    const completed = sessionMatches.filter((a) => a.status === 'completed');
+    if (completed.length === 1) {
+      attempt = completed[0];
+    } else if (completed.length > 1) {
+      return {
+        status: 'error',
+        message: 'Multiple completed attempts match this session; specify attemptId.',
+        retryable: false,
+      };
+    } else if (sessionMatches.length === 1) {
+      attempt = sessionMatches[0];
+    } else {
+      return { status: 'missing' };
+    }
+  } else {
+    return {
+      status: 'error',
+      message: 'Assignment session or attempt identifier is required for teacher results.',
+      retryable: false,
+    };
   }
 
   if (!attempt) {

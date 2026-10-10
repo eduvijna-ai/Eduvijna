@@ -21,6 +21,10 @@ import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
 import { checkQuizAttempt, getQuizBySessionId } from '@core/services/sharedApi';
+import {
+  buildRecoveryResumeParams,
+  findPendingSubmissionCheckpoint,
+} from '@core/services/assignedQuizRecovery.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
 
@@ -409,6 +413,25 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             'Connection Error',
             'Could not verify your quiz status. Please check your connection and try again.',
           );
+          return;
+        }
+
+        const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+          studentIdForApi,
+          correctQuizId,
+          correctSessionId,
+        );
+        if (pendingCheckpoint) {
+          const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+          if (navigation) {
+            navigation.navigate('QuizTakingScreen', {
+              quizId: correctQuizId,
+              sessionId: correctSessionId,
+              classroomId: correctClassroomId,
+              quizData: attemptData,
+              submissionRecovery: recovery,
+            });
+          }
           return;
         }
 

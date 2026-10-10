@@ -27,11 +27,22 @@ const baseQuestion = {
   explanation: null,
 };
 
+const asyncStorageStore: Record<string, string> = {};
+
 beforeEach(() => {
   jest.clearAllMocks();
-  (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-  (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
-  (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(undefined);
+  for (const key of Object.keys(asyncStorageStore)) {
+    delete asyncStorageStore[key];
+  }
+  (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
+    asyncStorageStore[key] ?? null,
+  );
+  (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+    asyncStorageStore[key] = value;
+  });
+  (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
+    delete asyncStorageStore[key];
+  });
 });
 
 describe('submitAssignedQuiz', () => {

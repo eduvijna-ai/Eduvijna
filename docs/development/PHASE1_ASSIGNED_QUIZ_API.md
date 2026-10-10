@@ -1,6 +1,6 @@
 # Phase 1 — assigned quiz API contracts (dev-api)
 
-Verified against **`https://dev-api.eduvijna.com`** via mobile client code paths (PR #18). No production deployment.
+Target API: **`https://dev-api.eduvijna.com`**. No production deployment or OTA from this work.
 
 ## Endpoints
 
@@ -11,7 +11,7 @@ Verified against **`https://dev-api.eduvijna.com`** via mobile client code paths
 | `POST` | `/api/v1/dashboard/quiz-attempts` | Create attempt (`status: started`) |
 | `PUT` | `/api/v1/dashboard/quiz-attempts/:id` | Finalize attempt (`score`, `status: completed`, `completed_at`, `time_spent_seconds`) |
 | `POST` | `/api/v1/dashboard/quiz-submissions` | Persist `log_data` + `score` (`classroom_id` = assignment `session_id`) |
-| `GET` | `/api/v1/dashboard/teacher-quizzes` | Teacher result fallback (`view_type=all`, `quiz_id`) |
+| `GET` | `/api/v1/dashboard/teacher-quizzes` | Teacher result load (`view_type=all`, `quiz_id`) with strict student/session/attempt matching |
 
 ## `log_data` shape (client)
 
@@ -35,14 +35,24 @@ Verified against **`https://dev-api.eduvijna.com`** via mobile client code paths
 }
 ```
 
-Grading is finalized (including optional explanation reconciliation) **before** this payload is written to the immutable checkpoint and POSTed.
+Grading is finalized (including optional explanation reconciliation) **before** the immutable checkpoint is written and POSTed. Retries reuse the checkpoint `log_data`, score, `finalizedAt`, and duration — not live UI state.
 
-## Emulator checks (manual)
+## Verification status (sign-off batch)
 
-With Metro on **8082** and dev client connected to **dev-api**:
+| Check | Status | Evidence |
+|-------|--------|----------|
+| Client contract unit/integration tests (`assignedQuizSubmission`, `assignedQuizRecovery.integration`, `quizResultRetrieval`) | **Verified** | Jest run recorded in PR #18 sign-off commit message / CI |
+| `npm run config:verify` / `npm run cli:verify` (stack PRs #16–#17) | **Verified** | Same sign-off batch |
+| Live dev-api assigned-quiz submit + attended-quiz read on device/emulator | **Pending** | Requires authenticated dev client session; not re-run in this doc-only pass |
+| Emulator: force-stop after attempt PUT, reopen recovery (Assessment + OpenQuiz) | **Pending** | Manual; do not restart Founder’s running emulator for doc fixes |
+| Emulator: `alreadySubmitted` shows persisted results (not local recompute) | **Pending** | Manual |
+| TS/lint vs repository baseline | **Pending** | Compare `.setup-baseline-typecheck.json` / `.setup-baseline-lint.json`; passing Jest alone does not prove zero new diagnostics |
 
-1. Complete an assigned quiz attempt — confirm POST `quiz-submissions` includes `log_data.answers` and stable `score`.
-2. Force-stop app after attempt PUT but before POST (checkpoint) — reopen; recovery resubmits without duplicate attempt when possible.
+## Manual emulator checks (when running Metro on **8082**)
+
+1. Complete an assigned quiz — confirm POST `quiz-submissions` includes `log_data.answers` and stable `score`.
+2. Force-stop after attempt PUT but before POST (checkpoint) — reopen from **Assessments** and **OpenQuiz**; recovery should resume submission using saved answers.
 3. Open **Quiz Results** for the same `quiz_id` + `session_id` — UI matches persisted score and answers (including score **0**).
+4. Teacher results: wrong `session_id` or `attemptId` must show error/missing, not another student’s attempt.
 
 Do not upload production documents or modify store signing.

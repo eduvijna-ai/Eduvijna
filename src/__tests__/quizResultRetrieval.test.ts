@@ -3,8 +3,16 @@ import {
   fetchPersistedQuizResult,
   userAnswersFromAttended,
 } from '../core/services/quizResultRetrieval.service';
+import { fetchTeacherQuizzes } from '../core/services/dashboardApi';
+
+jest.mock('../core/services/dashboardApi', () => ({
+  fetchTeacherQuizzes: jest.fn(),
+}));
 
 const mockGet = apiClient.get as jest.MockedFunction<typeof apiClient.get>;
+const mockFetchTeacherQuizzes = fetchTeacherQuizzes as jest.MockedFunction<
+  typeof fetchTeacherQuizzes
+>;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -69,6 +77,93 @@ describe('fetchPersistedQuizResult', () => {
       isTeacherView: false,
     });
     expect(result.status).toBe('missing');
+  });
+
+  describe('teacher view identity matching', () => {
+    const logPayload = {
+      answers: [
+        {
+          questionNumber: 1,
+          question: 'Q?',
+          options: ['a', 'b'],
+          correctAnswer: 'A',
+          userAnswer: 'A',
+          isCorrect: true,
+        },
+      ],
+      score: 90,
+    };
+
+    beforeEach(() => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            attempts: JSON.stringify([
+              {
+                attempt_id: 1,
+                student_id: 'student-a',
+                session_id: 'session-a',
+                status: 'completed',
+                score: 90,
+                log_data: logPayload,
+              },
+              {
+                attempt_id: 2,
+                student_id: 'student-b',
+                session_id: 'session-b',
+                status: 'completed',
+                score: 50,
+                log_data: logPayload,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+    });
+
+    it('loads only when quiz, student, and session align', async () => {
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+      if (result.status === 'ready') {
+        expect(result.score).toBe(90);
+      }
+      expect(mockFetchTeacherQuizzes).toHaveBeenCalledWith(
+        expect.objectContaining({ quiz_id: 99, view_type: 'all' }),
+      );
+    });
+
+    it('errors when session does not match the student attempt', async () => {
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-b',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('session');
+      }
+    });
+
+    it('errors when attemptId does not match session-scoped rows', async () => {
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        studentId: 'student-a',
+        attemptId: 999,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('attempt identifier');
+      }
+    });
   });
 });
 

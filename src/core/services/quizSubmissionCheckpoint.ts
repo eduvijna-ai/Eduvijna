@@ -7,8 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const QUIZ_SUBMISSION_CHECKPOINT_VERSION = 1;
 
 export type QuizSubmissionPersistenceStep =
-  | 'immutable_saved'
   | 'attempt_ready'
+  | 'immutable_saved'
   | 'attempt_updated'
   | 'submission_posted';
 

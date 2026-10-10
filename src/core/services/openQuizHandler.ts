@@ -15,6 +15,10 @@
  */
 
 import { fetchQuizDetailsBySessionId } from './dashboardApi';
+import {
+  buildRecoveryResumeParams,
+  findPendingSubmissionCheckpoint,
+} from './assignedQuizRecovery.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -324,11 +328,31 @@ export async function handleOpenQuiz(
     // 6. STUDENT FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
+      const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+        user.id,
+        quizData.quiz_id,
+        sessionId,
+      );
+      if (pendingCheckpoint) {
+        const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+        const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
+        navigationAdapter.navigate('QuizTakingScreen', {
+          quiz: normalizedQuiz,
+          quizId: normalizedQuiz.quizId,
+          sessionId: normalizedQuiz.sessionId,
+          classroomId: normalizedQuiz.classroomId,
+          quizData: normalizedQuiz,
+          is_public: quizData.is_public,
+          submissionRecovery: recovery,
+        });
+        return;
+      }
+
       // A. Already attempted - show results
       if (validation.isAttempted) {
         navigationAdapter.navigate('QuizResultsScreen', {
           quizId: quizData.quiz_id,
-          sessionId: quizData.session_id,
+          sessionId: sessionId || quizData.session_id,
           studentId: user.id,
           isTeacherView: false,
           attemptData: validation.attemptData,

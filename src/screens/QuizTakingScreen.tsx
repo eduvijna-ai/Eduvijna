@@ -115,6 +115,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     classroomId: routeClassroomId,
     showShareButton,
     showActionButtons,
+    submissionRecovery,
   } = routeParams;
   const source = routeParams?.source;
   /** Wrapper screens (e.g. DocumentUploadQuizScreen) hide the stack header. */
@@ -265,7 +266,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>(
+    () => submissionRecovery?.selectedAnswers ?? {},
+  );
   const [showResults, setShowResults] = useState(false);
 
   // Pre-fill previously saved answers exactly once when restoring from history.
@@ -309,7 +312,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [authoritativeCorrectAnswers, setAuthoritativeCorrectAnswers] = useState<Record<number, string>>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
-  const [quizStartTime] = useState(new Date().toISOString());
+  const [quizStartTime] = useState(
+    () => submissionRecovery?.startedAtIso ?? new Date().toISOString(),
+  );
   const [isLoading, setIsLoading] = useState(!quizSource);
   const [submitting, setSubmitting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -952,9 +957,27 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             questionResults: results,
             classroomId,
           });
-          if (submissionResult.alreadySubmitted) {
-            console.log('ℹ️ Quiz already persisted — loading saved result');
-          } else {
+          if (submissionResult.alreadySubmitted && submissionResult.persistedResult) {
+            const saved = submissionResult.persistedResult;
+            const total = saved.quizData.questions.length;
+            const correct = saved.userAnswers.filter((answer, index) =>
+              answer ? isQuizAnswerCorrect(answer, saved.quizData.questions[index]) : false,
+            ).length;
+            navigation.replace('QuizResultsScreen', {
+              quizId: quiz.quiz_id,
+              sessionId,
+              studentId: String(user.id),
+              quizData: saved.quizData,
+              userAnswers: saved.userAnswers,
+              score: saved.score,
+              totalQuestions: total,
+              correctCount: correct,
+              isTeacherView: false,
+            });
+            setSubmitting(false);
+            return;
+          }
+          if (!submissionResult.alreadySubmitted) {
             console.log('✅ Quiz submission successful');
           }
         } catch (submitError: any) {
