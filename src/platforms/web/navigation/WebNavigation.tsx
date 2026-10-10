@@ -12,17 +12,44 @@ import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import NotificationBell from '../../../components/NotificationBell';
 import NotificationsDropdown from '../../../components/NotificationsDropdown';
 import useNotifications from '@core/hooks/useNotifications';
+import { handleOpenQuiz } from '@core/services/openQuizHandler';
+import { Alert } from 'react-native';
 
+
+type WebNavScreen =
+  | 'dashboard'
+  | 'assessments'
+  | 'analytics'
+  | 'profile'
+  | 'notifications'
+  | 'theme'
+  | 'students'
+  | 'classes'
+  | 'ClassesList'
+  | 'StudentList'
+  | 'Assessments'
+  | 'CreateAIQuizScreen'
+  | 'CreateDocumentQuizScreen'
+  | 'CreateImageQuizScreen'
+  | 'CreateYouTubeQuizScreen'
+  | 'CreateWebsiteQuizScreen'
+  | 'CreateHandwrittenQuizScreen'
+  | 'QuizPreviewScreen'
+  | 'QuizResultsScreen'
+  | 'QuizTakingScreen'
+  | 'QuizStatusScreen'
+  | 'QuizLoadingScreen'
+  | 'ERP';
 
 interface WebNavigationProps {
-  activeScreen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP';
-  onNavigate: (screen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP') => void;
+  activeScreen: WebNavScreen;
+  onNavigate: (screen: WebNavScreen, params?: Record<string, unknown>) => void;
   children: React.ReactNode;
 }
 
 export default function WebNavigation({ activeScreen, onNavigate, children }: WebNavigationProps) {
   const user = useUserStore((state) => state.user);
-  const { logout } = useAuth();
+  const { logout, user: authUser } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const styles = React.useMemo(() => createStyles(theme.colors, isDark), [theme.colors, isDark]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -52,24 +79,35 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     // Navigate based on notification type and data
     const { type, data } = notification;
     const quizId = data?.quiz_id || data?.quizId;
+    const rawSessionId = data?.session_id ?? data?.sessionId;
+    const sessionId =
+      typeof rawSessionId === 'string'
+        ? rawSessionId
+        : typeof rawSessionId === 'number'
+          ? String(rawSessionId)
+          : null;
+
+    const openQuizUser = authUser ?? user;
+    if (sessionId && openQuizUser) {
+      await handleOpenQuiz(sessionId, 'notification', openQuizUser, {
+        navigate: (screen, params) => onNavigate(screen as WebNavScreen, params),
+        alert: Alert.alert,
+      });
+      return;
+    }
 
     switch (type) {
       case 'quiz_assigned':
-        // New quiz assigned - navigate to quiz preview
         if (quizId) {
-          onNavigate('QuizPreviewScreen');
-          // Note: In web, you'd need to pass quizId through state or URL params
-          // For now, navigate to assessments where user can find the quiz
+          onNavigate('QuizPreviewScreen', { quizId });
         } else {
           onNavigate('assessments');
         }
         break;
 
       case 'quiz_graded':
-        // Quiz graded - navigate to results
         if (quizId) {
-          onNavigate('QuizResultsScreen');
-          // Note: In web, you'd need to pass quizId and studentId through state
+          onNavigate('QuizResultsScreen', { quizId });
         } else {
           onNavigate('assessments');
         }
