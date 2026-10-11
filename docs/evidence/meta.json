@@ -2,5 +2,5 @@
   "branch": "integration/mobile-founder-acceptance-20261011",
   "pr": 26,
   "updatedAt": "2026-10-11T17:20:00.000Z",
-  "note": "HEAD git SHA filled by post-commit hook in CI or next push"
+  "headSha": "824714aab20da6adfadaa03860a406dd7cc5f16f"
 }
