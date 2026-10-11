@@ -3,7 +3,7 @@
  * and when restoring saved assessments. Prevents crashes from malformed API payloads.
  */
 
-import { resolveCorrectAnswerLetter } from './answerMappingUtils';
+import { resolveCorrectOptionIndex } from './optionIdentity';
 
 export interface SanitizedQuizQuestion {
   id: string;
@@ -14,6 +14,11 @@ export interface SanitizedQuizQuestion {
   explanation: string | null;
   /** Set when options were shuffled/normalized at generation time (web parity). */
   optionsNormalized?: boolean;
+  correctOptionIndex?: number;
+  optionOrder?: number[];
+  originalOptions?: string[];
+  gradingFrozen?: boolean;
+  attendedIsCorrect?: boolean | null;
 }
 
 /** Unwrap nested { quiz: { question, options, answer } } history format. */
@@ -52,9 +57,17 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
   if (!question || options.length === 0) return null;
 
   const rawCorrect = String(raw.correctAnswer ?? raw.answer ?? '').trim();
-  const letter = resolveCorrectAnswerLetter(rawCorrect, options);
-  if (!letter) return null;
-  const correct = options[letter.charCodeAt(0) - 65] ?? rawCorrect;
+  const correctOptionIndex =
+    typeof raw.correctOptionIndex === 'number'
+      ? raw.correctOptionIndex
+      : resolveCorrectOptionIndex(rawCorrect, options);
+  if (correctOptionIndex == null || correctOptionIndex < 0 || correctOptionIndex >= options.length) {
+    if (typeof raw.attendedIsCorrect !== 'boolean' && !rawCorrect) return null;
+  }
+  const correct =
+    correctOptionIndex != null && correctOptionIndex >= 0 && correctOptionIndex < options.length
+      ? options[correctOptionIndex]
+      : rawCorrect;
 
   return {
     id: String(raw.id ?? `q-${idx}`),
@@ -62,6 +75,19 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
     options,
     correctAnswer: correct,
     answer: correct,
+    correctOptionIndex:
+      correctOptionIndex != null && correctOptionIndex >= 0 && correctOptionIndex < options.length
+        ? correctOptionIndex
+        : undefined,
+    optionOrder: Array.isArray(raw.optionOrder) ? raw.optionOrder : undefined,
+    originalOptions: Array.isArray(raw.originalOptions) ? raw.originalOptions : undefined,
+    gradingFrozen: raw.gradingFrozen === true || raw.isHistoricalResult === true,
+    attendedIsCorrect:
+      typeof raw.attendedIsCorrect === 'boolean'
+        ? raw.attendedIsCorrect
+        : typeof raw.is_correct === 'boolean'
+          ? raw.is_correct
+          : null,
     explanation:
       typeof raw.explanation === 'string'
         ? raw.explanation

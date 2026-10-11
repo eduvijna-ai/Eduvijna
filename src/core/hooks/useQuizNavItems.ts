@@ -244,6 +244,12 @@ export function useQuizNavItems(): UseQuizNavItemsReturn {
   return { items, loading, error, refetch: fetch };
 }
 
+/** Returns whether the signed-in role may open a generation screen from API nav items. */
+export function isQuizNavScreenAllowed(screen: string, items: ResolvedNavItem[]): boolean {
+  if (!screen) return false;
+  return items.some((item) => item.screen === screen);
+}
+
 /** Clear the module-level cache (call on logout) */
 export function clearQuizNavCache() {
   cachedItems = null;

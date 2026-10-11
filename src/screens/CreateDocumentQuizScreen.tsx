@@ -28,7 +28,7 @@ import { useDropdowns } from '../context/DropdownContext';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import { useTheme } from '@context/ThemeContext';
-import MathRenderer from '../components/MathRenderer';
+import EducationalContent from '../components/EducationalContent';
 import useNotifications from '@core/hooks/useNotifications';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
@@ -1603,7 +1603,7 @@ function LegacyCreateDocumentQuizScreen({ navigation: propNavigation, route }: P
                     )}
                   </View>
 
-                  <MathRenderer text={String(question.question ?? '')} colors={theme.colors} />
+                  <EducationalContent content={String(question.question ?? '')} />
 
                   <View style={styles.optionsContainer}>
                     {options.map((option: any, optionIndex: number) => {
@@ -1633,7 +1633,7 @@ function LegacyCreateDocumentQuizScreen({ navigation: propNavigation, route }: P
                             ]}>
                               {optionLetter}
                             </Text>
-                            <MathRenderer text={String(option ?? '')} colors={theme.colors} />
+                            <EducationalContent content={String(option ?? '')} />
                           </View>
                           {allQuestionsVerified && (
                             isCorrectOption ? (

@@ -40,15 +40,27 @@ config.resolver.nodeModulesPaths = [path.join(projectRoot, 'node_modules')];
 
 const originalResolveRequest = config.resolver.resolveRequest;
 
-const zustandCjsMap = {
-  zustand: resolveZustandCjs('index.js'),
-  'zustand/vanilla': resolveZustandCjs('vanilla.js'),
-  'zustand/middleware': resolveZustandCjs('middleware.js'),
-  'zustand/shallow': resolveZustandCjs('shallow.js'),
-  'zustand/context': resolveZustandCjs('context.js'),
-  'zustand/traditional': resolveZustandCjs('traditional.js'),
-  'zustand/react': resolveZustandCjs('react.js'),
-};
+const zustandCjsCandidates = [
+  ['zustand', 'index.js'],
+  ['zustand/vanilla', 'vanilla.js'],
+  ['zustand/middleware', 'middleware.js'],
+  ['zustand/shallow', 'shallow.js'],
+  ['zustand/context', 'context.js'],
+  ['zustand/traditional', 'traditional.js'],
+  ['zustand/react', 'react.js'],
+];
+
+const zustandCjsMap = Object.fromEntries(
+  zustandCjsCandidates
+    .map(([moduleName, relativeFile]) => {
+      try {
+        return [moduleName, resolveZustandCjs(relativeFile)];
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean),
+);
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (

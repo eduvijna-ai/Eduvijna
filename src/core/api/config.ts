@@ -12,15 +12,11 @@ import { useDashboardStore } from '../store/dashboard.store';
 import { initializeCache, closeCache } from '../services/cacheService';
 import Constants from 'expo-constants';
 import { ApiEnvironmentConfigError, normalizeApiOrigin } from '../config/apiEnvironment';
+import { handleApiAuthResponseError } from './apiClientAuthInterceptor';
 import {
-  buildPermissionDeniedError,
-  classifyApiAuthError,
-} from './apiAuthPolicy';
-import {
-  attachSessionEpoch,
+  clearAuthForSession,
   getAuthSessionEpoch,
-  isStaleSession,
-  refreshAccessToken,
+  stampRequestSession,
 } from './apiRefreshCoordinator';
 
 // Initialize cache service
@@ -64,6 +60,7 @@ const refreshClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    stampRequestSession(config as InternalAxiosRequestConfig & { _authSessionEpoch?: number });
     // Skip auth token for login/register endpoints
     const isAuthEndpoint =
       config.url?.includes('/auth/login') ||
@@ -96,100 +93,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiError>) => {
-    const status = error.response?.status;
-    const classified = classifyApiAuthError(error);
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean;
-      _authSessionEpoch?: number;
-    };
-
-    if (classified.isPermissionDenied) {
-      const permErr = buildPermissionDeniedError(classified);
-      (permErr as any).response = error.response;
-      (permErr as any).classified = classified;
-      return Promise.reject(permErr);
+    try {
+      return await handleApiAuthResponseError(error, {
+        refreshClient,
+        apiClient,
+        isLoggingOut: () => isLoggingOut,
+        setLoggingOut: (value) => {
+          isLoggingOut = value;
+        },
+        handleAuthenticationFailure,
+        handleApiError,
+      });
+    } catch (handled) {
+      return Promise.reject(handled);
     }
-
-    if (classified.isTransient) {
-      if (error.message === 'Network Error' || !error.response) {
-        return Promise.reject(new Error('Network connection failed'));
-      }
-    }
-
-    const shouldRefresh =
-      classified.shouldAttemptRefresh &&
-      !isLoggingOut &&
-      originalRequest &&
-      !originalRequest.url?.includes('/auth/login') &&
-      !originalRequest.url?.includes('/auth/register') &&
-      !originalRequest.url?.includes('/auth/refresh');
-
-    if (shouldRefresh) {
-      attachSessionEpoch(originalRequest);
-      const sessionEpoch = originalRequest._authSessionEpoch ?? getAuthSessionEpoch();
-
-      if (isStaleSession(originalRequest)) {
-        return Promise.reject(new Error('Request superseded by account switch'));
-      }
-
-      if (originalRequest._retry) {
-        if (classified.shouldLogoutAfterRefreshFailure && !isLoggingOut) {
-          isLoggingOut = true;
-          try {
-            await handleAuthenticationFailure(sessionEpoch);
-          } finally {
-            setTimeout(() => {
-              isLoggingOut = false;
-            }, 1000);
-          }
-        }
-        const sessionErr = new Error('Session expired');
-        (sessionErr as any).classified = classified;
-        return Promise.reject(sessionErr);
-      }
-
-      originalRequest._retry = true;
-      const token = await refreshAccessToken(refreshClient, sessionEpoch);
-
-      if (!token || sessionEpoch !== getAuthSessionEpoch()) {
-        if (classified.shouldLogoutAfterRefreshFailure && !isLoggingOut) {
-          isLoggingOut = true;
-          try {
-            await handleAuthenticationFailure(sessionEpoch);
-          } finally {
-            setTimeout(() => {
-              isLoggingOut = false;
-            }, 1000);
-          }
-        }
-        return Promise.reject(new Error('Session expired'));
-      }
-
-      if (originalRequest.headers) {
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-      }
-      return apiClient(originalRequest);
-    }
-
-    if (error.message === 'Network Error' || !error.response) {
-      return Promise.reject(new Error('Network connection failed'));
-    }
-    
-    // Handle 500 errors — preserve the server's actual message so screens
-    // can show a meaningful error instead of a generic string.
-    if (status && status >= 500) {
-      const serverMsg =
-        (typeof responseData?.detail === 'string' && responseData.detail) ||
-        (typeof responseData?.message === 'string' && responseData.message) ||
-        (typeof responseData?.error === 'string' && responseData.error) ||
-        'Server error. Please try again later.';
-      const serverError = new Error(serverMsg);
-      (serverError as any).response = error.response; // keep response for callers
-      return Promise.reject(serverError);
-    }
-
-    // Handle other errors
-    return Promise.reject(handleApiError(error));
   }
 );
 
@@ -198,23 +115,21 @@ apiClient.interceptors.response.use(
  * Clears auth data and triggers logout in the store
  * This will cause App.tsx to show the login screen
  */
-async function handleAuthenticationFailure(expectedSessionEpoch?: number): Promise<void> {
-  if (expectedSessionEpoch != null && expectedSessionEpoch !== getAuthSessionEpoch()) {
+async function handleAuthenticationFailure(expectedSessionEpoch: number): Promise<void> {
+  if (expectedSessionEpoch !== getAuthSessionEpoch()) {
     return;
   }
   console.error('🔒 Authentication failed - clearing tokens and logging out');
-  
-  // Clear all stored auth data
-  await TokenStorage.clearAuthData();
-  
-  // Trigger logout in the store
-  // This will cause App.tsx to switch to login screen automatically
+
+  const cleared = await clearAuthForSession(expectedSessionEpoch);
+  if (!cleared || expectedSessionEpoch !== getAuthSessionEpoch()) {
+    return;
+  }
+
   const { logout } = useUserStore.getState();
   logout();
   resetStudentAssignmentDashboardStore(null);
   useDashboardStore.getState().clearData();
-
-  console.log('Logged out - login screen will be displayed');
 }
 
 /**

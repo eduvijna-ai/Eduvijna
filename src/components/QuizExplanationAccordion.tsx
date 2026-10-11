@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import MathRenderer from './MathRenderer';
+import EducationalContent from './EducationalContent';
 import LoadingSpinner from './LoadingSpinner';
 import { getQuizExplanation } from '../core/services/sharedApi';
 import { normalizeSelectedAnswer } from '@core/utils/answerMappingUtils';
@@ -182,11 +182,11 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
             <Text style={styles.correctAnswerHeader}>✅ Correct Answer</Text>
             {displayedCorrectAnswer ? (
               <View style={styles.mathBlock}>
-                <MathRenderer text={displayedCorrectAnswer} colors={{ text: '#065f46', card: '#dcfce7' }} />
+                <EducationalContent content={displayedCorrectAnswer} />
               </View>
             ) : null}
             <View style={styles.mathBlock}>
-              <MathRenderer text={currentExplanation.explanation.correct_reason} colors={{ text: '#065f46', card: '#dcfce7' }} />
+              <EducationalContent content={currentExplanation.explanation.correct_reason} />
             </View>
           </View>
 
@@ -195,7 +195,7 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
             <View key={option} style={styles.individualIncorrectSection}>
               <Text style={styles.incorrectOptionHeader}>❌ {option.replace(/^option\d+\s*:?\s*/i, '')} — why it's wrong</Text>
               <View style={styles.mathBlock}>
-                <MathRenderer text={reason as string} colors={{ text: '#991b1b', card: '#fee2e2' }} />
+                <EducationalContent content={reason as string} />
               </View>
             </View>
           ))}
@@ -205,7 +205,7 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
             <View style={styles.educationalFactSection}>
               <Text style={styles.educationalFactHeader}>💡 Did you know?</Text>
               <View style={styles.mathBlock}>
-                <MathRenderer text={currentExplanation.explanation.educational_fact} colors={{ text: '#1e3a5f', card: '#dbeafe' }} />
+                <EducationalContent content={currentExplanation.explanation.educational_fact} />
               </View>
             </View>
           ) : null}

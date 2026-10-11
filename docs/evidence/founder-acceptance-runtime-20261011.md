@@ -56,13 +56,13 @@ npm run type-check
 
 | # | Area | Status | Notes |
 |---|------|--------|-------|
-| 1 | API auth / logout | **Implemented** | Contract-based 401 refresh vs 403 permission; session epoch on login/logout |
-| 2 | Metro zustand SHA-1 | **Implemented** | `require.resolve` from worktree `node_modules`; `watchFolders` scoped to project |
+| 1 | API auth / logout | **Implemented** | Typed refresh outcomes; session stamp on dispatch; 5xx safe extract; logout only on refresh rejection |
+| 2 | Metro zustand SHA-1 | **Implemented** | Lazy zustand CJS map (skip missing `react.js`); Metro config loads on installed lockfile |
 | 3 | Document Upload tabs | **Implemented** | From Books tab replaces On device; banner removed; library picker on Upload |
 | 4 | From Books parity | **Partial** | Curriculum screen embedded; alignment OFF path / non-curriculum generate still open |
-| 5 | Rich content | **Partial** | `EducationalContent` wrapper; broader surface integration ongoing |
-| 6 | Quiz nav API | **Existing** | `useQuizNavItems`; route guard hardening ongoing |
-| 7 | Answer mapping | **Implemented** | No default `A`; shuffle throws if correct option lost |
+| 5 | Rich content | **Partial** | `EducationalContent` on quiz-taking, worksheet, explanations, document preview |
+| 6 | Quiz nav API | **Partial** | `useQuizNavItems` + `isQuizNavScreenAllowed`; deep-link guard still open |
+| 7 | Answer mapping | **Implemented** | Stable `correctOptionIndex` / permutation; case-sensitive; ambiguous text rejected |
 | 8 | UI journeys | **Partial** | `testID` on assessment/student rows; automation updated |
 
 ## Physical device / push

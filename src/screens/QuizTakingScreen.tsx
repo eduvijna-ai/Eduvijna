@@ -31,7 +31,7 @@ import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
-import MathRenderer from '../components/MathRenderer';
+import EducationalContent from '../components/EducationalContent';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import {
   isQuizAnswerCorrect,
@@ -1322,7 +1322,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           </View>
 
           <View style={styles.questionText}>
-            <MathRenderer text={currentQuestion.question} colors={colors} />
+            <EducationalContent content={currentQuestion.question} />
           </View>
 
           <View style={styles.optionsContainer}>
@@ -1364,7 +1364,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                   <View style={styles.optionText}>
-                    <MathRenderer text={option} colors={colors} />
+                    <EducationalContent content={option} />
                   </View>
                   {!showResults && isSelected && (
                     <Ionicons name="checkmark-circle" size={20} color={colors.primary} />

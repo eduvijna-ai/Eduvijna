@@ -1,6 +1,6 @@
 /**
  * Contract-based API auth error classification (mobile).
- * Permission denials must not clear the session; only genuine auth failures may refresh/logout.
+ * Permission denials must not clear the session; only HTTP 401 on protected routes may refresh.
  */
 
 import type { AxiosError } from 'axios';
@@ -8,11 +8,9 @@ import type { ApiError } from '../types';
 
 export type ApiAuthFailureKind =
   | 'none'
-  | 'access_token_expired'
   | 'access_token_invalid'
   | 'refresh_token_rejected'
-  | 'permission_denied'
-  | 'auth_message_hint';
+  | 'permission_denied';
 
 export type ClassifiedApiError = {
   status: number | undefined;
@@ -20,7 +18,6 @@ export type ClassifiedApiError = {
   detail: string | undefined;
   authFailureKind: ApiAuthFailureKind;
   shouldAttemptRefresh: boolean;
-  shouldLogoutAfterRefreshFailure: boolean;
   isPermissionDenied: boolean;
   isTransient: boolean;
 };
@@ -42,38 +39,18 @@ function extractDetailString(data: unknown): string | undefined {
   }
   if (typeof api.message === 'string') return api.message;
   if (typeof api.error === 'string') return api.error;
-  if (api.error && typeof api.error === 'object' && typeof (api.error as { message?: string }).message === 'string') {
-    return (api.error as { message: string }).message;
-  }
   return undefined;
 }
 
 function extractServerCode(data: unknown): string | undefined {
   if (!data || typeof data !== 'object') return undefined;
   const api = data as Record<string, unknown>;
-  const candidates = [api.code, api.error_code, api.errorCode];
-  for (const c of candidates) {
-    if (typeof c === 'string' && c.trim()) return c.trim();
+  for (const key of ['code', 'error_code', 'errorCode']) {
+    const v = api[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
   }
   return undefined;
 }
-
-const REFRESH_HINTS = [
-  'invalid or missing jwt token',
-  'token expired',
-  'expired token',
-  'signature has expired',
-  'not authenticated',
-  'authentication credentials were not provided',
-];
-
-const PERMISSION_HINTS = [
-  'permission denied',
-  'not allowed',
-  'forbidden',
-  'access denied',
-  'insufficient privileges',
-];
 
 export function classifyApiAuthError(error: AxiosError<ApiError>): ClassifiedApiError {
   const status = error.response?.status;
@@ -84,49 +61,42 @@ export function classifyApiAuthError(error: AxiosError<ApiError>): ClassifiedApi
 
   const isNetwork = error.message === 'Network Error' || !error.response;
   const is5xx = typeof status === 'number' && status >= 500;
-  const isTransient = isNetwork || is5xx;
-
-  if (isTransient) {
+  if (isNetwork || is5xx) {
     return {
       status,
       serverCode,
       detail,
       authFailureKind: 'none',
       shouldAttemptRefresh: false,
-      shouldLogoutAfterRefreshFailure: false,
       isPermissionDenied: false,
       isTransient: true,
     };
   }
 
   if (status === 403) {
-    const permissionByMessage = PERMISSION_HINTS.some((h) => detailLower.includes(h));
     return {
       status,
       serverCode,
       detail,
       authFailureKind: 'permission_denied',
       shouldAttemptRefresh: false,
-      shouldLogoutAfterRefreshFailure: false,
       isPermissionDenied: true,
       isTransient: false,
     };
   }
 
   if (status === 401) {
-    const refreshHint = REFRESH_HINTS.some((h) => detailLower.includes(h));
-    const invalidRefresh =
+    const refreshRejected =
       serverCode?.toLowerCase().includes('refresh') ||
-      detailLower.includes('refresh token') ||
-      detailLower.includes('invalid refresh');
-    if (invalidRefresh) {
+      detailLower.includes('invalid refresh') ||
+      detailLower.includes('refresh token');
+    if (refreshRejected) {
       return {
         status,
         serverCode,
         detail,
         authFailureKind: 'refresh_token_rejected',
         shouldAttemptRefresh: false,
-        shouldLogoutAfterRefreshFailure: true,
         isPermissionDenied: false,
         isTransient: false,
       };
@@ -135,27 +105,8 @@ export function classifyApiAuthError(error: AxiosError<ApiError>): ClassifiedApi
       status,
       serverCode,
       detail,
-      authFailureKind: refreshHint ? 'access_token_expired' : 'access_token_invalid',
+      authFailureKind: 'access_token_invalid',
       shouldAttemptRefresh: true,
-      shouldLogoutAfterRefreshFailure: true,
-      isPermissionDenied: false,
-      isTransient: false,
-    };
-  }
-
-  const messageAuthHint =
-    detailLower.includes('authentication failed') ||
-    detailLower.includes('invalid or missing jwt token') ||
-    detailLower.includes('user id not available');
-
-  if (messageAuthHint) {
-    return {
-      status,
-      serverCode,
-      detail,
-      authFailureKind: 'auth_message_hint',
-      shouldAttemptRefresh: true,
-      shouldLogoutAfterRefreshFailure: true,
       isPermissionDenied: false,
       isTransient: false,
     };
@@ -167,7 +118,6 @@ export function classifyApiAuthError(error: AxiosError<ApiError>): ClassifiedApi
     detail,
     authFailureKind: 'none',
     shouldAttemptRefresh: false,
-    shouldLogoutAfterRefreshFailure: false,
     isPermissionDenied: false,
     isTransient: false,
   };
@@ -177,4 +127,22 @@ export function buildPermissionDeniedError(classified: ClassifiedApiError): Erro
   const err = new Error(classified.detail || 'You do not have permission to access this resource.');
   (err as Error & { code?: string }).code = 'PERMISSION_DENIED';
   return err;
+}
+
+export function buildTransientRefreshError(reason: string): Error {
+  const err = new Error(
+    reason === 'timeout'
+      ? 'Session refresh timed out. Please try again.'
+      : 'Could not refresh your session. Please try again.',
+  );
+  (err as Error & { code?: string }).code = 'AUTH_REFRESH_TRANSIENT';
+  return err;
+}
+
+export function extractResponseData(error: AxiosError<ApiError>): Record<string, unknown> | undefined {
+  const data = error.response?.data;
+  if (data && typeof data === 'object') {
+    return data as Record<string, unknown>;
+  }
+  return undefined;
 }
