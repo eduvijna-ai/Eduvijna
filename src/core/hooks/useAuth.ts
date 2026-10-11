@@ -232,7 +232,7 @@ export function useAuth(): UseAuthReturn {
             'Refresh timeout',
           );
         } catch (refreshError) {
-          const kind = classifyStartupAuthError(refreshError);
+          const kind = classifyStartupAuthError(refreshError, { operation: 'startup_refresh' });
           if (kind === 'credential_rejected') {
             const credEpoch = getOutgoingCredentialEpoch();
             await clearCredentialsAtEpoch(credEpoch);
@@ -268,7 +268,7 @@ export function useAuth(): UseAuthReturn {
         commit.run(() => setError(null));
         await storeUserDataForSession(profileEpoch, JSON.stringify(enrichedUser));
       } catch (apiError) {
-        const kind = classifyStartupAuthError(apiError);
+        const kind = classifyStartupAuthError(apiError, { operation: 'startup_profile' });
         if (kind === 'credential_rejected') {
           const credEpoch = getOutgoingCredentialEpoch();
           await clearCredentialsAtEpoch(credEpoch);
@@ -343,7 +343,7 @@ export function useAuth(): UseAuthReturn {
         commit.run(() => {
           const message = formatAuthError(err);
           setError(message);
-          if (classifyStartupAuthError(err) === 'credential_rejected') {
+          if (classifyStartupAuthError(err, { operation: 'login' }) === 'credential_rejected') {
             setAuthenticated(false);
             setUser(null);
           }

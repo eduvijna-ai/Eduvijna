@@ -16,13 +16,29 @@ mkdirSync(evidence, { recursive: true });
 async function login(page, role) {
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const account = cfg.accounts[role];
-  await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 120000 });
-  await page.waitForSelector('input[placeholder="Email or Username"]', { timeout: 60000 });
-  await page.type('input[placeholder="Email or Username"]', account.username, { delay: 20 });
-  await page.type('input[placeholder="Password"]', account.password, { delay: 20 });
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+  });
+  await page.reload({ waitUntil: 'networkidle2', timeout: 180000 });
+  const emailSel = '[data-testid="login-email-input"], input[placeholder="Email or Username"]';
+  await page.waitForFunction(
+    (sel) => document.querySelector(sel),
+    { timeout: 180000 },
+    emailSel,
+  );
+  await page.click(emailSel, { clickCount: 3 });
+  await page.type(emailSel, account.username, { delay: 15 });
+  const passSel = '[data-testid="login-password-input"], input[placeholder="Password"]';
+  await page.type(passSel, account.password, { delay: 15 });
   await Promise.all([
     page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 120000 }).catch(() => null),
-    page.click('text=Sign in'),
+    page.click('[data-testid="login-submit-button"], button, text=Sign in'),
   ]);
   await new Promise((r) => setTimeout(r, 5000));
   const url = page.url();
@@ -48,7 +64,18 @@ async function main() {
   process.exit(result.loggedIn ? 0 : 1);
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(String(e.message || e));
+  try {
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => null);
+    await page.screenshot({ path: join(evidence, 'login-failure.png'), fullPage: true });
+    const snippet = await page.evaluate(() => document.body?.innerText?.slice(0, 400) ?? '');
+    writeFileSync(join(evidence, 'login-failure.txt'), snippet);
+    await browser.close();
+  } catch {
+    // ignore
+  }
   process.exit(1);
 });

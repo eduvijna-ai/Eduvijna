@@ -453,8 +453,21 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
             size={20} 
             color={theme.colors.primary} 
           />
-          <Text style={[styles.quizHeaderText, { color: theme.colors.text }]}>
-            {quizId ? `Students for: ${quizName}` : `Students in: ${classroomName}`}
+          <Text
+            style={[styles.quizHeaderText, { color: theme.colors.text }]}
+            accessibilityLabel={
+              quizId && classroomName
+                ? `Students for ${quizName} in ${classroomName}`
+                : quizId
+                  ? `Students for ${quizName}`
+                  : `Students in ${classroomName}`
+            }
+          >
+            {quizId
+              ? classroomName
+                ? `Students for: ${quizName} · ${classroomName}`
+                : `Students for: ${quizName}`
+              : `Students in: ${classroomName}`}
           </Text>
         </View>
       ) : null}

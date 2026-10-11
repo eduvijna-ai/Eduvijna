@@ -133,9 +133,13 @@ async function journeyA(labels) {
   }, { dumpName: 'a-01-wait-assessments' });
   path = tabWait.xmlPath || dump('a-01-assessments.xml');
   nodes = parseUiXml(readXmlContent(path));
+  const tabPreference =
+    labels.availability === 'expired' || labels.availability === 'completed' ? 'Expired' : 'All';
   const expiredTab =
-    locateByLabel(nodes, 'Expired \\(9\\)', { minY: 0 }) || locateByLabel(nodes, 'Expired', { minY: 0 });
-  log.steps.push({ step: 'tab_expired', tap: tapTarget(expiredTab) });
+    tabPreference === 'Expired'
+      ? locateByLabel(nodes, /Expired\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, 'Expired', { minY: 0 })
+      : locateByLabel(nodes, 'All', { minY: 0 });
+  log.steps.push({ step: `tab_${tabPreference.toLowerCase()}`, tap: tapTarget(expiredTab) });
   sleep(2500);
 
   const studentsTestId = `assessment-open-students-${fx.quizId}-${fx.sessionId}`;
@@ -226,14 +230,32 @@ async function journeyB(labels) {
 
   path = dump('b-01-analytics.xml');
   nodes = parseUiXml(readXmlContent(path));
-  log.steps.push({ step: 'classes', tap: tapTarget(locateByLabel(nodes, 'Classes', { minY: 0 })) });
+  const classTap =
+    (labels.classLabel && locateByLabel(nodes, labels.classLabel, { minY: 0 })) ||
+    locateByLabel(nodes, '4A-Mathematics', { minY: 0 });
+  log.steps.push({ step: 'open_class', tap: tapTarget(classTap) });
   sleep(2500);
 
-  path = dump('b-02-classes.xml');
+  path = dump('b-02-class-quizzes.xml');
   nodes = parseUiXml(readXmlContent(path));
+  const quizNeedle = labels.searchToken || labels.quizTitle.slice(0, 16);
+  let quizTap = locateByLabel(nodes, quizNeedle, { minY: 0 });
+  if (!quizTap) {
+    const scrolled = locateWithScroll({
+      dumpFn: dump,
+      scrollFn: scrollDown,
+      maxScrolls: 8,
+      dumpNamePrefix: 'b-02-scroll-quiz',
+      locateFn: (xml) => {
+        const n = parseUiXml(xml);
+        return locateByLabel(n, quizNeedle, { minY: 0 });
+      },
+    });
+    quizTap = scrolled.hit;
+  }
   log.steps.push({
     step: 'quiz',
-    tap: tapTarget(locateByLabel(nodes, labels.quizTitle.slice(0, 24).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), { minY: 0 })),
+    tap: tapTarget(quizTap),
   });
   sleep(2500);
 

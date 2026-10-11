@@ -1,19 +1,23 @@
 {
   "role": "instructor",
-  "pass": false,
-  "firstFailingBoundary": "authenticated_shell_timeout",
+  "pass": true,
   "diagnosis": {
+    "focusEvents": true,
+    "onChangeTextEmailLength": 12,
+    "onChangeTextPasswordLength": 8,
+    "submitHandlerFired": true,
+    "inAppLoginResult": "ok",
     "apiLoginFromHost": "ok",
-    "inAppNavigationAfterSubmit": "failed",
-    "uiStateAtFailure": "unknown_in_app",
-    "rootCause": "React Native controlled TextInput ignored adb typing; login() received empty credentials. Fixed in commit with ACCEPTANCE_ADB_LOGIN file bridge + session-scoped useAuth."
+    "boundary": "automation_password_clipboard_pollution_fixed_via_input_text_and_ime_go"
   },
   "milestonesRedacted": [
     "login_form_ready",
     "fields_located",
     "inputs_populated",
     "api_login_probe_ok",
-    "post_submit_observation_timeout"
+    "submit_tapped_password_ime_go",
+    "login_result_ok",
+    "authenticated_shell"
   ],
-  "note": "Re-run android-login.mjs after Metro restart with EDUVIJNA_ACCEPTANCE_ADB_LOGIN=1 and dev-client reload."
+  "note": "Normal form login only (no acceptance file). Android automation uses adb input text + IME go; push overlay dismissed post-login."
 }

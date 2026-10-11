@@ -19,6 +19,7 @@ export type QuizAssignmentStudentListParams = {
   quizName: string;
   sessionId?: string;
   classroomId?: string;
+  classroomName?: string;
   listMode: 'quiz_assignment';
 };
 
@@ -34,6 +35,7 @@ export function buildQuizAssignmentStudentListParams(
       : assignment.class_id
         ? String(assignment.class_id)
         : undefined,
+    classroomName: assignment.classroom_name?.trim() || undefined,
     listMode: 'quiz_assignment',
   };
 }

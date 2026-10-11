@@ -15,7 +15,6 @@ export default (): ExpoConfig => {
       EDUVIJNA_API_ENV: environment,
       GIT_SHA: process.env.EDUVIJNA_GIT_SHA || process.env.GIT_COMMIT || 'unknown',
       GIT_BRANCH: process.env.EDUVIJNA_GIT_BRANCH || 'unknown',
-      ACCEPTANCE_ADB_LOGIN: process.env.EDUVIJNA_ACCEPTANCE_ADB_LOGIN === '1',
     },
   };
 };

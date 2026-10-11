@@ -184,6 +184,25 @@ describe('useAuth lifecycle', () => {
     25000,
   );
 
+  it('profile 403 does not clear stored credentials', async () => {
+    mockGetCurrentUser.mockRejectedValue({
+      response: { status: 403, data: { detail: 'Forbidden' }, headers: {}, statusText: '', config: { url: '/api/v1/auth/profile' } as any },
+      isAxiosError: true,
+      toJSON: () => ({}),
+      name: 'AxiosError',
+      message: '403',
+      config: { url: '/api/v1/auth/profile' },
+    });
+    getUserData.mockResolvedValue(JSON.stringify(sampleUser));
+
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isInitializing).toBe(false));
+
+    expect(clearCredentialsAtEpoch).not.toHaveBeenCalled();
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user?.email).toBe('a@test.com');
+  });
+
   it('explicit credential rejection on refresh clears session once', async () => {
     isTokenExpired.mockResolvedValue(true);
     mockRefresh.mockRejectedValue({

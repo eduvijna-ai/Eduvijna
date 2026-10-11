@@ -108,13 +108,16 @@ function classifyRefreshFailure(error: unknown): 'rejected' | 'transient' {
     return 'transient';
   }
   const status = ax.response.status;
-  if (status === 401 || status === 403) {
+  if (status === 401) {
     return 'rejected';
+  }
+  if (status === 403) {
+    return 'transient';
   }
   if (status === 429 || status >= 500) {
     return 'transient';
   }
-  return 'rejected';
+  return 'transient';
 }
 
 export async function storeTokensForSession(

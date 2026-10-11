@@ -36,29 +36,35 @@ export default function Login() {
       <Image source={require('../../../../assets/eduvijna.png')} style={styles.logo} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       
-      <TextInput 
-        placeholder="Email or Username" 
-        style={styles.input} 
-        value={email} 
+      <TextInput
+        testID="login-email-input"
+        accessibilityLabel="Email or Username"
+        placeholder="Email or Username"
+        style={styles.input}
+        value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
         autoCorrect={false}
         editable={!isLoggingIn}
       />
       
-      <TextInput 
-        placeholder="Password" 
-        secureTextEntry 
-        style={styles.input} 
-        value={password} 
+      <TextInput
+        testID="login-password-input"
+        accessibilityLabel="Password"
+        placeholder="Password"
+        secureTextEntry
+        style={styles.input}
+        value={password}
         onChangeText={setPassword}
         autoCapitalize="none"
         editable={!isLoggingIn}
       />
       
-      <TouchableOpacity 
-        style={[styles.button, isLoggingIn && styles.buttonDisabled]} 
-        onPress={onLogin} 
+      <TouchableOpacity
+        testID="login-submit-button"
+        accessibilityLabel="Sign in"
+        style={[styles.button, isLoggingIn && styles.buttonDisabled]}
+        onPress={onLogin}
         disabled={isLoggingIn}
       >
         {isLoggingIn ? (

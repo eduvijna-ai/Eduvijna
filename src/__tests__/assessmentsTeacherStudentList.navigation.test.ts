@@ -34,7 +34,9 @@ describe('teacher quiz assignment student list navigation', () => {
     expect(paramsA.sessionId).toBe('sess-a');
     expect(paramsB.sessionId).toBe('sess-b');
     expect(paramsA.classroomId).toBe('class-a');
+    expect(paramsA.classroomName).toBe('Grade 8 A');
     expect(paramsB.classroomId).toBe('class-b');
+    expect(paramsB.classroomName).toBe('Grade 8 B');
     expect(paramsA.listMode).toBe('quiz_assignment');
   });
 

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loginDevApi } from './lib/dev-api-auth.mjs';
-import { findLoginFields } from './lib/android-ui-parse.mjs';
+import { findLoginFields, findTapTarget } from './lib/android-ui-parse.mjs';
 import {
   collectUiTexts,
   isEduvijnaAppForeground,
@@ -57,7 +57,19 @@ function adbPaste() {
 }
 
 function clearField() {
-  for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
+  for (let i = 0; i < 96; i++) adb('shell input keyevent 67');
+}
+
+function resetLoginFormFields(fields) {
+  tap(fields.email.x, fields.email.y);
+  sleep(150);
+  clearField();
+  tap(fields.pass.x, fields.pass.y);
+  sleep(150);
+  clearField();
+  tap(fields.email.x, fields.email.y);
+  sleep(150);
+  clearField();
 }
 
 function typeUsername(text) {
@@ -65,26 +77,31 @@ function typeUsername(text) {
   adb(`shell input text "${safe.replace(/"/g, '\\"')}"`);
 }
 
-function typePasswordSecure(password) {
-  adbSetClipboard(password);
-  adbPaste();
+function typeEscapedInput(text) {
+  const escaped = String(text)
+    .replace(/%/g, '%25')
+    .replace(/ /g, '%s')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+  adb(`shell input text "${escaped}"`);
 }
 
-function pushAcceptanceLoginFile(account) {
-  const tmp = join(evidence, `.acceptance-login-${Date.now()}.json`);
-  writeFileSync(tmp, JSON.stringify({ username: account.username, password: account.password }));
-  const remoteSdcard = '/sdcard/acceptance-login.json';
-  execSync(`adb -s ${serial} push "${tmp.replace(/\\/g, '/')}" "${remoteSdcard}"`, { stdio: 'ignore' });
+function typePasswordSecure(password) {
+  adbSetClipboard(password);
+  let clipLen = -1;
   try {
-    adb(`shell run-as com.eduvijna.app cp ${remoteSdcard} files/acceptance-login.json`);
-    adb(`shell rm ${remoteSdcard}`);
-  } finally {
-    try {
-      execSync(`del /f /q "${tmp}"`, { stdio: 'ignore' });
-    } catch {
-      // ignore
+    const got = adb('shell cmd clipboard get-text').trim();
+    clipLen = got.length;
+    if (clipLen !== password.length) {
+      typeEscapedInput(password);
+      return { method: 'input_text', clipLen };
     }
+  } catch {
+    typeEscapedInput(password);
+    return { method: 'input_text', clipLen };
   }
+  adbPaste();
+  return { method: 'clipboard_paste', clipLen };
 }
 
 function readEmailFieldText(xmlPath) {
@@ -136,7 +153,34 @@ async function probeApiLogin(role, account) {
   }
 }
 
+function dismissStartupOverlays() {
+  try {
+    execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, { stdio: 'ignore' });
+  } catch {
+    // ignore
+  }
+  for (let i = 0; i < 4; i++) {
+    const path = dumpUi(`pre-login-overlay-${i}.xml`);
+    const content = readXmlContent(path);
+    const screen = classifyScreen(content);
+    if (screen === 'login_form' || screen === 'authenticated_shell') return;
+    const cont = findTapTarget(path, 'Continue');
+    if (cont) {
+      tap(cont.x, cont.y);
+      sleep(2000);
+      continue;
+    }
+    const reload = findTapTarget(path, 'Reload');
+    if (reload) {
+      tap(reload.x, reload.y);
+      sleep(20000);
+    }
+    sleep(1500);
+  }
+}
+
 async function runLogin(role) {
+  dismissStartupOverlays();
   const milestones = [];
   const fail = (boundary, detail) => {
     milestones.push({ boundary, ...detail });
@@ -186,17 +230,16 @@ async function runLogin(role) {
   }
   milestones.push({ step: 'fields_located', emailY: fields.email.y, passY: fields.pass.y });
 
-  tap(fields.email.x, fields.email.y);
-  sleep(200);
-  clearField();
+  resetLoginFormFields(fields);
   typeUsername(account.username);
-  sleep(300);
+  sleep(400);
 
   tap(fields.pass.x, fields.pass.y);
-  sleep(200);
+  sleep(250);
   clearField();
-  typePasswordSecure(account.password);
-  sleep(400);
+  const passwordEntry = typePasswordSecure(account.password);
+  sleep(500);
+  milestones.push({ step: 'password_entry', ...passwordEntry });
 
   const usernameProbe = sha256(account.username);
   const passwordLen = account.password.length;
@@ -212,18 +255,47 @@ async function runLogin(role) {
   const apiProbe = await probeApiLogin(role, account);
   milestones.push({ step: 'api_login_probe', ...apiProbe });
 
+  tap(fields.pass.x, fields.pass.y);
+  sleep(200);
+  adb('shell input keyevent 67');
+  sleep(150);
+  adb('shell input keyevent 66');
+  milestones.push({ step: 'submit_tapped', method: 'password_ime_go' });
+  sleep(2500);
+
+  let logcatDiag = [];
   try {
-    pushAcceptanceLoginFile(account);
-    milestones.push({ step: 'acceptance_file_login_triggered', ok: true });
-  } catch (e) {
-    milestones.push({
-      step: 'acceptance_file_login_triggered',
-      ok: false,
-      code: e?.code ?? 'push_failed',
-    });
-    tap(fields.btn.x, fields.btn.y);
-    milestones.push({ step: 'submit_tapped', method: 'sign_in_button_fallback' });
+    const log = execSync(`adb -s ${serial} logcat -d -s ReactNativeJS:I`, { encoding: 'utf8' });
+    logcatDiag = log
+      .split('\n')
+      .filter((line) => line.includes('LOGIN_DIAG'))
+      .slice(-12)
+      .map((line) => line.replace(/^.*LOGIN_DIAG\s*/, '').trim());
+  } catch {
+    logcatDiag = [];
   }
+
+  let loginDiagnostics = null;
+  try {
+    const raw = adb('shell run-as com.eduvijna.app cat files/login-diagnostics.json');
+    loginDiagnostics = JSON.parse(raw);
+  } catch {
+    loginDiagnostics = { events: [], note: 'diagnostics_unavailable' };
+  }
+  const diagEvents = loginDiagnostics?.events ?? [];
+  const lastSubmit = diagEvents.filter((e) => e.type === 'submit').pop();
+  const lastChangeEmail = diagEvents.filter((e) => e.type === 'change' && e.field === 'email').pop();
+  const lastChangePass = diagEvents.filter((e) => e.type === 'change' && e.field === 'password').pop();
+  milestones.push({
+    step: 'in_app_login_diagnostics',
+    submitEmailLength: lastSubmit?.emailLength ?? null,
+    submitPasswordLength: lastSubmit?.passwordLength ?? null,
+    lastEmailChangeLength: lastChangeEmail?.length ?? null,
+    lastPasswordChangeLength: lastChangePass?.length ?? null,
+    eventCount: diagEvents.length,
+    logcatEvents: logcatDiag.length,
+    logcatLast: logcatDiag[logcatDiag.length - 1] ?? null,
+  });
 
   const afterLogin = waitFor(
     (content) => {
@@ -231,6 +303,13 @@ async function runLogin(role) {
       if (screen === 'authenticated_shell') return { screen };
       if (screen === 'credential_rejected_ui') return { screen, rejected: true };
       if (screen === 'bundle_error') return { screen, bundleError: true };
+      if (/Enable Push Notifications/i.test(content)) {
+        try {
+          execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, { stdio: 'ignore' });
+        } catch {
+          // ignore
+        }
+      }
       return null;
     },
     { attempts: 30, pauseMs: 1500, dumpPrefix: `${role}-post-submit` },
