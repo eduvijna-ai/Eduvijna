@@ -54,6 +54,21 @@ function tapLabel(xml, pattern, minY = 0) {
   if (best) tap(best.x, best.y);
   return best;
 }
+function tapTestId(xml, testId) {
+  const s = readFileSync(xml, 'utf8');
+  const re = new RegExp(
+    `(?:content-desc|text)="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+    'i',
+  );
+  const m = s.match(re);
+  if (!m) return null;
+  return {
+    label: testId,
+    x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
+    y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+  };
+}
+
 function tapLabelScroll(pattern, minY = 0, maxScrolls = 14) {
   for (let i = 0; i < maxScrolls; i++) {
     const xml = dump(`scroll-${pattern.slice(0, 8)}-${i}.xml`);
@@ -114,34 +129,34 @@ async function journeyA(quizTitle, searchToken) {
   });
   sleep(2500);
   xml = dump('a-01b-assessments-tab.xml');
-  const openQuiz = tapLabelScroll(searchToken, 0);
-  log.steps.push({ step: 'locate_quiz', ...openQuiz });
-  sleep(1500);
-  xml = dump('a-02-quiz-card.xml');
-  if (!openQuiz.hit || !String(openQuiz.hit.label || '').includes(searchToken.slice(0, 8))) {
+  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  let studentListTap = tapTestId(xml, studentsTestId);
+  if (!studentListTap) {
+    const openQuiz = tapLabelScroll(searchToken, 0);
+    log.steps.push({ step: 'locate_quiz', ...openQuiz });
+    sleep(1500);
+    xml = dump('a-02-quiz-card.xml');
+    studentListTap = tapTestId(xml, studentsTestId);
+    if (!studentListTap && openQuiz.hit) {
+      studentListTap = tapLabel(xml, 'Total:', Math.max(0, openQuiz.hit.y - 80));
+    }
+  }
+  if (!studentListTap) {
     log.pass = false;
-    log.verify = { label: 'fixture_quiz_not_found', pass: false };
+    log.verify = { label: 'fixture_students_control_missing', pass: false };
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  xml = dump('a-02b-quiz-card.xml');
-  const minY = Math.max(0, openQuiz.hit.y - 80);
-  const studentRowTap =
-    tapLabel(xml, 'Completed: 1', minY) ||
-    tapLabel(xml, 'Completed:', minY) ||
-    tapLabel(xml, 'Total:', minY);
-  if (!studentRowTap) {
-    tap(openQuiz.hit.x, openQuiz.hit.y + 220);
-    log.steps.push({ step: 'open_student_list', tap: { label: 'offset_below_title', x: openQuiz.hit.x, y: openQuiz.hit.y + 220 } });
-  } else {
-    log.steps.push({ step: 'open_student_list', tap: studentRowTap });
-  }
+  tap(studentListTap.x, studentListTap.y);
+  log.steps.push({ step: 'open_student_list', tap: studentListTap });
   sleep(4000);
   xml = dump('a-03-student-list.xml');
-  log.steps.push({
-    step: 'aarya',
-    tap: tapLabel(xml, '60', 0) || tapLabel(xml, FIXTURE.studentName, 0),
-  });
+  const aaryaTap =
+    tapTestId(xml, `student-row-${FIXTURE.studentId}`) ||
+    tapLabel(xml, '60', 0) ||
+    tapLabel(xml, FIXTURE.studentName, 0);
+  if (aaryaTap) tap(aaryaTap.x, aaryaTap.y);
+  log.steps.push({ step: 'aarya', tap: aaryaTap });
   sleep(5000);
   xml = dump('a-04-result.xml');
   screenshot('a-04-result.png');

@@ -28,7 +28,7 @@ import {
 const COUNT_OPTIONS = [5, 10, 15, 20];
 const LEVELS = ['easy', 'medium', 'hard', 'mixed'];
 
-export default function DocumentCurriculumFromBooksScreen({ navigation }: any) {
+export default function DocumentCurriculumFromBooksScreen({ navigation, embedded }: { navigation: any; embedded?: boolean }) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
@@ -180,9 +180,13 @@ export default function DocumentCurriculumFromBooksScreen({ navigation }: any) {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={colors.text} />
-        </TouchableOpacity>
+        {!embedded ? (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backBtn} />
+        )}
         <Text style={styles.headerTitle}>From Books</Text>
         <TouchableOpacity onPress={() => navigation.navigate('DocumentLibraryScreen')}>
           <Text style={styles.link}>Uploaded library</Text>

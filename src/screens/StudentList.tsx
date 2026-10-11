@@ -367,6 +367,8 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         onPress={() => handleStudentPress(item)}
         activeOpacity={0.7}
         disabled={!isClassroomView && isPending}
+        testID={`student-row-${item.student_id}`}
+        accessibilityLabel={`student-row-${item.student_id}-session-${assignmentSessionId ?? 'na'}`}
       >
         <View style={[styles.avatar, { backgroundColor: theme.colors.primary + '20' }]}>
           <Text style={[styles.avatarText, { color: theme.colors.primary }]}>

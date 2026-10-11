@@ -12,6 +12,7 @@ import { get } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
+import { bumpAuthSessionEpoch } from '../api/apiRefreshCoordinator';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import { useDashboardStore } from '../store/dashboard.store';
 
@@ -243,6 +244,7 @@ export function useAuth(): UseAuthReturn {
       }
 
       // Call login API (tokens are stored automatically in auth.api.ts)
+      bumpAuthSessionEpoch();
       const response = await AuthAPI.login(credentials);
 
       // Web AuthContext: after login, loadProfile() from /auth/profile (has full_name)
@@ -290,6 +292,7 @@ export function useAuth(): UseAuthReturn {
       const currentUser = useUserStore.getState().user;
       const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
       await resetNotificationGuardBestEffort(accountKey);
+      bumpAuthSessionEpoch();
 
       // Call logout API (clears tokens automatically)
       await AuthAPI.logout();

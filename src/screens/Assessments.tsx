@@ -853,6 +853,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                         </View>
                         <TouchableOpacity 
                           style={styles.cardRow}
+                          testID={`assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`}
+                          accessibilityLabel={`assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`}
                           onPress={(e) => {
                             e.stopPropagation();
                             handleAction('view', quiz.quiz_id);

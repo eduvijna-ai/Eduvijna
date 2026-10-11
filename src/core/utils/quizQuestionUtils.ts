@@ -3,6 +3,8 @@
  * and when restoring saved assessments. Prevents crashes from malformed API payloads.
  */
 
+import { resolveCorrectAnswerLetter } from './answerMappingUtils';
+
 export interface SanitizedQuizQuestion {
   id: string;
   question: string;
@@ -49,8 +51,10 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
 
   if (!question || options.length === 0) return null;
 
-  const correct =
-    String(raw.correctAnswer ?? raw.answer ?? 'A').trim() || 'A';
+  const rawCorrect = String(raw.correctAnswer ?? raw.answer ?? '').trim();
+  const letter = resolveCorrectAnswerLetter(rawCorrect, options);
+  if (!letter) return null;
+  const correct = options[letter.charCodeAt(0) - 65] ?? rawCorrect;
 
   return {
     id: String(raw.id ?? `q-${idx}`),

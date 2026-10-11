@@ -1,7 +1,7 @@
 # Founder acceptance — runtime pass (2026-10-11)
 
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
-**HEAD (this pass):** `211371ce6019a6c15ffef86257749f6e91c4cc0d`  
+**HEAD (this pass):** see latest commit on `integration/mobile-founder-acceptance-20261011` (local includes `c5a9975` automation + subsequent repair commits).  
 **PR:** #26  
 
 ## Live API probes (separate from UI)
@@ -51,6 +51,19 @@ Run after script changes:
 npm test -- --testPathPattern="quizResultRetrieval|studentListNavigation|documentAssessmentHistory|studentDashboardData"
 npm run type-check
 ```
+
+## Repair pass (requirements 1–8)
+
+| # | Area | Status | Notes |
+|---|------|--------|-------|
+| 1 | API auth / logout | **Implemented** | Contract-based 401 refresh vs 403 permission; session epoch on login/logout |
+| 2 | Metro zustand SHA-1 | **Implemented** | `require.resolve` from worktree `node_modules`; `watchFolders` scoped to project |
+| 3 | Document Upload tabs | **Implemented** | From Books tab replaces On device; banner removed; library picker on Upload |
+| 4 | From Books parity | **Partial** | Curriculum screen embedded; alignment OFF path / non-curriculum generate still open |
+| 5 | Rich content | **Partial** | `EducationalContent` wrapper; broader surface integration ongoing |
+| 6 | Quiz nav API | **Existing** | `useQuizNavItems`; route guard hardening ongoing |
+| 7 | Answer mapping | **Implemented** | No default `A`; shuffle throws if correct option lost |
+| 8 | UI journeys | **Partial** | `testID` on assessment/student rows; automation updated |
 
 ## Physical device / push
 

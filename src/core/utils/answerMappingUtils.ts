@@ -81,10 +81,12 @@ export const shuffleQuizOptions = (
   const newCorrectIndex = shuffledOptions.findIndex(
     (opt) => normalizeComparableOptionValue(opt) === normCorrect,
   );
-  const safeIndex = newCorrectIndex === -1 ? 0 : newCorrectIndex;
+  if (newCorrectIndex === -1) {
+    throw new Error('CORRECT_OPTION_NOT_FOUND_AFTER_SHUFFLE');
+  }
   return {
     shuffledOptions,
-    newCorrectAnswer: indexToLetter(safeIndex),
+    newCorrectAnswer: indexToLetter(newCorrectIndex),
   };
 };
 
@@ -95,15 +97,16 @@ export const stripOptionLabel = (opt: string): string =>
 export const resolveCorrectAnswerLetter = (
   rawCorrect: string,
   options: string[],
-): LetterOption => {
+): LetterOption | null => {
   const trimmed = rawCorrect.trim();
+  if (!trimmed) return null;
   if (/^[A-D]$/i.test(trimmed)) {
     return trimmed.toUpperCase() as LetterOption;
   }
   return (
     optionStringToLetter(trimmed, options) ||
     optionStringToLetter(stripOptionLabel(trimmed), options) ||
-    'A'
+    null
   );
 };
 
@@ -196,11 +199,17 @@ export const normalizeDocumentQuizQuestions = (
   (questions || []).map((q, idx) => {
     const baseOptions = (q.options || []).map((opt) => stripOptionLabel(String(opt ?? '')));
     const rawCorrect = String(q.correctAnswer ?? q.answer ?? '').trim();
-    const inferred = (
-      /^[A-D]$/i.test(rawCorrect)
-        ? rawCorrect.toUpperCase()
-        : optionStringToLetter(rawCorrect, baseOptions) || 'A'
-    ) as LetterOption;
+    const inferred = resolveCorrectAnswerLetter(rawCorrect, baseOptions);
+    if (!inferred) {
+      return {
+        ...q,
+        id: q.id || `q-${idx}`,
+        options: baseOptions,
+        correctAnswer: '',
+        answer: '',
+        optionsNormalized: false,
+      };
+    }
 
     if (!shuffleAnswerOptions) {
       const correctOptionText = baseOptions[inferred.charCodeAt(0) - 65] || rawCorrect;

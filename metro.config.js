@@ -1,61 +1,54 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
+const fs = require('fs');
 
 const projectRoot = __dirname;
-const monorepoRoot = projectRoot.includes('.stack-worktrees')
-  ? path.resolve(projectRoot, '..', '..')
-  : projectRoot;
 const appEntry = path.join(projectRoot, 'App.tsx');
+
+function resolveFromProject(specifier) {
+  return require.resolve(specifier, { paths: [projectRoot] });
+}
+
+function resolveZustandCjs(relativeFile) {
+  const pkgJson = resolveFromProject('zustand/package.json');
+  const root = path.dirname(pkgJson);
+  const filePath = path.join(root, relativeFile);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Metro zustand CJS file missing: ${filePath}`);
+  }
+  return filePath;
+}
 
 const config = getDefaultConfig(projectRoot);
 config.projectRoot = projectRoot;
-config.watchFolders = [projectRoot, monorepoRoot];
-config.resolver.nodeModulesPaths = [
-  path.join(projectRoot, 'node_modules'),
-  path.join(monorepoRoot, 'node_modules'),
-];
+config.watchFolders = [projectRoot];
+config.resolver.nodeModulesPaths = [path.join(projectRoot, 'node_modules')];
 
-// Prevent Metro's FallbackWatcher from watching jest packages on Windows.
-// When npm installs jest-changed-files and similar packages with deeply-nested
-// node_modules, Windows creates long-path junctions (\\?\ prefix). If a
-// subsequent npm install removes those nested dirs, stale fs.watch events
-// produce mangled paths (e.g. "...\type\?\D:\...\type") that crash Metro.
-// Blocking these packages stops Metro from watching them entirely.
 {
   const existingBlockList = config.resolver.blockList;
   const jestWatchBlockList = [
-    // Block the entire jest-changed-files package (not needed in the app bundle)
     /.*\/jest-changed-files\/.*/,
-    // Block nested node_modules inside any jest-* package (long-path junctions)
     /.*\/node_modules\/jest[^/]*\/node_modules\/.*/,
   ];
   config.resolver.blockList = existingBlockList
     ? [
-        ...(Array.isArray(existingBlockList)
-          ? existingBlockList
-          : [existingBlockList]),
+        ...(Array.isArray(existingBlockList) ? existingBlockList : [existingBlockList]),
         ...jestWatchBlockList,
       ]
     : jestWatchBlockList;
 }
 
-// Force axios to use browser build (prevents Node "crypto" import)
 const originalResolveRequest = config.resolver.resolveRequest;
 
-// Zustand .mjs files use import.meta.env which crashes on web because Metro
-// serves bundles as classic scripts (not ES modules). Redirect to CJS builds.
-const zustandRoot = path.join(__dirname, 'node_modules', 'zustand');
 const zustandCjsMap = {
-  'zustand': path.join(zustandRoot, 'index.js'),
-  'zustand/vanilla': path.join(zustandRoot, 'vanilla.js'),
-  'zustand/middleware': path.join(zustandRoot, 'middleware.js'),
-  'zustand/shallow': path.join(zustandRoot, 'shallow.js'),
-  'zustand/context': path.join(zustandRoot, 'context.js'),
-  'zustand/traditional': path.join(zustandRoot, 'traditional.js'),
-  'zustand/react': path.join(zustandRoot, 'react.js'),
+  zustand: resolveZustandCjs('index.js'),
+  'zustand/vanilla': resolveZustandCjs('vanilla.js'),
+  'zustand/middleware': resolveZustandCjs('middleware.js'),
+  'zustand/shallow': resolveZustandCjs('shallow.js'),
+  'zustand/context': resolveZustandCjs('context.js'),
+  'zustand/traditional': resolveZustandCjs('traditional.js'),
+  'zustand/react': resolveZustandCjs('react.js'),
 };
-
-const reactNativeRoot = path.join(__dirname, 'node_modules', 'react-native');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (
@@ -66,27 +59,20 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'sourceFile', filePath: appEntry };
   }
 
-  // Shim target imports the real package under a different name (avoids circular alias).
-  // On web, must use react-native-web — native react-native pulls in Fabric internals.
   if (moduleName === 'react-native-original') {
     if (platform === 'web') {
       return context.resolveRequest(context, 'react-native-web', platform);
     }
     return {
       type: 'sourceFile',
-      filePath: path.join(reactNativeRoot, 'index.js'),
+      filePath: resolveFromProject('react-native/index.js'),
     };
   }
 
   if (moduleName === 'axios') {
-    return context.resolveRequest(
-      context,
-      'axios/dist/browser/axios.cjs',
-      platform
-    );
+    return context.resolveRequest(context, 'axios/dist/browser/axios.cjs', platform);
   }
 
-  // On web, redirect zustand to CJS builds (no import.meta.env)
   if (platform === 'web' && zustandCjsMap[moduleName]) {
     return {
       type: 'sourceFile',
