@@ -44,6 +44,7 @@ import {
   buildQuizAssignmentStudentListParams,
   type QuizAssignmentListSource,
 } from '@core/types/studentListNavigation.types';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -59,6 +60,20 @@ interface Props {
       classroomName?: string;
     };
   };
+}
+
+/** Root stack screens (StudentList, modals) are siblings of Main tabs — tab `navigation` cannot reach them. */
+function navigateFromAssessments(
+  navigation: Props['navigation'],
+  onNavigate: Props['onNavigate'],
+  screen: string,
+  params?: Record<string, unknown>,
+) {
+  if (onNavigate) {
+    onNavigate(screen, params);
+    return;
+  }
+  navigateRootStack(screen, params);
 }
 
 // Status badge color mapping — ERP Schools semantic colors
@@ -371,15 +386,10 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     // Find the quiz data
     const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
     
-    if (navigation) {
-      // Navigate to QuizPreviewScreen to see quiz details/questions
-      navigation.navigate('QuizPreviewScreen', {
-        quizId,
-        quizData: quiz,
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizPreviewScreen', { quizId, quizData: quiz });
-    }
+    navigateFromAssessments(navigation, onNavigate, 'QuizPreviewScreen', {
+      quizId,
+      quizData: quiz,
+    });
   };
 
   const handleAction = async (
@@ -403,11 +413,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         return;
       }
       const params = buildQuizAssignmentStudentListParams(assignment);
-      if (navigation) {
-        navigation.navigate('StudentList', params);
-      } else if (onNavigate) {
-        onNavigate('StudentList', params);
-      }
+      navigateFromAssessments(navigation, onNavigate, 'StudentList', params);
       return;
     }
     
@@ -598,19 +604,18 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           ) : null;
         })()}
 
-        {/* Search Bar (Web only) */}
-        {isWeb && (
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
-            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        )}
+        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
+          <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+          <TextInput
+            testID="assessments-search-input"
+            accessibilityLabel="Search assessments"
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder="Search"
+            placeholderTextColor={theme.colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
 
         {/* Filters Section */}
         <FilterSection defaultCollapsed={false}>
@@ -679,7 +684,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           >
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
-              onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'DocumentUploadHomeScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
@@ -687,7 +692,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
-              onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'RecentAssessmentsScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
@@ -695,7 +700,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
-              onPress={() => navigation.navigate('WorksheetScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'WorksheetScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="document-text-outline" size={16} color="#059669" />
@@ -998,6 +1003,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         {displayCount < filteredQuizzes.length && (
           <View style={styles.loadMoreContainer}>
             <TouchableOpacity
+              testID="assessments-load-more"
+              accessibilityLabel="Load more assessments"
               style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => setDisplayCount(prev => prev + 10)}
             >

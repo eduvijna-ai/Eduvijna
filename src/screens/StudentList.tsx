@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
 import {
   resolveStudentListMode,
   type StudentListMode,
@@ -300,30 +301,21 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     }
     
     // Navigate to quiz results screen to show student's answers
-    if (navigation) {
-      navigation.navigate('QuizResultsScreen', {
-        quizId: quizId,
-        attemptId: student.attempt_id,
-        studentId: student.student_id,
-        studentName: student.student_fullname,
-        score: student.score,
-        quizName: quizName,
-        sessionId: student.session_id || assignmentSessionId,
-        classroomId: student.class_id || classroomId,
-        isTeacherView: true, // Flag to indicate teacher viewing student attempt
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizResultsScreen', {
-        quizId: quizId,
-        attemptId: student.attempt_id,
-        studentId: student.student_id,
-        studentName: student.student_fullname,
-        score: student.score,
-        quizName: quizName,
-        sessionId: student.session_id || assignmentSessionId,
-        classroomId: student.class_id || classroomId,
-        isTeacherView: true,
-      });
+    const resultParams = {
+      quizId: quizId,
+      attemptId: student.attempt_id,
+      studentId: student.student_id,
+      studentName: student.student_fullname,
+      score: student.score,
+      quizName: quizName,
+      sessionId: student.session_id || assignmentSessionId,
+      classroomId: student.class_id || classroomId,
+      isTeacherView: true,
+    };
+    if (onNavigate) {
+      onNavigate('QuizResultsScreen', resultParams);
+    } else {
+      navigateRootStack('QuizResultsScreen', resultParams);
     }
   }, [
     assignmentSessionId,

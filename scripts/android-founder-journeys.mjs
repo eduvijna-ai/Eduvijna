@@ -17,6 +17,7 @@ import {
 } from './lib/android-journey-logic.mjs';
 
 import { FIXTURE, loadFixtureLabels } from './lib/founder-fixture.mjs';
+import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-journeys');
@@ -45,6 +46,37 @@ function tapTarget(target) {
 function scrollDown() {
   adb('shell input swipe 540 1500 540 700 350');
   sleep(900);
+}
+
+function adbTypeSearch(text) {
+  const safe = String(text).replace(/ /g, '%s');
+  adb(`shell input text "${safe.replace(/"/g, '\\"')}"`);
+}
+
+function tapLoadMore(nodes) {
+  const hit = locateByTestId(nodes, 'assessments-load-more');
+  if (hit) {
+    tapTarget(hit);
+    sleep(1200);
+    return true;
+  }
+  const label = locateByLabel(nodes, 'Load More', { minY: 0 });
+  if (label) {
+    tapTarget(label);
+    sleep(1200);
+    return true;
+  }
+  return false;
+}
+
+function tapSearchField(nodes) {
+  const hit =
+    locateByTestId(nodes, 'assessments-search-input') ||
+    locateByLabel(nodes, 'Search assessments', { minY: 0 });
+  if (!hit) return false;
+  tapTarget(hit);
+  sleep(200);
+  return true;
 }
 function waitFor(predicate, { attempts = 12, pauseMs = 1200, dumpName = 'wait' } = {}) {
   for (let i = 0; i < attempts; i++) {
@@ -116,6 +148,14 @@ function fixtureContext(labels) {
 async function journeyA(labels) {
   const fx = fixtureContext(labels);
   const log = { journey: 'A_assessments_students_result', steps: [] };
+  const { trace } = await loadFixtureTrace();
+  log.fixtureTrace = trace;
+  if (trace.boundary !== 'ok') {
+    log.pass = false;
+    log.verify = { label: trace.boundary, pass: false, trace };
+    writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
   await dismissOverlays();
   ensureInApp();
 
@@ -129,56 +169,103 @@ async function journeyA(labels) {
 
   const tabWait = waitFor((xml) => {
     const n = parseUiXml(xml);
-    return locateByLabel(n, 'Expired', { minY: 0 }) != null || locateByLabel(n, 'All', { minY: 0 }) != null;
-  }, { dumpName: 'a-01-wait-assessments' });
+    return (
+      locateByTestId(n, 'assessments-search-input', { minY: 0 }) != null ||
+      locateByLabel(n, 'Expired', { minY: 0 }) != null ||
+      locateByLabel(n, 'All', { minY: 0 }) != null
+    );
+  }, { dumpName: 'a-01-wait-assessments', attempts: 20 });
   path = tabWait.xmlPath || dump('a-01-assessments.xml');
   nodes = parseUiXml(readXmlContent(path));
-  const tabPreference =
-    labels.availability === 'expired' || labels.availability === 'completed' ? 'Expired' : 'All';
-  const expiredTab =
-    tabPreference === 'Expired'
-      ? locateByLabel(nodes, /Expired\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, 'Expired', { minY: 0 })
-      : locateByLabel(nodes, 'All', { minY: 0 });
-  log.steps.push({ step: `tab_${tabPreference.toLowerCase()}`, tap: tapTarget(expiredTab) });
-  sleep(2500);
+  const tabKey = trace.filterStrategy?.selectedTab ?? 'expired';
+  const tabTap =
+    tabKey === 'expired'
+      ? locateByLabel(nodes, /Expired\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, /Expired/i, { minY: 0 })
+      : tabKey === 'active'
+        ? locateByLabel(nodes, /Active\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, /Active/i, { minY: 0 })
+        : locateByLabel(nodes, /All\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, 'All', { minY: 0 });
+  if (tabTap) {
+    log.steps.push({ step: `tab_${tabKey}`, tap: tapTarget(tabTap) });
+    sleep(2000);
+    path = dump('a-01b-assessments-tab.xml');
+    nodes = parseUiXml(readXmlContent(path));
+  } else {
+    log.steps.push({ step: `tab_${tabKey}_skipped`, reason: 'tab_not_found_use_search' });
+  }
 
-  const studentsTestId = `assessment-open-students-${fx.quizId}-${fx.sessionId}`;
+  const searchQ = trace.filterStrategy?.searchQuery || labels.searchToken || '';
+  if (searchQ && tapSearchField(nodes)) {
+    for (let i = 0; i < 48; i++) adb('shell input keyevent 67');
+    adbTypeSearch(searchQ);
+    sleep(1800);
+    log.steps.push({ step: 'search_filter', tokenLength: searchQ.length });
+    path = dump('a-01c-after-search.xml');
+    nodes = parseUiXml(readXmlContent(path));
+  }
+
+  const studentsTestId = trace.openStudentsTestId;
+  const openStudentsLabel = labels.openStudentsLabel;
   const locateStudentsControl = (xml) => {
     const n = parseUiXml(xml);
-    return locateByTestId(n, studentsTestId, { pick: 'top' });
+    return (
+      locateByTestId(n, studentsTestId, { pick: 'top' }) ||
+      (openStudentsLabel ? locateByLabel(n, openStudentsLabel, { minY: 0, pick: 'top' }) : null) ||
+      locateByLabel(n, String(labels.quizTitle).slice(0, 12), { minY: 0, pick: 'top' })
+    );
   };
 
-  path = dump('a-01b-assessments-tab.xml');
   let studentListTap = locateStudentsControl(readXmlContent(path));
-
-  if (!studentListTap && labels.openStudentsLabel) {
-    const escaped = labels.openStudentsLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const scrolled = locateWithScroll({
-      dumpFn: (n) => dump(`a-scroll-${n}`),
-      scrollFn: scrollDown,
-      locateFn: (xml) => {
-        const n = parseUiXml(xml);
-        const labelHit = locateByLabel(n, escaped, { pick: 'bottom' });
-        if (labelHit) return labelHit;
-        return locateStudentsControl(xml);
-      },
-    });
-    log.steps.push({ step: 'locate_students_control', scrolls: scrolled.scrolls, hit: scrolled.hit });
-    if (scrolled.hit) {
-      studentListTap = scrolled.hit;
-      path = scrolled.xmlPath || path;
-    }
+  let loadMoreTaps = 0;
+  const maxLoadMore = trace.loadMoreTapsNeeded + 2;
+  while (!studentListTap && loadMoreTaps < maxLoadMore) {
+    path = dump(`a-loadmore-${loadMoreTaps}.xml`);
+    nodes = parseUiXml(readXmlContent(path));
+    studentListTap = locateStudentsControl(readXmlContent(path));
+    if (studentListTap) break;
+    if (!tapLoadMore(nodes)) break;
+    loadMoreTaps += 1;
   }
 
   if (!studentListTap) {
+    const scrolled = locateWithScroll({
+      dumpFn: dump,
+      scrollFn: scrollDown,
+      maxScrolls: 12,
+      dumpNamePrefix: 'a-scroll-students',
+      locateFn: (xml) => locateStudentsControl(xml),
+    });
+    studentListTap = scrolled.hit;
+    log.steps.push({ step: 'scroll_for_students_control', scrolls: scrolled.scrolls, hit: Boolean(scrolled.hit) });
+  }
+  log.steps.push({
+    step: 'locate_students_control',
+    loadMoreTaps,
+    hit: studentListTap,
+    testId: studentsTestId,
+    renderedInitially: trace.renderedInitially,
+  });
+
+  if (!studentListTap) {
     log.pass = false;
-    log.verify = { label: 'fixture_students_control_missing', pass: false };
+    log.verify = {
+      label: trace.renderedInitially ? 'action_not_accessible' : 'beyond_rendered_page_unresolved',
+      pass: false,
+      trace,
+    };
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
   }
 
-  log.steps.push({ step: 'open_student_list', tap: tapTarget(studentListTap) });
-  sleep(3500);
+  adb('shell input keyevent 111');
+  sleep(400);
+  const labelTap =
+    openStudentsLabel && locateByLabel(parseUiXml(readXmlContent(path)), openStudentsLabel, { minY: 0, pick: 'top' });
+  log.steps.push({
+    step: 'open_student_list',
+    tap: tapTarget(labelTap || studentListTap),
+    usedAccessibilityLabel: Boolean(labelTap),
+  });
+  sleep(4500);
 
   const listWait = waitFor(
     (xml) => verifyStudentListDestination(xml, fx).pass,

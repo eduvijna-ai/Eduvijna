@@ -4,7 +4,7 @@
  * Primarily used for authentication error handling in API interceptors
  */
 
-import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
+import { CommonActions, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 
 export const navigationRef = createNavigationContainerRef();
 
@@ -12,10 +12,15 @@ export const navigationRef = createNavigationContainerRef();
  * Navigate to a screen
  */
 export function navigate(name: string, params?: any) {
-  if (navigationRef.isReady()) {
-    // @ts-ignore - Dynamic navigation
-    navigationRef.navigate(name, params);
+  if (!navigationRef.isReady()) {
+    return;
   }
+  navigationRef.dispatch(
+    CommonActions.navigate({
+      name,
+      params,
+    }),
+  );
 }
 
 /**

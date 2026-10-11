@@ -249,38 +249,96 @@ async function fetchTeacherAttemptBundle(params: {
       };
     }
     try {
-      const attended = await getAttendedQuiz({
-        student_id: params.studentId,
-        quiz_id: params.quizId,
-        session_id: sessionForAttended,
-        classroom_id: attempt.class_id || undefined,
-      });
+      const attended = await loadStudentAttendedWithWorksheetFallback(
+        {
+          student_id: params.studentId,
+          quiz_id: params.quizId,
+          session_id: sessionForAttended,
+          classroom_id: attempt.class_id || undefined,
+        },
+        attempt.class_id || params.sessionId,
+      );
       const mergedAttended = {
         ...attended,
+        score:
+          attended.score != null && attended.score !== undefined
+            ? attended.score
+            : attempt.score,
         log_data: (attended.log_data as Record<string, unknown> | null) ?? logData,
       };
-      const worksheetNormalized = tryNormalizeWorksheetAttended(mergedAttended);
-      if (!worksheetNormalized) {
+      const itemsNormalized = normalizeAttendedQuizResponse(mergedAttended);
+      if (itemsNormalized) {
         return {
-          status: 'error',
-          message: 'Worksheet submission found but review content is incomplete.',
-          retryable: true,
+          status: 'ready',
+          quizData: { questions: itemsNormalized.questions },
+          userAnswers: itemsNormalized.userAnswers,
+          score:
+            attempt.score != null ? Number(attempt.score) : itemsNormalized.score,
+          logData: itemsNormalized.logData,
+          timeSpentSeconds:
+            attempt.time_spent_seconds ?? itemsNormalized.timeSpentSeconds,
+          completedAt: attempt.completed_at ?? itemsNormalized.completedAt,
+        };
+      }
+      const worksheetNormalized = tryNormalizeWorksheetAttended(mergedAttended);
+      if (worksheetNormalized) {
+        return {
+          status: 'ready',
+          quizData: { questions: worksheetNormalized.questions },
+          userAnswers: worksheetNormalized.userAnswers,
+          score:
+            attempt.score != null
+              ? Number(attempt.score)
+              : worksheetNormalized.score,
+          logData: worksheetNormalized.logData,
+          timeSpentSeconds:
+            attempt.time_spent_seconds ?? worksheetNormalized.timeSpentSeconds,
+          completedAt: attempt.completed_at ?? worksheetNormalized.completedAt,
         };
       }
       return {
-        status: 'ready',
-        quizData: { questions: worksheetNormalized.questions },
-        userAnswers: worksheetNormalized.userAnswers,
-        score:
-          attempt.score != null
-            ? Number(attempt.score)
-            : worksheetNormalized.score,
-        logData: worksheetNormalized.logData,
-        timeSpentSeconds:
-          attempt.time_spent_seconds ?? worksheetNormalized.timeSpentSeconds,
-        completedAt: attempt.completed_at ?? worksheetNormalized.completedAt,
+        status: 'error',
+        message: 'Worksheet submission found but review content is incomplete.',
+        retryable: true,
       };
     } catch {
+      try {
+        const attendedRetry = await getAttendedQuiz({
+          student_id: params.studentId,
+          quiz_id: params.quizId,
+          session_id: sessionForAttended,
+        });
+        const itemsRetry = normalizeAttendedQuizResponse({
+          ...attendedRetry,
+          score: attempt.score ?? attendedRetry.score,
+        });
+        if (itemsRetry) {
+          return {
+            status: 'ready',
+            quizData: { questions: itemsRetry.questions },
+            userAnswers: itemsRetry.userAnswers,
+            score: attempt.score != null ? Number(attempt.score) : itemsRetry.score,
+            logData: itemsRetry.logData,
+            timeSpentSeconds:
+              attempt.time_spent_seconds ?? itemsRetry.timeSpentSeconds,
+            completedAt: attempt.completed_at ?? itemsRetry.completedAt,
+          };
+        }
+      } catch {
+        // fall through
+      }
+      const fallback = normalizeQuestionsAndAnswersFromLogData(logData);
+      if (fallback) {
+        return {
+          status: 'ready',
+          quizData: { questions: fallback.questions },
+          userAnswers: fallback.userAnswers,
+          score: attempt.score != null ? Number(attempt.score) : fallback.score,
+          logData,
+          timeSpentSeconds: attempt.time_spent_seconds ?? fallback.timeSpentSeconds,
+          completedAt: attempt.completed_at ?? fallback.completedAt,
+        };
+      }
       return {
         status: 'error',
         message: 'Could not load worksheet review content. Please try again.',

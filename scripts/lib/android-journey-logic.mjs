@@ -12,7 +12,7 @@ export function verifyStudentListDestination(xmlContent, fixture) {
   const header = texts.find((t) => t.startsWith('Students for:'));
   const titleOk = header
     ? header.includes(fixture.quizTitle)
-    : texts.some((t) => t === fixture.quizTitle || t.includes(fixture.quizTitle));
+    : texts.some((t) => t.startsWith('Students for:') && t.includes(fixture.quizTitle));
   const classOk = fixture.classLabel
     ? texts.some((t) => t.includes(fixture.classLabel))
     : true;

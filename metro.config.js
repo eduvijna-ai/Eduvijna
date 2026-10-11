@@ -71,6 +71,19 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'sourceFile', filePath: appEntry };
   }
 
+  if (
+    moduleName === 'react-native' &&
+    context.originModulePath &&
+    context.originModulePath.startsWith(projectRoot) &&
+    !context.originModulePath.includes(`${path.sep}node_modules${path.sep}`) &&
+    !context.originModulePath.includes(`${path.sep}src${path.sep}vendor${path.sep}react-native`)
+  ) {
+    const shim = path.join(projectRoot, 'src', 'vendor', 'react-native.ts');
+    if (fs.existsSync(shim)) {
+      return { type: 'sourceFile', filePath: shim };
+    }
+  }
+
   if (moduleName === 'react-native-original') {
     if (platform === 'web') {
       return context.resolveRequest(context, 'react-native-web', platform);

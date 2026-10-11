@@ -215,6 +215,67 @@ describe('fetchPersistedQuizResult', () => {
       expect(result.status).toBe('ready');
     });
 
+    it('loads worksheet-marked attempts via attended-quiz items when worksheet_data is absent', async () => {
+      const worksheetLog = {
+        assessment_type: 'worksheet',
+        worksheet_answers: { Section_A_MCQ: [{ id: 1, answer: 'B' }] },
+      };
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-ws',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                session_id: 'sess-ws',
+                status: 'completed',
+                score: 60,
+                log_data: worksheetLog,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      mockGet.mockResolvedValue({
+        data: {
+          student_id: '70',
+          classroom_id: 'class_4d82c60e',
+          quiz_id: 479,
+          session_id: 'sess-ws',
+          score: 60,
+          submitted_at: '2026-08-27T07:34:24.463000+00:00',
+          time_spent_seconds: 0,
+          duration: 30,
+          counts: { total_questions: 10, questions_answered: 10, questions_skipped: 0 },
+          items: Array.from({ length: 10 }, (_, i) => ({
+            question_id: i + 1,
+            question: `Section item ${i + 1}`,
+            options: [],
+            student_answer: 'A',
+            answer_key: null,
+            is_correct: i < 6,
+          })),
+        },
+      });
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-ws',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+      if (result.status === 'ready') {
+        expect(result.score).toBe(60);
+        expect(result.quizData.questions).toHaveLength(10);
+      }
+    });
+
     it('errors when attemptId does not match session-scoped rows', async () => {
       const result = await fetchPersistedQuizResult({
         quizId: 99,

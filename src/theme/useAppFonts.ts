@@ -2,7 +2,8 @@
  * Loads Poppins via expo-font and registers global Text defaults.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import {
   useFonts,
   Poppins_400Regular,
@@ -17,6 +18,8 @@ import { setupGlobalFonts } from './fonts';
 // Calling this from an effect can race with hideAsync when fonts are already cached.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+const WEB_FONT_FALLBACK_MS = 12_000;
+
 export function useAppFonts(): { fontsLoaded: boolean; fontError: Error | null } {
   const [fontsLoaded, fontError] = useFonts({
     Poppins_400Regular,
@@ -24,12 +27,21 @@ export function useAppFonts(): { fontsLoaded: boolean; fontError: Error | null }
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
+  const [webFallbackReady, setWebFallbackReady] = useState(false);
 
   useEffect(() => {
-    if (!fontsLoaded && !fontError) return;
+    if (Platform.OS !== 'web') return;
+    const timer = setTimeout(() => setWebFallbackReady(true), WEB_FONT_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const ready = fontsLoaded || fontError != null || (Platform.OS === 'web' && webFallbackReady);
+
+  useEffect(() => {
+    if (!ready) return;
     if (fontsLoaded) setupGlobalFonts();
     SplashScreen.hideAsync().catch(() => undefined);
-  }, [fontsLoaded, fontError]);
+  }, [ready, fontsLoaded]);
 
-  return { fontsLoaded, fontError };
+  return { fontsLoaded: ready, fontError };
 }

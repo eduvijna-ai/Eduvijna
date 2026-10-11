@@ -1,11 +1,21 @@
 {
   "branch": "integration/mobile-founder-acceptance-20261011",
-  "sha": "3d15262",
+  "sha": "pending-commit",
   "pr": 26,
   "androidLogin": {
     "instructor": "pass",
     "student": "pass",
     "script": "scripts/android-login.mjs"
   },
-  "updatedAt": "2026-10-11T18:15:00.000Z"
+  "expoWeb": {
+    "bundleBoundary": "js_bundle_http_fixed_via_metro_shim",
+    "loginInstructor": "pass",
+    "loginStudent": "pass",
+    "journeys": "A/B pending"
+  },
+  "androidJourneys": {
+    "fixtureTrace": "479 expired search MAT_Mathematic index 0",
+    "journeyA": "navigation_and_worksheet_result_in_progress"
+  },
+  "updatedAt": "2026-10-11T19:30:00.000Z"
 }
