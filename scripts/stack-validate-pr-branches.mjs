@@ -23,7 +23,9 @@ import {
 
 const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const monorepoRoot = resolveMonorepoRoot(scriptRepoRoot);
-const reportPath = join(
+const validationLogDir = join(monorepoRoot, '.stack-validation-logs');
+const reportPath = join(validationLogDir, 'stack-validation-report.json');
+const reportEvidenceCopyPath = join(
   monorepoRoot,
   'docs',
   'development',
@@ -352,8 +354,10 @@ try {
   report.error = error?.message || String(error);
   throw error;
 } finally {
-  mkdirSync(dirname(reportPath), { recursive: true });
+  mkdirSync(validationLogDir, { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  mkdirSync(dirname(reportEvidenceCopyPath), { recursive: true });
+  writeFileSync(reportEvidenceCopyPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
   const shouldFail = report.status !== 'passed' || Boolean(report.error);
   process.exit(shouldFail ? 1 : 0);

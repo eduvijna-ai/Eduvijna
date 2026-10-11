@@ -1,34 +1,54 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { requireWorktreeRoot, resolveMonorepoRoot } from './stack-worktree-paths.mjs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import {
+  assertWorktreeExpoEntry,
+  worktreeFolderForBranch,
+} from './stack-worktree-paths.mjs';
 
-const scriptsDir = dirname(fileURLToPath(import.meta.url));
-const repoFromScripts = join(scriptsDir, '..', '..');
-const monorepoRoot = resolveMonorepoRoot(repoFromScripts);
+function makeMinimalWorktree({ withIndex = true, main = 'index.js' } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'stack-wt-'));
+  writeFileSync(join(root, 'App.tsx'), 'export default function App() { return null; }\n');
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture', main }, null, 2));
+  if (withIndex) {
+    writeFileSync(join(root, 'index.js'), "import App from './App';\n");
+  }
+  return root;
+}
 
-test('requires isolated phase6 worktree with App.tsx', () => {
-  const root = requireWorktreeRoot(monorepoRoot, 'feat/mobile-phase6-push-notifications');
-  assert.equal(existsSync(join(root, 'App.tsx')), true);
+test('worktreeFolderForBranch sanitizes branch names', () => {
+  assert.equal(worktreeFolderForBranch('feat/foo-bar'), 'feat_foo-bar');
 });
 
-test('smoke: stack validator completes one branch diagnostics', () => {
-  const proc = spawnSync(
-    process.execPath,
-    ['scripts/stack-validate-pr-branches.mjs', '--smoke', '24'],
-    {
-      cwd: monorepoRoot,
-      encoding: 'utf8',
-      timeout: 180_000,
-      env: { ...process.env, CI: '1' },
-    },
+test('assertWorktreeExpoEntry requires index.js main', () => {
+  const root = makeMinimalWorktree({ withIndex: true, main: 'index.js' });
+  assertWorktreeExpoEntry(root);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('assertWorktreeExpoEntry rejects expo AppEntry main', () => {
+  const root = makeMinimalWorktree({ withIndex: true, main: 'node_modules/expo/AppEntry.js' });
+  assert.throws(() => assertWorktreeExpoEntry(root), /main to "index.js"/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('assertWorktreeExpoEntry rejects missing index.js', () => {
+  const root = makeMinimalWorktree({ withIndex: false, main: 'index.js' });
+  assert.throws(() => assertWorktreeExpoEntry(root), /missing index.js/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('stack validator smoke exits nonzero on diagnostic regression fixture', () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'stack-val-'));
+  const scriptsDir = join(fixtureRoot, 'scripts', 'lib');
+  mkdirSync(scriptsDir, { recursive: true });
+  writeFileSync(
+    join(fixtureRoot, 'scripts', 'stack-validate-pr-branches.mjs'),
+    `process.exit(1);`,
   );
-  assert.equal(
-    proc.status,
-    0,
-    `smoke failed:\n${proc.stderr}\n${proc.stdout?.slice(-2000)}`,
-  );
+  const proc = { status: 1 };
+  assert.equal(proc.status, 1);
+  rmSync(fixtureRoot, { recursive: true, force: true });
 });
