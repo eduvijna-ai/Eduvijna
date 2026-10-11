@@ -1,0 +1,313 @@
+{
+  "validatedAt": "2026-10-10T13:10:11.486Z",
+  "exportRoot": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check",
+  "checkoutMode": "primary_repo_detached",
+  "commands": {
+    "export": "node scripts/with-eduvijna-api-env.mjs development -- expo export --platform <android|ios|web> --output-dir .stack-export-check/<branch>/<platform>",
+    "diagnostics": "npm run type-check && npm run lint"
+  },
+  "branches": [
+    {
+      "pr": 18,
+      "branch": "feat/mobile-assigned-quiz-phase1",
+      "head": "d9dbaa9a9bc728f7d8b72d7a3333c09f102a6657",
+      "baseRef": "origin/main",
+      "baseSha": "9184c72961b64e9870252b38bccdb7e0954c6929",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 190,
+          "eslintErrorCount": 1701,
+          "tsOutputBytes": 37376,
+          "eslintOutputBytes": 339165
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 193,
+          "eslintErrorCount": 1709,
+          "tsOutputBytes": 37125,
+          "eslintOutputBytes": 340282
+        },
+        "tsErrorsAdded": -3,
+        "eslintErrorsDelta": -8
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19640,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-5bd2437a8e09ddfee186367f2c04d245.hbc (8.72 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 18926,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\ios",
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-beb91c95c561205868565c377a3c15e3.hbc (8.69 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 39493,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-5c5eb7a3864fb4dfa41d8ddf4dcdf963.js (4.97 MB)\n_expo/static/js/web/studentAttendancePdf-d948effbde345dc8aab121e8380fce78.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-6b39c3626d9f1ea238fe0de492f9fa5e.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-15537d32c53bcd6b665da1a452a30282.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr18\\web\n",
+          "stderrTail": ""
+        }
+      }
+    },
+    {
+      "pr": 19,
+      "branch": "feat/mobile-phase2-student-dashboard-parity",
+      "head": "c358d251cabd42e1b394b74e33bdf4e7284bda3e",
+      "baseRef": "origin/feat/mobile-assigned-quiz-phase1",
+      "baseSha": "d9dbaa9a9bc728f7d8b72d7a3333c09f102a6657",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 202,
+          "eslintErrorCount": 1698,
+          "tsOutputBytes": 41175,
+          "eslintOutputBytes": 338597
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 190,
+          "eslintErrorCount": 1701,
+          "tsOutputBytes": 37376,
+          "eslintOutputBytes": 339165
+        },
+        "tsErrorsAdded": 12,
+        "eslintErrorsDelta": -3
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19759,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-fac6890d9d3f20bdae6626f36dc0d02e.hbc (8.73 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 19451,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\ios",
+          "stdoutTail": "nityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-5448a0282437de53b1b7a3c40641e9a5.hbc (8.7 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 12781,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-f4c1fc70820b1cf7bb48a9b4db30bde2.js (4.97 MB)\n_expo/static/js/web/studentAttendancePdf-51ea47be75bb76f20a845337725c4850.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-4f08ef7b00cd2f4e717f0f9fc7303a07.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-c1f3c95d8ebeb9e1c1aacaab9782e11d.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr19\\web\n",
+          "stderrTail": ""
+        }
+      }
+    },
+    {
+      "pr": 21,
+      "branch": "feat/mobile-phase3-document-quiz-runtime",
+      "head": "588044dc875a602081723984ee645cd3b156f8ea",
+      "baseRef": "origin/feat/mobile-phase2-student-dashboard-parity",
+      "baseSha": "c358d251cabd42e1b394b74e33bdf4e7284bda3e",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 205,
+          "eslintErrorCount": 1707,
+          "tsOutputBytes": 42020,
+          "eslintOutputBytes": 340151
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 202,
+          "eslintErrorCount": 1698,
+          "tsOutputBytes": 41175,
+          "eslintOutputBytes": 338597
+        },
+        "tsErrorsAdded": 3,
+        "eslintErrorsDelta": 9
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19706,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-60b3db220841f598df925268722a6712.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 19638,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\ios",
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-5663d55fb7692e5984710b1fa93a9fbc.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 13109,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-85f73bf944ea7322d6b7982eda21559b.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr21\\web\n",
+          "stderrTail": ""
+        }
+      }
+    },
+    {
+      "pr": 22,
+      "branch": "feat/mobile-phase4-role-profile-popups",
+      "head": "67a108951aed41b77312d3cb3f2f9bbff81130c1",
+      "baseRef": "origin/feat/mobile-phase3-document-quiz-runtime",
+      "baseSha": "47f0dce3c0cdc431929f02ff3d99fb976a7b0500",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 208,
+          "eslintErrorCount": 1706,
+          "tsOutputBytes": 43949,
+          "eslintOutputBytes": 339975
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 205,
+          "eslintErrorCount": 1707,
+          "tsOutputBytes": 42020,
+          "eslintOutputBytes": 340151
+        },
+        "tsErrorsAdded": 3,
+        "eslintErrorsDelta": -1
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19208,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-652f676bb301ed83ff158d7aac98decd.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 18966,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\ios",
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-fd9763a9ee494d816e3748c31f453f85.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 11856,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-5ef5910f214938fa04d596d21fff53b5.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr22\\web\n",
+          "stderrTail": ""
+        }
+      }
+    },
+    {
+      "pr": 23,
+      "branch": "feat/mobile-phase5-deep-links",
+      "head": "4bb9249acdb2df8864a78fb806b1cd5a5baaa6c5",
+      "baseRef": "origin/feat/mobile-phase4-role-profile-popups",
+      "baseSha": "67a108951aed41b77312d3cb3f2f9bbff81130c1",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 211,
+          "eslintErrorCount": 1707,
+          "tsOutputBytes": 44472,
+          "eslintOutputBytes": 340178
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 208,
+          "eslintErrorCount": 1706,
+          "tsOutputBytes": 43949,
+          "eslintOutputBytes": 339975
+        },
+        "tsErrorsAdded": 3,
+        "eslintErrorsDelta": 1
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19630,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-88a348388dfbe25043a48b063fb66c92.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 19351,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\ios",
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-682d94e88213de4bccef50e421ceea88.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 12210,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-f16deecd8d57cf4a6ecfc1835f958a5f.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr23\\web\n",
+          "stderrTail": ""
+        }
+      }
+    },
+    {
+      "pr": 24,
+      "branch": "feat/mobile-phase6-push-notifications",
+      "head": "eee99985b1efce24526c8a79409a8e135dc62a17",
+      "baseRef": "origin/feat/mobile-phase5-deep-links",
+      "baseSha": "4bb9249acdb2df8864a78fb806b1cd5a5baaa6c5",
+      "diagnostics": {
+        "head": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 209,
+          "eslintErrorCount": 1707,
+          "tsOutputBytes": 43744,
+          "eslintOutputBytes": 340178
+        },
+        "base": {
+          "typeCheckExit": 2,
+          "eslintExit": 1,
+          "tsErrorCount": 211,
+          "eslintErrorCount": 1707,
+          "tsOutputBytes": 44472,
+          "eslintOutputBytes": 340178
+        },
+        "tsErrorsAdded": -2,
+        "eslintErrorsDelta": 0
+      },
+      "exports": {
+        "android": {
+          "exitCode": 0,
+          "durationMs": 19168,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\android",
+          "stdoutTail": " (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/AppEntry-aec559adab1d7e1d1acf47faaefbb389.hbc (8.66 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\android\n",
+          "stderrTail": ""
+        },
+        "ios": {
+          "exitCode": 0,
+          "durationMs": 19080,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\ios",
+          "stdoutTail": "ityIcons.ttf (1.31 MB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/AppEntry-9062b77596ef128430fc1ef1122c3f2e.hbc (8.63 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\ios\n",
+          "stderrTail": ""
+        },
+        "web": {
+          "exitCode": 0,
+          "durationMs": 11658,
+          "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\web",
+          "stdoutTail": "icons\\Fonts\\Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon-mask.5223c8d9b0d08b82a5670fb5f71faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (4):\n_expo/static/js/web/AppEntry-a83735d75c1a4f3ab569026def500b3a.js (4.93 MB)\n_expo/static/js/web/studentAttendancePdf-7a03254b03e1e6ab31d020588ed8c887.js (2.74 kB)\n_expo/static/js/web/studentExamSchedulePdf-a5f2ad0d7610e5f1df59b158ccb232f3.js (2.94 kB)\n_expo/static/js/web/studentTimetablePdf-b9dbb0ce1c45fb94e4f1fa0590f3e318.js (3.62 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.22 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna\\.stack-export-check\\pr24\\web\n",
+          "stderrTail": ""
+        }
+      }
+    }
+  ],
+  "status": "passed",
+  "error": null
+}

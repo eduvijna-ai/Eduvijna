@@ -1,7 +1,19 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-const config = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const monorepoRoot = projectRoot.includes('.stack-worktrees')
+  ? path.resolve(projectRoot, '..', '..')
+  : projectRoot;
+const appEntry = path.join(projectRoot, 'App.tsx');
+
+const config = getDefaultConfig(projectRoot);
+config.projectRoot = projectRoot;
+config.watchFolders = [projectRoot, monorepoRoot];
+config.resolver.nodeModulesPaths = [
+  path.join(projectRoot, 'node_modules'),
+  path.join(monorepoRoot, 'node_modules'),
+];
 
 // Prevent Metro's FallbackWatcher from watching jest packages on Windows.
 // When npm installs jest-changed-files and similar packages with deeply-nested
@@ -46,6 +58,14 @@ const zustandCjsMap = {
 const reactNativeRoot = path.join(__dirname, 'node_modules', 'react-native');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    context.originModulePath &&
+    context.originModulePath.includes(`${path.sep}expo${path.sep}AppEntry`) &&
+    (moduleName === '../../App' || moduleName === '../../../App')
+  ) {
+    return { type: 'sourceFile', filePath: appEntry };
+  }
+
   // Shim target imports the real package under a different name (avoids circular alias).
   // On web, must use react-native-web — native react-native pulls in Fabric internals.
   if (moduleName === 'react-native-original') {

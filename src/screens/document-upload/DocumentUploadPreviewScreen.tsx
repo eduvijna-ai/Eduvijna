@@ -11,7 +11,11 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useDocumentScreenFocusEffect } from '@core/hooks/useDocumentScreenFocusEffect';
+import {
+  readDocumentWorkspacePreset,
+  withDocumentWorkspaceParams,
+} from '@core/utils/documentWorkspaceParams';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
@@ -44,6 +48,7 @@ import {
   removeDocumentUploadBook,
 } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
+import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
@@ -137,6 +142,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [questionCount, setQuestionCount] = useState<number>(
     restoredForm?.questionCount ?? route?.params?.presetQuestionCount ?? 5,
   );
+  const [additionalInstructions, setAdditionalInstructions] = useState(
+    String(route?.params?.presetInstructions ?? readDocumentWorkspacePreset(route)?.additionalInstructions ?? ''),
+  );
   const [selectedPages, setSelectedPages] = useState<Set<number>>(
     () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
   );
@@ -174,7 +182,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     void applyBookFromStorageOrParams(route?.params?.book);
   }, [route?.params?.book, applyBookFromStorageOrParams]);
 
-  useFocusEffect(
+  useDocumentScreenFocusEffect(
     useCallback(() => {
       const incoming = route?.params?.book as DocumentUploadBook | undefined;
       if (!incoming?.isCameraSession || !incoming.id) return undefined;
@@ -554,13 +562,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           subject: resolvedSubject,
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
+          additionalInstructions,
         });
         questions = result.questions;
       } else if (bookState?.fileUri) {
+        const uploadFile = getDocumentUploadFile(bookState.id);
         const result = await generateMultimodalAssessmentFromDocument({
           fileUri: bookState.fileUri,
           fileName: bookState.originalName || 'document.pdf',
           mimeType: bookState.mimeType || 'application/pdf',
+          file: uploadFile,
           questionCount,
           difficulty,
           language: 'English',
@@ -568,6 +579,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
           selectedPages: pageNumbers,
+          additionalInstructions,
         });
         questions = result.quizData.questions;
       }
@@ -627,7 +639,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      navigation.navigate('DocumentUploadQuizScreen', {
+      navigation.navigate(
+        'DocumentUploadQuizScreen',
+        withDocumentWorkspaceParams(route, {
         quizData: {
           id: libraryDocId || bookState.docId || bookState.id,
           title: bookState.title || bookState.originalName,
@@ -670,7 +684,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         workspaceMode: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
         showShareButton: true,
         showActionButtons: true,
-      });
+      }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
     } finally {
@@ -740,11 +755,14 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         });
       }
 
-      navigation.navigate('WorksheetScreen', {
-        worksheetData: worksheet,
-        title: `${bookState?.title || 'Document'} Worksheet`,
-        selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
-      });
+      navigation.navigate(
+        'WorksheetScreen',
+        withDocumentWorkspaceParams(route, {
+          worksheetData: worksheet,
+          title: `${bookState?.title || 'Document'} Worksheet`,
+          selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
+        }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
     } finally {

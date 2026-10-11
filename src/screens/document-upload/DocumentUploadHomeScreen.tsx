@@ -10,7 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useDocumentScreenFocusEffect } from '@core/hooks/useDocumentScreenFocusEffect';
+import {
+  readDocumentWorkspacePreset,
+  withDocumentWorkspaceParams,
+  workspacePresetToPreviewFields,
+} from '@core/utils/documentWorkspaceParams';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +45,8 @@ import {
   upsertDocumentUploadBook,
   consumeDocumentUploadHomeReset,
 } from '@core/services/documentUploadStorage';
+import { resolvePickerAssetBlob } from '@core/utils/documentUploadPickerAsset';
+import { rememberDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
 
@@ -98,7 +105,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   // Reload on focus; clear upload UI after a successful assessment generation.
   // selectedBook is in-memory — Preview add/remove persist to AsyncStorage, so
   // re-read that copy here or Home keeps showing the stale page count.
-  useFocusEffect(
+  useDocumentScreenFocusEffect(
     useCallback(() => {
       let active = true;
       setLoadingBooks(true);
@@ -184,8 +191,15 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
 
       if (result.canceled || !result.assets?.length) return;
 
-      const asset = result.assets[0];
-      await processAssetAndNavigate(asset);
+      const asset = result.assets[0] as {
+        uri: string;
+        name?: string;
+        mimeType?: string;
+        size?: number;
+        file?: File | Blob;
+      };
+      const file = await resolvePickerAssetBlob(asset);
+      await processAssetAndNavigate({ ...asset, file });
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to upload document.'));
     } finally {
@@ -230,7 +244,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     setSelectedBook(next);
     setBookName(next.title);
     await loadBooks();
-    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const processAssetAndNavigate = async (asset: {
@@ -238,6 +258,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     name?: string;
     mimeType?: string;
     size?: number;
+    file?: File | Blob;
   }) => {
     const fileName = asset.name || `document-${Date.now()}`;
     const mimeType = asset.mimeType || 'application/octet-stream';
@@ -253,6 +274,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileUri: asset.uri,
         fileName,
         mimeType,
+        file: asset.file,
         title,
         lessonTitle: title,
       });
@@ -285,6 +307,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         fileUri: asset.uri,
         fileName,
         mimeType,
+        file: asset.file,
         forceOcr: false,
       });
 
@@ -309,13 +332,22 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       };
     }
 
+    if (asset.file) {
+      rememberDocumentUploadFile(next.id, asset.file);
+    }
     await upsertDocumentUploadBook(next);
     setSelectedBook(next);
     setBookName(next.title);
     await loadBooks();
 
     // Required flow: upload/capture success -> direct preview
-    navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const handleUploadTilePress = async () => {
@@ -381,7 +413,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       setSelectedBook(next);
       setBookName(next.title);
       await loadBooks();
-      navigation.navigate('DocumentUploadPreviewScreen', { book: next });
+      navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: next,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to pick images from gallery.'));
     } finally {
@@ -432,7 +470,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     await upsertDocumentUploadBook(mergedBook);
     setSelectedBook(mergedBook);
 
-    navigation.navigate('DocumentUploadPreviewScreen', { book: mergedBook });
+    navigation.navigate(
+      'DocumentUploadPreviewScreen',
+      withDocumentWorkspaceParams(route, {
+        book: mergedBook,
+        ...workspacePresetToPreviewFields(readDocumentWorkspacePreset(route)),
+      }),
+    );
   };
 
   const goToHistory = () => {
@@ -488,7 +532,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       <View style={styles.tabRow}>
         {([
           { key: 'upload', label: 'Upload' },
-          { key: 'search', label: 'Search' },
+          { key: 'search', label: 'On device' },
         ] as const).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -513,8 +557,10 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
             <Ionicons name="library-outline" size={20} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.libraryBannerTitle}>Browse Document Library</Text>
-            <Text style={styles.libraryBannerSub}>Generate quizzes from books saved on the server</Text>
+            <Text style={styles.libraryBannerTitle}>From Books</Text>
+            <Text style={styles.libraryBannerSub}>
+              Server library — select pages, generate, save, and share to classrooms
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
         </TouchableOpacity>

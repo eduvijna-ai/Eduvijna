@@ -149,6 +149,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     const workspaceMode = routeParams?.workspaceMode === 'handwritten' ? 'handwritten' : 'document';
 
     const goToWorkspaceSetup = () => {
+      if (Platform.OS === 'web') {
+        navigation.navigate('DocumentUploadHomeScreen');
+        return;
+      }
       navigation.navigate('AssessmentWorkspaceScreen', {
         mode: workspaceMode,
         centerTab: 'preview',

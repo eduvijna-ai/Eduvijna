@@ -283,6 +283,12 @@ export async function submitAssignedQuiz(
   inFlightKeys.add(lockKey);
 
   try {
+    const recoveryCheckpoint = await readQuizSubmissionCheckpoint(
+      input.studentId,
+      input.quizId,
+      input.sessionId,
+    );
+
     let already: boolean;
     try {
       already = await isSubmissionPersistedOnServer(

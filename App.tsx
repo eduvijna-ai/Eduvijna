@@ -26,6 +26,7 @@ import {
 } from './src/core/services/deepLinkService';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
+import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -41,6 +42,14 @@ import StudentListWeb from './src/screens/StudentList';
 import ClassesListWeb from './src/screens/ClassesList';
 import CreateAIQuizScreen from './src/screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from './src/screens/CreateDocumentQuizScreen';
+import DocumentUploadHomeScreen from './src/screens/document-upload/DocumentUploadHomeScreen';
+import DocumentUploadPreviewScreen from './src/screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentUploadHistoryScreen from './src/screens/document-upload/DocumentUploadHistoryScreen';
+import DocumentUploadQuizScreen from './src/screens/document-upload/DocumentUploadQuizScreen';
+import DocumentLibraryScreen from './src/screens/document-upload/DocumentLibraryScreen';
+import BookPageViewerScreen from './src/screens/document-upload/BookPageViewerScreen';
+import WorksheetScreen from './src/screens/WorksheetScreen';
+import type { WebShellScreen } from './src/platforms/web/webShellScreens';
 import CreateImageQuizScreen from './src/screens/CreateImageQuizScreen';
 import CreateYouTubeQuizScreen from './src/screens/CreateYouTubeQuizScreen';
 import CreateWebsiteQuizScreen from './src/screens/CreateWebsiteQuizScreen';
@@ -62,8 +71,9 @@ installGlobalErrorHandlers();
 function AppContent() {
   const { isAuthenticated, isInitializing, user, logout } = useAuth();
   useNotificationPolling(); // Poll for notifications via API
-  const [activeScreen, setActiveScreen] = useState<'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP'>('dashboard');
+  const [activeScreen, setActiveScreen] = useState<WebShellScreen>('dashboard');
   const [navigationParams, setNavigationParams] = useState<any>({});
+  const webNavStackRef = useRef<Array<{ screen: WebShellScreen; params: any }>>([]);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
@@ -74,6 +84,7 @@ function AppContent() {
       // User logged out, clear guards
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
+      webNavStackRef.current = [];
       initialDeepLinkProcessed.current = false; // Allow deep link re-processing after logout
     } else {
       // User just authenticated - allow pending deep link to be processed
@@ -250,7 +261,9 @@ function AppContent() {
 
   // Handle navigation between screens with params support
   const handleNavigate = (screen: string, params?: any) => {
-    setActiveScreen(screen as any);
+    const resolved = resolveWebShellScreen(screen);
+    webNavStackRef.current.push({ screen: activeScreen, params: navigationParams });
+    setActiveScreen(resolved as WebShellScreen);
     setNavigationParams(params || {});
   };
 
@@ -259,9 +272,29 @@ function AppContent() {
   // navigate/goBack/replace/setOptions.
   const createWebNavigation = (defaultBackScreen: string = 'dashboard') => ({
     navigate: (screen: string, params?: any) => handleNavigate(screen, params),
-    replace: (screen: string, params?: any) => handleNavigate(screen, params),
-    goBack: () => handleNavigate(defaultBackScreen),
-    // No-op on web shell; prevents crashes from stack-only APIs.
+    replace: (screen: string, params?: any) => {
+      setActiveScreen(resolveWebShellScreen(screen) as WebShellScreen);
+      setNavigationParams(params || {});
+    },
+    goBack: () => {
+      const previous = webNavStackRef.current.pop();
+      if (previous) {
+        setActiveScreen(previous.screen);
+        setNavigationParams(previous.params || {});
+        return;
+      }
+      setActiveScreen(defaultBackScreen as WebShellScreen);
+      setNavigationParams({});
+    },
+    canGoBack: () => webNavStackRef.current.length > 0,
+    push: (screen: string, params?: any) => handleNavigate(screen, params),
+    pop: () => {
+      const previous = webNavStackRef.current.pop();
+      if (previous) {
+        setActiveScreen(previous.screen);
+        setNavigationParams(previous.params || {});
+      }
+    },
     setOptions: (_options: any) => {},
   });
 
@@ -513,7 +546,48 @@ function AppContent() {
         case 'CreateAIQuizScreen':
           return <CreateAIQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateDocumentQuizScreen':
-          return <CreateDocumentQuizScreen navigation={createWebNavigation('dashboard')} />;
+        case 'DocumentUploadHomeScreen':
+          return (
+            <DocumentUploadHomeScreen
+              navigation={createWebNavigation('dashboard')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadPreviewScreen':
+          return (
+            <DocumentUploadPreviewScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadHistoryScreen':
+          return (
+            <DocumentUploadHistoryScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentUploadQuizScreen':
+          return (
+            <DocumentUploadQuizScreen
+              navigation={createWebNavigation('DocumentUploadPreviewScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentLibraryScreen':
+          return (
+            <DocumentLibraryScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'BookPageViewerScreen':
+          return (
+            <BookPageViewerScreen
+              navigation={createWebNavigation('DocumentLibraryScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'CreateImageQuizScreen':
           return <CreateImageQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'CreateYouTubeQuizScreen':
@@ -523,7 +597,12 @@ function AppContent() {
         case 'CreateHandwrittenQuizScreen':
           return <CreateHandwrittenQuizScreen navigation={createWebNavigation('dashboard')} />;
         case 'QuizPreviewScreen':
-          return <QuizPreviewScreen navigation={createWebNavigation('assessments')} />;
+          return (
+            <QuizPreviewScreen
+              navigation={createWebNavigation('assessments')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'QuizResultsScreen':
           return <QuizResultsScreen 
             navigation={createWebNavigation('assessments')} 
@@ -543,6 +622,13 @@ function AppContent() {
           return <QuizLoadingScreen 
             route={{ params: navigationParams }}
           />;
+        case 'WorksheetScreen':
+          return (
+            <WorksheetScreen
+              navigation={createWebNavigation('DocumentUploadPreviewScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
         case 'ERP':
           return (
             <NavigationContainer independent>
@@ -559,7 +645,7 @@ function AppContent() {
     };
 
     return (
-      <WebNavigation activeScreen={activeScreen} onNavigate={(screen) => handleNavigate(screen)}>
+      <WebNavigation activeScreen={activeScreen} onNavigate={handleNavigate}>
         {renderScreen()}
       </WebNavigation>
     );

@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T11:48:13.899Z",
+  "verifiedAt": "2026-10-10T12:42:21.148Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "accounts": [
     {
@@ -24,7 +24,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 160,
+              "total_count": 169,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -35,19 +35,19 @@
                 "classroom_id": "ref:c6ec6d85",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
-                "has_time_limit": true,
+                "has_time_limit": false,
                 "quiz_status": "not_started",
                 "student_status": "not_started",
-                "question_count": 5
+                "question_count": 1
               },
               {
                 "classroom_id": "ref:c6ec6d85",
                 "classroom_name": "[redacted]",
-                "availability_status": "expired",
-                "has_time_limit": true,
-                "quiz_status": "missed",
-                "student_status": "missed",
-                "question_count": 5
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "in_progress",
+                "student_status": "not_started",
+                "question_count": 1
               }
             ]
           }
@@ -110,7 +110,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 9,
+              "total_count": 18,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -121,19 +121,19 @@
                 "classroom_id": "ref:c6ec6d85",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
-                "has_time_limit": true,
+                "has_time_limit": false,
                 "quiz_status": "not_started",
                 "student_status": "not_started",
-                "question_count": 5
+                "question_count": 1
               },
               {
                 "classroom_id": "ref:c6ec6d85",
                 "classroom_name": "[redacted]",
-                "availability_status": "expired",
-                "has_time_limit": true,
-                "quiz_status": "missed",
-                "student_status": "missed",
-                "question_count": 5
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "in_progress",
+                "student_status": "not_started",
+                "question_count": 1
               }
             ]
           }
@@ -197,7 +197,7 @@
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 10,
+            "rowCount": 12,
             "sampleFields": [
               {
                 "status": null,
@@ -215,7 +215,7 @@
               }
             ]
           },
-          "rowCount": 10
+          "rowCount": 12
         },
         {
           "name": "[redacted]",
@@ -263,10 +263,37 @@
         },
         {
           "name": "[redacted]",
+          "status": 200,
+          "rowCount": 12,
+          "fixtureSessionVisible": true,
           "data": {
-            "quiz_id": "ref:d238c12b",
-            "session_id": "ref:6b27ea24",
-            "source": "pending"
+            "success": true,
+            "check_type": "pending",
+            "rowCount": 12,
+            "sampleFields": [
+              {
+                "status": null,
+                "quiz_id": "ref:d238c12b",
+                "session_id": "ref:6b27ea24",
+                "has_time_limit": true,
+                "availability": "active"
+              },
+              {
+                "status": null,
+                "quiz_id": "ref:d238c154",
+                "session_id": "ref:dc6f44a6",
+                "has_time_limit": true,
+                "availability": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "[redacted]",
+          "data": {
+            "quiz_id": "ref:d2396d88",
+            "session_id": "ref:55a46b8c",
+            "source": "run_fixture"
           }
         },
         {
@@ -291,5 +318,16 @@
   "notes": [
     "Output is redacted; no tokens, credentials, or personal profile fields.",
     "Probe targets are chosen from raw check-record payloads before summarization."
-  ]
+  ],
+  "runFixture": {
+    "topic": "[redacted]",
+    "quizId": "ref:d2396d88",
+    "sessionId": "ref:55a46b8c",
+    "classroomId": "ref:c6ec6d85"
+  },
+  "fixtureCleanup": {
+    "ok": false,
+    "skipped": true,
+    "limitation": "No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL."
+  }
 }
