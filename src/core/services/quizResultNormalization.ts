@@ -124,6 +124,7 @@ function questionsFromAttendedItems(items: AttendedQuizQuestion[]): PlayableQuiz
     options: item.options ?? [],
     answer: item.answer_key ?? '',
     correctAnswer: item.answer_key ?? '',
+    attendedIsCorrect: item.is_correct ?? null,
     explanation: null,
   }));
 }
