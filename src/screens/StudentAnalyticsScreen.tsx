@@ -804,6 +804,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                 }
                 const params = {
                   quizId: attempt.quiz_id,
+                  sessionId: (attempt as { session_id?: string }).session_id,
                   attemptId: attempt.attempt_id,
                   studentId: studentId,
                   studentName: studentName,

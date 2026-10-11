@@ -154,7 +154,36 @@ export type PlayableQuizQuestion = {
   answer?: string;
   explanation?: string | null;
   optionsNormalized?: boolean;
+  /** Authoritative correctness from attended-quiz when answer key is absent. */
+  attendedIsCorrect?: boolean | null;
 };
+
+export function hasAuthoritativeCorrectAnswer(question: {
+  correctAnswer?: string;
+  answer?: string;
+}): boolean {
+  return Boolean(String(question.correctAnswer ?? question.answer ?? '').trim());
+}
+
+/**
+ * Grades a persisted answer: uses answer key when present, else attended is_correct metadata.
+ * Returns null when correctness is unknown (do not count as incorrect).
+ */
+export function evaluatePersistedAnswerCorrectness(
+  selectedAnswer: string | undefined,
+  question: PlayableQuizQuestion,
+): boolean | null {
+  if (!selectedAnswer || !String(selectedAnswer).trim()) {
+    return false;
+  }
+  if (hasAuthoritativeCorrectAnswer(question)) {
+    return isQuizAnswerCorrect(selectedAnswer, question);
+  }
+  if (typeof question.attendedIsCorrect === 'boolean') {
+    return question.attendedIsCorrect;
+  }
+  return null;
+}
 
 /**
  * Normalize quiz questions for play — mirrors web HandwrittenWorkspace.normalizeDocumentQuizQuestions.
@@ -222,6 +251,26 @@ export interface ExplanationReconcileInput {
 export interface ExplanationReconcileResult {
   authoritativeCorrectAnswers: Record<number, string>;
   questionResults: Record<number, boolean>;
+}
+
+/** Local grading only — safe to run before persistence (no explanation API). */
+export function computeLocalQuizResults(
+  questions: PlayableQuizQuestion[],
+  selectedAnswers: Record<number, string>,
+): ExplanationReconcileResult {
+  const authoritativeCorrectAnswers: Record<number, string> = {};
+  const questionResults: Record<number, boolean> = {};
+
+  questions.forEach((question, index) => {
+    const selectedAnswer = selectedAnswers[index];
+    if (!selectedAnswer) {
+      questionResults[index] = false;
+      return;
+    }
+    questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+  });
+
+  return { authoritativeCorrectAnswers, questionResults };
 }
 
 /**

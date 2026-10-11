@@ -5,6 +5,8 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 //import type { Notification } from '@core/api/notifications.api';
@@ -103,16 +105,37 @@ export default function NotificationHandler() {
         }
         break;
 
-      case 'quiz_graded':
-        // Quiz graded - show results
-        if (quizId) {
-          console.log('➡️ Navigating to QuizResultsScreen:', quizId);
-          (navigationRef.current as any).navigate('QuizResultsScreen', {
-            quizId,
-            studentId,
+      case 'quiz_graded': {
+        void (async () => {
+          let resolvedSessionId = sessionId;
+          const student = studentId ?? user?.id;
+          if (!resolvedSessionId && quizId && student) {
+            const resolution = await resolveStudentGradedAssignmentSession(String(student), quizId);
+            if (resolution.kind === 'ambiguous') {
+              console.log('➡️ Ambiguous graded quiz assignment; opening Assessments');
+              (navigationRef.current as any).navigate('Assessments');
+              return;
+            }
+            if (resolution.kind === 'resolved') {
+              resolvedSessionId = resolution.sessionId;
+            }
+          }
+          const resultParams = buildQuizGradedResultsNavigationParams({
+            quiz_id: quizId,
+            session_id: resolvedSessionId,
+            student_id: student,
+            quiz_title: quizTitle,
           });
-        }
+          if (resultParams) {
+            console.log('➡️ Navigating to QuizResultsScreen:', resultParams);
+            (navigationRef.current as any).navigate('QuizResultsScreen', resultParams);
+            return;
+          }
+          console.log('➡️ Graded notification missing resolvable quiz; opening Assessments');
+          (navigationRef.current as any).navigate('Assessments');
+        })();
         break;
+      }
 
       case 'classroom_invite':
         // Classroom invitation - navigate to classes (could add classroom detail screen)

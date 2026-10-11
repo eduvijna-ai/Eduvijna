@@ -11,6 +11,7 @@ import {
   StatusBar,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,15 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
-import { checkQuizAttempt, getQuizBySessionId } from '@core/services/sharedApi';
+import {
+  isAssignedQuizRecoveryProbeError,
+} from '@core/services/assignedQuizRecovery.service';
+import {
+  isAssignedQuizLoadError,
+  navigateStudentToQuizTaking,
+  resolveStudentAssignedQuizStart,
+  resolveStudentAssignedQuizViewResults,
+} from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
 
@@ -347,20 +356,60 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       return;
     }
     
-    // Student-specific action: View assessment results
+    // Student-specific action: View assessment results (probe pending recovery first)
     if (!isTeacher && action === 'viewResults' && attemptData) {
-      if (onNavigate) {
-        onNavigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
+      const correctQuizId = attemptData?.quiz_id || quizId;
+      const correctSessionId = attemptData?.session_id || '';
+      const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
+      const studentIdForApi =
+        (attemptData?.student_id != null ? attemptData.student_id.toString() : null) ??
+        user?.id?.toString() ??
+        '';
+
+      setLoadingQuizId(correctQuizId);
+      try {
+        const viewResult = await resolveStudentAssignedQuizViewResults({
+          studentId: studentIdForApi,
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
+          attemptData,
+          quizName: attemptData?.quiz_name,
         });
-      } else if (navigation) {
-        navigation.navigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
-        });
+
+        if (viewResult.kind === 'recovery_retry') {
+          navigateStudentToQuizTaking(navigation, onNavigate, viewResult.params);
+          return;
+        }
+
+        if (viewResult.kind === 'probe_failed') {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
+
+        const resultParams = viewResult.resultParams;
+        if (onNavigate) {
+          onNavigate('QuizResultsScreen', resultParams);
+        } else if (navigation) {
+          navigation.navigate('QuizResultsScreen', resultParams);
+        }
+      } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
+        Alert.alert(
+          'Connection Error',
+          'Could not open results. Please check your connection and try again.',
+        );
+      } finally {
+        setTimeout(() => setLoadingQuizId(null), 1000);
       }
       return;
     }
@@ -382,109 +431,53 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           user?.id?.toString() ??
           '';
 
-        // Check via API whether this student has already completed this quiz.
-        // GET /api/v1/dashboard/quiz-attempts?student_id={student_id}&quiz_id={quiz_id}&class_id={session_id}
-        // NOTE: the API's class_id field maps to session_id (UUID), not classroom_id.
-        const attemptCheck = await checkQuizAttempt(
-          correctQuizId,
-          studentIdForApi,
-          correctSessionId || undefined,
-        );
-
-        console.log('🎯 Attempt check result:', {
-          quiz_id: correctQuizId,
-          student_id: studentIdForApi,
-          session_id: correctSessionId,
-          hasAttempted: attemptCheck.hasAttempted,
-          status: attemptCheck.status,
+        const startResult = await resolveStudentAssignedQuizStart({
+          studentId: studentIdForApi,
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
+          attemptData,
         });
 
-        if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
-          // Quiz already completed — show modal instead of navigating.
+        if (startResult.kind === 'lookup_failed') {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your quiz status. Please check your connection and try again.',
+          );
+          return;
+        }
+
+        if (startResult.kind === 'already_completed') {
           setCompletedAttemptModal({
-            quizName: attemptData?.quiz_name || 'Quiz',
-            score: attemptCheck.score ?? null,
-            completedAt: attemptCheck.completedAt ?? null,
-            quizId: correctQuizId,
-            attemptData,
+            quizName: startResult.quizName,
+            score: startResult.score,
+            completedAt: startResult.completedAt,
+            quizId: Number(startResult.quizId),
+            attemptData: startResult.attemptData,
           });
           return;
         }
 
-        // Not yet completed — fetch full quiz data (with questions) then navigate.
-        // This mirrors the web (OpenQuizPage) and Notifications screen flow:
-        //   GET /api/v1/quiz?session_id=... → quiz_data.questions.quizzes (filtered to question_count)
-        let quizDataWithQuestions = attemptData;
-        try {
-          const quizResponse = await getQuizBySessionId(correctSessionId);
-          if (quizResponse.success && quizResponse.quiz_data) {
-            const fetchedQuiz = quizResponse.quiz_data;
-            // Limit to the teacher-selected question count (same as web)
-            const questionLimit = fetchedQuiz.question_count || fetchedQuiz.questions.quizzes.length;
-            const questions = fetchedQuiz.questions.quizzes.slice(0, questionLimit).map(
-              (q: any, index: number) => ({
-                id: `q-${index}`,
-                question: q.quiz.question,
-                options: q.quiz.options,
-                correctAnswer: q.quiz.answer,
-                answer: q.answer,
-                explanation: null,
-              })
-            );
-            quizDataWithQuestions = {
-              ...attemptData,
-              id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              quiz_id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              session_id: correctSessionId,
-              classroom_id: correctClassroomId,
-              title: fetchedQuiz.topic || attemptData?.quiz_name || 'Assessment',
-              duration: fetchedQuiz.duration || attemptData?.duration || 30,
-              has_time_limit: fetchedQuiz.has_time_limit ?? true,
-              is_public: fetchedQuiz.is_public ?? false,
-              questions,
-            };
-          }
-        } catch (fetchErr) {
-          console.warn('⚠️ Could not fetch quiz questions, navigating with metadata only:', fetchErr);
+        navigateStudentToQuizTaking(navigation, onNavigate, startResult.params);
+      } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
         }
-
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-            quiz: quizDataWithQuestions,
-            is_public: false,
-          });
+        if (isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not load quiz questions. Please check your connection and try again.',
+          );
+          return;
         }
-      } catch {
-        // If the attempt-check fails, proceed to the quiz so the student
-        // is never blocked by a network error.
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-            quiz: attemptData,
-            is_public: false,
-          });
-        }
+        Alert.alert(
+          'Connection Error',
+          'Could not start this assessment. Please check your connection and try again.',
+        );
       } finally {
         setTimeout(() => setLoadingQuizId(null), 1000);
       }
@@ -919,11 +912,22 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       {/* STUDENT LOGIC: Completed quizzes - View Results button */}
                       {quiz.status === 'completed' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }]}
+                          style={[
+                            styles.smallButton,
+                            { backgroundColor: theme.colors.primary },
+                            loadingQuizId === quiz.quiz_id && { opacity: 0.6 },
+                          ]}
                           onPress={() => handleAction('viewResults', quiz.quiz_id, quiz)}
+                          disabled={loadingQuizId === quiz.quiz_id}
                         >
-                          <Ionicons name="document-text" size={14} color="#FFFFFF" />
-                          <Text style={styles.smallButtonText}>Results</Text>
+                          {loadingQuizId === quiz.quiz_id ? (
+                            <LoadingSpinner size={14} />
+                          ) : (
+                            <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.smallButtonText}>
+                            {loadingQuizId === quiz.quiz_id ? 'Loading...' : 'Results'}
+                          </Text>
                         </TouchableOpacity>
                       )}
                       

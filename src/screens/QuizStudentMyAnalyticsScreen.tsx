@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import AnalyticsKPIGrid from '../components/analytics/AnalyticsKPIGrid';
 import AnalyticsDateFilter from '../components/analytics/AnalyticsDateFilter';
@@ -33,7 +34,6 @@ import {
   generateStudentKPITiles,
   getDefaultDateRange,
   formatDate,
-  formatDuration,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
 
@@ -53,6 +53,7 @@ export default function QuizStudentMyAnalyticsScreen() {
   const { colors } = theme;
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
   const defaultDates = getDefaultDateRange();
 
   const [loading, setLoading] = useState(true);
@@ -205,7 +206,7 @@ export default function QuizStudentMyAnalyticsScreen() {
     });
 
     const canStart = status === 'pending' && quiz.availability_status === 'active' && quiz.session_id;
-    const canView = status === 'completed' && quiz.log_data;
+    const canView = status === 'completed' && (quiz.log_data || quiz.session_id);
 
     return (
       <View key={quiz.quiz_id} style={[styles.quizRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -223,7 +224,18 @@ export default function QuizStudentMyAnalyticsScreen() {
           {canView ? (
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: colors.primary }]}
-              onPress={() =>
+              onPress={() => {
+                if (quiz.session_id && user?.id) {
+                  navigation.navigate('QuizResultsScreen', {
+                    quizId: quiz.quiz_id,
+                    sessionId: quiz.session_id,
+                    studentId: String(user.id),
+                    isTeacherView: false,
+                    quizName: quiz.quiz_name,
+                    score,
+                  });
+                  return;
+                }
                 setPopup({
                   visible: true,
                   quizName: quiz.quiz_name,
@@ -231,8 +243,8 @@ export default function QuizStudentMyAnalyticsScreen() {
                   timeSpent: quiz.time_spent_seconds,
                   logData: quiz.log_data,
                   submittedAt: quiz.submitted_at,
-                })
-              }
+                });
+              }}
             >
               <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View</Text>
             </TouchableOpacity>

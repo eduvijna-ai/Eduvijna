@@ -7,14 +7,17 @@ import {
   API_ORIGINS,
 } from '../core/config/apiEnvironment';
 
+const testEnv = (overrides: Record<string, string | undefined> = {}): NodeJS.ProcessEnv =>
+  ({ NODE_ENV: 'test', ...overrides }) as NodeJS.ProcessEnv;
+
 describe('apiEnvironment', () => {
   it('defaults missing EDUVIJNA_API_ENV to development', () => {
-    expect(resolveApiEnvironmentFromProcess({})).toBe('development');
-    expect(resolveApiOriginForProcess({}).apiOrigin).toBe(API_ORIGINS.development);
+    expect(resolveApiEnvironmentFromProcess(testEnv())).toBe('development');
+    expect(resolveApiOriginForProcess(testEnv()).apiOrigin).toBe(API_ORIGINS.development);
   });
 
   it('selects fixed production origin', () => {
-    expect(resolveApiOriginForProcess({ EDUVIJNA_API_ENV: 'production' }).apiOrigin).toBe(
+    expect(resolveApiOriginForProcess(testEnv({ EDUVIJNA_API_ENV: 'production' })).apiOrigin).toBe(
       API_ORIGINS.production,
     );
   });

@@ -899,7 +899,7 @@ export function checkRecordToQuiz(item: CheckRecordQuiz): any {
     student_id: item.student_id,
     status: item.status === null ? 'pending' : item.status,
     score: null,
-    correct_answers: 0,
+    correct_answers: undefined,
     question_count: d.question_count,
     time_spent_seconds: null,
     attempt_number: null,

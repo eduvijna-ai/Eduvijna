@@ -711,7 +711,7 @@ export default function StaffSelfServiceView({ classRows = [] }: StaffSelfServic
             </View>
             <SurfaceCard padded={false}>
               <ReadRow icon="male-female-outline" label="Gender" value={dash(profile.gender)} />
-              <ReadRow icon="cake-outline" label="Date of Birth" value={dob} />
+              <ReadRow icon="cafe-outline" label="Date of Birth" value={dob} />
               <ReadRow icon="mail-outline" label="Email" value={dash(profile.email)} />
               <ReadRow icon="call-outline" label="Phone" value={dash(profile.phone)} />
               <ReadRow icon="calendar-outline" label="Joining Date" value={joining} />

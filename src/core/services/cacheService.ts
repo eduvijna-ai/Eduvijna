@@ -29,6 +29,13 @@ interface CacheEntry {
 const memoryCache = new Map<string, CacheEntry>();
 const DEFAULT_MEMORY_TTL = CACHE_TTL.DEFAULT;
 
+/** Never reclaimed by cache pressure — assigned-quiz immutable checkpoints. */
+export const PROTECTED_ASYNC_STORAGE_PREFIXES = ['eduvijna:assigned_quiz_checkpoint:'] as const;
+
+export function isProtectedAsyncStorageKey(key: string): boolean {
+  return PROTECTED_ASYNC_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
 // Cache statistics
 interface CacheStats {
   memoryHits: number;
@@ -218,7 +225,9 @@ async function reclaimStorageSpace(aggressive = false): Promise<number> {
   let removed = 0;
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const eduvijnaKeys = keys.filter((k) => k.startsWith('eduvijna:'));
+    const eduvijnaKeys = keys.filter(
+      (k) => k.startsWith('eduvijna:') && !isProtectedAsyncStorageKey(k),
+    );
     if (eduvijnaKeys.length === 0) return 0;
 
     const dated: Array<{ key: string; timestamp: number }> = [];
@@ -304,7 +313,9 @@ export async function setCachedData(
           // Last resort: wipe all app cache keys so the app stays usable
           try {
             const keys = await AsyncStorage.getAllKeys();
-            const eduvijnaKeys = keys.filter((k) => k.startsWith('eduvijna:'));
+            const eduvijnaKeys = keys.filter(
+              (k) => k.startsWith('eduvijna:') && !isProtectedAsyncStorageKey(k),
+            );
             if (eduvijnaKeys.length) await AsyncStorage.multiRemove(eduvijnaKeys);
             ok = await writeToDisk();
             console.warn(
@@ -354,6 +365,35 @@ export async function clearCacheEntry(key: string): Promise<void> {
     if (memoryDeleted) {
       console.log(`🗑️ [${timestamp}] [CACHE DELETE] ${key} | Removed from L1 only`);
     }
+  }
+}
+
+/**
+ * Remove all cache entries whose logical key starts with `prefix` (L1 + L2).
+ */
+export async function clearCacheEntriesWithPrefix(prefix: string): Promise<void> {
+  const fullPrefix = generateCacheKey(prefix);
+  const timestamp = new Date().toISOString();
+
+  let memoryRemoved = 0;
+  for (const key of Array.from(memoryCache.keys())) {
+    if (key.startsWith(fullPrefix)) {
+      memoryCache.delete(key);
+      memoryRemoved += 1;
+    }
+  }
+
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const toRemove = allKeys.filter((k) => k.startsWith(fullPrefix));
+    if (toRemove.length > 0) {
+      await AsyncStorage.multiRemove(toRemove);
+    }
+    console.log(
+      `🗑️ [${timestamp}] [CACHE DELETE PREFIX] ${prefix} | L1=${memoryRemoved} L2=${toRemove.length}`,
+    );
+  } catch (error) {
+    console.warn(`⚠️ [${timestamp}] [CACHE DELETE PREFIX] ${prefix} failed on L2:`, error);
   }
 }
 

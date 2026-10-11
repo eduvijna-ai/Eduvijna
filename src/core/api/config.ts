@@ -97,7 +97,6 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError<ApiError>) => {
     const status = error.response?.status;
-    const url = error.config?.url || 'unknown';
     const responseData = error.response?.data as any;
 
     // Check if it's an authentication error by status code OR by error message.

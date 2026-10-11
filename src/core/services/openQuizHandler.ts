@@ -15,6 +15,11 @@
  */
 
 import { fetchQuizDetailsBySessionId } from './dashboardApi';
+import {
+  buildRecoveryResumeParams,
+  findPendingSubmissionCheckpoint,
+} from './assignedQuizRecovery.service';
+import { loadAssignedQuizDataForSession } from './assessmentQuizStart.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -69,59 +74,7 @@ interface User {
 interface NavigationAdapter {
   navigate: (screen: string, params?: any) => void;
   alert: (title: string, message: string, buttons?: any[]) => void;
-}
-
-/**
- * Check quiz availability based on start_time and end_time
- * Returns availability status with formatted time strings
- */
-function checkQuizAvailability(quizData: any): {
-  available: boolean;
-  startTime: string;
-  endTime: string;
-  expired?: boolean;
-} {
-  // Only check for assigned quizzes (those with start_time/end_time)
-  if (!quizData?.start_time || !quizData?.end_time) {
-    return { available: true, startTime: '', endTime: '' };
-  }
-
-  const now = new Date();
-  const startTime = new Date(quizData.start_time);
-  const endTime = new Date(quizData.end_time);
-
-  // Format dates for display
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (now < startTime) {
-    // Quiz hasn't started yet
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-    };
-  }
-
-  if (now > endTime) {
-    // Quiz has ended
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-      expired: true,
-    };
-  }
-
-  // Quiz is currently available
-  return { available: true, startTime: '', endTime: '' };
+  onNavigate?: (screen: string, params?: any) => void;
 }
 
 /**
@@ -324,11 +277,48 @@ export async function handleOpenQuiz(
     // 6. STUDENT FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
+      const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+        user.id,
+        quizData.quiz_id,
+        sessionId,
+      );
+      if (pendingCheckpoint) {
+        const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+        const mergedQuiz = await loadAssignedQuizDataForSession({
+          correctQuizId: quizData.quiz_id,
+          correctSessionId: sessionId,
+          correctClassroomId: quizData.classroom_id || quizData.class_id || '',
+          attemptData: validation.quizData,
+        });
+        const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
+        const screenParams = {
+          quiz: normalizedQuiz,
+          quizId: normalizedQuiz.quizId,
+          sessionId: normalizedQuiz.sessionId,
+          classroomId: normalizedQuiz.classroomId,
+          quizData: normalizedQuiz,
+          is_public: quizData.is_public,
+          submissionRecovery: recovery,
+        };
+        if (navigationAdapter.onNavigate) {
+          navigationAdapter.onNavigate('QuizTakingScreen', {
+            ...screenParams,
+            quiz: normalizedQuiz,
+            is_public: quizData.is_public,
+          });
+        } else {
+          navigationAdapter.navigate('QuizTakingScreen', screenParams);
+        }
+        return;
+      }
+
       // A. Already attempted - show results
       if (validation.isAttempted) {
         navigationAdapter.navigate('QuizResultsScreen', {
           quizId: quizData.quiz_id,
-          sessionId: quizData.session_id,
+          sessionId: sessionId || quizData.session_id,
+          studentId: user.id,
+          isTeacherView: false,
           attemptData: validation.attemptData,
         });
         return;
