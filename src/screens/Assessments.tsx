@@ -157,9 +157,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     (s) => s.bumpClassificationNow,
   );
   useStudentAssignmentBoundaryClock(studentRawQuizzes, bumpStudentClassificationNow);
-  const studentQuizzes = isStudent
-    ? (studentClassified.length > 0 ? studentClassified : storedQuizzes)
-    : [];
+  const studentQuizzes = isStudent ? studentClassified : [];
 
   const studentRefresh = useCallback(async () => {
     if (!isStudent || !user?.id) return;

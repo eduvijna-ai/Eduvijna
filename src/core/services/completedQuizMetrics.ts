@@ -1,5 +1,5 @@
 import type { QuizResultLoadState } from './quizResultRetrieval.service';
-import { isQuizAnswerCorrect } from '../utils/answerMappingUtils';
+import { evaluatePersistedAnswerCorrectness } from '../utils/answerMappingUtils';
 
 type LogAnswerEntry = {
   isCorrect?: boolean;
@@ -37,8 +37,10 @@ export function countCorrectAnswersFromPersistedResult(
     const question = questions[i];
     const selected = result.userAnswers[i];
     if (!selected || !String(selected).trim()) continue;
+    const outcome = evaluatePersistedAnswerCorrectness(selected, question);
+    if (outcome === null) continue;
     evaluated += 1;
-    if (isQuizAnswerCorrect(selected, question)) correct += 1;
+    if (outcome) correct += 1;
   }
   return evaluated > 0 ? correct : undefined;
 }

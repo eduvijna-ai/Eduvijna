@@ -39,8 +39,34 @@ export function resolveRemoteBranchSha(monorepoRoot, branch) {
 /**
  * Detach worktree at exact SHA and assert HEAD matches before diagnostics/exports.
  */
+const ALLOWED_UNTRACKED_PREFIXES = ['.stack-export-check/'];
+
+export function assertWorktreeClean(worktreeRoot) {
+  const status = execSync('git status --porcelain', { cwd: worktreeRoot, encoding: 'utf8' });
+  const violations = [];
+  for (const line of status.split('\n')) {
+    if (!line.trim()) continue;
+    const code = line.slice(0, 2);
+    const path = line.slice(3).trim().replace(/\\/g, '/');
+    if (code === '??') {
+      const allowed = ALLOWED_UNTRACKED_PREFIXES.some((prefix) => path.startsWith(prefix));
+      if (!allowed) {
+        violations.push(`untracked:${path}`);
+      }
+      continue;
+    }
+    violations.push(`dirty:${path}`);
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `Worktree not clean at ${worktreeRoot}: ${violations.slice(0, 8).join(', ')}`,
+    );
+  }
+}
+
 export function prepareWorktreeAtSha(monorepoRoot, branch, expectedSha) {
   const worktreeRoot = requireWorktreeRoot(monorepoRoot, branch);
+  assertWorktreeClean(worktreeRoot);
   fetchOrigin(monorepoRoot);
   execSync(`git checkout --detach ${expectedSha}`, { cwd: worktreeRoot, stdio: 'ignore' });
   const head = execSync('git rev-parse HEAD', { cwd: worktreeRoot, encoding: 'utf8' }).trim();
