@@ -35,6 +35,7 @@ import {
   type AssessmentListItem,
 } from '../core/services/sharedApi';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import { loadDocumentAssessmentHistory } from '@core/services/documentAssessmentHistory.service';
 
 interface Props {
   navigation: any;
@@ -52,7 +53,7 @@ const WS_LEVELS = ['easy', 'medium', 'hard', 'advanced'] as const;
 const DOCUMENT_SOURCE_OPTIONS = [
   { key: 'file', icon: 'document-attach-outline', label: 'Upload File' },
   { key: 'gallery', icon: 'images-outline', label: 'Gallery' },
-  { key: 'library', icon: 'library-outline', label: 'Document Library' },
+  { key: 'library', icon: 'library-outline', label: 'From Books' },
   { key: 'camera', icon: 'camera-outline', label: 'Camera' },
 ] as const;
 
@@ -127,27 +128,9 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
         (b.created_at || '').localeCompare(a.created_at || '');
 
       if (mode === 'document') {
-        // Web parity (HandwrittenWorkspace.loadDocumentHistory):
-        // document quizzes → web-quiz + Document; worksheets → Doc-Worksheet.
-        const [quizRaw, quizLegacyRaw, worksheetRaw] = await Promise.all([
-          listUserAssessments('web-quiz', 'Document'),
-          listUserAssessments('quiz', 'DocumentUpload'),
-          listUserAssessments('worksheet', 'Doc-Worksheet'),
-        ]);
-
-        const mergedQuizzes = [
-          ...(Array.isArray(quizRaw) ? quizRaw : []),
-          ...(Array.isArray(quizLegacyRaw) ? quizLegacyRaw : []),
-        ];
-        const seen = new Set<number | string>();
-        const quizzes = mergedQuizzes.filter((item) => {
-          if (seen.has(item.id)) return false;
-          seen.add(item.id);
-          return true;
-        });
-
-        setQuizList(quizzes.sort(sortByDate));
-        setWorksheetList((Array.isArray(worksheetRaw) ? worksheetRaw : []).sort(sortByDate));
+        const history = await loadDocumentAssessmentHistory();
+        setQuizList(history.quizzes.sort(sortByDate));
+        setWorksheetList(history.worksheets.sort(sortByDate));
         return;
       }
 
