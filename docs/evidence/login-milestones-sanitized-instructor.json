@@ -1,0 +1,19 @@
+{
+  "role": "instructor",
+  "pass": false,
+  "firstFailingBoundary": "authenticated_shell_timeout",
+  "diagnosis": {
+    "apiLoginFromHost": "ok",
+    "inAppNavigationAfterSubmit": "failed",
+    "uiStateAtFailure": "unknown_in_app",
+    "rootCause": "React Native controlled TextInput ignored adb typing; login() received empty credentials. Fixed in commit with ACCEPTANCE_ADB_LOGIN file bridge + session-scoped useAuth."
+  },
+  "milestonesRedacted": [
+    "login_form_ready",
+    "fields_located",
+    "inputs_populated",
+    "api_login_probe_ok",
+    "post_submit_observation_timeout"
+  ],
+  "note": "Re-run android-login.mjs after Metro restart with EDUVIJNA_ACCEPTANCE_ADB_LOGIN=1 and dev-client reload."
+}

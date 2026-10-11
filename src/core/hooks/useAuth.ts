@@ -14,6 +14,7 @@ import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
 import {
   bumpAuthSessionEpoch,
+  clearCredentialsAtEpoch,
   getAuthSessionEpoch,
   getOutgoingCredentialEpoch,
   initializeAuthSessionIdentity,
@@ -21,6 +22,13 @@ import {
 } from '../api/apiRefreshCoordinator';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import { useDashboardStore } from '../store/dashboard.store';
+import {
+  classifyStartupAuthError,
+  createSessionScopedCommit,
+  parseCachedUserProfile,
+  raceWithBoundedWait,
+  recoverableStartupMessage,
+} from './authLifecycle';
 
 /** Extract school_id from any user profile shape with multi-field fallbacks */
 function extractSchoolId(user: UserProfile | null): number | null {
@@ -78,11 +86,12 @@ async function enrichUserWithSchoolName(user: UserProfile): Promise<UserProfile>
       (typeof resp?.data?.name === 'string' && resp.data.name) ||
       '';
 
-    // Also extract school_id from the /my-school response (SchoolResponse has school_id field)
     const apiSchoolId: number | undefined =
-      typeof resp?.school_id === 'number' ? resp.school_id :
-      typeof resp?.data?.school_id === 'number' ? resp.data.school_id :
-      undefined;
+      typeof resp?.school_id === 'number'
+        ? resp.school_id
+        : typeof resp?.data?.school_id === 'number'
+          ? resp.data.school_id
+          : undefined;
 
     const nextUser = {
       ...(user as any),
@@ -96,32 +105,78 @@ async function enrichUserWithSchoolName(user: UserProfile): Promise<UserProfile>
   }
 }
 
+function applyAuthenticatedUser(
+  sessionEpoch: number,
+  enrichedUser: UserProfile,
+  deps: {
+    setUser: (u: UserProfile | null) => void;
+    setAuthenticated: (v: boolean) => void;
+    setSchoolId: (id: number | null) => void;
+  },
+) {
+  const commit = createSessionScopedCommit(sessionEpoch, getAuthSessionEpoch);
+  commit.run(() => {
+    deps.setUser(enrichedUser);
+    deps.setAuthenticated(true);
+    deps.setSchoolId(extractSchoolId(enrichedUser));
+  });
+}
+
+async function restoreSessionFromCache(
+  sessionEpoch: number,
+  deps: {
+    setUser: (u: UserProfile | null) => void;
+    setAuthenticated: (v: boolean) => void;
+    setSchoolId: (id: number | null) => void;
+    setError: (e: string | null) => void;
+  },
+  failureKind: ReturnType<typeof classifyStartupAuthError>,
+): Promise<boolean> {
+  const cached = parseCachedUserProfile(await TokenStorage.getUserData());
+  const commit = createSessionScopedCommit(sessionEpoch, getAuthSessionEpoch);
+  const recoverable = recoverableStartupMessage(failureKind);
+  if (cached) {
+    commit.run(() => {
+      deps.setUser(cached);
+      deps.setAuthenticated(true);
+      deps.setSchoolId(extractSchoolId(cached));
+      deps.setError(recoverable);
+    });
+    return true;
+  }
+  commit.run(() => {
+    deps.setAuthenticated(false);
+    deps.setUser(null);
+    deps.setError(recoverable);
+  });
+  return false;
+}
+
 interface UseAuthReturn {
-  // State
   user: UserProfile | null;
   isAuthenticated: boolean;
-  /** Splash gate — first auth check on app launch only */
   isInitializing: boolean;
-  /** @deprecated Use isLoggingIn for login button; kept for compatibility */
   isLoading: boolean;
   isLoggingIn: boolean;
   error: string | null;
-  
-  // Actions
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
 }
 
-// Global flag to prevent multiple auth checks
 let isCheckingAuth = false;
 let hasCheckedAuth = false;
 
-/**
- * Authentication hook
- * Manages user authentication state and JWT tokens
- */
+/** @internal */
+export function __testResetUseAuthGlobals(): void {
+  isCheckingAuth = false;
+  hasCheckedAuth = false;
+}
+
+const STARTUP_REFRESH_TIMEOUT_MS = 15000;
+const STARTUP_PROFILE_TIMEOUT_MS = 15000;
+
 export function useAuth(): UseAuthReturn {
   const {
     user,
@@ -135,215 +190,233 @@ export function useAuth(): UseAuthReturn {
     setSchoolId,
     logout: logoutStore,
   } = useUserStore();
-  
+
   const [error, setError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  /**
-   * Check if user is authenticated on mount
-   */
   const checkAuth = useCallback(async () => {
-    // Prevent concurrent checks
     if (isCheckingAuth || hasCheckedAuth) {
       return;
     }
-    
+
     isCheckingAuth = true;
     hasCheckedAuth = true;
-    
+
+    let startupEpoch = 0;
+
     try {
       setInitializing(true);
       setLoading(true);
       setError(null);
 
       await initializeAuthSessionIdentity();
+      startupEpoch = getAuthSessionEpoch();
+      const commit = createSessionScopedCommit(startupEpoch, getAuthSessionEpoch);
 
-      // Check if we have a valid token
       const accessToken = await TokenStorage.getAccessToken();
-      
-      // No token = not authenticated, show login immediately
       if (!accessToken) {
-        console.log('No access token found - showing login');
-        setAuthenticated(false);
-        setUser(null);
-        setInitializing(false);
-        setLoading(false);
-        isCheckingAuth = false;
+        commit.run(() => {
+          setAuthenticated(false);
+          setUser(null);
+        });
         return;
       }
 
-      console.log('Access token found, checking expiry...');
-
-      // Check if token is expired
       const isExpired = await TokenStorage.isTokenExpired();
-      
       if (isExpired) {
-        console.log('Token expired, attempting refresh...');
-        // Try to refresh the token with timeout
         try {
-          const refreshPromise = AuthAPI.refreshToken();
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Refresh timeout')), 5000)
+          const refreshEpoch = getAuthSessionEpoch();
+          await raceWithBoundedWait(
+            AuthAPI.refreshToken(undefined, refreshEpoch),
+            STARTUP_REFRESH_TIMEOUT_MS,
+            'Refresh timeout',
           );
-          
-          await Promise.race([refreshPromise, timeoutPromise]);
-          console.log('Token refreshed successfully');
         } catch (refreshError) {
-          // Refresh failed, clear auth
-          console.warn('Token refresh failed:', refreshError);
-          await TokenStorage.clearAuthData();
-          setAuthenticated(false);
-          setUser(null);
-          setInitializing(false);
-          setLoading(false);
-          isCheckingAuth = false;
+          const kind = classifyStartupAuthError(refreshError);
+          if (kind === 'credential_rejected') {
+            const credEpoch = getOutgoingCredentialEpoch();
+            await clearCredentialsAtEpoch(credEpoch);
+            commit.run(() => {
+              setAuthenticated(false);
+              setUser(null);
+              setError('Session expired. Please sign in again.');
+            });
+            return;
+          }
+          await restoreSessionFromCache(
+            startupEpoch,
+            { setUser, setAuthenticated, setSchoolId, setError },
+            kind,
+          );
           return;
         }
       }
 
-      // Get current user with timeout
       try {
-        console.log('Fetching user profile...');
-        const userPromise = AuthAPI.getCurrentUser();
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('User fetch timeout')), 5000)
+        const profileEpoch = getAuthSessionEpoch();
+        const currentUser = await raceWithBoundedWait(
+          AuthAPI.getCurrentUser(),
+          STARTUP_PROFILE_TIMEOUT_MS,
+          'User fetch timeout',
         );
-        
-        const currentUser = await Promise.race([userPromise, timeoutPromise]);
         const enrichedUser = await enrichUserWithSchoolName(currentUser);
-        setUser(enrichedUser);
-        setAuthenticated(true);
-        // Centrally store school_id for all API calls
-        const sid = extractSchoolId(enrichedUser);
-        setSchoolId(sid);
-        console.log('User authenticated:', enrichedUser.email, '| school_id:', sid);
-        // NO automatic data loading - data loads only when screens are opened
+        applyAuthenticatedUser(profileEpoch, enrichedUser, {
+          setUser,
+          setAuthenticated,
+          setSchoolId,
+        });
+        commit.run(() => setError(null));
+        await storeUserDataForSession(profileEpoch, JSON.stringify(enrichedUser));
       } catch (apiError) {
-        // API call failed (backend not available), clear auth and show login
-        console.warn('Failed to fetch user profile - showing login:', apiError);
-        await TokenStorage.clearAuthData();
-        setAuthenticated(false);
-        setUser(null);
+        const kind = classifyStartupAuthError(apiError);
+        if (kind === 'credential_rejected') {
+          const credEpoch = getOutgoingCredentialEpoch();
+          await clearCredentialsAtEpoch(credEpoch);
+          commit.run(() => {
+            setAuthenticated(false);
+            setUser(null);
+            setError('Session expired. Please sign in again.');
+          });
+          return;
+        }
+        await restoreSessionFromCache(
+          startupEpoch,
+          { setUser, setAuthenticated, setSchoolId, setError },
+          kind,
+        );
       }
     } catch (err) {
-      console.error('Auth check failed:', err);
-      setAuthenticated(false);
-      setUser(null);
-      // Don't clear tokens here - might be network issue
+      const kind = classifyStartupAuthError(err);
+      const commit = createSessionScopedCommit(startupEpoch, getAuthSessionEpoch);
+      if (kind === 'credential_rejected') {
+        commit.run(() => {
+          setAuthenticated(false);
+          setUser(null);
+        });
+      } else {
+        await restoreSessionFromCache(
+          startupEpoch,
+          { setUser, setAuthenticated, setSchoolId, setError },
+          kind,
+        );
+      }
     } finally {
-      setInitializing(false);
-      setLoading(false);
+      const commit = createSessionScopedCommit(startupEpoch, getAuthSessionEpoch);
+      commit.run(() => {
+        setInitializing(false);
+        setLoading(false);
+      });
       isCheckingAuth = false;
-      console.log('Auth check complete');
     }
   }, [setUser, setAuthenticated, setInitializing, setLoading, setSchoolId]);
 
-  /**
-   * Login with credentials
-   */
-  const login = useCallback(async (credentials: LoginCredentials) => {
-    try {
-      setIsLoggingIn(true);
-      setError(null);
-
-      // Validate credentials
-      if (!credentials.email || !credentials.password) {
-        throw new Error('Email and password are required');
-      }
-
-      // Call login API (tokens are stored automatically in auth.api.ts)
+  const login = useCallback(
+    async (credentials: LoginCredentials) => {
       const sessionEpoch = await bumpAuthSessionEpoch();
-      const response = await AuthAPI.login(credentials, sessionEpoch);
+      const commit = createSessionScopedCommit(sessionEpoch, getAuthSessionEpoch);
 
-      // Web AuthContext: after login, loadProfile() from /auth/profile (has full_name)
-      let profileUser = response.user;
       try {
-        profileUser = await AuthAPI.fetchAuthProfile();
-      } catch {
-        // Keep login payload if profile fetch fails
-      }
+        setIsLoggingIn(true);
+        commit.run(() => setError(null));
 
-      const enrichedUser = await enrichUserWithSchoolName(profileUser);
-      setUser(enrichedUser);
-      setAuthenticated(true);
-      setSchoolId(extractSchoolId(enrichedUser));
-      await storeUserDataForSession(getAuthSessionEpoch(), JSON.stringify(enrichedUser));
-    } catch (err) {
-      console.error('Login failed:', err);
-      const message = formatAuthError(err);
-      setError(message);
-      setAuthenticated(false);
-      setUser(null);
-      throw err;
-    } finally {
-      setIsLoggingIn(false);
-    }
-  }, [setUser, setAuthenticated, setSchoolId]);
+        if (!credentials.email || !credentials.password) {
+          throw new Error('Email and password are required');
+        }
+
+        const response = await AuthAPI.login(credentials, sessionEpoch);
+
+        let profileUser = response.user;
+        try {
+          profileUser = await AuthAPI.fetchAuthProfile(sessionEpoch);
+        } catch {
+          // Keep login payload on profile transient failure
+        }
+
+        const enrichedUser = await enrichUserWithSchoolName(profileUser);
+        applyAuthenticatedUser(sessionEpoch, enrichedUser, {
+          setUser,
+          setAuthenticated,
+          setSchoolId,
+        });
+        await storeUserDataForSession(sessionEpoch, JSON.stringify(enrichedUser));
+      } catch (err) {
+        commit.run(() => {
+          const message = formatAuthError(err);
+          setError(message);
+          if (classifyStartupAuthError(err) === 'credential_rejected') {
+            setAuthenticated(false);
+            setUser(null);
+          }
+        });
+        throw err;
+      } finally {
+        if (getAuthSessionEpoch() === sessionEpoch) {
+          setIsLoggingIn(false);
+        }
+      }
+    },
+    [setUser, setAuthenticated, setSchoolId],
+  );
 
   const resetNotificationGuardBestEffort = async (accountKey: string | null) => {
     try {
       const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
       resetNotificationFetchGuardForAccount(accountKey);
     } catch {
-      // Notification guard is phase6-only; logout must still complete if cleanup is unavailable.
+      // optional
     }
   };
 
-  /**
-   * Logout user
-   */
   const logout = useCallback(async () => {
+    const outgoingCredentialEpoch = getOutgoingCredentialEpoch();
+    const logoutSessionEpoch = await bumpAuthSessionEpoch();
+    const commit = createSessionScopedCommit(logoutSessionEpoch, getAuthSessionEpoch);
+
     try {
-      setLoading(true);
-      setError(null);
+      commit.run(() => {
+        setLoading(true);
+        setError(null);
+      });
 
       const currentUser = useUserStore.getState().user;
       const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
       await resetNotificationGuardBestEffort(accountKey);
-      const outgoingCredentialEpoch = getOutgoingCredentialEpoch();
-      await bumpAuthSessionEpoch();
 
       await AuthAPI.logout({ credentialEpoch: outgoingCredentialEpoch });
 
-      // Reset dashboard store
-      useTeacherDashboardStore.getState().reset();
-      resetStudentAssignmentDashboardStore(null);
-      useDashboardStore.getState().clearData();
-      // Clear quiz nav cache so next login fetches fresh permissions
-      clearQuizNavCache();
-      // Clear store (clears user and tokens)
-      logoutStore();
+      commit.run(() => {
+        useTeacherDashboardStore.getState().reset();
+        resetStudentAssignmentDashboardStore(null);
+        useDashboardStore.getState().clearData();
+        clearQuizNavCache();
+        logoutStore();
+      });
       await resetNotificationGuardBestEffort(null);
     } catch (err) {
       console.error('Logout API failed:', err);
+      commit.run(() => {
+        useTeacherDashboardStore.getState().reset();
+        resetStudentAssignmentDashboardStore(null);
+        useDashboardStore.getState().clearData();
+        clearQuizNavCache();
+        logoutStore();
+      });
       await resetNotificationGuardBestEffort(null);
-      // Still clear stores even if API call fails
-      useTeacherDashboardStore.getState().reset();
-      resetStudentAssignmentDashboardStore(null);
-      useDashboardStore.getState().clearData();
-      clearQuizNavCache();
-      logoutStore();
     } finally {
-      setLoading(false);
+      commit.run(() => setLoading(false));
     }
   }, [logoutStore, setLoading]);
 
-  /**
-   * Clear error message
-   */
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  /**
-   * Check authentication status on mount - ONLY ONCE GLOBALLY
-   */
   useEffect(() => {
     if (!hasCheckedAuth) {
       checkAuth();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, []);
 
   return {
     user,
@@ -359,19 +432,11 @@ export function useAuth(): UseAuthReturn {
   };
 }
 
-/**
- * Get current user hook
- * Convenience hook for components that only need user data
- */
 export function useCurrentUser(): UserProfile | null {
   const { user } = useUserStore();
   return user;
 }
 
-/**
- * Check if user is authenticated hook
- * Convenience hook for components that only need auth status
- */
 export function useIsAuthenticated(): boolean {
   const { isAuthenticated } = useUserStore();
   return isAuthenticated;

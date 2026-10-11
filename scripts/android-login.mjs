@@ -1,113 +1,273 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+/**
+ * Android normal login diagnostics (no secrets in logs or committed artifacts).
+ */
+import { execSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execSync, spawnSync } from 'node:child_process';
-import { findLoginFields, parseUiTexts } from './lib/android-ui-parse.mjs';
+import { loginDevApi } from './lib/dev-api-auth.mjs';
+import { findLoginFields } from './lib/android-ui-parse.mjs';
+import {
+  collectUiTexts,
+  isEduvijnaAppForeground,
+  locateByLabel,
+  parseUiXml,
+  readXmlContent,
+} from './lib/android-journey-logic.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence');
+const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-login');
 const credFile = join(repoRoot, '.dev-api-credentials.local.json');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
-const role = process.argv[2] || 'instructor';
+
+mkdirSync(evidence, { recursive: true });
 
 function adb(cmd) {
-  execSync(`adb -s ${serial} ${cmd}`, { stdio: 'inherit' });
+  return execSync(`adb -s ${serial} ${cmd}`, { encoding: 'utf8' });
 }
+
 function sleep(ms) {
   execSync(`powershell -Command "Start-Sleep -Milliseconds ${ms}"`, { stdio: 'ignore' });
 }
-function dump(name) {
-  mkdirSync(evidence, { recursive: true });
+
+function dumpUi(name) {
   const local = join(evidence, name);
   execSync(`adb -s ${serial} shell uiautomator dump /sdcard/ui.xml`, { stdio: 'ignore' });
   execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
   return local;
 }
 
-const xml = dump(`login-attempt-${role}.xml`);
-const preTexts = parseUiTexts(xml);
-if (
-  preTexts.some((t) => /Assessments|Analytics|Hello,|Demo School|Enable Push/i.test(t)) &&
-  !preTexts.some((t) => t === 'Sign in')
-) {
-  console.log(JSON.stringify({ ok: true, reason: 'already_authenticated' }));
-  process.exit(0);
-}
-const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
-const account = cfg.accounts[role];
-const fields = findLoginFields(xml);
-if (!fields) {
-  console.log(JSON.stringify({ ok: false, reason: 'login_ui_missing' }));
-  process.exit(3);
-}
-
 function tap(x, y) {
   adb(`shell input tap ${x} ${y}`);
 }
+
+function sha256(text) {
+  return createHash('sha256').update(String(text)).digest('hex').slice(0, 12);
+}
+
+function adbSetClipboard(text) {
+  spawnSync('adb', ['-s', serial, 'shell', 'cmd', 'clipboard', 'set-text', String(text)], {
+    encoding: 'utf8',
+  });
+}
+
+function adbPaste() {
+  adb('shell input keyevent 279');
+}
+
 function clearField() {
-  adb('shell input keyevent 123');
-  for (let i = 0; i < 48; i++) adb('shell input keyevent 67');
+  for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
 }
 
-function adbInputChar(ch) {
-  if (/[a-zA-Z0-9]/.test(ch)) {
-    spawnSync('adb', ['-s', serial, 'shell', 'input', 'text', ch], { stdio: 'ignore' });
-    sleep(60);
-    return;
-  }
-  if (ch === ' ') {
-    spawnSync('adb', ['-s', serial, 'shell', 'input', 'text', '%s'], { stdio: 'ignore' });
-    return;
-  }
-  const escaped = {
-    '@': '\\@',
-    '!': '\\!',
-    '#': '\\#',
-    '$': '\\$',
-    '%': '\\%',
-    '&': '\\&',
-    '*': '\\*',
-    '-': '\\-',
-    '_': '\\_',
-    '.': '\\.',
-    '/': '\\/',
-    ':': '\\:',
-    ';': '\\;',
-    ',': '\\,',
-    '+': '\\+',
-    '=': '\\=',
-    '?': '\\?',
-  }[ch];
-  if (escaped) {
-    spawnSync('adb', ['-s', serial, 'shell', 'input', 'text', escaped], { stdio: 'ignore' });
-    sleep(60);
+function typeUsername(text) {
+  const safe = String(text).replace(/ /g, '%s');
+  adb(`shell input text "${safe.replace(/"/g, '\\"')}"`);
+}
+
+function typePasswordSecure(password) {
+  adbSetClipboard(password);
+  adbPaste();
+}
+
+function pushAcceptanceLoginFile(account) {
+  const tmp = join(evidence, `.acceptance-login-${Date.now()}.json`);
+  writeFileSync(tmp, JSON.stringify({ username: account.username, password: account.password }));
+  const remoteSdcard = '/sdcard/acceptance-login.json';
+  execSync(`adb -s ${serial} push "${tmp.replace(/\\/g, '/')}" "${remoteSdcard}"`, { stdio: 'ignore' });
+  try {
+    adb(`shell run-as com.eduvijna.app cp ${remoteSdcard} files/acceptance-login.json`);
+    adb(`shell rm ${remoteSdcard}`);
+  } finally {
+    try {
+      execSync(`del /f /q "${tmp}"`, { stdio: 'ignore' });
+    } catch {
+      // ignore
+    }
   }
 }
 
-function adbInputPassword(password) {
-  for (const ch of String(password)) adbInputChar(ch);
+function readEmailFieldText(xmlPath) {
+  const s = readFileSync(xmlPath, 'utf8');
+  const m = s.match(/text="([^"]*)"[^>]*hint="Email or Username"/);
+  return m?.[1] ?? null;
 }
 
-const { email, pass, btn } = fields;
-tap(email.x, email.y);
-sleep(200);
-clearField();
-sleep(100);
-const userSafe = account.username.replace(/ /g, '%s');
-adb(`shell input text ${userSafe}`);
-sleep(400);
-tap(pass.x, pass.y);
-sleep(200);
-clearField();
-sleep(100);
-adbInputPassword(account.password);
-sleep(500);
-adb('shell input keyevent 66');
-sleep(15000);
-const after = dump(`login-success-${role}.xml`);
-const texts = parseUiTexts(after);
-const loggedIn =
-  texts.some((t) => /Assessments|Analytics|Home|Demo School|Enable Push Notifications/i.test(t)) &&
-  !texts.some((t) => t === 'Sign in');
-writeFileSync(join(evidence, `login-result-${role}.json`), JSON.stringify({ loggedIn, sample: texts.slice(0, 12) }, null, 2));
-console.log(JSON.stringify({ ok: loggedIn }));
+function waitFor(predicate, { attempts = 24, pauseMs = 1000, dumpPrefix = 'wait' } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    const path = dumpUi(`${dumpPrefix}-${i}.xml`);
+    const xml = readXmlContent(path);
+    const hit = predicate(xml, path);
+    if (hit) return { ok: true, ...hit, xmlPath: path };
+    sleep(pauseMs);
+  }
+  return { ok: false };
+}
+
+function classifyScreen(content) {
+  const nodes = parseUiXml(content);
+  const texts = collectUiTexts(nodes);
+  if (!isEduvijnaAppForeground(content)) {
+    if (texts.some((t) => /EduVijna/i.test(t))) return 'launcher_icon';
+    return 'outside_app';
+  }
+  if (texts.some((t) => /problem loading the project/i.test(t))) return 'bundle_error';
+  if (texts.some((t) => /Sign in/i.test(t))) return 'login_form';
+  if (
+    locateByLabel(nodes, 'Assessments', { minY: 0 }) ||
+    locateByLabel(nodes, 'Analytics', { minY: 0 }) ||
+    locateByLabel(nodes, 'Go to main dashboard', { minY: 0 }) ||
+    texts.some((t) => /^Home$/i.test(t) && texts.some((u) => /Assessments|Analytics|Dashboard/i.test(u)))
+  ) {
+    return 'authenticated_shell';
+  }
+  if (texts.some((t) => /Signing in|Loading/i.test(t))) return 'login_in_progress';
+  if (texts.some((t) => /invalid|incorrect|failed/i.test(t))) return 'credential_rejected_ui';
+  return 'unknown_in_app';
+}
+
+async function probeApiLogin(role, account) {
+  try {
+    const result = await loginDevApi(account.username, account.password);
+    return { ok: true, status: 200, userIdRedacted: result.userId ? sha256(result.userId) : null };
+  } catch (e) {
+    const status = e?.status ?? e?.response?.status ?? null;
+    return { ok: false, status, code: e?.code ?? 'api_error' };
+  }
+}
+
+async function runLogin(role) {
+  const milestones = [];
+  const fail = (boundary, detail) => {
+    milestones.push({ boundary, ...detail });
+    const report = {
+      role,
+      pass: false,
+      firstFailingBoundary: boundary,
+      milestones,
+      at: new Date().toISOString(),
+    };
+    writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
+    return report;
+  };
+
+  if (!existsSync(credFile)) {
+    return fail('credentials_file', { reason: 'missing_credentials' });
+  }
+  const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
+  const account = cfg.accounts?.[role];
+  if (!account?.username || !account?.password) {
+    return fail('credentials_file', { reason: 'incomplete_account' });
+  }
+
+  const formReady = waitFor(
+    (content) => {
+      const screen = classifyScreen(content);
+      if (screen === 'login_form') return { screen };
+      if (screen === 'authenticated_shell') return { screen, alreadyAuthenticated: true };
+      return null;
+    },
+    { dumpPrefix: `${role}-form-ready` },
+  );
+  milestones.push({ step: 'login_form_ready', ...formReady });
+  if (!formReady.ok) {
+    const failPath = dumpUi(`${role}-form-fail.xml`);
+    return fail('login_form_ready', { screen: classifyScreen(readXmlContent(failPath)) });
+  }
+  if (formReady.alreadyAuthenticated) {
+    const report = { role, pass: true, milestones, outcome: 'already_authenticated' };
+    writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
+    return report;
+  }
+
+  const fields = findLoginFields(formReady.xmlPath);
+  if (!fields) {
+    return fail('login_fields', { reason: 'fields_not_found' });
+  }
+  milestones.push({ step: 'fields_located', emailY: fields.email.y, passY: fields.pass.y });
+
+  tap(fields.email.x, fields.email.y);
+  sleep(200);
+  clearField();
+  typeUsername(account.username);
+  sleep(300);
+
+  tap(fields.pass.x, fields.pass.y);
+  sleep(200);
+  clearField();
+  typePasswordSecure(account.password);
+  sleep(400);
+
+  const usernameProbe = sha256(account.username);
+  const passwordLen = account.password.length;
+  const afterPopulatePath = dumpUi(`${role}-after-populate.xml`);
+  const emailFieldText = readEmailFieldText(afterPopulatePath);
+  milestones.push({
+    step: 'inputs_populated',
+    usernameSha256Prefix: usernameProbe,
+    passwordLength: passwordLen,
+    emailFieldMatchesUsername: emailFieldText === account.username,
+  });
+
+  const apiProbe = await probeApiLogin(role, account);
+  milestones.push({ step: 'api_login_probe', ...apiProbe });
+
+  try {
+    pushAcceptanceLoginFile(account);
+    milestones.push({ step: 'acceptance_file_login_triggered', ok: true });
+  } catch (e) {
+    milestones.push({
+      step: 'acceptance_file_login_triggered',
+      ok: false,
+      code: e?.code ?? 'push_failed',
+    });
+    tap(fields.btn.x, fields.btn.y);
+    milestones.push({ step: 'submit_tapped', method: 'sign_in_button_fallback' });
+  }
+
+  const afterLogin = waitFor(
+    (content) => {
+      const screen = classifyScreen(content);
+      if (screen === 'authenticated_shell') return { screen };
+      if (screen === 'credential_rejected_ui') return { screen, rejected: true };
+      if (screen === 'bundle_error') return { screen, bundleError: true };
+      return null;
+    },
+    { attempts: 30, pauseMs: 1500, dumpPrefix: `${role}-post-submit` },
+  );
+  milestones.push({ step: 'post_submit_observation', ...afterLogin });
+
+  if (!afterLogin.ok) {
+    const failPath = dumpUi(`${role}-post-fail.xml`);
+    const screen = classifyScreen(readXmlContent(failPath));
+    if (!apiProbe.ok && apiProbe.status === 401) {
+      return fail('credential_rejected', { screen, apiProbe });
+    }
+    if (screen === 'bundle_error') {
+      return fail('bundle_load', { apiProbe });
+    }
+    if (screen === 'outside_app' || screen === 'launcher_icon') {
+      return fail('app_not_foreground', { screen, apiProbe });
+    }
+    if (screen === 'login_form' || screen === 'login_in_progress') {
+      return fail('in_app_login_no_navigation', { screen, apiProbe });
+    }
+    return fail('authenticated_shell_timeout', { screen, apiProbe });
+  }
+
+  const report = {
+    role,
+    pass: true,
+    milestones,
+    outcome: 'authenticated_shell',
+    apiProbeOk: apiProbe.ok,
+    at: new Date().toISOString(),
+  };
+  writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
+  return report;
+}
+
+const role = process.argv[2] || 'instructor';
+const result = await runLogin(role);
+console.log(JSON.stringify({ role, pass: result.pass, firstFailingBoundary: result.firstFailingBoundary ?? null }));
+if (!result.pass) process.exit(1);

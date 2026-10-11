@@ -3,7 +3,9 @@
  * Platform: React Native (iOS/Android)
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system';
 import {
   View,
   Text,
@@ -27,6 +29,7 @@ export default function Login() {
   const colors = theme.colors;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const acceptanceAdbLogin = Constants.expoConfig?.extra?.ACCEPTANCE_ADB_LOGIN === true;
 
   const onLogin = async () => {
     clearError();
@@ -37,6 +40,36 @@ export default function Login() {
       void logError(e, 'LoginScreen.onLogin');
     }
   };
+
+  useEffect(() => {
+    if (!acceptanceAdbLogin) return;
+    let cancelled = false;
+    const acceptancePath = `${FileSystem.documentDirectory}acceptance-login.json`;
+
+    const consumeAcceptanceFile = async () => {
+      const info = await FileSystem.getInfoAsync(acceptancePath);
+      if (!info.exists) return;
+      const raw = await FileSystem.readAsStringAsync(acceptancePath);
+      await FileSystem.deleteAsync(acceptancePath, { idempotent: true });
+      const parsed = JSON.parse(raw) as { username?: string; password?: string };
+      const username = parsed.username?.trim();
+      const password = parsed.password ?? '';
+      if (!username || !password || cancelled) return;
+      setEmail(username);
+      await login({ email: username, password });
+    };
+
+    const timer = setInterval(() => {
+      void consumeAcceptanceFile().catch((e: unknown) => {
+        void logError(e, 'LoginScreen.acceptanceFileLogin');
+      });
+    }, 750);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [acceptanceAdbLogin, login]);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
@@ -53,10 +86,12 @@ export default function Login() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TextInput
+            testID="login-email-input"
+            accessibilityLabel="Email or Username"
             placeholder="Email or Username"
             placeholderTextColor={colors.textSecondary}
             style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
-            value={email}
+            {...(acceptanceAdbLogin ? {} : { value: email })}
             onChangeText={setEmail}
             autoCapitalize="none"
             autoCorrect={false}
@@ -66,19 +101,24 @@ export default function Login() {
           />
 
           <TextInput
+            testID="login-password-input"
+            accessibilityLabel="Password"
             placeholder="Password"
             placeholderTextColor={colors.textSecondary}
             secureTextEntry
             style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
-            value={password}
+            {...(acceptanceAdbLogin ? {} : { value: password })}
             onChangeText={setPassword}
             autoCapitalize="none"
             textContentType="password"
             editable={!isLoggingIn}
             onSubmitEditing={onLogin}
+            returnKeyType="go"
           />
 
           <TouchableOpacity
+            testID="login-submit-button"
+            accessibilityLabel="Sign in"
             style={[styles.button, { backgroundColor: colors.primary }, isLoggingIn && styles.buttonDisabled]}
             onPress={onLogin}
             disabled={isLoggingIn}

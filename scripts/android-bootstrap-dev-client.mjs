@@ -119,70 +119,34 @@ async function ensureMetroConnected() {
   return xml;
 }
 
-async function loginIfNeeded(role) {
-  const xml = dumpUi(`login-${role}-before.xml`);
-  const texts = parseUiTexts(xml);
-  if (texts.some((t) => /problem loading the project/i.test(t))) {
-    return { loggedIn: false, reason: 'bundle_load_error' };
+async function runAndroidLogin(role) {
+  const loginScript = join(repoRoot, 'scripts', 'android-login.mjs');
+  const result = spawnSync('node', [loginScript, role], {
+    encoding: 'utf8',
+    env: { ...process.env, ANDROID_SERIAL: serial },
+  });
+  const reportPath = join(
+    repoRoot,
+    '.dev-api-document-workflow-run',
+    'runtime-evidence',
+    'android-login',
+    `login-${role}-report.json`,
+  );
+  let report = null;
+  if (existsSync(reportPath)) {
+    report = JSON.parse(readFileSync(reportPath, 'utf8'));
   }
-  if (
-    texts.some((t) => /Assessments|Analytics|Home|Demo School/i.test(t)) &&
-    !texts.some((t) => t === 'Sign in')
-  ) {
-    return { loggedIn: true, reason: 'already_authenticated' };
+  const loggedIn = report?.pass === true;
+  const reason = report?.firstFailingBoundary ?? report?.outcome ?? 'login_script_failed';
+  if (result.status !== 0 && !loggedIn) {
+    return { loggedIn: false, reason, milestones: report?.milestones ?? [] };
   }
-  if (!texts.some((t) => /Sign in/i.test(t))) {
-    return { loggedIn: false, reason: 'unknown_screen' };
-  }
-  if (!existsSync(credFile)) throw new Error('missing_credentials');
-  const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
-  const account = cfg.accounts?.[role];
-  const fields = findLoginFields(xml);
-  if (!fields) return { loggedIn: false, reason: 'login_fields_not_found' };
-  const { email, pass, btn } = fields;
-  tap(email.x, email.y);
-  sleep(200);
-  for (let i = 0; i < 48; i++) adb('shell input keyevent 67');
-  adbText(account.username);
-  sleep(400);
-  tap(pass.x, pass.y);
-  sleep(200);
-  for (let i = 0; i < 48; i++) adb('shell input keyevent 67');
-  for (const ch of String(account.password)) {
-    if (/[a-zA-Z0-9]/.test(ch)) {
-      adb(`shell input text ${ch}`);
-    } else if (ch === ' ') {
-      adb('shell input text %s');
-    } else {
-      const escaped = {
-        '@': '\\@',
-        '!': '\\!',
-        '#': '\\#',
-        '$': '\\$',
-        '%': '\\%',
-        '&': '\\&',
-        '*': '\\*',
-        '-': '\\-',
-        '_': '\\_',
-        '.': '\\.',
-      }[ch];
-      if (escaped) adb(`shell input text ${escaped}`);
-    }
-  }
-  sleep(400);
-  tap(btn.x, btn.y);
-  sleep(10000);
-  const after = dumpUi(`login-${role}-after.xml`);
-  const afterTexts = parseUiTexts(after);
-  const loggedIn =
-    afterTexts.some((t) => /Assessments|Analytics|Home|Demo School/i.test(t)) &&
-    !afterTexts.some((t) => t === 'Sign in');
-  return { loggedIn, reason: 'submitted' };
+  return { loggedIn, reason: loggedIn ? report?.outcome ?? 'authenticated_shell' : reason, milestones: report?.milestones ?? [] };
 }
 
 const role = process.argv[2] || 'instructor';
 await ensureMetroConnected();
-const loginResult = await loginIfNeeded(role);
+const loginResult = await runAndroidLogin(role);
 // verify API login works (no token output)
 if (existsSync(credFile)) {
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
@@ -193,4 +157,5 @@ writeFileSync(
   join(evidence, 'android-bootstrap-result.json'),
   JSON.stringify({ role, loginResult, at: new Date().toISOString() }, null, 2),
 );
-console.log(JSON.stringify({ ok: true, loginResult }));
+console.log(JSON.stringify({ ok: loginResult.loggedIn, loginResult }));
+if (!loginResult.loggedIn) process.exit(1);
