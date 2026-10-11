@@ -278,9 +278,6 @@ export function useAuth(): UseAuthReturn {
       setLoading(true);
       setError(null);
 
-      const { resetInitialDeepLinkCache } = await import('../services/deepLinkService');
-      resetInitialDeepLinkCache();
-
       // Call logout API (clears tokens automatically)
       await AuthAPI.logout();
 
