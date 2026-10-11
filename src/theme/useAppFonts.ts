@@ -13,17 +13,9 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { setupGlobalFonts } from './fonts';
 
-let splashPrevented = false;
-
-async function ensureSplashHeld(): Promise<void> {
-  if (splashPrevented) return;
-  splashPrevented = true;
-  try {
-    await SplashScreen.preventAutoHideAsync();
-  } catch {
-    // Expo Go / web may not support splash screen
-  }
-}
+// Hold the native splash before the first render, then release it on success or error.
+// Calling this from an effect can race with hideAsync when fonts are already cached.
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export function useAppFonts(): { fontsLoaded: boolean; fontError: Error | null } {
   const [fontsLoaded, fontError] = useFonts({
@@ -34,14 +26,10 @@ export function useAppFonts(): { fontsLoaded: boolean; fontError: Error | null }
   });
 
   useEffect(() => {
-    void ensureSplashHeld();
-  }, []);
-
-  useEffect(() => {
-    if (!fontsLoaded) return;
-    setupGlobalFonts();
+    if (!fontsLoaded && !fontError) return;
+    if (fontsLoaded) setupGlobalFonts();
     SplashScreen.hideAsync().catch(() => undefined);
-  }, [fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
   return { fontsLoaded, fontError };
 }

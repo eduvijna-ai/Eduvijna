@@ -104,7 +104,7 @@ export default function QuizTeacherAnalyticsScreen() {
     try {
       const res = await getQuizAnalytics({
         view_type: 'all',
-        limit: 100,
+        limit: 500,
         offset: 0,
         created_from: appliedStart,
         created_to: appliedEnd,
@@ -337,7 +337,7 @@ export default function QuizTeacherAnalyticsScreen() {
         classroomName={cardData.classroomName}
         performanceSummary={cardData.performanceSummary}
         urgency={cardData.urgency}
-        onViewAnalytics={handleQuizPress}
+        onViewAnalytics={(quizId, quizName) => handleQuizPress({ quiz_id: quizId, quiz_name: quizName })}
         colors={colors}
       />
     );
