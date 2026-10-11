@@ -81,9 +81,10 @@ function AppContent() {
   // Reset session guards when authentication state changes
   useEffect(() => {
     if (!isAuthenticated) {
-      // User logged out, clear guards
+      // User logged out, clear guards and any queued openquiz session
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
+      setPendingSessionId(null);
       webNavStackRef.current = [];
       initialDeepLinkProcessed.current = false; // Allow deep link re-processing after logout
     } else {
