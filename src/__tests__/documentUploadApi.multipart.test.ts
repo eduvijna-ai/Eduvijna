@@ -45,6 +45,24 @@ describe('documentUploadApi multipart wiring', () => {
     expect(part).toBeInstanceOf(Blob);
   });
 
+  it('uploadBookWithMetadata preserves web File/Blob from document library picker', async () => {
+    (apiClient.post as jest.Mock).mockResolvedValueOnce({
+      data: { book: { doc_id: 'd1', original_filename: 'chapter.pdf', page_count: 3 } },
+    });
+    const file = new File(['pdf-bytes'], 'chapter.pdf', { type: 'application/pdf' });
+
+    await uploadBookWithMetadata({
+      fileUri: 'blob:chapter',
+      fileName: 'chapter.pdf',
+      mimeType: 'application/pdf',
+      file,
+      title: 'Chapter 1',
+    });
+
+    const formData = (apiClient.post as jest.Mock).mock.calls[0][1] as FormData;
+    expect(formData.get('file')).toBe(file);
+  });
+
   it('uploadBookWithMetadata uses appendDocumentUploadPart for native URI', async () => {
     (apiClient.post as jest.Mock).mockResolvedValueOnce({
       data: { book: { doc_id: 'd1', original_filename: 'book.pdf', page_count: 3 } },
