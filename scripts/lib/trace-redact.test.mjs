@@ -18,3 +18,8 @@ test('redacts camelCase resource identifiers', () => {
   assert.match(out.sessionId, /^ref:[0-9a-f]+$/);
   assert.match(out.quizId, /^ref:[0-9a-f]+$/);
 });
+
+test('redacts classid resource identifiers', () => {
+  const out = redactDeep({ classid: 'class-9a' });
+  assert.match(out.classid, /^ref:[0-9a-f]+$/);
+});
