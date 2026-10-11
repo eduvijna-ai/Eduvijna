@@ -216,6 +216,57 @@ describe('assigned quiz immutable replay on retry', () => {
     );
     expect(mockPut).not.toHaveBeenCalled();
   });
+
+  it('after lost POST, inconclusive probe keeps checkpoint and skips another POST', async () => {
+    let attendedCalls = 0;
+    mockGet.mockImplementation(async (url: string) => {
+      if (url.includes('attended-quiz')) {
+        attendedCalls += 1;
+        if (attendedCalls === 1) {
+          return Promise.reject({ response: { status: 404 } });
+        }
+        return Promise.reject({ response: { status: 503 } });
+      }
+      if (url.includes('quiz-attempts')) {
+        return { data: [{ id: 12, status: 'started' }] };
+      }
+      return { data: {} };
+    });
+    mockPut.mockResolvedValue({ data: { id: 12 } });
+    mockPost.mockRejectedValueOnce(new Error('network dropped after PUT'));
+
+    await expect(
+      submitAssignedQuiz({
+        quizId: 42,
+        studentId: 'student-1',
+        sessionId: 'session-uuid',
+        questions: [baseQuestion],
+        selectedAnswers: { 0: '4' },
+        startedAtIso: '2026-01-01T00:00:00.000Z',
+        scorePercent: 100,
+        questionCount: 1,
+        questionResults: { 0: true },
+      }),
+    ).rejects.toMatchObject({ phase: 'submission' });
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+
+    await expect(
+      submitAssignedQuiz({
+        quizId: 42,
+        studentId: 'student-1',
+        sessionId: 'session-uuid',
+        questions: [baseQuestion],
+        selectedAnswers: { 0: '4' },
+        startedAtIso: '2026-01-01T00:00:00.000Z',
+        scorePercent: 100,
+        questionCount: 1,
+        questionResults: { 0: true },
+      }),
+    ).rejects.toMatchObject({ phase: 'validation', retryable: true });
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('alreadySubmitted persisted result', () => {
