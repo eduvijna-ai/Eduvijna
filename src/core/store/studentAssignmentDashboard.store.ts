@@ -48,7 +48,7 @@ export const useStudentAssignmentDashboardStore = create<StudentAssignmentDashbo
       if (state.ownerUserId !== userId || state.loadGeneration !== generation) {
         return false;
       }
-      set({ rawQuizzes: rows });
+      set({ rawQuizzes: rows, classificationNow: new Date() });
       return true;
     },
     getClassifiedQuizzes: () => {
