@@ -85,6 +85,11 @@ export function redactDeep(input, depth = 0) {
   return input;
 }
 
+function redactFreeText(value) {
+  if (typeof value !== 'string' || !value) return value;
+  return value.replace(/demo_[a-z0-9_]+/gi, '[redacted-user]');
+}
+
 function hashString(value) {
   let h = 0;
   for (let i = 0; i < value.length; i += 1) {
