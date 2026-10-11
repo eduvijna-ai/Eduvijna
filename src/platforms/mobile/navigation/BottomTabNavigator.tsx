@@ -43,6 +43,7 @@ import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUpload
 import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from '@screens/document-upload/DocumentLibraryScreen';
+import DocumentCurriculumFromBooksScreen from '@screens/document-upload/DocumentCurriculumFromBooksScreen';
 import BookPageViewerScreen from '@screens/document-upload/BookPageViewerScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
@@ -557,6 +558,11 @@ export default function MobileNavigation() {
           title: 'Document Library',
           headerBackTitle: 'Back',
         }}
+      />
+      <Stack.Screen
+        name="DocumentCurriculumFromBooksScreen"
+        component={DocumentCurriculumFromBooksScreen as any}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="BookPageViewerScreen"

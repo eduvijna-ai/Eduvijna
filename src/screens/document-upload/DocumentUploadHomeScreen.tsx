@@ -550,7 +550,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
         <TouchableOpacity
           style={styles.libraryBanner}
-          onPress={() => navigation.navigate('DocumentLibraryScreen')}
+          onPress={() => navigation.navigate('DocumentCurriculumFromBooksScreen')}
           activeOpacity={0.85}
         >
           <View style={styles.libraryBannerIcon}>
@@ -559,7 +559,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           <View style={{ flex: 1 }}>
             <Text style={styles.libraryBannerTitle}>From Books</Text>
             <Text style={styles.libraryBannerSub}>
-              Server library — select pages, generate, save, and share to classrooms
+              Curriculum catalogue — board, class, subject, and topics
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
