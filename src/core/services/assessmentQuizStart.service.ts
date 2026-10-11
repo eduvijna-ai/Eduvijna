@@ -9,7 +9,10 @@ import {
   isSubmissionPersistedOnServer,
   type AssignedQuizRecoveryResumeParams,
 } from './assignedQuizRecovery.service';
-import { clearQuizSubmissionCheckpointBestEffort } from './quizSubmissionCheckpoint';
+import {
+  clearQuizSubmissionCheckpointBestEffort,
+  readQuizSubmissionCheckpoint,
+} from './quizSubmissionCheckpoint';
 
 export class AssignedQuizLoadError extends Error {
   readonly code = 'ASSIGNED_QUIZ_FETCH_FAILED';
@@ -252,11 +255,18 @@ export async function resolveStudentAssignedQuizViewResults(args: {
     };
   }
 
-  await clearStaleCheckpointWhenPersistedOnServer(
+  const localCheckpoint = await readQuizSubmissionCheckpoint(
     args.studentId,
     args.quizId,
     args.sessionId,
   );
+  if (localCheckpoint) {
+    await clearStaleCheckpointWhenPersistedOnServer(
+      args.studentId,
+      args.quizId,
+      args.sessionId,
+    );
+  }
 
   return {
     kind: 'view_results',
