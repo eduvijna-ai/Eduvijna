@@ -103,7 +103,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
           
           if (Array.isArray(attempts)) {
             const parentSessionId = quiz.session_id ?? assignmentSessionId;
-            const parentClassroomId = quiz.classroom_id ?? quiz.class_id;
+            const parentClassroomId = quiz.classroom_id;
             setStudents(
               attempts.map((attempt: QuizAttempt) => ({
                 ...attempt,
