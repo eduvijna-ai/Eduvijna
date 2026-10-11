@@ -17,15 +17,21 @@ function isNotificationRow(value) {
   );
 }
 
-function explicitTotalMatches(explicitTotal, notificationsLength) {
+function resolveNotificationHistoryTotal(explicitTotal, pageLength) {
+  if (pageLength < 0) {
+    return { ok: false, error: 'page_length_invalid' };
+  }
   if (explicitTotal == null || explicitTotal === '') {
-    return true;
+    return { ok: true, total: pageLength };
   }
   const numeric = Number(explicitTotal);
-  if (!Number.isFinite(numeric)) {
-    return false;
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 0) {
+    return { ok: false, error: 'total_invalid' };
   }
-  return numeric === notificationsLength;
+  if (numeric < pageLength) {
+    return { ok: false, error: 'total_smaller_than_page' };
+  }
+  return { ok: true, total: numeric };
 }
 
 export function normalizeNotificationHistoryPayload(data) {
@@ -50,13 +56,14 @@ export function normalizeNotificationHistoryPayload(data) {
     if (data.notifications.length > 0 && !data.notifications.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'notifications_items_invalid' };
     }
-    if (!explicitTotalMatches(data.total, data.notifications.length)) {
-      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
+    const totalResolved = resolveNotificationHistoryTotal(data.total, data.notifications.length);
+    if (!totalResolved.ok) {
+      return { ok: false, responseShape: 'unknown', error: totalResolved.error };
     }
     return {
       ok: true,
       notifications: data.notifications,
-      total: Number(data.total ?? data.notifications.length),
+      total: totalResolved.total,
       responseShape: 'wrapped_notifications',
     };
   }
@@ -64,13 +71,14 @@ export function normalizeNotificationHistoryPayload(data) {
     if (data.data.length > 0 && !data.data.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'data_items_invalid' };
     }
-    if (!explicitTotalMatches(data.total, data.data.length)) {
-      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
+    const totalResolved = resolveNotificationHistoryTotal(data.total, data.data.length);
+    if (!totalResolved.ok) {
+      return { ok: false, responseShape: 'unknown', error: totalResolved.error };
     }
     return {
       ok: true,
       notifications: data.data,
-      total: Number(data.total ?? data.data.length),
+      total: totalResolved.total,
       responseShape: 'wrapped_data',
     };
   }

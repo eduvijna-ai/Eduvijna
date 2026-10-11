@@ -50,6 +50,10 @@ function assertProfileShape(data) {
   return id != null && String(id).trim() !== '';
 }
 
+function assertProfileBioEstablished(data) {
+  return assertProfileShape(data) && Object.prototype.hasOwnProperty.call(data, 'bio');
+}
+
 function profileIdentityMatches(data, authUserId) {
   const id = data.id ?? data.user_id;
   return String(id) === String(authUserId);
@@ -154,15 +158,20 @@ async function verifyProfileRoundTrip(label, username, password) {
   if (
     !before.ok ||
     !before.data ||
-    !assertProfileShape(before.data) ||
+    !assertProfileBioEstablished(before.data) ||
     !profileIdentityMatches(before.data, auth.userId)
   ) {
     block.abortedBeforeMutation = true;
+    block.steps.push({
+      check: 'profile_bio_established',
+      ok: false,
+      reason: 'bio_field_missing_from_profile_read',
+    });
     return block;
   }
 
   const marker = `DEV_VERIFY_${Date.now()}`;
-  const originalBio = before.data.bio === undefined ? null : before.data.bio;
+  const originalBio = before.data.bio;
   const patch = {
     bio: originalBio == null ? marker : `${originalBio} ${marker}`.trim(),
   };
