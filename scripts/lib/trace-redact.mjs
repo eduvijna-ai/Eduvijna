@@ -13,6 +13,7 @@ const RESOURCE_REF_KEYS = new Set([
   'classroomId',
   'class_id',
   'classId',
+  'classid',
   'quiz_id',
   'quizId',
 ]);
