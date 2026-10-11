@@ -7,6 +7,7 @@ import {
   checkRecordToQuiz,
   fetchQuizCheckRecord,
   fetchStudentClassroomNameLookup,
+  fetchStudentQuizzes,
 } from '../core/services/dashboardApi';
 
 jest.mock('../core/services/dashboardApi', () => {
@@ -15,6 +16,7 @@ jest.mock('../core/services/dashboardApi', () => {
     ...actual,
     fetchQuizCheckRecord: jest.fn(),
     fetchStudentClassroomNameLookup: jest.fn(),
+    fetchStudentQuizzes: jest.fn(),
   };
 });
 
@@ -188,10 +190,38 @@ describe('studentDashboardData', () => {
       Promise.resolve({ result: scope === 'pending' ? [pendingRow] : [] }),
     );
     (fetchStudentClassroomNameLookup as jest.Mock).mockRejectedValue(new Error('transport_failed'));
+    (fetchStudentQuizzes as jest.Mock).mockResolvedValue({ data: [] });
 
     const { quizzes } = await loadStudentDashboardQuizzes('70');
     expect(quizzes).toHaveLength(1);
     expect(quizzes[0].quiz_name).toBe('Lookup Resilience');
     expect(String(quizzes[0].classroom_id)).toBe('class_b3261be7');
+  });
+
+  it('merges completed rows from student_total_details when check-record completed scope is empty', async () => {
+    (fetchQuizCheckRecord as jest.Mock).mockResolvedValue({ result: [] });
+    (fetchStudentClassroomNameLookup as jest.Mock).mockResolvedValue(new Map());
+    (fetchStudentQuizzes as jest.Mock).mockResolvedValue({
+      data: [
+        {
+          quiz_id: 479,
+          session_id: 'a6882262-5c50-4cf5-a4a8-dc8786862916',
+          classroom_id: 'class_4d82c60e',
+          classroom_name: '4A-Mathematics',
+          quiz_name: 'MAT_Mathematics_maths_20260827_1303',
+          student_status: 'completed',
+          status: 'completed',
+          score: 60,
+          completed_at: '2026-08-27T13:30:00.000Z',
+          created_at: '2026-08-27T00:00:00.000Z',
+          question_count: 10,
+        },
+      ],
+    });
+
+    const { quizzes, stats } = await loadStudentDashboardQuizzes('70');
+    expect(quizzes).toHaveLength(1);
+    expect(quizzes[0].status).toBe('completed');
+    expect(stats.completed_count).toBe(1);
   });
 });

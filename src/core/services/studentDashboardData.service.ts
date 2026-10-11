@@ -5,8 +5,10 @@
 import {
   checkRecordToQuiz,
   fetchStudentClassroomNameLookup,
+  fetchStudentQuizzes,
   type CheckRecordQuiz,
 } from './dashboardApi';
+import type { StudentQuiz } from '../types/dashboard.types';
 import {
   dedupeCheckRecordQuizzes,
   fetchStudentCheckRecordRows,
@@ -128,18 +130,55 @@ function mapCheckRecordRow(
   } as StudentDashboardQuizRow;
 }
 
+function mapStudentDetailsRow(
+  quiz: StudentQuiz,
+  classroomNames: Map<string, string>,
+): StudentDashboardQuizRow {
+  const classroomId = String(quiz.classroom_id || '');
+  const status = String(quiz.student_status || quiz.status || 'pending');
+  const studentStatus = String(quiz.student_status || status);
+
+  return {
+    ...quiz,
+    quiz_id: Number(quiz.quiz_id) || 0,
+    class_id: classroomId,
+    classroom_id: classroomId,
+    classroom_name: resolveClassroomDisplayName(classroomId, {
+      recordName: quiz.classroom_name,
+      lookup: classroomNames,
+    }),
+    quiz_name: String(quiz.quiz_name || quiz.topic || 'Untitled Quiz'),
+    status,
+    score: typeof quiz.score === 'number' ? quiz.score : null,
+    completed_at: quiz.completed_at ? String(quiz.completed_at) : null,
+    started_at: quiz.started_at ? String(quiz.started_at) : null,
+    created_at: String(quiz.created_at || quiz.assigned_at || new Date().toISOString()),
+    session_id: String(quiz.session_id || ''),
+    student_status: studentStatus,
+  } as StudentDashboardQuizRow;
+}
+
 /**
- * Loads pending + completed assignments (distinct check-record scopes), merges, dedupes.
+ * Loads pending + completed assignments (check-record + student_total_details), merges, dedupes.
  */
 export async function loadStudentDashboardQuizzes(
   studentId: string,
 ): Promise<{ quizzes: StudentDashboardQuizRow[]; stats: DashboardStats }> {
-  const [combined, classroomLookup] = await Promise.all([
+  const [combined, classroomLookup, studentDetailsResponse] = await Promise.all([
     fetchStudentCheckRecordRows(studentId),
     fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
+    fetchStudentQuizzes({
+      view_type: 'student_total_details',
+      limit: 1000,
+      offset: 0,
+    }).catch(() => ({ data: [] as StudentQuiz[] })),
   ]);
   const classroomNames = mergeClassroomNameLookups(classroomLookup, combined);
-  const mapped = combined.map((item) => mapCheckRecordRow(item, classroomNames));
+  const fromCheckRecord = combined.map((item) => mapCheckRecordRow(item, classroomNames));
+  const fromStudentDetails = (studentDetailsResponse.data || []).map((quiz) =>
+    mapStudentDetailsRow(quiz, classroomNames),
+  );
+  const mapped = [...fromCheckRecord, ...fromStudentDetails];
   const deduped = dedupeStudentDashboardQuizzes(mapped);
   const hydrated = (await hydrateCompletedParsedQuizMetrics(
     studentId,
