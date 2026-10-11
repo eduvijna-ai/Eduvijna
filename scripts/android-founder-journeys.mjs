@@ -58,15 +58,18 @@ function tapTestId(xml, testId) {
   const s = readFileSync(xml, 'utf8');
   const re = new RegExp(
     `(?:content-desc|text)="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
-    'i',
+    'gi',
   );
-  const m = s.match(re);
-  if (!m) return null;
-  return {
-    label: testId,
-    x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
-    y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
-  };
+  let best = null;
+  for (const m of s.matchAll(re)) {
+    const hit = {
+      label: testId,
+      x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
+      y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+    };
+    if (!best || hit.y < best.y) best = hit;
+  }
+  return best;
 }
 
 function tapLabelScroll(pattern, minY = 0, maxScrolls = 14) {
@@ -129,16 +132,22 @@ async function journeyA(quizTitle, searchToken) {
   });
   sleep(2500);
   xml = dump('a-01b-assessments-tab.xml');
-  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-`;
   let studentListTap = tapTestId(xml, studentsTestId);
   if (!studentListTap) {
-    const openQuiz = tapLabelScroll(searchToken, 0);
+    const openQuiz =
+      tapLabelScroll(studentsTestId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 0) ||
+      tapLabelScroll(String(FIXTURE.quizId), 0) ||
+      tapLabelScroll(searchToken, 0);
     log.steps.push({ step: 'locate_quiz', ...openQuiz });
     sleep(1500);
     xml = dump('a-02-quiz-card.xml');
     studentListTap = tapTestId(xml, studentsTestId);
     if (!studentListTap && openQuiz.hit) {
-      studentListTap = tapLabel(xml, 'Total:', Math.max(0, openQuiz.hit.y - 80));
+      studentListTap =
+        tapLabel(xml, 'Completed: 1', Math.max(0, openQuiz.hit.y - 500)) ||
+        tapLabel(xml, 'Total: 3', Math.max(0, openQuiz.hit.y - 500)) ||
+        tapLabel(xml, 'Total:', Math.max(0, openQuiz.hit.y - 500));
     }
   }
   if (!studentListTap) {
@@ -153,8 +162,8 @@ async function journeyA(quizTitle, searchToken) {
   xml = dump('a-03-student-list.xml');
   const aaryaTap =
     tapTestId(xml, `student-row-${FIXTURE.studentId}`) ||
-    tapLabel(xml, '60', 0) ||
-    tapLabel(xml, FIXTURE.studentName, 0);
+    tapLabel(xml, FIXTURE.studentName, 0) ||
+    tapLabel(xml, 'Score: 60%', 0);
   if (aaryaTap) tap(aaryaTap.x, aaryaTap.y);
   log.steps.push({ step: 'aarya', tap: aaryaTap });
   sleep(5000);
