@@ -387,6 +387,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           quizName: quiz?.quiz_name || 'Quiz',
           sessionId: quiz?.session_id,
           classroomId: quiz?.classroom_id || quiz?.class_id,
+          listMode: 'quiz_assignment',
         });
       } else if (onNavigate) {
         onNavigate('students', { quizId, quizName: quiz?.quiz_name });

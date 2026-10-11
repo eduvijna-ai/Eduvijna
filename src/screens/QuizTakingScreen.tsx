@@ -23,6 +23,7 @@ import {
   getQuizExplanation,
 } from '../core/services/sharedApi';
 import { submitAssignedQuiz } from '../core/services/assignedQuizSubmission.service';
+import { refreshStudentAssignmentDashboard } from '../core/services/studentDashboardRefresh.service';
 import { fetchPersistedQuizResult } from '../core/services/quizResultRetrieval.service';
 import { useUserStore } from '../core/store/user.store';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
@@ -1015,6 +1016,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               return;
             }
             console.log('✅ Quiz submission successful');
+            void refreshStudentAssignmentDashboard(String(user.id)).catch(() => undefined);
           }
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);

@@ -20,6 +20,11 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import {
+  resolveStudentListMode,
+  type StudentListMode,
+  STUDENT_LIST_MODE_PARAM,
+} from '@core/types/studentListNavigation.types';
 
 interface Props {
   navigation?: any;
@@ -65,6 +70,11 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   const classroomId = route?.params?.classroomId;
   const classroomName = route?.params?.classroomName;
   const assignmentSessionId = route?.params?.sessionId;
+  const listMode: StudentListMode = resolveStudentListMode({
+    listMode: route?.params?.[STUDENT_LIST_MODE_PARAM] ?? route?.params?.listMode,
+    quizId,
+  });
+  const isQuizAssignmentList = listMode === 'quiz_assignment' && quizId != null;
 
   const fetchQuizStudents = useCallback(async () => {
     try {
@@ -92,9 +102,15 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
             : quiz.attempts;
           
           if (Array.isArray(attempts)) {
-            // Filter to only show students who have attempted (score is not null)
-            // Or show all students with pending status
-            setStudents(attempts);
+            const parentSessionId = quiz.session_id ?? assignmentSessionId;
+            const parentClassroomId = quiz.classroom_id ?? quiz.class_id;
+            setStudents(
+              attempts.map((attempt: QuizAttempt) => ({
+                ...attempt,
+                session_id: attempt.session_id ?? parentSessionId ?? null,
+                class_id: attempt.class_id ?? parentClassroomId ?? null,
+              })),
+            );
           }
         }
       }
@@ -221,7 +237,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
           return (b.score || 0) - (a.score || 0);
         case 'completion':
           // For classroom view, sort by completion rate
-          if (classroomId) {
+          if (!isQuizAssignmentList) {
             const rateA = (a.completed_quizzes || 0) / (a.total_quizzes || 1);
             const rateB = (b.completed_quizzes || 0) / (b.total_quizzes || 1);
             return rateB - rateA;
@@ -256,8 +272,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   }, [quizId, classroomId, fetchQuizStudents, fetchClassroomStudents]);
 
   const handleStudentPress = useCallback((student: QuizAttempt) => {
-    // Check if this is classroom view - navigate to student analytics
-    if (classroomId) {
+    if (!isQuizAssignmentList) {
       if (navigation) {
         navigation.navigate('StudentAnalytics', {
           studentId: student.student_id,
@@ -307,7 +322,16 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         isTeacherView: true,
       });
     }
-  }, [assignmentSessionId, classroomId, classroomName, navigation, onNavigate, quizId, quizName]);
+  }, [
+    assignmentSessionId,
+    classroomId,
+    classroomName,
+    isQuizAssignmentList,
+    navigation,
+    onNavigate,
+    quizId,
+    quizName,
+  ]);
 
   const getPerformanceColor = useCallback((score: number) => {
     if (score >= 80) return theme.colors.success;

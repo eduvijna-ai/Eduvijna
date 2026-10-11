@@ -185,6 +185,36 @@ describe('fetchPersistedQuizResult', () => {
       }
     });
 
+    it('loads by attemptId when attempts omit session_id but parent assignment has session_id', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-parent',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                status: 'completed',
+                score: 60,
+                log_data: logPayload,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-parent',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+    });
+
     it('errors when attemptId does not match session-scoped rows', async () => {
       const result = await fetchPersistedQuizResult({
         quizId: 99,

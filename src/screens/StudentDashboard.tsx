@@ -143,11 +143,8 @@ export default function StudentDashboard({ navigation, route }: Props) {
     }
   }, [isAuthenticated, user, selectedClassroom, refreshing]);
 
-  // Fetch on mount. On mobile, tab/stack screens also refetch via NativeFocusRefetch below.
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      fetchDashboardData();
-    }
+    fetchDashboardData();
   }, [fetchDashboardData]);
 
   // Refresh handler

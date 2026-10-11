@@ -131,6 +131,14 @@ async function fetchTeacherAttemptBundle(params: {
   if (!quiz) {
     return { status: 'missing' };
   }
+
+  const quizAssignmentSessionId =
+    quiz.session_id != null && String(quiz.session_id).trim() !== ''
+      ? String(quiz.session_id)
+      : params.sessionId != null
+        ? String(params.sessionId)
+        : null;
+
   const attempts =
     typeof quiz.attempts === 'string' ? JSON.parse(quiz.attempts) : quiz.attempts;
   if (!Array.isArray(attempts)) {
@@ -155,22 +163,23 @@ async function fetchTeacherAttemptBundle(params: {
     (a) => String(a.student_id) === String(params.studentId),
   );
 
-  const sessionMatches = params.sessionId
-    ? studentMatches.filter((a) => String(a.session_id) === String(params.sessionId))
-    : studentMatches;
+  const resolveAttemptSessionId = (row: TeacherAttemptRow): string | null => {
+    if (row.session_id != null && String(row.session_id).trim() !== '') {
+      return String(row.session_id);
+    }
+    return quizAssignmentSessionId;
+  };
 
-  if (params.sessionId && sessionMatches.length === 0) {
-    return {
-      status: 'error',
-      message: 'No attempt matches the supplied student and assignment session.',
-      retryable: false,
-    };
-  }
+  const sessionMatches = params.sessionId
+    ? studentMatches.filter(
+        (a) => String(resolveAttemptSessionId(a)) === String(params.sessionId),
+      )
+    : studentMatches;
 
   let attempt: TeacherAttemptRow | undefined;
 
   if (params.attemptId != null) {
-    attempt = sessionMatches.find((a) => a.attempt_id === params.attemptId);
+    attempt = studentMatches.find((a) => a.attempt_id === params.attemptId);
     if (!attempt) {
       return {
         status: 'error',
@@ -178,7 +187,24 @@ async function fetchTeacherAttemptBundle(params: {
         retryable: false,
       };
     }
+    if (params.sessionId) {
+      const attemptSession = resolveAttemptSessionId(attempt);
+      if (attemptSession && String(attemptSession) !== String(params.sessionId)) {
+        return {
+          status: 'error',
+          message: 'No attempt matches the supplied student and assignment session.',
+          retryable: false,
+        };
+      }
+    }
   } else if (params.sessionId) {
+    if (sessionMatches.length === 0) {
+      return {
+        status: 'error',
+        message: 'No attempt matches the supplied student and assignment session.',
+        retryable: false,
+      };
+    }
     const completed = sessionMatches.filter((a) => a.status === 'completed');
     if (completed.length === 1) {
       attempt = completed[0];
