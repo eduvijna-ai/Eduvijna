@@ -1,7 +1,7 @@
 # Founder acceptance — runtime pass (2026-10-11)
 
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
-**HEAD (this pass):** see latest commit on `integration/mobile-founder-acceptance-20261011` (local includes `c5a9975` automation + subsequent repair commits).  
+**HEAD (this pass):** `42e2211` (+ journey script `chore` follow-up on same branch).  
 **PR:** #26  
 
 ## Live API probes (separate from UI)
@@ -22,7 +22,7 @@ Redacted artifact (gitignored): `.dev-api-document-workflow-run/runtime-evidence
 |------|--------|--------|
 | Dev client bootstrap (no `pm clear`) | PASS | `adb reverse`, `127.0.0.1:8082` deep link, dev-menu reload |
 | Normal login (`demo_samatha`) | PASS | Per-char `adb input text` for password; Enter submit; push overlay dismissed |
-| Journey A — Assessments → students → Aarya → worksheet | **FAIL** | Fixture quiz located on **Expired** tab (`MAT_Mathematics…`); student-list tap still mis-targets adjacent card — automation fix in progress |
+| Journey A — Assessments → students → Aarya → worksheet | **FAIL** @ `42e2211` | Expired tab OK; duplicate `MAT_Mathematics…` cards — automation opened wrong quiz (`PRO_Assessment_20261007`); `assessment-open-students-479-*` not exposed in UIAutomator dump |
 | Journey B — Analytics drilldown | **NE** | Blocked on A stability |
 | Document history UI | **NE** | |
 | From Books CBSE → 10 → Math | **NE** | |
