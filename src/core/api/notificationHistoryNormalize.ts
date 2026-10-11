@@ -1,3 +1,5 @@
+import { resolveNotificationHistoryTotal } from './notificationPaginationTotal';
+
 export type NormalizedNotificationRow = {
   id: number | string;
   title: string;
@@ -44,20 +46,6 @@ function isNotificationRow(value: unknown): value is NormalizedNotificationRow {
   );
 }
 
-function explicitTotalMatches(
-  explicitTotal: unknown,
-  notificationsLength: number,
-): boolean {
-  if (explicitTotal == null || explicitTotal === '') {
-    return true;
-  }
-  const numeric = Number(explicitTotal);
-  if (!Number.isFinite(numeric)) {
-    return false;
-  }
-  return numeric === notificationsLength;
-}
-
 export function normalizeNotificationHistoryPayload(
   data: unknown,
 ): NotificationHistoryNormalizeResult {
@@ -83,13 +71,14 @@ export function normalizeNotificationHistoryPayload(
     if (notifications.length > 0 && !notifications.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'notifications_items_invalid' };
     }
-    if (!explicitTotalMatches(record.total, notifications.length)) {
-      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
+    const totalResolved = resolveNotificationHistoryTotal(record.total, notifications.length);
+    if (!totalResolved.ok) {
+      return { ok: false, responseShape: 'unknown', error: totalResolved.error };
     }
     return {
       ok: true,
       notifications: notifications as NormalizedNotificationRow[],
-      total: Number(record.total ?? notifications.length),
+      total: totalResolved.total,
       responseShape: 'wrapped_notifications',
     };
   }
@@ -99,13 +88,14 @@ export function normalizeNotificationHistoryPayload(
     if (notifications.length > 0 && !notifications.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'data_items_invalid' };
     }
-    if (!explicitTotalMatches(record.total, notifications.length)) {
-      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
+    const totalResolved = resolveNotificationHistoryTotal(record.total, notifications.length);
+    if (!totalResolved.ok) {
+      return { ok: false, responseShape: 'unknown', error: totalResolved.error };
     }
     return {
       ok: true,
       notifications: notifications as NormalizedNotificationRow[],
-      total: Number(record.total ?? notifications.length),
+      total: totalResolved.total,
       responseShape: 'wrapped_data',
     };
   }

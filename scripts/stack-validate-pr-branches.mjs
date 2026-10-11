@@ -121,8 +121,8 @@ function runDiagnostics(repoRoot) {
   const lintCombinedForCount = `${lintJsonOut}\n${lintErrOut}`;
   const identities = extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot);
   const parseFailure =
-    (type.status !== 0 && identities.ts.length === 0 && /error TS\d+:/.test(typeOut)) ||
-    (lint.status !== 0 && identities.eslint.length === 0 && lintJsonOut.trim() === '');
+    (type.status !== 0 && identities.ts.length === 0) ||
+    (lint.status !== 0 && identities.eslint.length === 0 && !lintJsonOut.trim().startsWith('['));
   const toolFailure =
     type.status === null ||
     lint.status === null ||
@@ -238,8 +238,8 @@ function validateStackBranch(row, options = {}) {
       immediateBase: immediateBaseDiag,
       tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
       eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
-      identitiesAdded: scopedIdentitiesAdded,
-      identitiesAddedUnscoped: identityDelta,
+      identitiesAdded: identityDelta,
+      identitiesAddedInChangedFiles: scopedIdentitiesAdded,
       filesChangedVsImmediateBase: [...filesChangedVsImmediateBase].sort(),
       baselineDebt: headDiag.baselineDebt,
       toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
@@ -279,7 +279,8 @@ const report = {
     failOnAnyIdentityRegression: true,
     failOnBrokenStackAncestry: true,
     rejectDirtyWorktrees: true,
-    regressionScope: 'identities_in_files_changed_vs_immediate_base',
+    regressionScope: 'all_newly_introduced_diagnostic_identities',
+    regressionScopeChangedFilesReport: 'identities_in_files_changed_vs_immediate_base',
   },
   supersededPriorSweep:
     priorReport?.checkoutMode !== 'isolated_worktree_detached_at_origin_sha'
