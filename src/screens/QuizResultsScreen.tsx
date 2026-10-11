@@ -17,7 +17,7 @@ import { fetchPersistedQuizResult } from '@core/services/quizResultRetrieval.ser
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import {
-  isQuizAnswerCorrect,
+  evaluatePersistedAnswerCorrectness,
   isOptionTheCorrectAnswer,
   isOptionTheUserAnswer,
 } from '@core/utils/answerMappingUtils';
@@ -248,7 +248,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     const questions = Array.isArray(quizData?.questions) ? quizData.questions : [];
     let correct = 0;
     questions.forEach((q: any, index: number) => {
-      if (isQuizAnswerCorrect(userAnswers?.[index], q)) correct++;
+      const outcome = evaluatePersistedAnswerCorrectness(userAnswers?.[index], q);
+      if (outcome === true) correct++;
     });
     return {
       correct,
@@ -281,7 +282,9 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     const questionText = question.question || '';
     const options = question.options || [];
     const userAnswer = userAnswers[index] || '';
-    const isCorrect = isQuizAnswerCorrect(userAnswer, question);
+    const correctness = evaluatePersistedAnswerCorrectness(userAnswer, question);
+    const isCorrect = correctness === true;
+    const isUnknown = correctness === null;
 
     return (
       <View
@@ -290,7 +293,11 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           styles.questionCard,
           {
             backgroundColor: theme.colors.surface,
-            borderColor: isCorrect ? theme.colors.success : theme.colors.danger,
+            borderColor: isUnknown
+              ? theme.colors.border
+              : isCorrect
+                ? theme.colors.success
+                : theme.colors.danger,
             borderWidth: 1.5,
           },
         ]}
@@ -303,21 +310,39 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           <View
             style={[
               styles.resultBadge,
-              { backgroundColor: isCorrect ? theme.colors.tintGreen : theme.colors.tintRed },
+              {
+                backgroundColor: isUnknown
+                  ? theme.colors.surfaceAlt
+                  : isCorrect
+                    ? theme.colors.tintGreen
+                    : theme.colors.tintRed,
+              },
             ]}
           >
             <Ionicons
-              name={isCorrect ? 'checkmark' : 'close'}
+              name={isUnknown ? 'help' : isCorrect ? 'checkmark' : 'close'}
               size={13}
-              color={isCorrect ? theme.colors.success : theme.colors.danger}
+              color={
+                isUnknown
+                  ? theme.colors.textSecondary
+                  : isCorrect
+                    ? theme.colors.success
+                    : theme.colors.danger
+              }
             />
             <Text
               style={[
                 styles.resultBadgeText,
-                { color: isCorrect ? theme.colors.success : theme.colors.danger },
+                {
+                  color: isUnknown
+                    ? theme.colors.textSecondary
+                    : isCorrect
+                      ? theme.colors.success
+                      : theme.colors.danger,
+                },
               ]}
             >
-              {isCorrect ? 'Correct' : 'Incorrect'}
+              {isUnknown ? 'Unknown' : isCorrect ? 'Correct' : 'Incorrect'}
             </Text>
           </View>
         </View>

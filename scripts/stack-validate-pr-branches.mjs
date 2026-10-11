@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import {
   collectTypeScriptIdentities,
   diffIdentities,
+  normalizeRelativeFilePath,
   parseEslintJsonReport,
 } from './lib/diagnostic-identities.mjs';
 import {
@@ -72,6 +73,35 @@ function diffAddedIdentities(headIds, baseIds) {
   };
 }
 
+function listFilesChangedBetween(monorepoRoot, fromSha, toSha) {
+  const raw = git(`diff --name-only ${fromSha}..${toSha}`, monorepoRoot);
+  if (!raw) {
+    return new Set();
+  }
+  const changedFiles = new Set();
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim().replace(/\\/g, '/');
+    if (!trimmed) continue;
+    changedFiles.add(trimmed);
+    changedFiles.add(normalizeRelativeFilePath(trimmed));
+  }
+  return changedFiles;
+}
+
+function identityFileInChangedSet(identity, changedFiles) {
+  const rawFile = (identity.split('|')[0] ?? '').replace(/\\/g, '/');
+  const normalized = normalizeRelativeFilePath(rawFile);
+  return (
+    changedFiles.has(rawFile) ||
+    changedFiles.has(normalized) ||
+    changedFiles.has(`src/${normalized}`)
+  );
+}
+
+function scopeIdentitiesToChangedFiles(identities, changedFiles) {
+  return identities.filter((identity) => identityFileInChangedSet(identity, changedFiles));
+}
+
 function runDiagnostics(repoRoot) {
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
@@ -91,8 +121,8 @@ function runDiagnostics(repoRoot) {
   const lintCombinedForCount = `${lintJsonOut}\n${lintErrOut}`;
   const identities = extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot);
   const parseFailure =
-    (type.status !== 0 && identities.ts.length === 0 && /error TS\d+:/.test(typeOut)) ||
-    (lint.status !== 0 && identities.eslint.length === 0 && lintJsonOut.trim() === '');
+    (type.status !== 0 && identities.ts.length === 0) ||
+    (lint.status !== 0 && identities.eslint.length === 0 && !lintJsonOut.trim().startsWith('['));
   const toolFailure =
     type.status === null ||
     lint.status === null ||
@@ -144,9 +174,26 @@ function runExports(repoRoot, branchKey) {
   return results;
 }
 
+function assertImmediateBaseIsAncestor(row, headSha) {
+  const baseRef = resolveBaseRef(row.base);
+  const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
+  const proc = spawnSync(
+    'git',
+    ['merge-base', '--is-ancestor', immediateBaseSha, headSha],
+    { cwd: monorepoRoot },
+  );
+  if (proc.status !== 0) {
+    throw new Error(
+      `Ancestry validation failed for PR #${row.pr}: ${baseRef} (${immediateBaseSha}) is not an ancestor of ${row.branch} (${headSha})`,
+    );
+  }
+  return { baseRef, immediateBaseSha };
+}
+
 function validateStackBranch(row, options = {}) {
   const skipExports = options.skipExports === true;
   const expectedHead = resolveRemoteBranchSha(monorepoRoot, row.branch);
+  assertImmediateBaseIsAncestor(row, expectedHead);
   const { worktreeRoot, head } = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
 
   const baseRef = resolveBaseRef(row.base);
@@ -164,6 +211,18 @@ function validateStackBranch(row, options = {}) {
 
   const exports = skipExports ? {} : runExports(worktreeRoot, branchKey);
   const identityDelta = diffAddedIdentities(headDiag.identities, immediateBaseDiag.identities);
+  const filesChangedVsImmediateBase = listFilesChangedBetween(
+    monorepoRoot,
+    immediateBaseSha,
+    head,
+  );
+  const scopedIdentitiesAdded = {
+    tsAdded: scopeIdentitiesToChangedFiles(identityDelta.tsAdded, filesChangedVsImmediateBase),
+    eslintAdded: scopeIdentitiesToChangedFiles(
+      identityDelta.eslintAdded,
+      filesChangedVsImmediateBase,
+    ),
+  };
 
   return {
     pr: row.pr,
@@ -180,6 +239,9 @@ function validateStackBranch(row, options = {}) {
       tsErrorsAdded: headDiag.tsErrorCount - immediateBaseDiag.tsErrorCount,
       eslintErrorsDelta: headDiag.eslintErrorCount - immediateBaseDiag.eslintErrorCount,
       identitiesAdded: identityDelta,
+      identitiesAddedInChangedFiles: scopedIdentitiesAdded,
+      filesChangedVsImmediateBase: [...filesChangedVsImmediateBase].sort(),
+      baselineDebt: headDiag.baselineDebt,
       toolFailure: headDiag.toolFailure || immediateBaseDiag.toolFailure,
     },
     exports,
@@ -215,6 +277,10 @@ const report = {
     noPrimaryCheckoutFallback: true,
     failOnDiagnosticToolFailure: true,
     failOnAnyIdentityRegression: true,
+    failOnBrokenStackAncestry: true,
+    rejectDirtyWorktrees: true,
+    regressionScope: 'all_newly_introduced_diagnostic_identities',
+    regressionScopeChangedFilesReport: 'identities_in_files_changed_vs_immediate_base',
   },
   supersededPriorSweep:
     priorReport?.checkoutMode !== 'isolated_worktree_detached_at_origin_sha'
@@ -289,8 +355,6 @@ try {
   mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
-  const shouldFail = cliOpts.smoke
-    ? Boolean(report.error)
-    : report.status !== 'passed';
+  const shouldFail = report.status !== 'passed' || Boolean(report.error);
   process.exit(shouldFail ? 1 : 0);
 }
