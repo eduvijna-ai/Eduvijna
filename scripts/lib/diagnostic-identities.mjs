@@ -9,6 +9,26 @@ export function normalizeRelativeFilePath(filePath) {
     .replace(/^src\//, '');
 }
 
+export function normalizeRepoFilePath(filePath, repoRoot) {
+  const fp = String(filePath).replace(/\\/g, '/');
+  const root = String(repoRoot || '')
+    .replace(/\\/g, '/')
+    .replace(/\/$/, '');
+  if (root && fp.startsWith(`${root}/`)) {
+    return fp.slice(root.length + 1);
+  }
+  const worktreeMarker = '/.stack-worktrees/';
+  const idx = fp.indexOf(worktreeMarker);
+  if (idx >= 0) {
+    const after = fp.slice(idx + worktreeMarker.length);
+    const slash = after.indexOf('/');
+    if (slash >= 0) {
+      return after.slice(slash + 1);
+    }
+  }
+  return normalizeRelativeFilePath(fp);
+}
+
 export function parseTypeScriptDiagnosticLine(line) {
   const match = line.match(/^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.*)$/);
   if (!match) {
@@ -43,7 +63,7 @@ export function diffIdentities(headIdentities, baseIdentities) {
   return headIdentities.filter((id) => !base.has(id));
 }
 
-export function parseEslintJsonReport(jsonText) {
+export function parseEslintJsonReport(jsonText, repoRoot = '') {
   let parsed;
   try {
     parsed = JSON.parse(jsonText);
@@ -55,7 +75,7 @@ export function parseEslintJsonReport(jsonText) {
   }
   const identities = new Set();
   for (const fileResult of parsed) {
-    const filePath = normalizeRelativeFilePath(fileResult.filePath || '');
+    const filePath = normalizeRepoFilePath(fileResult.filePath || '', repoRoot);
     for (const message of fileResult.messages ?? []) {
       if (message.severity !== 2) {
         continue;
