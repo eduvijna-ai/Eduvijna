@@ -290,8 +290,6 @@ export function useAuth(): UseAuthReturn {
       const currentUser = useUserStore.getState().user;
       const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
       await resetNotificationGuardBestEffort(accountKey);
-      const { resetInitialDeepLinkCache } = await import('../services/deepLinkService');
-      resetInitialDeepLinkCache();
 
       // Call logout API (clears tokens automatically)
       await AuthAPI.logout();

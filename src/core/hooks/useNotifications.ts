@@ -8,6 +8,7 @@ import {
   markAsRead,
   markAllAsRead,
   Notification,
+  notificationIdsEqual,
 } from '../api/notifications.api';
 import { useAuth } from '@core/hooks/useAuth';
 import { countUnreadNotifications, isNotificationUnread } from '../api/notificationUnread';
@@ -56,10 +57,12 @@ export default function useNotifications() {
       if (!accountKey) return;
       try {
         const wasUnread = notifications.some(
-          (n) => n.id === Number(notificationId) && isNotificationUnread(n),
+          (n) => notificationIdsEqual(n.id, notificationId) && isNotificationUnread(n),
         );
         setNotifications((prev) =>
-          prev.map((n) => (n.id === Number(notificationId) ? { ...n, is_read: true } : n)),
+          prev.map((n) =>
+            notificationIdsEqual(n.id, notificationId) ? { ...n, is_read: true } : n,
+          ),
         );
         if (wasUnread) {
           setUnreadCount((prev) => Math.max(0, prev - 1));

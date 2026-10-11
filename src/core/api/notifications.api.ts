@@ -12,6 +12,12 @@ import {
 } from './notificationFetchGuard';
 import { loadReadNotificationIds, persistReadNotificationId } from './notificationReadState';
 import { normalizeNotificationHistoryPayload } from './notificationHistoryNormalize';
+import {
+  type NotificationId,
+  normalizeNotificationId,
+  notificationIdKey,
+  notificationIdsEqual,
+} from './notificationIdentity';
 
 export type NotificationType =
   | 'quiz_assigned'
@@ -22,19 +28,13 @@ export type NotificationType =
 
 export type NotificationStatus = 'pending' | 'sent' | 'delivered' | 'failed' | 'clicked';
 
-export function coerceNotificationId(id: number | string): number {
-  if (typeof id === 'number' && Number.isFinite(id)) {
-    return id;
-  }
-  const numeric = Number(String(id).trim());
-  if (Number.isFinite(numeric)) {
-    return numeric;
-  }
-  throw new Error(`notification_history_shape:invalid_id:${String(id)}`);
+/** @deprecated use normalizeNotificationId */
+export function coerceNotificationId(id: number | string): NotificationId {
+  return normalizeNotificationId(id);
 }
 
 export interface Notification {
-  id: number;
+  id: NotificationId;
   title: string;
   body: string;
   message?: string;
@@ -57,12 +57,83 @@ export interface Notification {
 
 function applyClientReadState(
   rows: Notification[],
-  readIds: Set<number>,
+  readKeys: Set<string>,
 ): Notification[] {
   return rows.map((n) => ({
     ...n,
-    is_read: Boolean(n.clicked_at) || readIds.has(n.id) || n.is_read === true,
+    is_read:
+      Boolean(n.clicked_at) ||
+      readKeys.has(notificationIdKey(n.id)) ||
+      n.is_read === true,
   }));
+}
+
+function dedupeNotifications(rows: Notification[]): Notification[] {
+  const seen = new Set<string>();
+  return rows.filter((n) => {
+    const key = notificationIdKey(n.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function fetchNotificationHistoryPage(params: {
+  status?: NotificationStatus;
+  limit: number;
+  offset: number;
+}): Promise<{ notifications: Notification[]; total: number }> {
+  const queryParams = new URLSearchParams();
+  if (params.status) queryParams.append('status', params.status);
+  queryParams.append('limit', String(params.limit));
+  if (params.offset) queryParams.append('offset', params.offset.toString());
+
+  const endpoint = `/api/notifications/history?${queryParams.toString()}`;
+  const response = await get<unknown>(endpoint);
+  const normalized = normalizeNotificationHistoryPayload(response);
+  if (!normalized.ok) {
+    throw new Error(`notification_history_shape:${normalized.responseShape}:${normalized.error}`);
+  }
+  const notifications = normalized.notifications.map((row) => ({
+    ...(row as Notification),
+    id: normalizeNotificationId(row.id),
+  }));
+  return { notifications, total: normalized.total };
+}
+
+export async function fetchAllNotificationHistory(params: {
+  accountKey: string;
+  status?: NotificationStatus;
+  limit?: number;
+}): Promise<Notification[]> {
+  const limit = params.limit ?? getNotificationHistoryLimit();
+  const collected: Notification[] = [];
+  let offset = 0;
+  let expectedTotal: number | null = null;
+
+  while (true) {
+    const page = await fetchNotificationHistoryPage({
+      status: params.status,
+      limit,
+      offset,
+    });
+    if (expectedTotal == null) {
+      expectedTotal = page.total;
+    }
+    if (page.notifications.length === 0) {
+      break;
+    }
+    collected.push(...page.notifications);
+    offset += page.notifications.length;
+    if (expectedTotal != null && collected.length >= expectedTotal) {
+      break;
+    }
+    if (page.notifications.length < limit) {
+      break;
+    }
+  }
+
+  return dedupeNotifications(collected);
 }
 
 export async function getNotifications(params?: {
@@ -77,35 +148,27 @@ export async function getNotifications(params?: {
   const accountKey = params.accountKey;
   try {
     const result = await guardedNotificationFetch(accountKey, async () => {
-      const queryParams = new URLSearchParams();
-      if (params?.status) queryParams.append('status', params.status);
-      queryParams.append('limit', String(params?.limit ?? getNotificationHistoryLimit()));
-      if (params?.offset) queryParams.append('offset', params.offset.toString());
-
-      const endpoint = `/api/notifications/history?${queryParams.toString()}`;
-      const response = await get<unknown>(endpoint);
-      const normalized = normalizeNotificationHistoryPayload(response);
-      if (!normalized.ok) {
-        throw new Error(`notification_history_shape:${normalized.responseShape}:${normalized.error}`);
+      if (params.offset != null && params.offset > 0) {
+        const page = await fetchNotificationHistoryPage({
+          status: params.status,
+          limit: params.limit ?? getNotificationHistoryLimit(),
+          offset: params.offset,
+        });
+        return page.notifications;
       }
-      const rows = normalized.notifications.map((row) => ({
-        ...(row as Notification),
-        id: coerceNotificationId(row.id),
-      }));
-      const seen = new Set<number>();
-      return rows.filter((n) => {
-        if (seen.has(n.id)) return false;
-        seen.add(n.id);
-        return true;
+      return fetchAllNotificationHistory({
+        accountKey,
+        status: params.status,
+        limit: params.limit,
       });
     });
-    const readIds = await loadReadNotificationIds(accountKey);
-    return applyClientReadState(result.notifications, readIds);
+    const readKeys = await loadReadNotificationIds(accountKey);
+    return applyClientReadState(result.notifications, readKeys);
   } catch (error) {
     console.error('Failed to fetch notifications:', error);
     const cached = getCachedNotificationsForAccount(accountKey);
-    const readIds = await loadReadNotificationIds(accountKey);
-    return applyClientReadState(cached, readIds);
+    const readKeys = await loadReadNotificationIds(accountKey);
+    return applyClientReadState(cached, readKeys);
   }
 }
 
@@ -119,7 +182,7 @@ export async function getUnreadCount(params: {
   return rows.filter((n) => !n.clicked_at && !n.is_read).length;
 }
 
-export async function getNotificationById(notificationId: number): Promise<Notification | null> {
+export async function getNotificationById(notificationId: NotificationId): Promise<Notification | null> {
   try {
     const response = await get<Notification>(`/api/notifications/${notificationId}`);
     return response;
@@ -134,11 +197,11 @@ export async function getNotificationById(notificationId: number): Promise<Notif
  */
 export async function markAsRead(notificationId: string, accountKey?: string): Promise<void> {
   if (!accountKey) return;
-  await persistReadNotificationId(accountKey, Number(notificationId));
+  await persistReadNotificationId(accountKey, notificationId);
 }
 
 export async function markAllAsRead(
-  notificationIds: number[],
+  notificationIds: NotificationId[],
   accountKey?: string,
 ): Promise<void> {
   if (!accountKey) return;
@@ -150,3 +213,5 @@ export async function markAllAsRead(
 export async function deleteNotification(_notificationId: string): Promise<void> {
   console.warn('deleteNotification not available in backend');
 }
+
+export { notificationIdsEqual };

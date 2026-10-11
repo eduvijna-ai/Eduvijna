@@ -78,19 +78,13 @@ function AppContent() {
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
   
-  // Reset session guards when authentication state changes
+  // Reset session guards when authentication state changes (never replay cold-launch initial URL)
   useEffect(() => {
     if (!isAuthenticated) {
-      // User logged out, clear guards and any queued openquiz session
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
       setPendingSessionId(null);
       webNavStackRef.current = [];
-      initialDeepLinkProcessed.current = false; // Allow deep link re-processing after logout
-    } else {
-      // User just authenticated - allow pending deep link to be processed
-      // Reset the flag so post-login deep link can run
-      initialDeepLinkProcessed.current = false;
     }
   }, [isAuthenticated]);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
