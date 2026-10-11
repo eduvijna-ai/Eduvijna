@@ -107,7 +107,12 @@ export default function DocumentLibraryScreen({ navigation }: any) {
 
   // Upload modal state
   const [uploadVisible, setUploadVisible] = useState(false);
-  const [uploadFile, setUploadFile] = useState<{ uri: string; name: string; mimeType?: string } | null>(null);
+  const [uploadFile, setUploadFile] = useState<{
+    uri: string;
+    name: string;
+    mimeType?: string;
+    file?: File | Blob;
+  } | null>(null);
   const [uTitle, setUTitle] = useState('');
   const [uClassId, setUClassId] = useState('');
   const [uSubjectId, setUSubjectId] = useState('');
@@ -217,7 +222,12 @@ export default function DocumentLibraryScreen({ navigation }: any) {
       });
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      setUploadFile({ uri: asset.uri, name: asset.name || `document-${Date.now()}`, mimeType: asset.mimeType });
+      setUploadFile({
+        uri: asset.uri,
+        name: asset.name || `document-${Date.now()}`,
+        mimeType: asset.mimeType,
+        file: (asset as { file?: File | Blob }).file,
+      });
       if (!uTitle.trim()) setUTitle((asset.name || '').replace(/\.[^/.]+$/, ''));
     } catch (e: any) {
       setUploadError(normalizeErrorMessage(e, 'Failed to pick a file.'));
@@ -240,6 +250,7 @@ export default function DocumentLibraryScreen({ navigation }: any) {
         fileUri: uploadFile.uri,
         fileName: uploadFile.name,
         mimeType: uploadFile.mimeType,
+        file: uploadFile.file,
         title: uTitle.trim(),
         gradeLevel: uClassId,
         subject: uSubjectId,

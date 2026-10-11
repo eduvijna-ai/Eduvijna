@@ -979,9 +979,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           if (submissionResult.alreadySubmitted && submissionResult.persistedResult) {
             const saved = submissionResult.persistedResult;
             const total = saved.quizData.questions.length;
-            const correct = saved.userAnswers.filter((answer, index) =>
-              answer ? isQuizAnswerCorrect(answer, saved.quizData.questions[index]) : false,
-            ).length;
             navigation.replace('QuizResultsScreen', {
               quizId: quiz.quiz_id,
               sessionId,
@@ -990,7 +987,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               userAnswers: saved.userAnswers,
               score: saved.score,
               totalQuestions: total,
-              correctCount: correct,
               isTeacherView: false,
             });
             setSubmitting(false);
@@ -1005,11 +1001,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             });
             if (persisted.status === 'ready') {
               const total = persisted.quizData.questions.length;
-              const correct = persisted.userAnswers.filter((answer, index) =>
-                answer
-                  ? isQuizAnswerCorrect(answer, persisted.quizData.questions[index])
-                  : false,
-              ).length;
               navigation.replace('QuizResultsScreen', {
                 quizId: quiz.quiz_id,
                 sessionId,
@@ -1018,7 +1009,6 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                 userAnswers: persisted.userAnswers,
                 score: persisted.score,
                 totalQuestions: total,
-                correctCount: correct,
                 isTeacherView: false,
               });
               setSubmitting(false);

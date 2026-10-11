@@ -7,6 +7,7 @@
 import { useEffect, useRef } from 'react';
 import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
 import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
+import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 //import type { Notification } from '@core/api/notifications.api';
@@ -106,27 +107,44 @@ export default function NotificationHandler() {
         break;
 
       case 'quiz_graded': {
-        const resultParams = buildQuizGradedResultsNavigationParams({
-          quiz_id: quizId,
-          session_id: sessionId,
-          student_id: studentId ?? user?.id,
-          quiz_title: quizTitle,
-        });
-        if (!resultParams || !sessionId || quizId == null || !user?.id) {
-          break;
-        }
-        void executeStudentAssignedQuizViewResults(
-          {
-            studentId: String(studentId ?? user.id),
-            quizId,
-            sessionId: String(sessionId),
-            classroomId: String(sessionId),
-            quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
-          },
-          {
-            navigation: navigationRef.current as { navigate: (screen: string, params?: unknown) => void },
-          },
-        );
+        void (async () => {
+          let resolvedSessionId = sessionId;
+          const student = studentId ?? user?.id;
+          if (!resolvedSessionId && quizId && student) {
+            const resolution = await resolveStudentGradedAssignmentSession(String(student), quizId);
+            if (resolution.kind === 'ambiguous') {
+              console.log('➡️ Ambiguous graded quiz assignment; opening Assessments');
+              (navigationRef.current as any).navigate('Assessments');
+              return;
+            }
+            if (resolution.kind === 'resolved') {
+              resolvedSessionId = resolution.sessionId;
+            }
+          }
+          const resultParams = buildQuizGradedResultsNavigationParams({
+            quiz_id: quizId,
+            session_id: resolvedSessionId,
+            student_id: student,
+            quiz_title: quizTitle,
+          });
+          if (!resultParams || !resolvedSessionId || quizId == null || !student) {
+            console.log('➡️ Graded notification missing resolvable quiz; opening Assessments');
+            (navigationRef.current as any).navigate('Assessments');
+            return;
+          }
+          await executeStudentAssignedQuizViewResults(
+            {
+              studentId: String(student),
+              quizId,
+              sessionId: String(resolvedSessionId),
+              classroomId: String(resolvedSessionId),
+              quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
+            },
+            {
+              navigation: navigationRef.current as { navigate: (screen: string, params?: unknown) => void },
+            },
+          );
+        })();
         break;
       }
 
