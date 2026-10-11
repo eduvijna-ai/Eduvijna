@@ -38,6 +38,7 @@ import {
   canStudentStartAssignment,
 } from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
+import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -151,6 +152,11 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   const [studentRefreshing, setStudentRefreshing] = useState(false);
   const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
   const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
+  const studentRawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const bumpStudentClassificationNow = useStudentAssignmentDashboardStore(
+    (s) => s.bumpClassificationNow,
+  );
+  useStudentAssignmentBoundaryClock(studentRawQuizzes, bumpStudentClassificationNow);
   const studentQuizzes = isStudent
     ? (studentClassified.length > 0 ? studentClassified : storedQuizzes)
     : [];

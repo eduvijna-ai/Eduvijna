@@ -7,6 +7,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import type { ApiError, AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
+import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import { initializeCache, closeCache } from '../services/cacheService';
 import Constants from 'expo-constants';
 import { ApiEnvironmentConfigError, normalizeApiOrigin } from '../config/apiEnvironment';
@@ -239,7 +240,8 @@ async function handleAuthenticationFailure(): Promise<void> {
   // This will cause App.tsx to switch to login screen automatically
   const { logout } = useUserStore.getState();
   logout();
-  
+  resetStudentAssignmentDashboardStore(null);
+
   console.log('Logged out - login screen will be displayed');
 }
 
