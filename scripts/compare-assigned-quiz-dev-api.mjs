@@ -19,10 +19,7 @@ if (!username || !password) {
   process.exit(1);
 }
 
-async function apiGet(token, path) {
-  const res = await fetch(`${getDevApiBase()}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+async function parseResponse(res) {
   const text = await res.text();
   let data;
   try {
@@ -30,7 +27,15 @@ async function apiGet(token, path) {
   } catch {
     data = { _preview: String(text).slice(0, 200) };
   }
-  return { status: res.status, data: redactDeep(data) };
+  return { status: res.status, data };
+}
+
+async function apiGet(token, path) {
+  const res = await fetch(`${getDevApiBase()}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const { status, data } = await parseResponse(res);
+  return { status, data, evidence: redactDeep(data) };
 }
 
 async function apiPost(token, path, body) {
@@ -42,14 +47,15 @@ async function apiPost(token, path, body) {
     },
     body: JSON.stringify(body),
   });
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    data = { _preview: String(text).slice(0, 200) };
-  }
-  return { status: res.status, data: redactDeep(data) };
+  const { status, data } = await parseResponse(res);
+  return { status, data, evidence: redactDeep(data) };
+}
+
+function traceStep(_name, result) {
+  return {
+    status: result.status,
+    data: result.evidence,
+  };
 }
 
 async function main() {
@@ -74,7 +80,7 @@ async function main() {
   };
 
   const profile = await apiGet(session.token, '/api/v1/auth/profile');
-  traces.steps.push({ name: 'auth_profile', ...profile });
+  traces.steps.push(traceStep('auth_profile', profile));
 
   const studentIdForCheck = session.role === 'student' ? session.userId : session.userId;
   const checkBody = {
@@ -99,13 +105,13 @@ async function main() {
       ...checkBody,
       p_check_type: 'pending',
     });
-    traces.steps.push({ name: 'check-record pending', ...pending });
+    traces.steps.push(traceStep('check-record pending', pending));
 
     const completed = await apiPost(session.token, '/api/v1/quiz/check-record', {
       ...checkBody,
       p_check_type: 'completed',
     });
-    traces.steps.push({ name: 'check-record completed', ...completed });
+    traces.steps.push(traceStep('check-record completed', completed));
 
     const sampleRow = completed.data?.result?.[0] || pending.data?.result?.[0];
     const sample = sampleRow?.quiz_details
@@ -120,21 +126,13 @@ async function main() {
         session.token,
         `/api/v1/dashboard/quiz-attempts?student_id=${studentIdForCheck}&quiz_id=${sample.quiz_id}&class_id=${sample.session_id}`,
       );
-      traces.steps.push({
-        name: 'quiz-attempts list',
-        operation: 'GET',
-        ...attempts,
-      });
+      traces.steps.push({ name: 'quiz-attempts list', operation: 'GET', ...traceStep('quiz-attempts list', attempts) });
 
       const attended = await apiGet(
         session.token,
         `/api/v1/dashboard/attended-quiz?student_id=${studentIdForCheck}&session_id=${sample.session_id}&quiz_id=${sample.quiz_id}`,
       );
-      traces.steps.push({
-        name: 'attended-quiz load',
-        operation: 'GET',
-        ...attended,
-      });
+      traces.steps.push({ name: 'attended-quiz load', operation: 'GET', ...traceStep('attended-quiz load', attended) });
     }
   }
 
