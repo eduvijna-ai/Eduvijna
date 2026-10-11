@@ -85,6 +85,10 @@ function extractUserAnswer(entry: LogAnswerEntry | undefined, options: string[])
   return letterOrTextToDisplayAnswer(raw, options);
 }
 
+function isUsableMergedAnswer(answer: string): boolean {
+  return answer.trim() !== '';
+}
+
 function matchLogEntryToQuestion(
   questionText: string,
   index: number,
@@ -139,7 +143,7 @@ function mergeUserAnswersOntoQuestions(
     const matched = matchLogEntryToQuestion(question.question, index, entries, verifiedOrder);
     if (matched) {
       const fromLog = extractUserAnswer(matched, question.options ?? []);
-      if (fromLog !== '') {
+      if (isUsableMergedAnswer(fromLog)) {
         return fromLog;
       }
     }
