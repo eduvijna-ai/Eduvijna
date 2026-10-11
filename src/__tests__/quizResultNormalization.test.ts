@@ -112,6 +112,26 @@ describe('quizResultNormalization', () => {
     expect(normalized?.userAnswers[0]).toBe('4');
   });
 
+  it('preserves attended is_correct when answer_key is absent', () => {
+    const normalized = normalizeAttendedQuizResponse(
+      attendedFixture({
+        items: [
+          {
+            question_id: 1,
+            question: '2+2?',
+            options: ['3', '4'],
+            student_answer: 'B',
+            answer_key: null,
+            is_correct: true,
+          },
+        ],
+        log_data: { answers: [] },
+      }),
+    );
+    expect(normalized?.questions[0].attendedIsCorrect).toBe(true);
+    expect(normalized?.questions[0].correctAnswer).toBe('');
+  });
+
   it('preserves attended student_answer when log entry is whitespace-only', () => {
     const normalized = normalizeAttendedQuizResponse(
       attendedFixture({
