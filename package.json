@@ -2,7 +2,7 @@
   "name": "eduvijna",
   "version": "1.0.0",
   "private": true,
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "start:device": "node scripts/with-eduvijna-api-env.mjs development -- expo start --dev-client --lan",
