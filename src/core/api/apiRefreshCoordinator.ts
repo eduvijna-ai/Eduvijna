@@ -5,6 +5,7 @@
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
+import { setCredentialEpoch } from '../services/authCredentialEpoch';
 import { useUserStore } from '../store/user.store';
 
 export type RetryableConfig = InternalAxiosRequestConfig & {
@@ -15,7 +16,7 @@ export type RetryableConfig = InternalAxiosRequestConfig & {
 export type RefreshOutcome =
   | { kind: 'success'; accessToken: string; sessionEpoch: number }
   | { kind: 'rejected'; sessionEpoch: number }
-  | { kind: 'transient'; sessionEpoch: number; reason: 'network' | 'timeout' | 'server' }
+  | { kind: 'transient'; sessionEpoch: number; reason: 'network' | 'timeout' | 'server' | 'rate_limit' }
   | { kind: 'superseded'; sessionEpoch: number };
 
 let refreshSessionEpoch = 0;
@@ -26,10 +27,35 @@ let refreshInFlight: {
   promise: Promise<RefreshOutcome>;
 } | null = null;
 
+/** Serializes credential writes/clears so stale async work cannot interleave destructively. */
+let credentialMutationTail: Promise<void> = Promise.resolve();
+
+function enqueueCredentialMutation(
+  sessionEpoch: number,
+  mutate: () => Promise<void>,
+): Promise<boolean> {
+  const run = async (): Promise<boolean> => {
+    if (sessionEpoch !== refreshSessionEpoch) {
+      return false;
+    }
+    await mutate();
+    return sessionEpoch === refreshSessionEpoch;
+  };
+
+  const result = credentialMutationTail.then(run, run);
+  credentialMutationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
 export function bumpAuthSessionEpoch(): number {
   refreshSessionEpoch += 1;
   refreshFlightGeneration += 1;
   refreshInFlight = null;
+  setCredentialEpoch(refreshSessionEpoch);
+  void TokenStorage.persistCredentialEpoch(refreshSessionEpoch);
   return refreshSessionEpoch;
 }
 
@@ -38,7 +64,9 @@ export function getAuthSessionEpoch(): number {
 }
 
 export function stampRequestSession(config: RetryableConfig): RetryableConfig {
-  config._authSessionEpoch = refreshSessionEpoch;
+  if (config._authSessionEpoch == null) {
+    config._authSessionEpoch = refreshSessionEpoch;
+  }
   return config;
 }
 
@@ -59,7 +87,7 @@ function classifyRefreshFailure(error: unknown): 'rejected' | 'transient' {
   if (status === 401 || status === 403) {
     return 'rejected';
   }
-  if (status >= 500) {
+  if (status === 429 || status >= 500) {
     return 'transient';
   }
   return 'rejected';
@@ -69,26 +97,37 @@ export async function storeTokensForSession(
   sessionEpoch: number,
   tokens: AuthTokens,
 ): Promise<boolean> {
-  if (sessionEpoch !== refreshSessionEpoch) {
-    return false;
-  }
-  await TokenStorage.storeAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn);
-  if (sessionEpoch !== refreshSessionEpoch) {
-    return false;
-  }
-  useUserStore.getState().setTokens(tokens);
-  return true;
+  return enqueueCredentialMutation(sessionEpoch, async () => {
+    if (sessionEpoch !== refreshSessionEpoch) {
+      return;
+    }
+    await TokenStorage.storeAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn);
+    if (sessionEpoch !== refreshSessionEpoch) {
+      return;
+    }
+    useUserStore.getState().setTokens(tokens);
+  });
+}
+
+export async function storeUserDataForSession(
+  sessionEpoch: number,
+  userDataJson: string,
+): Promise<boolean> {
+  return enqueueCredentialMutation(sessionEpoch, async () => {
+    if (sessionEpoch !== refreshSessionEpoch) {
+      return;
+    }
+    await TokenStorage.storeUserData(userDataJson);
+  });
 }
 
 export async function clearAuthForSession(sessionEpoch: number): Promise<boolean> {
-  if (sessionEpoch !== refreshSessionEpoch) {
-    return false;
-  }
-  await TokenStorage.clearAuthData();
-  if (sessionEpoch !== refreshSessionEpoch) {
-    return false;
-  }
-  return true;
+  return enqueueCredentialMutation(sessionEpoch, async () => {
+    if (sessionEpoch !== refreshSessionEpoch) {
+      return;
+    }
+    await TokenStorage.clearAuthDataForEpoch(sessionEpoch);
+  });
 }
 
 export async function refreshAccessToken(
@@ -114,8 +153,11 @@ export async function refreshAccessToken(
     }
     try {
       const refreshToken = await TokenStorage.getRefreshToken();
-      if (!refreshToken || sessionEpoch !== refreshSessionEpoch) {
+      if (sessionEpoch !== refreshSessionEpoch) {
         return { kind: 'superseded', sessionEpoch };
+      }
+      if (!refreshToken) {
+        return { kind: 'rejected', sessionEpoch };
       }
 
       const refreshResponse = await refreshClient.post<{ access_token: string; refresh_token: string }>(
@@ -149,11 +191,13 @@ export async function refreshAccessToken(
       }
       const ax = error as AxiosError;
       const reason =
-        ax?.code === 'ECONNABORTED' || String(ax?.message ?? '').includes('timeout')
-          ? 'timeout'
-          : ax?.response && ax.response.status >= 500
-            ? 'server'
-            : 'network';
+        ax?.response?.status === 429
+          ? 'rate_limit'
+          : ax?.code === 'ECONNABORTED' || String(ax?.message ?? '').includes('timeout')
+            ? 'timeout'
+            : ax?.response && ax.response.status >= 500
+              ? 'server'
+              : 'network';
       return { kind: 'transient', sessionEpoch, reason };
     } finally {
       if (refreshInFlight?.generation === generation) {
@@ -169,4 +213,21 @@ export async function refreshAccessToken(
 /** @deprecated use stampRequestSession on dispatch */
 export function attachSessionEpoch(config: RetryableConfig): RetryableConfig {
   return stampRequestSession(config);
+}
+
+/** @internal test helper — pause credential queue until released */
+export function __testPauseCredentialMutations(): {
+  release: () => void;
+  paused: Promise<void>;
+} {
+  let release!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const prior = credentialMutationTail;
+  credentialMutationTail = prior.then(() => paused);
+  return {
+    release: () => release(),
+    paused,
+  };
 }

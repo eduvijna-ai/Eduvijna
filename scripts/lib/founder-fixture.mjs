@@ -36,10 +36,15 @@ export async function loadFixtureLabels() {
   );
   const quizTitle = row?.quiz_title ?? row?.title ?? row?.quiz_name ?? `Quiz ${FIXTURE.quizId}`;
   const searchToken = String(quizTitle).slice(0, 14);
+  const classLabel = row?.class_name ?? row?.classroom_name ?? null;
+  const openStudentsLabel = classLabel
+    ? `View students for ${quizTitle} in ${classLabel}`
+    : `View students for ${quizTitle}`;
   return {
     quizTitle,
     searchToken,
-    classLabel: row?.class_name ?? row?.classroom_name ?? null,
+    classLabel,
     availability: row?.availability_status ?? null,
+    openStudentsLabel,
   };
 }

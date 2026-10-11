@@ -16,6 +16,7 @@ import { handleApiAuthResponseError } from './apiClientAuthInterceptor';
 import {
   clearAuthForSession,
   getAuthSessionEpoch,
+  isStaleSession,
   stampRequestSession,
 } from './apiRefreshCoordinator';
 
@@ -60,7 +61,8 @@ const refreshClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    stampRequestSession(config as InternalAxiosRequestConfig & { _authSessionEpoch?: number });
+    const retryable = config as InternalAxiosRequestConfig & { _authSessionEpoch?: number };
+    stampRequestSession(retryable);
     // Skip auth token for login/register endpoints
     const isAuthEndpoint =
       config.url?.includes('/auth/login') ||
@@ -68,8 +70,14 @@ apiClient.interceptors.request.use(
       config.url?.includes('/auth/refresh');
     
     if (!isAuthEndpoint) {
+      if (isStaleSession(retryable)) {
+        return Promise.reject(new Error('Request superseded by account switch'));
+      }
       // Get token from secure storage
       const token = await TokenStorage.getAccessToken();
+      if (isStaleSession(retryable)) {
+        return Promise.reject(new Error('Request superseded by account switch'));
+      }
       
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;

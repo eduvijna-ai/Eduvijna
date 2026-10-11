@@ -12,7 +12,7 @@ import { get } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
-import { bumpAuthSessionEpoch } from '../api/apiRefreshCoordinator';
+import { bumpAuthSessionEpoch, getAuthSessionEpoch, storeUserDataForSession } from '../api/apiRefreshCoordinator';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import { useDashboardStore } from '../store/dashboard.store';
 
@@ -150,6 +150,8 @@ export function useAuth(): UseAuthReturn {
       setLoading(true);
       setError(null);
 
+      await TokenStorage.hydrateCredentialEpochFromStorage();
+
       // Check if we have a valid token
       const accessToken = await TokenStorage.getAccessToken();
       
@@ -259,7 +261,7 @@ export function useAuth(): UseAuthReturn {
       setUser(enrichedUser);
       setAuthenticated(true);
       setSchoolId(extractSchoolId(enrichedUser));
-      await TokenStorage.storeUserData(JSON.stringify(enrichedUser));
+      await storeUserDataForSession(getAuthSessionEpoch(), JSON.stringify(enrichedUser));
     } catch (err) {
       console.error('Login failed:', err);
       const message = formatAuthError(err);

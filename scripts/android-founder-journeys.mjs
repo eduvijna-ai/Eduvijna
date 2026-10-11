@@ -56,20 +56,38 @@ function tapLabel(xml, pattern, minY = 0) {
 }
 function tapTestId(xml, testId) {
   const s = readFileSync(xml, 'utf8');
-  const re = new RegExp(
-    `(?:content-desc|text)="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
-    'gi',
-  );
+  const patterns = [
+    new RegExp(
+      `(?:content-desc|text)="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+      'gi',
+    ),
+    new RegExp(
+      `resource-id="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+      'gi',
+    ),
+  ];
   let best = null;
-  for (const m of s.matchAll(re)) {
-    const hit = {
-      label: testId,
-      x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
-      y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
-    };
-    if (!best || hit.y < best.y) best = hit;
+  for (const re of patterns) {
+    for (const m of s.matchAll(re)) {
+      const hit = {
+        label: testId,
+        x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
+        y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+      };
+      if (!best || hit.y < best.y) best = hit;
+    }
   }
   return best;
+}
+
+function assertStudentListDestination(xml, fixture) {
+  const texts = parseUiTexts(xml);
+  const hasQuiz = texts.some((t) => String(fixture.quizId) === t || /worksheet|assessment/i.test(t));
+  const hasSessionMismatch = texts.some((t) => /PRO_Assessment_20261007/i.test(t));
+  return {
+    pass: hasQuiz && !hasSessionMismatch,
+    texts: texts.slice(0, 40),
+  };
 }
 
 function tapLabelScroll(pattern, minY = 0, maxScrolls = 14) {
@@ -118,7 +136,7 @@ function ensureInApp() {
   }
 }
 
-async function journeyA(quizTitle, searchToken) {
+async function journeyA(quizTitle, searchToken, openStudentsLabel) {
   const log = { journey: 'A_assessments_students_result', steps: [] };
   await dismissOverlays();
   ensureInApp();
@@ -132,23 +150,16 @@ async function journeyA(quizTitle, searchToken) {
   });
   sleep(2500);
   xml = dump('a-01b-assessments-tab.xml');
-  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-`;
+  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-${FIXTURE.sessionId ?? ''}`;
   let studentListTap = tapTestId(xml, studentsTestId);
   if (!studentListTap) {
-    const openQuiz =
-      tapLabelScroll(studentsTestId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 0) ||
-      tapLabelScroll(String(FIXTURE.quizId), 0) ||
-      tapLabelScroll(searchToken, 0);
-    log.steps.push({ step: 'locate_quiz', ...openQuiz });
+    const humanLabel = openStudentsLabel
+      ? tapLabelScroll(openStudentsLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 0)
+      : null;
+    log.steps.push({ step: 'locate_quiz_by_label', ...humanLabel });
     sleep(1500);
     xml = dump('a-02-quiz-card.xml');
     studentListTap = tapTestId(xml, studentsTestId);
-    if (!studentListTap && openQuiz.hit) {
-      studentListTap =
-        tapLabel(xml, 'Completed: 1', Math.max(0, openQuiz.hit.y - 500)) ||
-        tapLabel(xml, 'Total: 3', Math.max(0, openQuiz.hit.y - 500)) ||
-        tapLabel(xml, 'Total:', Math.max(0, openQuiz.hit.y - 500));
-    }
   }
   if (!studentListTap) {
     log.pass = false;
@@ -160,6 +171,14 @@ async function journeyA(quizTitle, searchToken) {
   log.steps.push({ step: 'open_student_list', tap: studentListTap });
   sleep(4000);
   xml = dump('a-03-student-list.xml');
+  const listDest = assertStudentListDestination(xml, FIXTURE);
+  log.steps.push({ step: 'verify_student_list_destination', ...listDest });
+  if (!listDest.pass) {
+    log.pass = false;
+    log.verify = { label: 'wrong_assignment_student_list', pass: false };
+    writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
   const aaryaTap =
     tapTestId(xml, `student-row-${FIXTURE.studentId}`) ||
     tapLabel(xml, FIXTURE.studentName, 0) ||
@@ -205,14 +224,14 @@ async function journeyB(quizTitle) {
 
 async function main() {
   const which = process.argv[2] || 'all';
-  const { quizTitle, searchToken, availability } = await loadFixtureLabels();
+  const { quizTitle, searchToken, availability, openStudentsLabel } = await loadFixtureLabels();
   const meta = { sha, quizTitleRedacted: quizTitle.slice(0, 8) + '…', fixtureQuizId: FIXTURE.quizId };
   writeFileSync(
     join(evidence, 'meta.json'),
     JSON.stringify({ ...meta, availability, searchTokenRedacted: `${searchToken.slice(0, 6)}…` }, null, 2),
   );
   const results = {};
-  if (which === 'a' || which === 'all') results.a = await journeyA(quizTitle, searchToken);
+  if (which === 'a' || which === 'all') results.a = await journeyA(quizTitle, searchToken, openStudentsLabel);
   if (which === 'b' || which === 'all') results.b = await journeyB(quizTitle);
   console.log(JSON.stringify({ sha, results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { pass: v.pass }])) }));
 }

@@ -8,6 +8,7 @@ import {
 jest.mock('../core/services/tokenStorage', () => ({
   getRefreshToken: jest.fn().mockResolvedValue('refresh-token'),
   storeAuthTokens: jest.fn().mockResolvedValue(undefined),
+  persistCredentialEpoch: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../core/store/user.store', () => ({

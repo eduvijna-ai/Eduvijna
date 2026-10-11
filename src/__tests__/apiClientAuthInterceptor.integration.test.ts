@@ -3,6 +3,14 @@ import { handleApiAuthResponseError } from '../core/api/apiClientAuthInterceptor
 import * as coordinator from '../core/api/apiRefreshCoordinator';
 import type { ApiError } from '../core/types';
 
+jest.mock('../core/services/tokenStorage', () => {
+  const actual = jest.requireActual('../core/services/tokenStorage');
+  return {
+    ...actual,
+    persistCredentialEpoch: jest.fn().mockResolvedValue(undefined),
+  };
+});
+
 jest.mock('../core/api/apiRefreshCoordinator', () => {
   const actual = jest.requireActual('../core/api/apiRefreshCoordinator');
   return {

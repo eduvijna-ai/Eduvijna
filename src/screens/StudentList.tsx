@@ -86,16 +86,19 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
       });
       
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
-        const quiz =
-          response.data.find((row: { quiz_id?: number; session_id?: string }) => {
-            if (Number(row.quiz_id) !== Number(quizId)) return false;
-            if (assignmentSessionId && String(row.session_id) !== String(assignmentSessionId)) {
-              return false;
-            }
-            return true;
-          }) ?? response.data.find((row: { quiz_id?: number }) => Number(row.quiz_id) === Number(quizId))
-            ?? response.data[0];
-        
+        const quiz = response.data.find((row: { quiz_id?: number; session_id?: string }) => {
+          if (Number(row.quiz_id) !== Number(quizId)) return false;
+          if (assignmentSessionId && String(row.session_id) !== String(assignmentSessionId)) {
+            return false;
+          }
+          return true;
+        });
+
+        if (!quiz) {
+          setStudents([]);
+          return;
+        }
+
         if (quiz.attempts) {
           const attempts = typeof quiz.attempts === 'string'
             ? JSON.parse(quiz.attempts)

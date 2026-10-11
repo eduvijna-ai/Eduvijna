@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { resolveActiveApiEnvironment } from '../config/activeApiEnvironment';
 import type { ApiEnvironment } from '../config/apiEnvironment';
+import { getCredentialEpoch, setCredentialEpoch } from './authCredentialEpoch';
 
 const LEGACY_KEYS = {
   ACCESS_TOKEN: 'auth_access_token',
@@ -23,9 +24,34 @@ const KEY_SUFFIX = {
   USER_DATA: 'user_data',
 } as const;
 
+const SESSION_EPOCH_SUFFIX = 'session_epoch';
+
 /** SecureStore allows only [A-Za-z0-9._-] — use dot-separated segments, not colons. */
-function scopedStorageKey(suffix: string, environment: ApiEnvironment): string {
-  return `eduvijna.auth.${environment}.${suffix}`;
+function scopedStorageKey(
+  suffix: string,
+  environment: ApiEnvironment,
+  credentialEpoch = getCredentialEpoch(),
+): string {
+  return `eduvijna.auth.${environment}.e${credentialEpoch}.${suffix}`;
+}
+
+function sessionEpochMarkerKey(environment: ApiEnvironment): string {
+  return `eduvijna.auth.${environment}.${SESSION_EPOCH_SUFFIX}`;
+}
+
+export async function hydrateCredentialEpochFromStorage(): Promise<number> {
+  const environment = resolveActiveApiEnvironment();
+  const raw = await readScopedString(sessionEpochMarkerKey(environment));
+  const parsed = raw != null ? Number.parseInt(raw, 10) : 0;
+  const epoch = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  setCredentialEpoch(epoch);
+  return epoch;
+}
+
+export async function persistCredentialEpoch(epoch: number): Promise<void> {
+  const environment = resolveActiveApiEnvironment();
+  setCredentialEpoch(epoch);
+  await writeScopedString(sessionEpochMarkerKey(environment), String(epoch));
 }
 
 function legacyKeysPresent(): boolean {
@@ -264,11 +290,14 @@ async function clearLegacyAuthData(): Promise<void> {
   }
 }
 
-async function clearScopedEnvironment(environment: ApiEnvironment): Promise<void> {
-  const accessKey = scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment);
-  const expiryKey = scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment);
-  const userKey = scopedStorageKey(KEY_SUFFIX.USER_DATA, environment);
-  const refreshKey = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+async function clearScopedEnvironmentForEpoch(
+  environment: ApiEnvironment,
+  credentialEpoch: number,
+): Promise<void> {
+  const accessKey = scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment, credentialEpoch);
+  const expiryKey = scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment, credentialEpoch);
+  const userKey = scopedStorageKey(KEY_SUFFIX.USER_DATA, environment, credentialEpoch);
+  const refreshKey = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment, credentialEpoch);
 
   await removeScopedString(accessKey);
   await removeScopedString(expiryKey);
@@ -285,15 +314,21 @@ async function clearScopedEnvironment(environment: ApiEnvironment): Promise<void
   }
 }
 
-export async function clearAuthData(): Promise<void> {
+export async function clearAuthDataForEpoch(credentialEpoch: number): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
-    await clearScopedEnvironment(environment);
-    await clearLegacyAuthData();
+    await clearScopedEnvironmentForEpoch(environment, credentialEpoch);
+    if (credentialEpoch === getCredentialEpoch()) {
+      await clearLegacyAuthData();
+    }
   } catch (error) {
     console.error('Failed to clear auth data:', error);
     throw new Error('Failed to clear authentication data');
   }
+}
+
+export async function clearAuthData(): Promise<void> {
+  return clearAuthDataForEpoch(getCredentialEpoch());
 }
 
 export async function storeAuthTokens(

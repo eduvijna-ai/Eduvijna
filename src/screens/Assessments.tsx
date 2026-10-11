@@ -39,6 +39,11 @@ import {
 } from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
 import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import {
+  buildOpenStudentsAccessibilityLabel,
+  buildQuizAssignmentStudentListParams,
+  type QuizAssignmentListSource,
+} from '@core/types/studentListNavigation.types';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -377,20 +382,31 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     }
   };
 
-  const handleAction = async (action: string, quizId: number, attemptData?: any) => {
+  const handleAction = async (
+    action: string,
+    quizId: number,
+    attemptData?: QuizAssignmentListSource | any,
+  ) => {
     // View quiz students (Teacher)
     if (isTeacher && action === 'view') {
-      const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
+      const assignment: QuizAssignmentListSource | undefined =
+        attemptData?.quiz_id != null
+          ? attemptData
+          : filteredQuizzes.find((q: any) => {
+              if (Number(q.quiz_id) !== Number(quizId)) return false;
+              if (attemptData?.session_id != null) {
+                return String(q.session_id) === String(attemptData.session_id);
+              }
+              return true;
+            });
+      if (!assignment) {
+        return;
+      }
+      const params = buildQuizAssignmentStudentListParams(assignment);
       if (navigation) {
-        navigation.navigate('StudentList', {
-          quizId,
-          quizName: quiz?.quiz_name || 'Quiz',
-          sessionId: quiz?.session_id,
-          classroomId: quiz?.classroom_id || quiz?.class_id,
-          listMode: 'quiz_assignment',
-        });
+        navigation.navigate('StudentList', params);
       } else if (onNavigate) {
-        onNavigate('students', { quizId, quizName: quiz?.quiz_name });
+        onNavigate('StudentList', params);
       }
       return;
     }
@@ -758,9 +774,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                 return null;
               };
               
+              const assignmentKey = `${quiz.quiz_id}-${quiz.session_id ?? 'na'}-${quiz.classroom_id ?? quiz.class_id ?? 'na'}`;
+              const openStudentsTestId = `assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`;
+
               return (
                 <View
-                  key={quiz.quiz_id}
+                  key={assignmentKey}
                   style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                 >
                   {/* Card Header */}
@@ -851,13 +870,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                             </Text>
                           </View>
                         </View>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.cardRow}
-                          testID={`assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`}
-                          accessibilityLabel={`assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`}
+                          testID={openStudentsTestId}
+                          accessibilityRole="button"
+                          accessibilityLabel={buildOpenStudentsAccessibilityLabel(quiz)}
+                          accessible
                           onPress={(e) => {
                             e.stopPropagation();
-                            handleAction('view', quiz.quiz_id);
+                            handleAction('view', quiz.quiz_id, quiz);
                           }}
                         >
                           <Ionicons name="people-outline" size={16} color={theme.colors.primary} />

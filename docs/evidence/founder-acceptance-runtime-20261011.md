@@ -1,7 +1,8 @@
 # Founder acceptance — runtime pass (2026-10-11)
 
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
-**HEAD (this pass):** `42e2211` (+ journey script `chore` follow-up on same branch).  
+**HEAD (architect repair pass):** _(see git log — assignment identity, auth credential epochs, a11y labels)._  
+**Prior HEAD:** `3f6ae8d` / `42e2211`.  
 **PR:** #26  
 
 ## Live API probes (separate from UI)
@@ -22,7 +23,7 @@ Redacted artifact (gitignored): `.dev-api-document-workflow-run/runtime-evidence
 |------|--------|--------|
 | Dev client bootstrap (no `pm clear`) | PASS | `adb reverse`, `127.0.0.1:8082` deep link, dev-menu reload |
 | Normal login (`demo_samatha`) | PASS | Per-char `adb input text` for password; Enter submit; push overlay dismissed |
-| Journey A — Assessments → students → Aarya → worksheet | **FAIL** @ `42e2211` | Expired tab OK; duplicate `MAT_Mathematics…` cards — automation opened wrong quiz (`PRO_Assessment_20261007`); `assessment-open-students-479-*` not exposed in UIAutomator dump |
+| Journey A — Assessments → students → Aarya → worksheet | **RETEST** | Fix: pass full assignment into `handleAction('view')`; human `accessibilityLabel` + `testID`; journey script matches full session id and asserts destination before drill-down |
 | Journey B — Analytics drilldown | **NE** | Blocked on A stability |
 | Document history UI | **NE** | |
 | From Books CBSE → 10 → Math | **NE** | |

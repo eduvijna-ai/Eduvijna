@@ -6,6 +6,12 @@
 import { get, post } from './config';
 import type { UserProfile, LoginCredentials, AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
+import {
+  clearAuthForSession,
+  getAuthSessionEpoch,
+  storeTokensForSession,
+  storeUserDataForSession,
+} from './apiRefreshCoordinator';
 
 /**
  * Login with email and password
@@ -32,23 +38,21 @@ export async function login(credentials: LoginCredentials): Promise<{
     user: UserProfile;
   }>('/api/v1/auth/login', payload);
   
-  // Store tokens securely
-  await TokenStorage.storeAuthTokens(
-    response.access_token,
-    response.refresh_token,
-    3600 // Default 1 hour expiry
-  );
-  
-  // Store user data for quick access
-  await TokenStorage.storeUserData(JSON.stringify(response.user));
-  
+  const sessionEpoch = getAuthSessionEpoch();
+  const tokens: AuthTokens = {
+    accessToken: response.access_token,
+    refreshToken: response.refresh_token,
+    expiresIn: 3600,
+  };
+  const stored = await storeTokensForSession(sessionEpoch, tokens);
+  if (!stored) {
+    throw new Error('Login superseded by account switch');
+  }
+  await storeUserDataForSession(sessionEpoch, JSON.stringify(response.user));
+
   return {
     user: response.user,
-    tokens: {
-      accessToken: response.access_token,
-      refreshToken: response.refresh_token,
-      expiresIn: 3600
-    }
+    tokens,
   };
 }
 
@@ -64,8 +68,8 @@ export async function logout(): Promise<void> {
     // Continue with local logout even if backend call fails
     console.warn('Backend logout failed:', error);
   } finally {
-    // Always clear local auth data
-    await TokenStorage.clearAuthData();
+    const sessionEpoch = getAuthSessionEpoch();
+    await clearAuthForSession(sessionEpoch);
   }
 }
 
@@ -75,7 +79,7 @@ export async function logout(): Promise<void> {
  */
 export async function fetchAuthProfile(): Promise<UserProfile> {
   const user = await get<UserProfile>('/api/v1/auth/profile');
-  await TokenStorage.storeUserData(JSON.stringify(user));
+  await storeUserDataForSession(getAuthSessionEpoch(), JSON.stringify(user));
   return user;
 }
 
@@ -125,12 +129,11 @@ export async function refreshToken(providedRefreshToken?: string): Promise<AuthT
     expiresIn: 3600
   };
   
-  await TokenStorage.storeAuthTokens(
-    tokens.accessToken,
-    tokens.refreshToken,
-    tokens.expiresIn
-  );
-  
+  const stored = await storeTokensForSession(getAuthSessionEpoch(), tokens);
+  if (!stored) {
+    throw new Error('Token refresh superseded by account switch');
+  }
+
   return tokens;
 }
 
