@@ -409,6 +409,9 @@ export async function regenerateDocumentUploadQuiz(
       gradeLevel: params.grade || currentQuiz.class || '',
       lessonTitle: params.lesson || currentQuiz.lesson || '',
     });
+    if (!result.questions.length) {
+      throw new Error('generate_from_book_zero_questions');
+    }
     return {
       id: currentQuiz.id,
       title: currentQuiz.title,
