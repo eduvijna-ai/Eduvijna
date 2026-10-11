@@ -19,6 +19,7 @@ import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
 import { isStudentQuizActive } from '../utils/quizFilters';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
 import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 
 interface Props {
@@ -170,11 +171,17 @@ export default function Notifications({ navigation, onNavigate }: Props) {
           sessionId,
         );
         if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
-          const scoreMsg = attemptCheck.score != null ? `\nYour score: ${attemptCheck.score}%` : '';
-          Alert.alert(
-            'Quiz Already Completed',
-            `You have already completed this quiz.${scoreMsg}`,
-            [{ text: 'OK' }]
+          const classroomId = quiz.class_id || (quiz as any).classroom_id || '';
+          await executeStudentAssignedQuizViewResults(
+            {
+              studentId: studentIdStr,
+              quizId: fetchedQuiz.quiz_id || quiz.quiz_id,
+              sessionId,
+              classroomId: String(classroomId),
+              attemptData: quiz as Record<string, unknown>,
+              quizName: fetchedQuiz.topic || quiz.quiz_name,
+            },
+            { navigation, onNavigate },
           );
           return;
         }

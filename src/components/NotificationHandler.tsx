@@ -6,6 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
 import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
@@ -126,13 +127,23 @@ export default function NotificationHandler() {
             student_id: student,
             quiz_title: quizTitle,
           });
-          if (resultParams) {
-            console.log('➡️ Navigating to QuizResultsScreen:', resultParams);
-            (navigationRef.current as any).navigate('QuizResultsScreen', resultParams);
+          if (!resultParams || !resolvedSessionId || quizId == null || !student) {
+            console.log('➡️ Graded notification missing resolvable quiz; opening Assessments');
+            (navigationRef.current as any).navigate('Assessments');
             return;
           }
-          console.log('➡️ Graded notification missing resolvable quiz; opening Assessments');
-          (navigationRef.current as any).navigate('Assessments');
+          await executeStudentAssignedQuizViewResults(
+            {
+              studentId: String(student),
+              quizId,
+              sessionId: String(resolvedSessionId),
+              classroomId: String(resolvedSessionId),
+              quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
+            },
+            {
+              navigation: navigationRef.current as { navigate: (screen: string, params?: unknown) => void },
+            },
+          );
         })();
         break;
       }

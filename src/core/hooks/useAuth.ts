@@ -12,6 +12,8 @@ import { get } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
+import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
+import { useDashboardStore } from '../store/dashboard.store';
 
 /** Extract school_id from any user profile shape with multi-field fallbacks */
 function extractSchoolId(user: UserProfile | null): number | null {
@@ -281,6 +283,8 @@ export function useAuth(): UseAuthReturn {
 
       // Reset dashboard store
       useTeacherDashboardStore.getState().reset();
+      resetStudentAssignmentDashboardStore(null);
+      useDashboardStore.getState().clearData();
       // Clear quiz nav cache so next login fetches fresh permissions
       clearQuizNavCache();
       // Clear store (clears user and tokens)
@@ -289,6 +293,8 @@ export function useAuth(): UseAuthReturn {
       console.error('Logout API failed:', err);
       // Still clear stores even if API call fails
       useTeacherDashboardStore.getState().reset();
+      resetStudentAssignmentDashboardStore(null);
+      useDashboardStore.getState().clearData();
       clearQuizNavCache();
       logoutStore();
     } finally {

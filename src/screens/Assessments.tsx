@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
+import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
+import { useStudentAssignmentDashboardStore } from '@core/store/studentAssignmentDashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
 import {
   isAssignedQuizRecoveryProbeError,
@@ -27,10 +29,16 @@ import {
   isAssignedQuizLoadError,
   navigateStudentToQuizTaking,
   resolveStudentAssignedQuizStart,
-  resolveStudentAssignedQuizViewResults,
+  executeStudentAssignedQuizViewResults,
 } from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
+import { isStudentQuizOngoing } from '../utils/quizFilters';
+import {
+  canStudentResumeAssignment,
+  canStudentStartAssignment,
+} from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
+import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -131,7 +139,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
   // Fetch data based on role
   const teacherData = useTeacherDashboard();
-  const { quizzes: storedQuizzes } = useDashboardStore();
+  const { quizzes: storedQuizzes, setQuizzes } = useDashboardStore();
 
   const {
     quizzes: teacherQuizzes = [],
@@ -141,13 +149,41 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   } = isTeacher ? teacherData : { quizzes: [], loading: false, error: null, refresh: () => {} };
 
   // For students, use dashboard store data (already loaded by StudentDashboard)
-  const studentQuizzes = isStudent ? storedQuizzes : [];
-  const studentLoading = false;
-  const studentError = null;
-  const studentRefresh = () => {};
+  const [studentRefreshing, setStudentRefreshing] = useState(false);
+  const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
+  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
+  const studentRawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const bumpStudentClassificationNow = useStudentAssignmentDashboardStore(
+    (s) => s.bumpClassificationNow,
+  );
+  useStudentAssignmentBoundaryClock(studentRawQuizzes, bumpStudentClassificationNow);
+  const studentQuizzes = isStudent ? studentClassified : [];
 
-  const loading = isTeacher ? teacherLoading : studentLoading;
-  const error = isTeacher ? teacherError : studentError;
+  const studentRefresh = useCallback(async () => {
+    if (!isStudent || !user?.id) return;
+    setStudentRefreshing(true);
+    try {
+      const studentId = String(user.id);
+      const loadGeneration =
+        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+      const { quizzes } = await loadStudentDashboardQuizzes(studentId);
+      const committed = useStudentAssignmentDashboardStore
+        .getState()
+        .commitLoad(studentId, loadGeneration, quizzes as any);
+      if (!committed) {
+        return;
+      }
+      const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+      setQuizzes(classified as any, classified.length);
+    } catch (refreshError) {
+      console.error('Assessments student refresh failed:', refreshError);
+    } finally {
+      setStudentRefreshing(false);
+    }
+  }, [isStudent, user?.id, setQuizzes]);
+
+  const loading = isTeacher ? teacherLoading : studentRefreshing;
+  const error = isTeacher ? teacherError : null;
   const refresh = isTeacher ? teacherRefresh : studentRefresh;
 
   // Filter tabs based on role
@@ -270,7 +306,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       const counts: Record<FilterTab, number> = {
         all: baseFilteredQuizzes.length,
         upcoming: baseFilteredQuizzes.filter((q: any) => q.status === 'available_soon' || q.status === 'pending').length,
-        ongoing: baseFilteredQuizzes.filter((q: any) => q.status === 'pending' && q.availability_status === 'active').length,
+        ongoing: baseFilteredQuizzes.filter(isStudentQuizOngoing).length,
         completed: baseFilteredQuizzes.filter((q: any) => q.status === 'completed').length,
         missed: baseFilteredQuizzes.filter((q: any) => q.status === 'missed').length,
         // Teacher-only tabs (not used for students)
@@ -297,14 +333,14 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       // Tab filter for students
       if (selectedTab === 'all') return true;
       
-      // Upcoming: pending quizzes (not started yet) that are available or coming soon
+      // Upcoming: not yet open (no Start)
       if (selectedTab === 'upcoming') {
-        return quiz.status === 'available_soon' || quiz.status === 'pending';
+        return quiz.status === 'upcoming';
       }
       
-      // Ongoing: quizzes that are in progress (started but not completed)
+      // Ongoing: actionable pending / in-progress within active window
       if (selectedTab === 'ongoing') {
-        return quiz.status === 'pending' && quiz.availability_status === 'active';
+        return isStudentQuizOngoing(quiz);
       }
       
       // Completed: quizzes that have been completed
@@ -368,34 +404,17 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
 
       setLoadingQuizId(correctQuizId);
       try {
-        const viewResult = await resolveStudentAssignedQuizViewResults({
-          studentId: studentIdForApi,
-          quizId: correctQuizId,
-          sessionId: correctSessionId,
-          classroomId: correctClassroomId,
-          attemptData,
-          quizName: attemptData?.quiz_name,
-        });
-
-        if (viewResult.kind === 'recovery_retry') {
-          navigateStudentToQuizTaking(navigation, onNavigate, viewResult.params);
-          return;
-        }
-
-        if (viewResult.kind === 'probe_failed') {
-          Alert.alert(
-            'Connection Error',
-            'Could not verify your saved submission. Please check your connection and try again.',
-          );
-          return;
-        }
-
-        const resultParams = viewResult.resultParams;
-        if (onNavigate) {
-          onNavigate('QuizResultsScreen', resultParams);
-        } else if (navigation) {
-          navigation.navigate('QuizResultsScreen', resultParams);
-        }
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: studentIdForApi,
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            attemptData,
+            quizName: attemptData?.quiz_name,
+          },
+          { navigation, onNavigate },
+        );
       } catch (error) {
         if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
           Alert.alert(
@@ -878,7 +897,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                   {!isTeacher && (
                     <View style={styles.cardFooter}>
                       {/* STUDENT LOGIC: Pending quizzes - Start button */}
-                      {quiz.status === 'pending' && (
+                      {canStudentStartAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: theme.colors.primary }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('start', quiz.quiz_id, quiz)}
@@ -894,7 +913,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       )}
                       
                       {/* STUDENT LOGIC: In-progress quizzes - Resume button */}
-                      {quiz.status === 'in_progress' && (
+                      {canStudentResumeAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: '#06B6D4' }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('resume', quiz.quiz_id, quiz)}

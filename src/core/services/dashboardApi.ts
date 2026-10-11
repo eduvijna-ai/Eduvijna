@@ -12,6 +12,8 @@ import {
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
 import { API_BASE_URL } from '../api/config';
+import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
+import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -879,40 +881,115 @@ export async function fetchQuizCheckRecord(
 }
 
 /**
+ * Authorized classroom labels for the signed-in student (view_type=classes).
+ * Used so check-record rows never fall back to raw `class_*` ids in UI.
+ */
+export async function fetchStudentClassroomNameLookup(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const token = await TokenStorage.getAccessToken();
+  if (!token) {
+    return map;
+  }
+
+  const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=classes&limit=200&offset=0`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    return map;
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return map;
+  }
+  const rows = Array.isArray(data?.data) ? data.data : [];
+  for (const row of rows) {
+    const id = row.classroom_id || row.class_id;
+    const name = row.classroom_name || row.name;
+    if (id && name && String(name) !== String(id)) {
+      map.set(String(id), String(name));
+    }
+  }
+  return map;
+}
+
+/**
  * Convert a CheckRecordQuiz item to a ParsedQuiz-compatible object used
  * by StudentDashboard and Notifications screens.
  * status: null → 'pending'   |   status: "completed" → 'completed'
  */
-export function checkRecordToQuiz(item: CheckRecordQuiz): any {
+export function checkRecordToQuiz(
+  item: CheckRecordQuiz,
+  options?: { classroomNameLookup?: Map<string, string> },
+): any {
   const d = item.quiz_details;
   const now = new Date();
   const endDate = d.end_time ? new Date(d.end_time) : null;
+  const classId = item.classid;
+  const classroomName = resolveClassroomDisplayName(String(classId || ''), {
+    recordName:
+      (d as { classroom_name?: string }).classroom_name ||
+      (item as { classroom_name?: string }).classroom_name,
+    lookup: options?.classroomNameLookup,
+  });
+  const completedScore =
+    typeof (d as { score?: number }).score === 'number'
+      ? (d as { score?: number }).score
+      : typeof (item as { score?: number }).score === 'number'
+        ? (item as { score?: number }).score
+        : null;
+
+  const recordStatus = item.status === null ? 'pending' : item.status;
+  const classified = classifyStudentAssignmentRow({
+    recordStatus,
+    started_at: (d as { started_at?: string }).started_at || null,
+    start_time: d.start_time,
+    end_time: d.end_time,
+    has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
+    now,
+  });
 
   return {
     quiz_id: d.quiz_id,
     quiz_name: d.topic,
     topic: d.topic,
     session_id: d.session_id,
-    class_id: item.classid,
-    classroom_id: item.classid,
-    classroom_name: item.classid,
+    class_id: classId,
+    classroom_id: classId,
+    classroom_name: classroomName,
     student_id: item.student_id,
-    status: item.status === null ? 'pending' : item.status,
-    score: null,
+    status: classified.status,
+    student_status: classified.student_status,
+    score: item.status === 'completed' ? completedScore : null,
     correct_answers: undefined,
     question_count: d.question_count,
     time_spent_seconds: null,
     attempt_number: null,
-    completed_at: null,
-    started_at: null,
+    completed_at:
+      item.status === 'completed'
+        ? (d as { completed_at?: string }).completed_at ||
+          (item as { completed_at?: string }).completed_at ||
+          null
+        : null,
+    started_at: (d as { started_at?: string }).started_at || null,
     start_time: d.start_time,
     end_time: d.end_time,
     due_date: d.end_time,
     created_at: d.created_at || d.start_time,
     assigned_at: d.created_at || d.start_time,
-    availability_status: d.is_active && endDate && now <= endDate ? 'active' : 'expired',
+    availability_status: classified.availability_status,
     duration: d.duration,
     has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
     is_overdue: endDate ? now > endDate : false,
     days_until_due: endDate
       ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
