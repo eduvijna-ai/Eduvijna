@@ -174,9 +174,26 @@ function runExports(repoRoot, branchKey) {
   return results;
 }
 
+function assertImmediateBaseIsAncestor(row, headSha) {
+  const baseRef = resolveBaseRef(row.base);
+  const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
+  const proc = spawnSync(
+    'git',
+    ['merge-base', '--is-ancestor', immediateBaseSha, headSha],
+    { cwd: monorepoRoot },
+  );
+  if (proc.status !== 0) {
+    throw new Error(
+      `Ancestry validation failed for PR #${row.pr}: ${baseRef} (${immediateBaseSha}) is not an ancestor of ${row.branch} (${headSha})`,
+    );
+  }
+  return { baseRef, immediateBaseSha };
+}
+
 function validateStackBranch(row, options = {}) {
   const skipExports = options.skipExports === true;
   const expectedHead = resolveRemoteBranchSha(monorepoRoot, row.branch);
+  assertImmediateBaseIsAncestor(row, expectedHead);
   const { worktreeRoot, head } = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
 
   const baseRef = resolveBaseRef(row.base);
@@ -260,6 +277,8 @@ const report = {
     noPrimaryCheckoutFallback: true,
     failOnDiagnosticToolFailure: true,
     failOnAnyIdentityRegression: true,
+    failOnBrokenStackAncestry: true,
+    rejectDirtyWorktrees: true,
     regressionScope: 'identities_in_files_changed_vs_immediate_base',
   },
   supersededPriorSweep:

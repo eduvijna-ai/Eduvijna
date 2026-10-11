@@ -28,10 +28,14 @@ export default function useNotifications() {
       return;
     }
 
+    const fetchAccountKey = accountKey;
     try {
       setLoading(true);
       setError(null);
-      const data = await getNotifications({ accountKey });
+      const data = await getNotifications({ accountKey: fetchAccountKey });
+      if (fetchAccountKey !== accountKey) {
+        return;
+      }
       setNotifications(data);
       setUnreadCount(countUnreadNotifications(data));
     } catch (err) {

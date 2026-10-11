@@ -1,4 +1,4 @@
-import { fetchQuizCheckRecord } from './dashboardApi';
+import { fetchQuizCheckRecord, type CheckRecordResponse } from './dashboardApi';
 
 export type GradedAssignmentResolution =
   | { kind: 'resolved'; sessionId: string; classroomId: string }
@@ -17,11 +17,24 @@ export async function resolveStudentGradedAssignmentSession(
     return { kind: 'none' };
   }
 
-  const [pendingRes, completedRes] = await Promise.all([
+  const [pendingSettled, completedSettled] = await Promise.allSettled([
     fetchQuizCheckRecord(studentId, 'pending'),
     fetchQuizCheckRecord(studentId, 'completed'),
   ]);
-  const rows = [...(pendingRes.result ?? []), ...(completedRes.result ?? [])];
+  const rows: NonNullable<CheckRecordResponse['result']> = [];
+  if (pendingSettled.status === 'fulfilled') {
+    rows.push(...(pendingSettled.value.result ?? []));
+  }
+  if (completedSettled.status === 'fulfilled') {
+    rows.push(...(completedSettled.value.result ?? []));
+  }
+  if (
+    rows.length === 0 &&
+    pendingSettled.status === 'rejected' &&
+    completedSettled.status === 'rejected'
+  ) {
+    return { kind: 'none' };
+  }
   const matches = rows.filter(
     (row) => String(row.quiz_details?.quiz_id ?? '') === String(quizId),
   );

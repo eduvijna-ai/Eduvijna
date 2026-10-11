@@ -28,6 +28,25 @@ describe('normalizeNotificationHistoryPayload', () => {
     }
   });
 
+  it('rejects explicit total mismatch', () => {
+    const result = normalizeNotificationHistoryPayload({
+      notifications: [{ id: 1, title: 't', body: 'b' }],
+      total: 5,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe('total_mismatch');
+    }
+  });
+
+  it('rejects invalid notification row ids', () => {
+    const result = normalizeNotificationHistoryPayload({
+      notifications: [{ id: '', title: 't', body: 'b' }],
+      total: 1,
+    });
+    expect(result.ok).toBe(false);
+  });
+
   it('rejects unrecognized shapes', () => {
     const result = normalizeNotificationHistoryPayload({ items: [] });
     expect(result.ok).toBe(false);

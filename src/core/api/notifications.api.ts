@@ -22,6 +22,17 @@ export type NotificationType =
 
 export type NotificationStatus = 'pending' | 'sent' | 'delivered' | 'failed' | 'clicked';
 
+export function coerceNotificationId(id: number | string): number {
+  if (typeof id === 'number' && Number.isFinite(id)) {
+    return id;
+  }
+  const numeric = Number(String(id).trim());
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+  throw new Error(`notification_history_shape:invalid_id:${String(id)}`);
+}
+
 export interface Notification {
   id: number;
   title: string;
@@ -77,7 +88,10 @@ export async function getNotifications(params?: {
       if (!normalized.ok) {
         throw new Error(`notification_history_shape:${normalized.responseShape}:${normalized.error}`);
       }
-      const rows = normalized.notifications as Notification[];
+      const rows = normalized.notifications.map((row) => ({
+        ...(row as Notification),
+        id: coerceNotificationId(row.id),
+      }));
       const seen = new Set<number>();
       return rows.filter((n) => {
         if (seen.has(n.id)) return false;

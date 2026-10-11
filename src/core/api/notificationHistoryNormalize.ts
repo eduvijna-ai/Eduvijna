@@ -24,14 +24,38 @@ export type NotificationHistoryNormalizeResult =
       error: string;
     };
 
+function isValidNotificationRowId(id: unknown): boolean {
+  if (typeof id === 'number') {
+    return Number.isFinite(id);
+  }
+  if (typeof id === 'string') {
+    return id.trim() !== '';
+  }
+  return false;
+}
+
 function isNotificationRow(value: unknown): value is NormalizedNotificationRow {
   if (!value || typeof value !== 'object') return false;
   const row = value as NormalizedNotificationRow;
   return (
-    (typeof row.id === 'number' || typeof row.id === 'string') &&
+    isValidNotificationRowId(row.id) &&
     typeof row.title === 'string' &&
     typeof row.body === 'string'
   );
+}
+
+function explicitTotalMatches(
+  explicitTotal: unknown,
+  notificationsLength: number,
+): boolean {
+  if (explicitTotal == null || explicitTotal === '') {
+    return true;
+  }
+  const numeric = Number(explicitTotal);
+  if (!Number.isFinite(numeric)) {
+    return false;
+  }
+  return numeric === notificationsLength;
 }
 
 export function normalizeNotificationHistoryPayload(
@@ -59,6 +83,9 @@ export function normalizeNotificationHistoryPayload(
     if (notifications.length > 0 && !notifications.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'notifications_items_invalid' };
     }
+    if (!explicitTotalMatches(record.total, notifications.length)) {
+      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
+    }
     return {
       ok: true,
       notifications: notifications as NormalizedNotificationRow[],
@@ -71,6 +98,9 @@ export function normalizeNotificationHistoryPayload(
     const notifications = record.data;
     if (notifications.length > 0 && !notifications.every(isNotificationRow)) {
       return { ok: false, responseShape: 'unknown', error: 'data_items_invalid' };
+    }
+    if (!explicitTotalMatches(record.total, notifications.length)) {
+      return { ok: false, responseShape: 'unknown', error: 'total_mismatch' };
     }
     return {
       ok: true,

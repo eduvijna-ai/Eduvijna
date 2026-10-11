@@ -99,4 +99,42 @@ describe('resolveStudentGradedAssignmentSession', () => {
     const result = await resolveStudentGradedAssignmentSession('student-1', 9);
     expect(result).toEqual({ kind: 'ambiguous' });
   });
+
+  it('uses completed scope when pending lookup fails', async () => {
+    mockFetch.mockImplementation(async (_studentId, type) => {
+      if (type === 'pending') {
+        throw new Error('pending unavailable');
+      }
+      return {
+        success: true,
+        check_type: 'completed',
+        message: '',
+        result: [
+          {
+            status: 'completed',
+            classid: 'class-9',
+            student_id: 'student-1',
+            quiz_details: {
+              quiz_id: 12,
+              session_id: 'sess-12',
+              classroom_id: 'class-9',
+              topic: '',
+              summary: '',
+              start_time: '',
+              end_time: '',
+              duration: 0,
+              has_time_limit: false,
+              question_count: 0,
+              questions: { quizzes: [] },
+              status: 'completed',
+              is_active: false,
+              is_public: false,
+            },
+          },
+        ],
+      };
+    });
+    const result = await resolveStudentGradedAssignmentSession('student-1', 12);
+    expect(result).toEqual({ kind: 'resolved', sessionId: 'sess-12', classroomId: 'class-9' });
+  });
 });
