@@ -45,6 +45,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
     submission: passedSubmission,
     assessmentId,
     sessionId,
+    classroomId: routeClassroomId,
   } = route.params || {};
 
   const theme = useTeacherTheme();
@@ -100,6 +101,10 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
       const result = await fetchPersistedQuizResult({
         quizId,
         sessionId: sessionId ?? passedAttemptData?.session_id,
+        classroomId:
+          routeClassroomId ??
+          passedAttemptData?.classroom_id ??
+          passedAttemptData?.class_id,
         studentId: String(effectiveStudentId),
         attemptId,
         isTeacherView: teacherView,
@@ -349,8 +354,27 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
 
         <Text style={[styles.questionText, { color: theme.colors.textPrimary }]}>{questionText}</Text>
 
+        {options.length === 0 ? (
+          <View style={styles.textAnswerBlock}>
+            <Text style={[styles.answerLine, { color: theme.colors.textSecondary }]}>
+              Your answer:{' '}
+              <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
+                {userAnswer || '—'}
+              </Text>
+            </Text>
+            {question.correctAnswer || question.answer ? (
+              <Text style={[styles.answerLine, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+                Expected:{' '}
+                <Text style={{ color: theme.colors.success, fontWeight: '600' }}>
+                  {question.correctAnswer || question.answer}
+                </Text>
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.optionsList}>
-          {options.map((option: string, optIndex: number) => {
+          {options.length > 0 && options.map((option: string, optIndex: number) => {
             const optionLabel = String.fromCharCode(65 + optIndex);
             const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options);
             const isCorrectAnswer = isOptionTheCorrectAnswer(option, question);
@@ -669,6 +693,8 @@ const styles = StyleSheet.create({
   },
   resultBadgeText: { fontSize: 12, fontWeight: '700' },
   questionText: { fontSize: 14, lineHeight: 20, marginBottom: 12 },
+  textAnswerBlock: { marginBottom: 12 },
+  answerLine: { fontSize: 13, lineHeight: 18 },
 
   optionsList: { gap: 6 },
   optionItem: {

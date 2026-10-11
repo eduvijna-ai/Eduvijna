@@ -91,6 +91,11 @@ export default function QuizTeacherAnalyticsScreen() {
     visible: false,
     quizName: '',
     studentName: '',
+    studentId: '',
+    quizId: null as number | null,
+    sessionId: null as string | null,
+    classroomId: null as string | null,
+    attemptId: undefined as number | undefined,
     score: null as number | null,
     timeSpent: null as number | null,
     logData: null as string | null,
@@ -136,6 +141,14 @@ export default function QuizTeacherAnalyticsScreen() {
     if (!selectedClass) return [];
     return aggregateQuizTiles(rawData, selectedClass);
   }, [rawData, selectedClass]);
+
+  const selectedQuizItem = useMemo(
+    () =>
+      selectedQuiz && selectedClass
+        ? resolveQuizInClass(rawData, selectedQuiz, selectedClass)
+        : null,
+    [rawData, selectedClass, selectedQuiz],
+  );
 
   const classStats = useMemo(
     () => (selectedClass ? computeClassStats(classQuizzesRaw) : null),
@@ -356,6 +369,11 @@ export default function QuizTeacherAnalyticsScreen() {
                 visible: true,
                 quizName: selectedQuizName,
                 studentName: row.student_fullname || row.student_username || 'Student',
+                studentId: row.student_id,
+                quizId: selectedQuiz,
+                sessionId: selectedQuizItem?.session_id ?? null,
+                classroomId: selectedQuizItem?.classroom_id ?? null,
+                attemptId: row.attempt_id ? Number(row.attempt_id) : undefined,
                 score: row.score,
                 timeSpent: row.time_spent_seconds ?? null,
                 logData: row.log_data,
@@ -630,6 +648,18 @@ export default function QuizTeacherAnalyticsScreen() {
         timeSpent={popup.timeSpent}
         logData={popup.logData}
         submittedAt={popup.submittedAt}
+        reviewContext={
+          popup.studentId && popup.quizId
+            ? {
+                studentId: popup.studentId,
+                quizId: popup.quizId,
+                sessionId: popup.sessionId,
+                classroomId: popup.classroomId,
+                attemptId: popup.attemptId,
+                isTeacherView: true,
+              }
+            : null
+        }
         colors={colors}
       />
     </View>

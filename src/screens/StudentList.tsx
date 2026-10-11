@@ -31,6 +31,8 @@ interface QuizAttempt {
   student_id: string;
   student_fullname: string;
   student_username?: string;
+  session_id?: string | null;
+  class_id?: string | null;
   score: number | null;
   status: string | null;
   attempt_id: number | null;
@@ -62,6 +64,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   const quizName = route?.params?.quizName;
   const classroomId = route?.params?.classroomId;
   const classroomName = route?.params?.classroomName;
+  const assignmentSessionId = route?.params?.sessionId;
 
   const fetchQuizStudents = useCallback(async () => {
     try {
@@ -73,7 +76,15 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
       });
       
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
-        const quiz = response.data[0];
+        const quiz =
+          response.data.find((row: { quiz_id?: number; session_id?: string }) => {
+            if (Number(row.quiz_id) !== Number(quizId)) return false;
+            if (assignmentSessionId && String(row.session_id) !== String(assignmentSessionId)) {
+              return false;
+            }
+            return true;
+          }) ?? response.data.find((row: { quiz_id?: number }) => Number(row.quiz_id) === Number(quizId))
+            ?? response.data[0];
         
         if (quiz.attempts) {
           const attempts = typeof quiz.attempts === 'string'
@@ -92,7 +103,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [quizId]);
+  }, [quizId, assignmentSessionId]);
 
   const fetchClassroomStudents = useCallback(async () => {
     try {
@@ -279,6 +290,8 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         studentName: student.student_fullname,
         score: student.score,
         quizName: quizName,
+        sessionId: student.session_id || assignmentSessionId,
+        classroomId: student.class_id || classroomId,
         isTeacherView: true, // Flag to indicate teacher viewing student attempt
       });
     } else if (onNavigate) {
@@ -289,10 +302,12 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         studentName: student.student_fullname,
         score: student.score,
         quizName: quizName,
+        sessionId: student.session_id || assignmentSessionId,
+        classroomId: student.class_id || classroomId,
         isTeacherView: true,
       });
     }
-  }, [classroomId, classroomName, navigation, onNavigate, quizId, quizName]);
+  }, [assignmentSessionId, classroomId, classroomName, navigation, onNavigate, quizId, quizName]);
 
   const getPerformanceColor = useCallback((score: number) => {
     if (score >= 80) return theme.colors.success;

@@ -11,6 +11,11 @@ import {
   normalizeQuestionsAndAnswersFromLogData,
   userAnswersFromLogDataEntries,
 } from './quizResultNormalization';
+import {
+  isWorksheetAttendedResponse,
+  tryNormalizeWorksheetAttended,
+} from './worksheetPersistedResult';
+import { isWorksheetLogData } from '../utils/worksheetShareUtils';
 
 export type QuizResultLoadState =
   | { status: 'loading' }
@@ -86,7 +91,46 @@ async function fetchTeacherAttemptBundle(params: {
     return { status: 'missing' };
   }
 
-  const quiz = response.data[0] as unknown as Record<string, unknown>;
+  const apiRows = response.data as unknown as Array<Record<string, unknown>>;
+  const quizIdNum = Number(params.quizId);
+  const matchingRows = apiRows.filter((row) => {
+    if (row.quiz_id == null || row.quiz_id === '') {
+      return false;
+    }
+    return Number(row.quiz_id) === quizIdNum;
+  });
+  const candidateRows = matchingRows.length > 0 ? matchingRows : apiRows;
+  let quiz: Record<string, unknown> | undefined;
+  if (params.sessionId) {
+    quiz = candidateRows.find(
+      (row) => String(row.session_id) === String(params.sessionId),
+    );
+    if (!quiz && candidateRows.length === 1) {
+      quiz = candidateRows[0];
+    }
+  } else if (candidateRows.length === 1) {
+    quiz = candidateRows[0];
+  } else if (matchingRows.length > 1) {
+    return {
+      status: 'error',
+      message:
+        'Multiple assignments match this quiz; open results from the specific class assignment.',
+      retryable: false,
+    };
+  } else if (candidateRows.length > 1) {
+    return {
+      status: 'error',
+      message:
+        'Multiple assignments match this quiz; open results from the specific class assignment.',
+      retryable: false,
+    };
+  } else {
+    quiz = candidateRows[0];
+  }
+
+  if (!quiz) {
+    return { status: 'missing' };
+  }
   const attempts =
     typeof quiz.attempts === 'string' ? JSON.parse(quiz.attempts) : quiz.attempts;
   if (!Array.isArray(attempts)) {
@@ -106,17 +150,13 @@ async function fetchTeacherAttemptBundle(params: {
     completed_at?: string | null;
   };
 
-  const rows = attempts as TeacherAttemptRow[];
-  const studentMatches = rows.filter(
+  const attemptRows = attempts as TeacherAttemptRow[];
+  const studentMatches = attemptRows.filter(
     (a) => String(a.student_id) === String(params.studentId),
   );
 
   const sessionMatches = params.sessionId
-    ? studentMatches.filter(
-        (a) =>
-          String(a.session_id) === String(params.sessionId) ||
-          String(a.class_id) === String(params.sessionId),
-      )
+    ? studentMatches.filter((a) => String(a.session_id) === String(params.sessionId))
     : studentMatches;
 
   if (params.sessionId && sessionMatches.length === 0) {
@@ -172,6 +212,57 @@ async function fetchTeacherAttemptBundle(params: {
 
   const logData =
     typeof logDataRaw === 'string' ? JSON.parse(logDataRaw) : logDataRaw;
+
+  if (isWorksheetLogData(logData)) {
+    const sessionForAttended = params.sessionId ?? attempt.session_id ?? null;
+    if (!sessionForAttended) {
+      return {
+        status: 'error',
+        message: 'Assignment session is required to load this worksheet result.',
+        retryable: false,
+      };
+    }
+    try {
+      const attended = await getAttendedQuiz({
+        student_id: params.studentId,
+        quiz_id: params.quizId,
+        session_id: sessionForAttended,
+        classroom_id: attempt.class_id || undefined,
+      });
+      const mergedAttended = {
+        ...attended,
+        log_data: (attended.log_data as Record<string, unknown> | null) ?? logData,
+      };
+      const worksheetNormalized = tryNormalizeWorksheetAttended(mergedAttended);
+      if (!worksheetNormalized) {
+        return {
+          status: 'error',
+          message: 'Worksheet submission found but review content is incomplete.',
+          retryable: true,
+        };
+      }
+      return {
+        status: 'ready',
+        quizData: { questions: worksheetNormalized.questions },
+        userAnswers: worksheetNormalized.userAnswers,
+        score:
+          attempt.score != null
+            ? Number(attempt.score)
+            : worksheetNormalized.score,
+        logData: worksheetNormalized.logData,
+        timeSpentSeconds:
+          attempt.time_spent_seconds ?? worksheetNormalized.timeSpentSeconds,
+        completedAt: attempt.completed_at ?? worksheetNormalized.completedAt,
+      };
+    } catch {
+      return {
+        status: 'error',
+        message: 'Could not load worksheet review content. Please try again.',
+        retryable: true,
+      };
+    }
+  }
+
   const normalized = normalizeQuestionsAndAnswersFromLogData(logData);
   if (!normalized) {
     return { status: 'missing' };
@@ -191,14 +282,34 @@ async function fetchTeacherAttemptBundle(params: {
   };
 }
 
+async function loadStudentAttendedWithWorksheetFallback(
+  baseParams: AttendedQuizParams,
+  classroomId?: string | null,
+): Promise<AttendedQuizResponse> {
+  const attended = await getAttendedQuiz(baseParams);
+  if (
+    isWorksheetAttendedResponse(attended) &&
+    !attended.worksheet_data &&
+    classroomId &&
+    String(classroomId).trim()
+  ) {
+    return getAttendedQuiz({
+      ...baseParams,
+      classroom_id: classroomId,
+    });
+  }
+  return attended;
+}
+
 export async function fetchPersistedQuizResult(params: {
   quizId: number | string;
   sessionId?: string | null;
+  classroomId?: string | null;
   studentId: string;
   attemptId?: number;
   isTeacherView?: boolean;
 }): Promise<QuizResultLoadState> {
-  const { quizId, sessionId, studentId, attemptId, isTeacherView } = params;
+  const { quizId, sessionId, classroomId, studentId, attemptId, isTeacherView } = params;
 
   if (!quizId || !studentId) {
     return { status: 'missing' };
@@ -214,13 +325,24 @@ export async function fetchPersistedQuizResult(params: {
     }
 
     try {
-      const attended = await getAttendedQuiz({
-        student_id: studentId,
-        session_id: sessionId,
-        quiz_id: quizId,
-      });
+      const attended = await loadStudentAttendedWithWorksheetFallback(
+        {
+          student_id: studentId,
+          session_id: sessionId,
+          quiz_id: quizId,
+          classroom_id: classroomId || undefined,
+        },
+        classroomId,
+      );
       const normalized = normalizeAttendedQuizResponse(attended);
       if (!normalized) {
+        if (isWorksheetAttendedResponse(attended)) {
+          return {
+            status: 'error',
+            message: 'Worksheet submission found but review content is incomplete.',
+            retryable: true,
+          };
+        }
         return { status: 'missing' };
       }
       return {

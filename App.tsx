@@ -27,6 +27,7 @@ import {
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
+import { logMobileBuildIdentification } from './src/core/utils/buildIdentification';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -98,6 +99,10 @@ function AppContent() {
   const isWeb = Platform.OS === 'web';
 
   // Notification polling runs in background
+
+  useEffect(() => {
+    logMobileBuildIdentification();
+  }, []);
 
   // Initialize cache on app startup
   useEffect(() => {

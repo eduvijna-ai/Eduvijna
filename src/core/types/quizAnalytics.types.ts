@@ -46,6 +46,9 @@ export interface QuizAnswerLog {
   correctAnswer: string; // A, B, C, D
   userAnswer: string | null; // A, B, C, D or null if skipped
   isCorrect: boolean;
+  /** Worksheet text / short-answer rows */
+  isTextAnswer?: boolean;
+  correctAnswerText?: string;
 }
 
 export interface ParsedLogData {

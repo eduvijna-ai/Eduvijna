@@ -385,6 +385,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         navigation.navigate('StudentList', {
           quizId,
           quizName: quiz?.quiz_name || 'Quiz',
+          sessionId: quiz?.session_id,
+          classroomId: quiz?.classroom_id || quiz?.class_id,
         });
       } else if (onNavigate) {
         onNavigate('students', { quizId, quizName: quiz?.quiz_name });

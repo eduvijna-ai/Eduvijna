@@ -13,6 +13,8 @@ export default (): ExpoConfig => {
       ...staticExpo.extra,
       API_BASE_URL: apiOrigin,
       EDUVIJNA_API_ENV: environment,
+      GIT_SHA: process.env.EDUVIJNA_GIT_SHA || process.env.GIT_COMMIT || 'unknown',
+      GIT_BRANCH: process.env.EDUVIJNA_GIT_BRANCH || 'unknown',
     },
   };
 };
