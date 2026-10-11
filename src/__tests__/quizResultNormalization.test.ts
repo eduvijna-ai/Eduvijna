@@ -112,6 +112,27 @@ describe('quizResultNormalization', () => {
     expect(normalized?.userAnswers[0]).toBe('4');
   });
 
+  it('preserves attended student_answer when log entry is whitespace-only', () => {
+    const normalized = normalizeAttendedQuizResponse(
+      attendedFixture({
+        items: [
+          {
+            question_id: 1,
+            question: '2+2?',
+            options: ['3', '4'],
+            student_answer: 'B',
+            answer_key: 'B',
+            is_correct: true,
+          },
+        ],
+        log_data: {
+          answers: [{ question: '2+2?', options: ['3', '4'], userAnswer: '   ' }],
+        },
+      }),
+    );
+    expect(normalized?.userAnswers[0]).toBe('4');
+  });
+
   it('keeps genuine unanswered when log and attended are both empty', () => {
     const normalized = normalizeAttendedQuizResponse(
       attendedFixture({
