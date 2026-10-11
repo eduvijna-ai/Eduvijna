@@ -61,6 +61,9 @@ describe('DocumentLibraryScreen web upload', () => {
     const navigation = { navigate: jest.fn() };
     const { getByText } = render(<DocumentLibraryScreen navigation={navigation} />);
 
+    await waitFor(() => {
+      expect(getByText('Upload Book')).toBeTruthy();
+    });
     fireEvent.press(getByText('Upload Book'));
     fireEvent.press(getByText('Choose PDF or image'));
 
