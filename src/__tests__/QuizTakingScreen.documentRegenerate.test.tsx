@@ -1,11 +1,11 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { generateAIQuiz } from '../core/services/sharedApi';
+import { regenerateDocumentUploadQuiz } from '../core/services/documentUploadApi';
 import QuizTakingScreen from '../screens/QuizTakingScreen';
 
-jest.mock('../core/services/sharedApi', () => ({
-  generateAIQuiz: jest.fn(),
+jest.mock('../core/services/documentUploadApi', () => ({
+  regenerateDocumentUploadQuiz: jest.fn(),
 }));
 
 jest.mock('@core/hooks/useAuth', () => ({
@@ -35,7 +35,9 @@ jest.mock('../components/LoadingSpinner', () => 'LoadingSpinner');
 jest.mock('../components/MathRenderer', () => 'MathRenderer');
 jest.mock('../components/QuizExplanationAccordion', () => 'QuizExplanationAccordion');
 
-const mockGenerateAIQuiz = generateAIQuiz as jest.MockedFunction<typeof generateAIQuiz>;
+const mockRegenerate = regenerateDocumentUploadQuiz as jest.MockedFunction<
+  typeof regenerateDocumentUploadQuiz
+>;
 
 const baseQuestions = [
   {
@@ -55,10 +57,13 @@ describe('QuizTakingScreen document regeneration', () => {
       const confirm = buttons?.find((b) => String(b.text).includes('Regenerate'));
       confirm?.onPress?.();
     });
-    mockGenerateAIQuiz.mockResolvedValue({
-      quiz: baseQuestions,
-      quiz_id: 'regen-1',
-      thread_id: 'thread-1',
+    mockRegenerate.mockResolvedValue({
+      questions: baseQuestions,
+      regenerationParams: {
+        type: 'document-upload',
+        ocrText: 'Focus on lenses from gallery pages',
+        count: 5,
+      },
     } as any);
   });
 
@@ -66,7 +71,16 @@ describe('QuizTakingScreen document regeneration', () => {
     jest.restoreAllMocks();
   });
 
-  it('passes gallery/camera regeneration instructions to generateAIQuiz', async () => {
+  it('calls regenerateDocumentUploadQuiz for document-upload source with preserved instructions', async () => {
+    const regenerationParams = {
+      type: 'document-upload' as const,
+      grade: 'Class 10',
+      subject: 'Physics',
+      count: 5,
+      ocrText: 'Focus on lenses from gallery pages',
+      fileName: 'camera-doc.pdf',
+    };
+
     const { getByText } = render(
       <QuizTakingScreen
         navigation={{ navigate: jest.fn(), replace: jest.fn(), goBack: jest.fn() }}
@@ -78,17 +92,10 @@ describe('QuizTakingScreen document regeneration', () => {
               lesson: 'Optics',
               difficulty: 'medium',
               questions: baseQuestions,
-              regenerationParams: {
-                type: 'document',
-                classId: 'class-10',
-                subjectId: 'physics',
-                count: 5,
-                itext: 'Focus on lenses from gallery pages',
-                uploadedFileName: 'camera-doc.pdf',
-              },
+              regenerationParams,
             },
             showActionButtons: true,
-            source: 'document',
+            source: 'document-upload',
           },
         }}
       />,
@@ -97,11 +104,13 @@ describe('QuizTakingScreen document regeneration', () => {
     fireEvent.press(getByText('Regenerate'));
 
     await waitFor(() => {
-      expect(mockGenerateAIQuiz).toHaveBeenCalledWith(
+      expect(mockRegenerate).toHaveBeenCalledWith(
         expect.objectContaining({
-          itext: 'Focus on lenses from gallery pages',
+          type: 'document-upload',
+          ocrText: 'Focus on lenses from gallery pages',
           count: 5,
         }),
+        expect.objectContaining({ id: 'doc-1' }),
       );
     });
   });
