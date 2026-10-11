@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDevApiBase, loginDevApi } from './lib/dev-api-auth.mjs';
 import { redactDeep } from './lib/trace-redact.mjs';
+import { normalizeNotificationHistoryPayload } from './lib/notification-history-normalize.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const credFile = join(repoRoot, '.dev-api-credentials.local.json');
@@ -228,13 +229,28 @@ async function verifyNotifications(label, username, password) {
   };
 
   const history = await probeGet(auth.token, '/api/notifications/history?limit=20');
-  const historyOk = history.status >= 200 && history.status < 300 && history.ok;
+  const normalizedHistory =
+    history.ok && history.data && !history.data.parseError
+      ? normalizeNotificationHistoryPayload(history.data)
+      : { ok: false, responseShape: 'parse_error', error: 'http_or_json_parse_failed' };
+  const historyRows = normalizedHistory.ok ? normalizedHistory.notifications : [];
+  const typesValid = historyRows.every(
+    (n) => n && (typeof n.id === 'number' || typeof n.id === 'string'),
+  );
+  const historyOk =
+    history.status >= 200 &&
+    history.status < 300 &&
+    history.ok &&
+    normalizedHistory.ok &&
+    typesValid;
   block.apiEvidence.push({
     check: 'notifications_history',
     httpStatus: history.status,
     ok: historyOk,
-    notificationCount: history.data?.notifications?.length ?? history.data?.total ?? 0,
-    sampleTypes: (history.data?.notifications ?? [])
+    responseShape: normalizedHistory.responseShape ?? normalizedHistory.error,
+    notificationCount: historyRows.length,
+    totalField: normalizedHistory.ok ? normalizedHistory.total : null,
+    sampleTypes: historyRows
       .slice(0, 5)
       .map((n) => n.type || n.data?.type || 'unknown'),
   });

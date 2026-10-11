@@ -211,10 +211,18 @@ export async function runSubmissionMatrixOrchestrator(options = {}) {
 }
 
 async function main() {
-  const report = await runSubmissionMatrixOrchestrator();
+  const skipJest = process.argv.includes('--skip-jest');
+  const report = await runSubmissionMatrixOrchestrator({ skipJest });
+  report.executionMode = skipJest
+    ? 'orchestrator_only_no_jest_phases'
+    : 'orchestrator_with_jest_phase1_phase2';
+  report.commandLine =
+    skipJest
+      ? 'node scripts/dev-api-submission-matrix.mjs --skip-jest'
+      : 'node scripts/dev-api-submission-matrix.mjs';
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(redactDeep(report), null, 2));
-  console.log(`Wrote ${out} (status=${report.status})`);
+  console.log(`Wrote ${out} (status=${report.status}, mode=${report.executionMode})`);
   process.exit(report.status === 'passed' ? 0 : 1);
 }
 
