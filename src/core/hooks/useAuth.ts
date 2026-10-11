@@ -12,7 +12,13 @@ import { get } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import type { LoginCredentials, UserProfile } from '../types';
 import { clearQuizNavCache } from './useQuizNavItems';
-import { bumpAuthSessionEpoch, getAuthSessionEpoch, storeUserDataForSession } from '../api/apiRefreshCoordinator';
+import {
+  bumpAuthSessionEpoch,
+  getAuthSessionEpoch,
+  getOutgoingCredentialEpoch,
+  initializeAuthSessionIdentity,
+  storeUserDataForSession,
+} from '../api/apiRefreshCoordinator';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import { useDashboardStore } from '../store/dashboard.store';
 
@@ -150,7 +156,7 @@ export function useAuth(): UseAuthReturn {
       setLoading(true);
       setError(null);
 
-      await TokenStorage.hydrateCredentialEpochFromStorage();
+      await initializeAuthSessionIdentity();
 
       // Check if we have a valid token
       const accessToken = await TokenStorage.getAccessToken();
@@ -246,8 +252,8 @@ export function useAuth(): UseAuthReturn {
       }
 
       // Call login API (tokens are stored automatically in auth.api.ts)
-      bumpAuthSessionEpoch();
-      const response = await AuthAPI.login(credentials);
+      const sessionEpoch = await bumpAuthSessionEpoch();
+      const response = await AuthAPI.login(credentials, sessionEpoch);
 
       // Web AuthContext: after login, loadProfile() from /auth/profile (has full_name)
       let profileUser = response.user;
@@ -294,10 +300,10 @@ export function useAuth(): UseAuthReturn {
       const currentUser = useUserStore.getState().user;
       const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
       await resetNotificationGuardBestEffort(accountKey);
-      bumpAuthSessionEpoch();
+      const outgoingCredentialEpoch = getOutgoingCredentialEpoch();
+      await bumpAuthSessionEpoch();
 
-      // Call logout API (clears tokens automatically)
-      await AuthAPI.logout();
+      await AuthAPI.logout({ credentialEpoch: outgoingCredentialEpoch });
 
       // Reset dashboard store
       useTeacherDashboardStore.getState().reset();

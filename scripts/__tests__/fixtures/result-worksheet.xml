@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy rotation="0">
+  <node text="Results — MAT Mathematics Worksheet" bounds="[0,80][1080,160]" package="com.eduvijna.app"/>
+  <node text="Aarya" bounds="[0,160][1080,220]" package="com.eduvijna.app"/>
+  <node text="Score: 60%" bounds="[0,300][1080,360]" package="com.eduvijna.app"/>
+  <node text="10 evaluated items" bounds="[0,360][1080,420]" package="com.eduvijna.app"/>
+  <node text="6 correct" bounds="[0,420][1080,480]" package="com.eduvijna.app"/>
+</hierarchy>

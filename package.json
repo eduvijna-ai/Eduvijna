@@ -21,7 +21,8 @@
     "postinstall": "patch-package",
     "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand",
     "test:watch": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --watch --forceExit --runInBand",
-    "test:coverage": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --coverage --forceExit --runInBand"
+    "test:coverage": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --coverage --forceExit --runInBand",
+    "test:journey-logic": "node --test scripts/__tests__/android-founder-journey.logic.test.mjs"
   },
   "jest": {
     "preset": "jest-expo",

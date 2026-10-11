@@ -5,7 +5,7 @@
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import type { AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
-import { setCredentialEpoch } from '../services/authCredentialEpoch';
+import { getCredentialEpoch, setCredentialEpoch } from '../services/authCredentialEpoch';
 import { useUserStore } from '../store/user.store';
 
 export type RetryableConfig = InternalAxiosRequestConfig & {
@@ -27,7 +27,6 @@ let refreshInFlight: {
   promise: Promise<RefreshOutcome>;
 } | null = null;
 
-/** Serializes credential writes/clears so stale async work cannot interleave destructively. */
 let credentialMutationTail: Promise<void> = Promise.resolve();
 
 function enqueueCredentialMutation(
@@ -50,17 +49,42 @@ function enqueueCredentialMutation(
   return result;
 }
 
-export function bumpAuthSessionEpoch(): number {
+function enqueueCredentialClear(credentialEpoch: number, mutate: () => Promise<void>): Promise<void> {
+  const task = credentialMutationTail.then(mutate, mutate);
+  credentialMutationTail = task.then(
+    () => undefined,
+    () => undefined,
+  );
+  return task;
+}
+
+/** Align in-memory coordinator epoch with persisted credential namespace. */
+export function restoreAuthSessionEpoch(epoch: number): void {
+  refreshSessionEpoch = epoch;
+  setCredentialEpoch(epoch);
+}
+
+export async function initializeAuthSessionIdentity(): Promise<number> {
+  const epoch = await TokenStorage.hydrateCredentialEpochFromStorage();
+  restoreAuthSessionEpoch(epoch);
+  return epoch;
+}
+
+export async function bumpAuthSessionEpoch(): Promise<number> {
   refreshSessionEpoch += 1;
   refreshFlightGeneration += 1;
   refreshInFlight = null;
   setCredentialEpoch(refreshSessionEpoch);
-  void TokenStorage.persistCredentialEpoch(refreshSessionEpoch);
+  await TokenStorage.persistCredentialEpoch(refreshSessionEpoch);
   return refreshSessionEpoch;
 }
 
 export function getAuthSessionEpoch(): number {
   return refreshSessionEpoch;
+}
+
+export function getOutgoingCredentialEpoch(): number {
+  return getCredentialEpoch();
 }
 
 export function stampRequestSession(config: RetryableConfig): RetryableConfig {
@@ -101,7 +125,12 @@ export async function storeTokensForSession(
     if (sessionEpoch !== refreshSessionEpoch) {
       return;
     }
-    await TokenStorage.storeAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn);
+    await TokenStorage.storeAuthTokensForEpoch(
+      sessionEpoch,
+      tokens.accessToken,
+      tokens.refreshToken,
+      tokens.expiresIn,
+    );
     if (sessionEpoch !== refreshSessionEpoch) {
       return;
     }
@@ -117,17 +146,24 @@ export async function storeUserDataForSession(
     if (sessionEpoch !== refreshSessionEpoch) {
       return;
     }
-    await TokenStorage.storeUserData(userDataJson);
+    await TokenStorage.storeUserDataForEpoch(sessionEpoch, userDataJson);
   });
 }
 
-export async function clearAuthForSession(sessionEpoch: number): Promise<boolean> {
-  return enqueueCredentialMutation(sessionEpoch, async () => {
-    if (sessionEpoch !== refreshSessionEpoch) {
-      return;
-    }
-    await TokenStorage.clearAuthDataForEpoch(sessionEpoch);
+/** Clears a specific credential namespace (e.g. outgoing logout), regardless of current session epoch. */
+export async function clearCredentialsAtEpoch(credentialEpoch: number): Promise<void> {
+  await enqueueCredentialClear(credentialEpoch, async () => {
+    await TokenStorage.clearAuthDataForEpoch(credentialEpoch);
   });
+}
+
+/** Clears credentials for the active session only. */
+export async function clearAuthForSession(sessionEpoch: number): Promise<boolean> {
+  if (sessionEpoch !== refreshSessionEpoch) {
+    return false;
+  }
+  await clearCredentialsAtEpoch(sessionEpoch);
+  return sessionEpoch === refreshSessionEpoch;
 }
 
 export async function refreshAccessToken(
@@ -152,7 +188,7 @@ export async function refreshAccessToken(
       return { kind: 'superseded', sessionEpoch };
     }
     try {
-      const refreshToken = await TokenStorage.getRefreshToken();
+      const refreshToken = await TokenStorage.getRefreshTokenForEpoch(sessionEpoch);
       if (sessionEpoch !== refreshSessionEpoch) {
         return { kind: 'superseded', sessionEpoch };
       }
@@ -213,21 +249,4 @@ export async function refreshAccessToken(
 /** @deprecated use stampRequestSession on dispatch */
 export function attachSessionEpoch(config: RetryableConfig): RetryableConfig {
   return stampRequestSession(config);
-}
-
-/** @internal test helper — pause credential queue until released */
-export function __testPauseCredentialMutations(): {
-  release: () => void;
-  paused: Promise<void>;
-} {
-  let release!: () => void;
-  const paused = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const prior = credentialMutationTail;
-  credentialMutationTail = prior.then(() => paused);
-  return {
-    release: () => release(),
-    paused,
-  };
 }

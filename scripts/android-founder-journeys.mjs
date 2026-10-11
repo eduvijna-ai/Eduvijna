@@ -5,7 +5,17 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findTapTarget, parseUiTexts } from './lib/android-ui-parse.mjs';
+import {
+  isEduvijnaAppForeground,
+  locateByLabel,
+  locateByTestId,
+  locateWithScroll,
+  parseUiXml,
+  readXmlContent,
+  verifyStudentListDestination,
+  verifyWorksheetResultScreen,
+} from './lib/android-journey-logic.mjs';
+
 import { FIXTURE, loadFixtureLabels } from './lib/founder-fixture.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,196 +37,224 @@ function dump(name) {
   execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
   return local;
 }
-function tap(x, y) {
-  adb(`shell input tap ${x} ${y}`);
+function tapTarget(target) {
+  if (!target) return null;
+  adb(`shell input tap ${target.x} ${target.y}`);
+  return target;
 }
 function scrollDown() {
   adb('shell input swipe 540 1500 540 700 350');
   sleep(900);
 }
-function tapLabel(xml, pattern, minY = 0) {
-  const s = readFileSync(xml, 'utf8');
-  const re = new RegExp(
-    `(?:text|content-desc)="([^"]*${pattern}[^"]*)"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
-    'gi',
-  );
-  let best = null;
-  for (const m of s.matchAll(re)) {
-    const y = Number(m[3]);
-    if (y < minY) continue;
-    const cand = {
-      label: m[1],
-      x: Math.floor((Number(m[2]) + Number(m[4])) / 2),
-      y: Math.floor((Number(m[3]) + Number(m[5])) / 2),
-    };
-    if (!best || cand.y > best.y) best = cand;
+function waitFor(predicate, { attempts = 12, pauseMs = 1200, dumpName = 'wait' } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    const path = dump(`${dumpName}-${i}.xml`);
+    const xml = readXmlContent(path);
+    if (predicate(xml, path)) return { ok: true, xmlPath: path, xml };
+    sleep(pauseMs);
   }
-  if (best) tap(best.x, best.y);
-  return best;
-}
-function tapTestId(xml, testId) {
-  const s = readFileSync(xml, 'utf8');
-  const patterns = [
-    new RegExp(
-      `(?:content-desc|text)="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
-      'gi',
-    ),
-    new RegExp(
-      `resource-id="[^"]*${testId}[^"]*"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
-      'gi',
-    ),
-  ];
-  let best = null;
-  for (const re of patterns) {
-    for (const m of s.matchAll(re)) {
-      const hit = {
-        label: testId,
-        x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
-        y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
-      };
-      if (!best || hit.y < best.y) best = hit;
-    }
-  }
-  return best;
-}
-
-function assertStudentListDestination(xml, fixture) {
-  const texts = parseUiTexts(xml);
-  const hasQuiz = texts.some((t) => String(fixture.quizId) === t || /worksheet|assessment/i.test(t));
-  const hasSessionMismatch = texts.some((t) => /PRO_Assessment_20261007/i.test(t));
-  return {
-    pass: hasQuiz && !hasSessionMismatch,
-    texts: texts.slice(0, 40),
-  };
-}
-
-function tapLabelScroll(pattern, minY = 0, maxScrolls = 14) {
-  for (let i = 0; i < maxScrolls; i++) {
-    const xml = dump(`scroll-${pattern.slice(0, 8)}-${i}.xml`);
-    const hit = tapLabel(xml, pattern, minY);
-    if (hit) return { hit, scrolls: i };
-    scrollDown();
-  }
-  return { hit: null, scrolls: maxScrolls };
+  return { ok: false, xmlPath: null, xml: null };
 }
 function screenshot(name) {
   const local = join(evidence, name);
   execSync(`adb -s ${serial} exec-out screencap -p > "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
   return name;
 }
-function assertTexts(xml, patterns, label) {
-  const texts = parseUiTexts(xml);
-  const hits = patterns.filter((p) => texts.some((t) => p.test(t)));
-  return { label, pass: hits.length === patterns.length, hits: hits.map(String), sample: texts.slice(0, 25) };
-}
 
 async function dismissOverlays() {
   execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, { stdio: 'ignore' });
 }
+
+function shellReady(xml) {
+  if (!isEduvijnaAppForeground(xml)) return false;
+  const nodes = parseUiXml(xml);
+  return (
+    locateByLabel(nodes, 'Assessments', { minY: 0 }) != null ||
+    locateByLabel(nodes, 'Analytics', { minY: 0 }) != null ||
+    nodes.some((n) => /Generate Assessment|Demo School/i.test(`${n.text || ''} ${n['content-desc'] || ''}`))
+  );
+}
+
 function ensureInApp() {
-  let xml = dump('nav-check.xml');
-  if (!xml.includes('com.eduvijna.app')) {
+  let ready = waitFor(shellReady, { attempts: 4, pauseMs: 800, dumpName: 'nav-initial' });
+  if (!ready.ok) {
     execSync(`node "${join(repoRoot, 'scripts/android-bootstrap-dev-client.mjs')}" instructor`, {
-      stdio: 'ignore',
+      stdio: 'inherit',
     });
     execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, { stdio: 'ignore' });
-    return;
+    ready = waitFor(shellReady, { attempts: 20, pauseMs: 1500, dumpName: 'nav-after-bootstrap' });
+  }
+  if (!ready.ok) {
+    throw new Error('eduvijna_shell_not_ready');
   }
   for (let i = 0; i < 3; i++) {
-    const texts = parseUiTexts(xml);
-    if (texts.some((t) => /Generate Assessment|Demo School|Assessments/i.test(t))) {
-      tapLabel(xml, 'Home', 1500);
-      sleep(1500);
-      return;
+    const xml = ready.xml;
+    const nodes = parseUiXml(xml);
+    const home = locateByLabel(nodes, 'Home', { minY: 0, pick: 'bottom' });
+    const inShell = shellReady(xml);
+    if (inShell && home) {
+      tapTarget(home);
+      sleep(1200);
+      ready = waitFor(shellReady, { attempts: 6, pauseMs: 1000, dumpName: `nav-home-${i}` });
+      if (ready.ok) return;
     }
     adb('shell input keyevent 4');
     sleep(700);
-    xml = dump(`nav-back-${i}.xml`);
-    if (!xml.includes('com.eduvijna.app')) break;
+    ready = waitFor(shellReady, { attempts: 3, pauseMs: 700, dumpName: `nav-back-${i}` });
+    if (!ready.ok) break;
   }
 }
 
-async function journeyA(quizTitle, searchToken, openStudentsLabel) {
+function fixtureContext(labels) {
+  return {
+    ...FIXTURE,
+    quizTitle: labels.quizTitle,
+    classLabel: labels.classLabel,
+  };
+}
+
+async function journeyA(labels) {
+  const fx = fixtureContext(labels);
   const log = { journey: 'A_assessments_students_result', steps: [] };
   await dismissOverlays();
   ensureInApp();
-  let xml = dump('a-00-home.xml');
-  log.steps.push({ step: 'home', tap: tapLabel(xml, 'Assessments', 1500) });
-  sleep(3000);
-  xml = dump('a-01-assessments.xml');
+
+  let path = dump('a-00-home.xml');
+  let nodes = parseUiXml(readXmlContent(path));
   log.steps.push({
-    step: 'tab_all_or_expired',
-    tap: tapLabel(xml, 'Expired \\(9\\)', 0) || tapLabel(xml, 'Expired', 0),
+    step: 'home',
+    tap: tapTarget(locateByLabel(nodes, 'Assessments', { minY: 0, pick: 'bottom' })),
   });
   sleep(2500);
-  xml = dump('a-01b-assessments-tab.xml');
-  const studentsTestId = `assessment-open-students-${FIXTURE.quizId}-${FIXTURE.sessionId ?? ''}`;
-  let studentListTap = tapTestId(xml, studentsTestId);
-  if (!studentListTap) {
-    const humanLabel = openStudentsLabel
-      ? tapLabelScroll(openStudentsLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 0)
-      : null;
-    log.steps.push({ step: 'locate_quiz_by_label', ...humanLabel });
-    sleep(1500);
-    xml = dump('a-02-quiz-card.xml');
-    studentListTap = tapTestId(xml, studentsTestId);
+
+  const tabWait = waitFor((xml) => {
+    const n = parseUiXml(xml);
+    return locateByLabel(n, 'Expired', { minY: 0 }) != null || locateByLabel(n, 'All', { minY: 0 }) != null;
+  }, { dumpName: 'a-01-wait-assessments' });
+  path = tabWait.xmlPath || dump('a-01-assessments.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  const expiredTab =
+    locateByLabel(nodes, 'Expired \\(9\\)', { minY: 0 }) || locateByLabel(nodes, 'Expired', { minY: 0 });
+  log.steps.push({ step: 'tab_expired', tap: tapTarget(expiredTab) });
+  sleep(2500);
+
+  const studentsTestId = `assessment-open-students-${fx.quizId}-${fx.sessionId}`;
+  const locateStudentsControl = (xml) => {
+    const n = parseUiXml(xml);
+    return locateByTestId(n, studentsTestId, { pick: 'top' });
+  };
+
+  path = dump('a-01b-assessments-tab.xml');
+  let studentListTap = locateStudentsControl(readXmlContent(path));
+
+  if (!studentListTap && labels.openStudentsLabel) {
+    const escaped = labels.openStudentsLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const scrolled = locateWithScroll({
+      dumpFn: (n) => dump(`a-scroll-${n}`),
+      scrollFn: scrollDown,
+      locateFn: (xml) => {
+        const n = parseUiXml(xml);
+        const labelHit = locateByLabel(n, escaped, { pick: 'bottom' });
+        if (labelHit) return labelHit;
+        return locateStudentsControl(xml);
+      },
+    });
+    log.steps.push({ step: 'locate_students_control', scrolls: scrolled.scrolls, hit: scrolled.hit });
+    if (scrolled.hit) {
+      studentListTap = scrolled.hit;
+      path = scrolled.xmlPath || path;
+    }
   }
+
   if (!studentListTap) {
     log.pass = false;
     log.verify = { label: 'fixture_students_control_missing', pass: false };
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  tap(studentListTap.x, studentListTap.y);
-  log.steps.push({ step: 'open_student_list', tap: studentListTap });
-  sleep(4000);
-  xml = dump('a-03-student-list.xml');
-  const listDest = assertStudentListDestination(xml, FIXTURE);
+
+  log.steps.push({ step: 'open_student_list', tap: tapTarget(studentListTap) });
+  sleep(3500);
+
+  const listWait = waitFor(
+    (xml) => verifyStudentListDestination(xml, fx).pass,
+    { dumpName: 'a-03-wait-student-list', attempts: 10 },
+  );
+  path = listWait.xmlPath || dump('a-03-student-list.xml');
+  const listDest = verifyStudentListDestination(readXmlContent(path), fx);
   log.steps.push({ step: 'verify_student_list_destination', ...listDest });
   if (!listDest.pass) {
     log.pass = false;
-    log.verify = { label: 'wrong_assignment_student_list', pass: false };
+    log.verify = { label: 'wrong_assignment_student_list', pass: false, ...listDest };
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  const aaryaTap =
-    tapTestId(xml, `student-row-${FIXTURE.studentId}`) ||
-    tapLabel(xml, FIXTURE.studentName, 0) ||
-    tapLabel(xml, 'Score: 60%', 0);
-  if (aaryaTap) tap(aaryaTap.x, aaryaTap.y);
-  log.steps.push({ step: 'aarya', tap: aaryaTap });
-  sleep(5000);
-  xml = dump('a-04-result.xml');
+
+  nodes = parseUiXml(readXmlContent(path));
+  const studentTap =
+    locateByTestId(nodes, `student-row-${fx.studentId}`) ||
+    locateByLabel(nodes, fx.studentName, { minY: 0 });
+  log.steps.push({ step: 'open_student', tap: tapTarget(studentTap) });
+  sleep(4500);
+
+  const resultWait = waitFor(
+    (xml) => verifyWorksheetResultScreen(xml, fx).pass,
+    { dumpName: 'a-04-wait-result', attempts: 12 },
+  );
+  path = resultWait.xmlPath || dump('a-04-result.xml');
   screenshot('a-04-result.png');
-  const verify = assertTexts(xml, [/60\s*%|60%/, /10/, /6/], 'worksheet_metrics');
-  log.verify = verify;
+  const verify = verifyWorksheetResultScreen(readXmlContent(path), fx);
+  log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
   return log;
 }
 
-async function journeyB(quizTitle) {
+async function journeyB(labels) {
+  const fx = fixtureContext(labels);
   const log = { journey: 'B_analytics_view_analytics_result', steps: [] };
   await dismissOverlays();
-  let xml = dump('b-00-home.xml');
-  log.steps.push({ step: 'analytics_tab', tap: tapLabel(xml, 'Analytics', 1500) });
+  ensureInApp();
+
+  let path = dump('b-00-home.xml');
+  let nodes = parseUiXml(readXmlContent(path));
+  log.steps.push({
+    step: 'analytics_tab',
+    tap: tapTarget(locateByLabel(nodes, 'Analytics', { minY: 0, pick: 'bottom' })),
+  });
+  sleep(3000);
+
+  path = dump('b-01-analytics.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  log.steps.push({ step: 'classes', tap: tapTarget(locateByLabel(nodes, 'Classes', { minY: 0 })) });
+  sleep(2500);
+
+  path = dump('b-02-classes.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  log.steps.push({
+    step: 'quiz',
+    tap: tapTarget(locateByLabel(nodes, labels.quizTitle.slice(0, 24).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), { minY: 0 })),
+  });
+  sleep(2500);
+
+  path = dump('b-03-quiz.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  log.steps.push({ step: 'view_analytics', tap: tapTarget(locateByLabel(nodes, 'View Analytics', { minY: 0 })) });
   sleep(3500);
-  xml = dump('b-01-analytics.xml');
-  log.steps.push({ step: 'classes', tap: tapLabel(xml, 'Classes', 0) });
-  sleep(3000);
-  xml = dump('b-02-classes.xml');
-  log.steps.push({ step: 'quiz', tap: tapLabel(xml, quizTitle.slice(0, 20), 0) });
-  sleep(3000);
-  xml = dump('b-03-quiz.xml');
-  log.steps.push({ step: 'view_analytics', tap: tapLabel(xml, 'View Analytics', 0) });
-  sleep(4000);
-  xml = dump('b-04-drill.xml');
-  log.steps.push({ step: 'aarya', tap: tapLabel(xml, FIXTURE.studentName, 0) });
-  sleep(5000);
-  xml = dump('b-05-result.xml');
+
+  path = dump('b-04-drill.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  log.steps.push({ step: 'open_student', tap: tapTarget(locateByLabel(nodes, fx.studentName, { minY: 0 })) });
+  sleep(4500);
+
+  const resultWait = waitFor(
+    (xml) => verifyWorksheetResultScreen(xml, fx).pass,
+    { dumpName: 'b-05-wait-result', attempts: 12 },
+  );
+  path = resultWait.xmlPath || dump('b-05-result.xml');
   screenshot('b-05-result.png');
-  const verify = assertTexts(xml, [/60\s*%|60%/, /10/, /6/], 'worksheet_metrics');
-  log.verify = verify;
+  const verify = verifyWorksheetResultScreen(readXmlContent(path), fx);
+  log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
   return log;
@@ -224,16 +262,32 @@ async function journeyB(quizTitle) {
 
 async function main() {
   const which = process.argv[2] || 'all';
-  const { quizTitle, searchToken, availability, openStudentsLabel } = await loadFixtureLabels();
-  const meta = { sha, quizTitleRedacted: quizTitle.slice(0, 8) + '…', fixtureQuizId: FIXTURE.quizId };
-  writeFileSync(
-    join(evidence, 'meta.json'),
-    JSON.stringify({ ...meta, availability, searchTokenRedacted: `${searchToken.slice(0, 6)}…` }, null, 2),
-  );
+  const labels = await loadFixtureLabels();
+  const meta = {
+    sha,
+    fixtureQuizId: FIXTURE.quizId,
+    fixtureSessionRedacted: `${FIXTURE.sessionId.slice(0, 8)}…`,
+    quizTitleRedacted: `${labels.quizTitle.slice(0, 10)}…`,
+  };
+  writeFileSync(join(evidence, 'meta.json'), JSON.stringify({ ...meta, availability: labels.availability }, null, 2));
+
   const results = {};
-  if (which === 'a' || which === 'all') results.a = await journeyA(quizTitle, searchToken, openStudentsLabel);
-  if (which === 'b' || which === 'all') results.b = await journeyB(quizTitle);
-  console.log(JSON.stringify({ sha, results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { pass: v.pass }])) }));
+  let failed = false;
+  if (which === 'a' || which === 'all') {
+    results.a = await journeyA(labels);
+    if (!results.a.pass) failed = true;
+  }
+  if (which === 'b' || which === 'all') {
+    results.b = await journeyB(labels);
+    if (!results.b.pass) failed = true;
+  }
+  console.log(
+    JSON.stringify({
+      sha,
+      results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { pass: v.pass }])),
+    }),
+  );
+  if (failed) process.exit(1);
 }
 
 main().catch((e) => {

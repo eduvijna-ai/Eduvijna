@@ -6,8 +6,8 @@ import {
 } from '../core/api/apiRefreshCoordinator';
 
 jest.mock('../core/services/tokenStorage', () => ({
-  getRefreshToken: jest.fn().mockResolvedValue('refresh-token'),
-  storeAuthTokens: jest.fn().mockResolvedValue(undefined),
+  getRefreshTokenForEpoch: jest.fn().mockResolvedValue('refresh-token'),
+  storeAuthTokensForEpoch: jest.fn().mockResolvedValue(undefined),
   persistCredentialEpoch: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -21,7 +21,8 @@ jest.mock('../core/store/user.store', () => ({
 
 describe('refreshAccessToken single-flight', () => {
   it('coalesces concurrent refresh for the same session', async () => {
-    bumpAuthSessionEpoch();
+    // async bump in beforeEach
+    await bumpAuthSessionEpoch();
     const epoch = getAuthSessionEpoch();
 
     let resolvePost!: (value: unknown) => void;

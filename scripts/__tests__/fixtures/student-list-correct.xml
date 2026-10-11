@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy rotation="0">
+  <node text="Students for: MAT Mathematics Worksheet" bounds="[0,100][1080,200]" package="com.eduvijna.app"/>
+  <node text="Grade 8 A" bounds="[0,200][1080,260]" package="com.eduvijna.app"/>
+  <node resource-id="student-row-70" text="Aarya" bounds="[0,400][1080,500]" package="com.eduvijna.app" clickable="true"/>
+</hierarchy>

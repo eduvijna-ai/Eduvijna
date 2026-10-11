@@ -3,42 +3,49 @@
  * Handles all authentication-related API calls with JWT token management
  */
 
+import axios from 'axios';
 import { get, post } from './config';
 import type { UserProfile, LoginCredentials, AuthTokens } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
+import { API_BASE_URL } from './config';
 import {
-  clearAuthForSession,
+  clearCredentialsAtEpoch,
   getAuthSessionEpoch,
   storeTokensForSession,
   storeUserDataForSession,
 } from './apiRefreshCoordinator';
 
+export type LogoutOptions = {
+  /** Credential namespace captured before session invalidation. */
+  credentialEpoch: number;
+};
+
 /**
  * Login with email and password
  * Stores tokens securely after successful authentication
- * 
+ *
  * POST /api/v1/auth/login
- * @returns { access_token, refresh_token, user }
  */
-export async function login(credentials: LoginCredentials): Promise<{
+export async function login(
+  credentials: LoginCredentials,
+  sessionEpoch: number,
+): Promise<{
   user: UserProfile;
   tokens: AuthTokens;
 }> {
-  // Backend expects "username_or_email" field, not "email"
   const payload = {
     username_or_email: credentials.email,
     password: credentials.password,
     remember_me: false,
-    device_info: 'React Native Mobile App'
+    device_info: 'React Native Mobile App',
   };
-  
+
   const response = await post<{
     access_token: string;
     refresh_token: string;
     user: UserProfile;
   }>('/api/v1/auth/login', payload);
-  
-  const sessionEpoch = getAuthSessionEpoch();
+
   const tokens: AuthTokens = {
     accessToken: response.access_token,
     refreshToken: response.refresh_token,
@@ -57,39 +64,36 @@ export async function login(credentials: LoginCredentials): Promise<{
 }
 
 /**
- * Logout current user
- * Clears all stored authentication data
+ * Logout: backend invalidation uses outgoing credentials; local cleanup targets outgoing namespace only.
  */
-export async function logout(): Promise<void> {
+export async function logout(options: LogoutOptions): Promise<void> {
+  const { credentialEpoch } = options;
+  const accessToken = await TokenStorage.getAccessTokenForEpoch(credentialEpoch);
   try {
-    // Call backend to invalidate token (if endpoint exists)
-    await post<void>('/api/v1/auth/logout');
+    if (accessToken) {
+      await axios.post(
+        `${API_BASE_URL}/api/v1/auth/logout`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: 30000,
+        },
+      );
+    }
   } catch (error) {
-    // Continue with local logout even if backend call fails
     console.warn('Backend logout failed:', error);
   } finally {
-    const sessionEpoch = getAuthSessionEpoch();
-    await clearAuthForSession(sessionEpoch);
+    await clearCredentialsAtEpoch(credentialEpoch);
   }
 }
 
-/**
- * Fetch fresh user profile from API (web loadProfile parity).
- * GET /api/v1/auth/profile
- */
-export async function fetchAuthProfile(): Promise<UserProfile> {
+export async function fetchAuthProfile(sessionEpoch?: number): Promise<UserProfile> {
+  const epoch = sessionEpoch ?? getAuthSessionEpoch();
   const user = await get<UserProfile>('/api/v1/auth/profile');
-  await storeUserDataForSession(getAuthSessionEpoch(), JSON.stringify(user));
+  await storeUserDataForSession(epoch, JSON.stringify(user));
   return user;
 }
 
-/**
- * Get current authenticated user.
- * Always refreshes from /auth/profile when online so full_name matches web.
- * Falls back to cached user only if the network request fails.
- *
- * GET /api/v1/auth/profile
- */
 export async function getCurrentUser(): Promise<UserProfile> {
   try {
     return await fetchAuthProfile();
@@ -106,30 +110,30 @@ export async function getCurrentUser(): Promise<UserProfile> {
   }
 }
 
-/**
- * Refresh authentication token
- * Uses stored refresh token if not provided
- */
-export async function refreshToken(providedRefreshToken?: string): Promise<AuthTokens> {
-  const refreshTokenValue = providedRefreshToken || await TokenStorage.getRefreshToken();
-  
+export async function refreshToken(
+  providedRefreshToken?: string,
+  sessionEpoch?: number,
+): Promise<AuthTokens> {
+  const epoch = sessionEpoch ?? getAuthSessionEpoch();
+  const refreshTokenValue =
+    providedRefreshToken || (await TokenStorage.getRefreshTokenForEpoch(epoch));
+
   if (!refreshTokenValue) {
     throw new Error('No refresh token available');
   }
-  
+
   const response = await post<{
     access_token: string;
     refresh_token: string;
   }>('/api/v1/auth/refresh', { refresh_token: refreshTokenValue });
-  
-  // Store new tokens
+
   const tokens: AuthTokens = {
     accessToken: response.access_token,
     refreshToken: response.refresh_token,
-    expiresIn: 3600
+    expiresIn: 3600,
   };
-  
-  const stored = await storeTokensForSession(getAuthSessionEpoch(), tokens);
+
+  const stored = await storeTokensForSession(epoch, tokens);
   if (!stored) {
     throw new Error('Token refresh superseded by account switch');
   }
@@ -137,23 +141,14 @@ export async function refreshToken(providedRefreshToken?: string): Promise<AuthT
   return tokens;
 }
 
-/**
- * Request password reset
- */
 export async function requestPasswordReset(email: string): Promise<void> {
   await post<void>('/auth/forgot-password', { email });
 }
 
-/**
- * Reset password with token
- */
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
   await post<void>('/auth/reset-password', { token, newPassword });
 }
 
-/**
- * Verify email with token
- */
 export async function verifyEmail(token: string): Promise<void> {
   await post<void>('/auth/verify-email', { token });
 }

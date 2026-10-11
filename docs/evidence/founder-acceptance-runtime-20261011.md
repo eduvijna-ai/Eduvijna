@@ -1,82 +1,46 @@
 # Founder acceptance — runtime pass (2026-10-11)
 
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
-**HEAD (architect repair pass):** _(see git log — assignment identity, auth credential epochs, a11y labels)._  
-**Prior HEAD:** `3f6ae8d` / `42e2211`.  
-**PR:** #26  
+**HEAD:** see `meta.json` in journey evidence after latest push.
 
-## Live API probes (separate from UI)
+## Architect repair pass (automation + credential lifecycle)
 
-| Check | Result |
-|--------|--------|
-| Instructor/student login + fixture quiz 479 / attempt 207 / session | PASS |
-| Worksheet attended-quiz score 60 | PASS |
-| Document history bucket counts | PASS |
+### Corrected findings
 
-Redacted artifact (gitignored): `.dev-api-document-workflow-run/runtime-evidence/live-api-acceptance-redacted.json`
+| Area | Defect @ `5c06f6d` | Fix |
+|------|-------------------|-----|
+| Journey `ensureInApp` | Checked **local dump path** for `com.eduvijna.app` | Reads **XML content** via `isEduvijnaAppForeground()` |
+| Journey locate/tap | `tapLabelScroll` tapped then re-searched; double tap on student | **Locate-only** scroll helpers; single `tapTarget()` per action |
+| Journey parsing | Fragile attribute-order regex | `android-ui-nodes.mjs` multiline `<node>` parser |
+| Journey verification | Loose `/10/` `/6/` | `verifyWorksheetResultScreen()` requires labelled score/evaluated/correct + student + title |
+| Journey exit code | Always 0 | `process.exit(1)` when requested journey fails |
+| Logout lifecycle | `bump` then `logout()` cleared **new** epoch namespace | Capture **outgoing** `credentialEpoch` before bump; `clearCredentialsAtEpoch(outgoing)` |
+| Session identity | Coordinator epoch ≠ hydrated storage epoch | `initializeAuthSessionIdentity()` + `restoreAuthSessionEpoch()` |
+| Token writes | Implicit `getCredentialEpoch()` during async gaps | `storeAuthTokensForEpoch(sessionEpoch, …)` with explicit epoch |
+| Marker persistence | Fire-and-forget | `await persistCredentialEpoch()` inside `bumpAuthSessionEpoch()` |
 
-## Runtime UI (this pass)
+### Automated evidence (this pass)
 
-### Android dev client (Metro 8082)
+| Suite | Result |
+|-------|--------|
+| `npm run test:journey-logic` (6 cases, XML fixtures) | **PASS** |
+| `authCredentialLifecycle.integration.test.ts` | **PASS** (4) |
+| `apiRefreshCoordinator.*` + `apiClientAuthInterceptor` | **PASS** |
+| `assessmentsTeacherStudentList.navigation.test.ts` | **PASS** |
 
-| Item | Result | Notes |
-|------|--------|--------|
-| Dev client bootstrap (no `pm clear`) | PASS | `adb reverse`, `127.0.0.1:8082` deep link, dev-menu reload |
-| Normal login (`demo_samatha`) | PASS | Per-char `adb input text` for password; Enter submit; push overlay dismissed |
-| Journey A — Assessments → students → Aarya → worksheet | **RETEST** | Fix: pass full assignment into `handleAction('view')`; human `accessibilityLabel` + `testID`; journey script matches full session id and asserts destination before drill-down |
-| Journey B — Analytics drilldown | **NE** | Blocked on A stability |
-| Document history UI | **NE** | |
-| From Books CBSE → 10 → Math | **NE** | |
-| Recent Completions (current HEAD) | **NE** | |
+Redacted UI artifacts: `.dev-api-document-workflow-run/runtime-evidence/android-journeys/`
 
-Evidence (gitignored): `.dev-api-document-workflow-run/runtime-evidence/android-journeys/` (UI XML, PNG, `journey-a.json`).
+### Live UI (device)
 
-**Root causes addressed this pass**
+| Journey | Result | Notes |
+|---------|--------|-------|
+| A (Assessments → 479 / session / student 70 → attempt 207) | **FAIL** | `eduvijna_shell_not_ready` after bootstrap (`loginResult.submitted`); automation fixes validated offline |
+| B (Analytics independent) | **FAIL** | Same shell readiness blocker; no longer gated on A |
 
-1. Wedged Metro on 8082 → restart via `node ./node_modules/expo/bin/cli start --dev-client --port 8082`.
-2. Clipboard unusable on emulator for passwords → character-at-a-time `adb input text`.
-3. False “logged in” when bundle error screen → bootstrap login guards.
-4. Fixture quiz is `availability_status: expired` → UI automation must open **Expired (9)** tab (see `fixture-in-summary-redacted.json`).
+### Expo web
 
-### Expo web (8083)
+Not re-run in this pass (prior: login inputs timeout). Requires web dev server + form login script update.
 
-| Item | Result | Notes |
-|------|--------|--------|
-| Normal form login (Puppeteer) | **FAIL** | Login inputs not found within 60s — verify web dev server route/bundle for worktree |
+## Type-check
 
-## Regression
-
-Run after script changes:
-
-```bash
-npm test -- --testPathPattern="quizResultRetrieval|studentListNavigation|documentAssessmentHistory|studentDashboardData"
-npm run type-check
-```
-
-## Repair pass (requirements 1–8)
-
-| # | Area | Status | Notes |
-|---|------|--------|-------|
-| 1 | API auth / logout | **Implemented** | Typed refresh outcomes; session stamp on dispatch; 5xx safe extract; logout only on refresh rejection |
-| 2 | Metro zustand SHA-1 | **Implemented** | Lazy zustand CJS map (skip missing `react.js`); Metro config loads on installed lockfile |
-| 3 | Document Upload tabs | **Implemented** | From Books tab replaces On device; banner removed; library picker on Upload |
-| 4 | From Books parity | **Partial** | Curriculum screen embedded; alignment OFF path / non-curriculum generate still open |
-| 5 | Rich content | **Partial** | `EducationalContent` on quiz-taking, worksheet, explanations, document preview |
-| 6 | Quiz nav API | **Partial** | `useQuizNavItems` + `isQuizNavScreenAllowed`; deep-link guard still open |
-| 7 | Answer mapping | **Implemented** | Stable `correctOptionIndex` / permutation; case-sensitive; ambiguous text rejected |
-| 8 | UI journeys | **Partial** | `testID` on assessment/student rows; automation updated |
-
-## Physical device / push
-
-Explicitly **unverified** (no device receipt).
-
-## Scripts added/updated (committed)
-
-- `scripts/android-bootstrap-dev-client.mjs`
-- `scripts/android-login.mjs`
-- `scripts/android-dismiss-overlays.mjs`
-- `scripts/android-ui-dump.mjs`
-- `scripts/android-founder-journeys.mjs`
-- `scripts/web-ui-journey.mjs`
-- `scripts/lib/founder-fixture.mjs`
-- `scripts/founder-summary-has-fixture.mjs`
+Run `npm run type-check` — error count unchanged vs integration baseline (pre-existing screen-level TS issues; no new errors from auth/journey modules in this diff).

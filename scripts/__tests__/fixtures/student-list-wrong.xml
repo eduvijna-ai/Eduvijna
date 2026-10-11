@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy rotation="0">
+  <node text="Students for: PRO_Assessment_20261007" bounds="[0,100][1080,200]" package="com.eduvijna.app"/>
+  <node resource-id="student-row-99" text="Other" bounds="[0,400][1080,500]" package="com.eduvijna.app"/>
+</hierarchy>

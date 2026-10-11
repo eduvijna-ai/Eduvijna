@@ -68,9 +68,9 @@ function deps(overrides: Partial<{
 }
 
 describe('handleApiAuthResponseError integration', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
-    coordinator.bumpAuthSessionEpoch();
+    await coordinator.bumpAuthSessionEpoch();
   });
 
   it('ordinary 403: no refresh or logout', async () => {
@@ -191,7 +191,7 @@ describe('handleApiAuthResponseError integration', () => {
     const d = deps();
     const config = { url: '/api/v1/protected', headers: {} } as InternalAxiosRequestConfig;
     coordinator.stampRequestSession(config);
-    coordinator.bumpAuthSessionEpoch();
+    await coordinator.bumpAuthSessionEpoch();
 
     const err = makeAxiosError(401, config);
     await expect(
