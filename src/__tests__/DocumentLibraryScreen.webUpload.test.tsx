@@ -59,7 +59,9 @@ describe('DocumentLibraryScreen web upload', () => {
     });
 
     const navigation = { navigate: jest.fn() };
-    const { getByText } = render(<DocumentLibraryScreen navigation={navigation} />);
+    const { getByText, getByPlaceholderText } = render(
+      <DocumentLibraryScreen navigation={navigation} />,
+    );
 
     await waitFor(() => {
       expect(getByText('Upload Book')).toBeTruthy();
