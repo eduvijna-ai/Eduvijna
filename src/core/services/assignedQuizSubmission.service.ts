@@ -16,7 +16,10 @@ import {
   fetchPersistedQuizResult,
   type QuizResultLoadState,
 } from './quizResultRetrieval.service';
-import { isSubmissionPersistedOnServer } from './assignedQuizRecovery.service';
+import {
+  isAssignedQuizRecoveryProbeError,
+  isSubmissionPersistedOnServer,
+} from './assignedQuizRecovery.service';
 import {
   clearQuizSubmissionCheckpointBestEffort,
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
@@ -38,14 +41,17 @@ export class AssignedQuizSubmissionInProgressError extends Error {
 
 export class AssignedQuizSubmissionError extends Error {
   readonly phase: 'validation' | 'attempt' | 'attempt_update' | 'submission';
+  readonly retryable: boolean;
 
   constructor(
     message: string,
     phase: 'validation' | 'attempt' | 'attempt_update' | 'submission',
+    retryable = false,
   ) {
     super(message);
     this.name = 'AssignedQuizSubmissionError';
     this.phase = phase;
+    this.retryable = retryable;
   }
 }
 
@@ -290,6 +296,7 @@ export async function submitAssignedQuiz(
           ? probeError.message
           : 'Could not verify whether this assignment was already submitted',
         'validation',
+        isAssignedQuizRecoveryProbeError(probeError),
       );
     }
     if (already) {
