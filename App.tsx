@@ -141,56 +141,25 @@ function AppContent() {
     // Listen for user tapping on notifications
     responseListener.current = Notifications.addNotificationResponseReceivedListener(async response => {
       const notificationId = response.notification.request.identifier;
-      const data = response.notification.request.content.data;
-      console.log('🔔 Notification response received:', {
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      const { handleAppPushNotificationResponse } = await import(
+        './src/core/services/appPushNotificationResponse'
+      );
+      await handleAppPushNotificationResponse({
         notificationId,
         data,
-      });
-      
-      // Prevent processing the same notification multiple times
-      if (processedNotifications.current.has(notificationId)) {
-        return;
-      }
-      
-      // Extract sessionId first (notification payload is untyped)
-      const rawSessionId = data?.sessionId ?? data?.session_id;
-      const sessionId =
-        typeof rawSessionId === 'string'
-          ? rawSessionId
-          : typeof rawSessionId === 'number'
-            ? String(rawSessionId)
-            : null;
-
-      // Debugging: Log entire notification data
-      console.log('🔍 Full notification data:', data);
-      console.log('🔍 Extracted sessionId:', sessionId);
-
-      // Handle missing sessionId
-      if (!sessionId) {
-        console.log('❌ No sessionId found in notification data');
-        Alert.alert('Error', 'Notification data is incomplete. Please try again.');
-        processedNotifications.current.add(notificationId);
-        return;
-      }
-
-      // Check authentication
-      if (!isAuthenticated) {
-        console.log('🔒 User not authenticated, saving sessionId for post-login');
-        setPendingSessionId(sessionId);
-        processedNotifications.current.add(notificationId);
-        return;
-      }
-
-      // Use centralized handler for notification processing
-      processedNotifications.current.add(notificationId);
-      await handleOpenQuiz(sessionId, 'notification', user, {
-        navigate: (screen, params) => {
-          if (navigationRef.current) {
-            (navigationRef.current as any).navigate(screen, params);
-          }
+        isAuthenticated,
+        user,
+        processedIds: processedNotifications.current,
+        setPendingSessionId,
+        navigation: {
+          navigate: (screen, params) => {
+            if (navigationRef.current) {
+              (navigationRef.current as any).navigate(screen, params);
+            }
+          },
         },
-        alert: Alert.alert,
-      }, setPendingSessionId);
+      });
     });
 
     return () => {

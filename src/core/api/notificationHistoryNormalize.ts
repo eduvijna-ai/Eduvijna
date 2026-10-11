@@ -17,7 +17,7 @@ export type NotificationHistoryNormalizeResult =
   | {
       ok: true;
       notifications: NormalizedNotificationRow[];
-      total: number;
+      total: number | null;
       responseShape: 'array_root' | 'wrapped_notifications' | 'wrapped_data';
     }
   | {
@@ -60,7 +60,7 @@ export function normalizeNotificationHistoryPayload(
     return {
       ok: true,
       notifications: data as NormalizedNotificationRow[],
-      total: data.length,
+      total: null,
       responseShape: 'array_root',
     };
   }

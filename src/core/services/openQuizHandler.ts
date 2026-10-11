@@ -21,8 +21,10 @@ import {
 } from './assignedQuizRecovery.service';
 import {
   executeStudentAssignedQuizViewResults,
+  loadAssignedQuizDataForImmutableRecovery,
   loadAssignedQuizDataForSession,
 } from './assessmentQuizStart.service';
+import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -295,19 +297,38 @@ export async function handleOpenQuiz(
     // 7. STUDENT / PUBLIC FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
-      const pendingCheckpoint = await findPendingSubmissionCheckpoint(
-        user.id,
-        quizData.quiz_id,
-        sessionId,
-      );
+      let pendingCheckpoint;
+      try {
+        pendingCheckpoint = await findPendingSubmissionCheckpoint(
+          user.id,
+          quizData.quiz_id,
+          sessionId,
+        );
+      } catch (probeError) {
+        if (isAssignedQuizRecoveryProbeError(probeError)) {
+          navigationAdapter.alert(
+            'Could not open quiz',
+            probeError.message,
+            [
+              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+          return;
+        }
+        throw probeError;
+      }
       if (pendingCheckpoint) {
         const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-        const mergedQuiz = await loadAssignedQuizDataForSession({
+        const startCtx = {
           correctQuizId: quizData.quiz_id,
           correctSessionId: sessionId,
           correctClassroomId: quizData.classroom_id || quizData.class_id || '',
           attemptData: validation.quizData,
-        });
+        };
+        const mergedQuiz = recovery
+          ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
+          : await loadAssignedQuizDataForSession(startCtx);
         const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
         const screenParams = {
           quiz: normalizedQuiz,

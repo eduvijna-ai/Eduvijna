@@ -82,7 +82,7 @@ async function fetchNotificationHistoryPage(params: {
   status?: NotificationStatus;
   limit: number;
   offset: number;
-}): Promise<{ notifications: Notification[]; total: number }> {
+}): Promise<{ notifications: Notification[]; total: number | null }> {
   const queryParams = new URLSearchParams();
   if (params.status) queryParams.append('status', params.status);
   queryParams.append('limit', String(params.limit));
@@ -101,6 +101,8 @@ async function fetchNotificationHistoryPage(params: {
   return { notifications, total: normalized.total };
 }
 
+const MAX_NOTIFICATION_HISTORY_PAGES = 40;
+
 export async function fetchAllNotificationHistory(params: {
   accountKey: string;
   status?: NotificationStatus;
@@ -110,21 +112,32 @@ export async function fetchAllNotificationHistory(params: {
   const collected: Notification[] = [];
   let offset = 0;
   let expectedTotal: number | null = null;
+  let requests = 0;
+  let lastPageFingerprint: string | null = null;
 
-  while (true) {
+  while (requests < MAX_NOTIFICATION_HISTORY_PAGES) {
+    requests += 1;
     const page = await fetchNotificationHistoryPage({
       status: params.status,
       limit,
       offset,
     });
-    if (expectedTotal == null) {
+    if (expectedTotal == null && page.total != null) {
       expectedTotal = page.total;
     }
     if (page.notifications.length === 0) {
       break;
     }
+
+    const fingerprint = page.notifications.map((row) => notificationIdKey(row.id)).join('|');
+    if (fingerprint === lastPageFingerprint) {
+      break;
+    }
+    lastPageFingerprint = fingerprint;
+
     collected.push(...page.notifications);
     offset += page.notifications.length;
+
     if (expectedTotal != null && collected.length >= expectedTotal) {
       break;
     }

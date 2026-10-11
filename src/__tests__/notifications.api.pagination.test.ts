@@ -63,6 +63,21 @@ describe('notification history pagination', () => {
     expect(rows[0]?.id).toBe(uuid);
   });
 
+  it('paginates array-root history until a short page', async () => {
+    (get as jest.Mock)
+      .mockResolvedValueOnce([
+        { id: 1, title: 'a', body: 'b', status: 'sent', priority: 'normal', created_at: '' },
+        { id: 2, title: 'c', body: 'd', status: 'sent', priority: 'normal', created_at: '' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 3, title: 'e', body: 'f', status: 'sent', priority: 'normal', created_at: '' },
+      ]);
+
+    const rows = await fetchAllNotificationHistory({ accountKey: 'acct', limit: 2 });
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3]);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
   it('dedupes duplicate ids across pages', async () => {
     (get as jest.Mock)
       .mockResolvedValueOnce({

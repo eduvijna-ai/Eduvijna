@@ -51,14 +51,17 @@ export function ensureWorktreeOwnNodeModules(worktreeRoot, monorepoRoot, expecte
   if (existsSync(marker) && readFileSync(marker, 'utf8').trim() === expectedSha) {
     return;
   }
-  if (!sharedNodeModulesWithMonorepo(worktreeRoot, monorepoRoot)) {
-    writeFileSync(marker, expectedSha, 'utf8');
-    return;
+  if (sharedNodeModulesWithMonorepo(worktreeRoot, monorepoRoot)) {
+    const nm = join(worktreeRoot, 'node_modules');
+    rmSync(nm, { recursive: true, force: true });
   }
-  const nm = join(worktreeRoot, 'node_modules');
-  rmSync(nm, { recursive: true, force: true });
-  execSync('npm ci', { cwd: worktreeRoot, stdio: 'inherit' });
+  runWorktreeNpmCi(worktreeRoot);
   writeFileSync(marker, expectedSha, 'utf8');
+}
+
+export function runWorktreeNpmCi(worktreeRoot) {
+  const cmd = process.env.STACK_WORKTREE_NPM_CI_CMD || 'npm ci';
+  execSync(cmd, { cwd: worktreeRoot, stdio: 'inherit' });
 }
 
 export function assertWorktreeExpoEntry(worktreeRoot) {

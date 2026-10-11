@@ -15,7 +15,7 @@ describe('normalizeNotificationHistoryPayload', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.responseShape).toBe('array_root');
-      expect(result.total).toBe(1);
+      expect(result.total).toBeNull();
     }
   });
 

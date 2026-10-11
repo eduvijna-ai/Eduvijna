@@ -109,6 +109,8 @@ export default function NotificationHandler() {
       case 'quiz_graded': {
         void (async () => {
           let resolvedSessionId = sessionId;
+          let resolvedClassroomId =
+            (data?.classroom_id as string | undefined) || (data?.classroomId as string | undefined);
           const student = studentId ?? user?.id;
           if (!resolvedSessionId && quizId && student) {
             const resolution = await resolveStudentGradedAssignmentSession(String(student), quizId);
@@ -119,6 +121,7 @@ export default function NotificationHandler() {
             }
             if (resolution.kind === 'resolved') {
               resolvedSessionId = resolution.sessionId;
+              resolvedClassroomId = resolution.classroomId;
             }
           }
           const resultParams = buildQuizGradedResultsNavigationParams({
@@ -132,12 +135,16 @@ export default function NotificationHandler() {
             (navigationRef.current as any).navigate('Assessments');
             return;
           }
+          if (!resolvedClassroomId) {
+            (navigationRef.current as any).navigate('Assessments');
+            return;
+          }
           await executeStudentAssignedQuizViewResults(
             {
               studentId: String(student),
               quizId,
               sessionId: String(resolvedSessionId),
-              classroomId: String(resolvedSessionId),
+              classroomId: String(resolvedClassroomId),
               quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
             },
             {
