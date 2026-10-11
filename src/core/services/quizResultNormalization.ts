@@ -131,12 +131,19 @@ function mergeUserAnswersOntoQuestions(
 ): string[] {
   const verifiedOrder = entries.length === questions.length;
   return questions.map((question, index) => {
+    const item = items?.[index];
+    const attendedAnswer = letterOrTextToDisplayAnswer(
+      item?.student_answer,
+      question.options ?? [],
+    );
     const matched = matchLogEntryToQuestion(question.question, index, entries, verifiedOrder);
     if (matched) {
-      return extractUserAnswer(matched, question.options ?? []);
+      const fromLog = extractUserAnswer(matched, question.options ?? []);
+      if (fromLog !== '') {
+        return fromLog;
+      }
     }
-    const item = items?.[index];
-    return letterOrTextToDisplayAnswer(item?.student_answer, question.options ?? []);
+    return attendedAnswer;
   });
 }
 
@@ -194,6 +201,23 @@ export function resolvePersistedScore(
   return scoreFromUnknown(logData?.score);
 }
 
+/** Prefer attended time; fall back to log time_spent_seconds or log duration (seconds). */
+export function resolvePersistedTimeSpentSeconds(
+  attendedSeconds: number | null | undefined,
+  logData: Record<string, unknown> | null | undefined,
+): number | null {
+  if (typeof attendedSeconds === 'number' && Number.isFinite(attendedSeconds)) {
+    return attendedSeconds;
+  }
+  if (typeof logData?.time_spent_seconds === 'number' && Number.isFinite(logData.time_spent_seconds)) {
+    return logData.time_spent_seconds;
+  }
+  if (typeof logData?.duration === 'number' && Number.isFinite(logData.duration)) {
+    return logData.duration;
+  }
+  return null;
+}
+
 export function userAnswersFromLogDataEntries(
   logData: Record<string, unknown> | null | undefined,
   questions: PlayableQuizQuestion[],
@@ -210,7 +234,7 @@ export function normalizeAttendedQuizResponse(
   const meta = {
     score: resolvePersistedScore(attended.score, logData),
     logData,
-    timeSpentSeconds: attended.time_spent_seconds,
+    timeSpentSeconds: resolvePersistedTimeSpentSeconds(attended.time_spent_seconds, logData),
     completedAt: attended.submitted_at,
   };
 
