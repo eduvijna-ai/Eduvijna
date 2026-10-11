@@ -41,14 +41,17 @@ export class AssignedQuizSubmissionInProgressError extends Error {
 
 export class AssignedQuizSubmissionError extends Error {
   readonly phase: 'validation' | 'attempt' | 'attempt_update' | 'submission';
+  readonly retryable: boolean;
 
   constructor(
     message: string,
     phase: 'validation' | 'attempt' | 'attempt_update' | 'submission',
+    retryable = false,
   ) {
     super(message);
     this.name = 'AssignedQuizSubmissionError';
     this.phase = phase;
+    this.retryable = retryable;
   }
 }
 
@@ -294,19 +297,13 @@ export async function submitAssignedQuiz(
         input.quizId,
       );
     } catch (probeError: unknown) {
-      const canResumeFromCheckpoint =
-        recoveryCheckpoint?.immutable &&
-        recoveryCheckpoint.attemptUpdated &&
-        isAssignedQuizRecoveryProbeError(probeError);
-      if (!canResumeFromCheckpoint) {
-        throw new AssignedQuizSubmissionError(
-          probeError instanceof Error
-            ? probeError.message
-            : 'Could not verify whether this assignment was already submitted',
-          'validation',
-        );
-      }
-      already = false;
+      throw new AssignedQuizSubmissionError(
+        probeError instanceof Error
+          ? probeError.message
+          : 'Could not verify whether this assignment was already submitted',
+        'validation',
+        isAssignedQuizRecoveryProbeError(probeError),
+      );
     }
     if (already) {
       await clearQuizSubmissionCheckpointBestEffort(
