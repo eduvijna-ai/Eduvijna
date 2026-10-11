@@ -443,6 +443,51 @@ describe('submitAssignedQuiz', () => {
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it('treats inconclusive attended-quiz probe as retryable without issuing POST', async () => {
+    mockGetAttended.mockRejectedValue({ response: { status: 503 } });
+
+    await expect(submitAssignedQuiz(input)).rejects.toMatchObject({
+      phase: 'validation',
+      retryable: true,
+    });
+    expect(mockCreateSubmission).not.toHaveBeenCalled();
+    expect(mockUpdateAttempt).not.toHaveBeenCalled();
+    expect(mockCreateAttempt).not.toHaveBeenCalled();
+  });
+
+  it('does not treat inconclusive probe as already submitted when checkpoint exists', async () => {
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (asyncStorageStore[key]) return asyncStorageStore[key];
+      return JSON.stringify({
+        userId: 'student-1',
+        quizId: '42',
+        sessionId: 'session-uuid',
+        attemptId: 12,
+        startedAt: input.startedAtIso,
+        attemptUpdated: true,
+        immutable: {
+          version: 1,
+          userId: 'student-1',
+          quizId: '42',
+          sessionId: 'session-uuid',
+          selectedAnswers: { 0: '4' },
+          scorePercent: 100,
+          questionCount: 1,
+          logData: { answers: [], score: 100, attempt_id: 12 },
+          startedAt: input.startedAtIso,
+          finalizedAt: input.startedAtIso,
+        },
+      });
+    });
+    mockGetAttended.mockRejectedValue({ response: { status: 500 } });
+
+    await expect(submitAssignedQuiz(input)).rejects.toMatchObject({
+      phase: 'validation',
+      retryable: true,
+    });
+    expect(mockCreateSubmission).not.toHaveBeenCalled();
+  });
 });
 
 describe('selectAttemptForSubmission', () => {
