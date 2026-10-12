@@ -515,13 +515,15 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   const classOpenDesc = classLabel ? `Open class analytics: ${classLabel}` : null;
   const locateClassCard = (xml) => {
     const n = parseUiXml(xml);
-    return (
-      locateByTestId(n, classTestId, { pick: 'top' }) ||
-      (classOpenDesc
-        ? locateByContentDesc(n, classOpenDesc, { requireClickable: true, pick: 'top' })
-        : null) ||
-      locateClickableByLabel(n, classLabel, { minY: 0, minHeight: 80 })
-    );
+    const byTestId = locateByTestId(n, classTestId, { pick: 'top' });
+    if (byTestId) return byTestId;
+    if (!classOpenDesc) return null;
+    const exactDesc = locateByContentDesc(n, classOpenDesc, { requireClickable: true, pick: 'top' });
+    if (exactDesc) return exactDesc;
+    return locateByContentDesc(n, new RegExp(`^Open class analytics: ${classLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), {
+      requireClickable: true,
+      pick: 'top',
+    });
   };
   const isClassDrillOpen = (xml) => {
     const n = parseUiXml(xml);
@@ -589,6 +591,14 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   }
   if (classScrolls > 0) {
     log.steps.push({ step: 'class_scroll', scrolls: classScrolls });
+  }
+  const isValidClassTap = (tap) =>
+    tap &&
+    (tap.kind === 'testId' ||
+      (tap.kind === 'contentDesc' && /^Open class analytics:/i.test(String(tap.label || ''))));
+  if (classTap && !isValidClassTap(classTap)) {
+    log.steps.push({ step: 'reject_ambiguous_class_tap', tap: classTap });
+    classTap = null;
   }
   if (!classTap) {
     log.pass = false;
