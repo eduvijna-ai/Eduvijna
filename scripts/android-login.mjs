@@ -10,11 +10,12 @@ import { loginDevApi } from './lib/dev-api-auth.mjs';
 import { findLoginFields, findTapTarget } from './lib/android-ui-parse.mjs';
 import {
   collectUiTexts,
-  isEduvijnaAppForeground,
   locateByLabel,
   parseUiXml,
   readXmlContent,
 } from './lib/android-journey-logic.mjs';
+import { classifyAndroidRuntimeScreen } from './lib/android-runtime-screen.mjs';
+import { prepareAndroidEngineeringRuntime } from './lib/android-engineering-runtime-prep.mjs';
 import { adbUiDump } from './lib/adb-ui-dump.mjs';
 const APP_PACKAGE = 'com.eduvijna.app';
 const METRO_URL = process.env.ENGINEERING_METRO_URL || 'http://127.0.0.1:8082';
@@ -183,32 +184,7 @@ function waitFor(predicate, { attempts = 24, pauseMs = 1000, dumpPrefix = 'wait'
   return { ok: false };
 }
 
-function classifyScreen(content) {
-  const nodes = parseUiXml(content);
-  const texts = collectUiTexts(nodes);
-  if (!isEduvijnaAppForeground(content)) {
-    if (texts.some((t) => /EduVijna/i.test(t))) return 'launcher_icon';
-    return 'outside_app';
-  }
-  if (texts.some((t) => /problem loading the project/i.test(t))) return 'bundle_error';
-  if (
-    texts.some((t) => /Sign in/i.test(t)) ||
-    nodes.some((n) => (n['resource-id'] || '') === 'login-email-input')
-  ) {
-    return 'login_form';
-  }
-  if (
-    locateByLabel(nodes, 'Assessments', { minY: 0 }) ||
-    locateByLabel(nodes, 'Analytics', { minY: 0 }) ||
-    locateByLabel(nodes, 'Go to main dashboard', { minY: 0 }) ||
-    texts.some((t) => /^Home$/i.test(t) && texts.some((u) => /Assessments|Analytics|Dashboard/i.test(u)))
-  ) {
-    return 'authenticated_shell';
-  }
-  if (texts.some((t) => /Signing in|Loading/i.test(t))) return 'login_in_progress';
-  if (texts.some((t) => /invalid|incorrect|failed/i.test(t))) return 'credential_rejected_ui';
-  return 'unknown_in_app';
-}
+const classifyScreen = classifyAndroidRuntimeScreen;
 
 async function probeApiLogin(role, account) {
   try {
@@ -248,12 +224,37 @@ function dismissStartupOverlays() {
 
 async function runLogin(role) {
   const startedAt = new Date().toISOString();
-  adb('reverse tcp:8082 tcp:8082');
-  if (process.argv.includes('--fresh-login')) {
-    adb('shell pm clear com.eduvijna.app');
-    sleep(3500);
-    adb('shell am start -n com.eduvijna.app/.MainActivity');
-    sleep(8000);
+  const freshLogin = process.argv.includes('--fresh-login');
+  const restartMetro = process.argv.includes('--restart-metro');
+  const skipRuntimePrep = process.argv.includes('--skip-runtime-prep');
+
+  let runtimePrecondition = null;
+  if (!skipRuntimePrep) {
+    const prep = await prepareAndroidEngineeringRuntime({
+      fresh: freshLogin,
+      restartMetro,
+      relaunchDevClient: freshLogin,
+      evidenceRoot: join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence'),
+    });
+    runtimePrecondition = prep.report;
+    if (!prep.ok) {
+      const report = {
+        role,
+        pass: false,
+        firstFailingBoundary: 'runtime_prep',
+        milestones: [{ step: 'runtime_prep', ok: false, report: prep.report }],
+        appPackage: APP_PACKAGE,
+        metroUrl: METRO_URL,
+        startedAt,
+        at: new Date().toISOString(),
+        runtimePrecondition: prep.report,
+      };
+      writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
+      return report;
+    }
+  } else {
+    adb('reverse tcp:8082 tcp:8082');
+    adb('reverse tcp:8081 tcp:8082');
   }
   dismissStartupOverlays();
   const milestones = [];
@@ -300,7 +301,7 @@ async function runLogin(role) {
     const failPath = dumpUi(`${role}-form-fail.xml`);
     return fail('login_form_ready', { screen: classifyScreen(readXmlContent(failPath)) });
   }
-  if (formReady.alreadyAuthenticated && !process.argv.includes('--fresh-login')) {
+  if (formReady.alreadyAuthenticated && !freshLogin) {
     const report = {
       role,
       pass: true,
@@ -453,6 +454,7 @@ async function runLogin(role) {
     metroUrl: METRO_URL,
     startedAt,
     at: new Date().toISOString(),
+    runtimePrecondition,
   };
   writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
   return report;
