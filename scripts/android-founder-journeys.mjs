@@ -5,6 +5,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { adbUiDump } from './lib/adb-ui-dump.mjs';
 import {
   isEduvijnaAppForeground,
   locateByLabel,
@@ -47,8 +48,7 @@ function sleep(ms) {
 }
 function dump(name) {
   const local = join(evidence, name);
-  execSync(`adb -s ${serial} shell uiautomator dump /sdcard/ui.xml`, { stdio: 'ignore' });
-  execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
+  adbUiDump(serial, local);
   return local;
 }
 function tapTarget(target) {

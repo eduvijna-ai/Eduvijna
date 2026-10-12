@@ -68,11 +68,20 @@ export default function DocumentCurriculumGeneratedPreviewScreen({ navigation, r
             options: q.options,
             answer: q.correctAnswer,
             explanation: q.explanation ?? '',
+            verification_level: q.verification_level,
+            original_item_index: q.original_item_index,
+            slot_id: q.slot_id,
           },
           answer: q.correctAnswer,
+          verification_level: q.verification_level,
         })),
       });
-      const id = Number(saved?.id ?? saved?.assessment_id ?? saved);
+      const savedRow = saved as { id?: number; assessment_id?: number } | number | null;
+      const id = Number(
+        typeof savedRow === 'object' && savedRow
+          ? savedRow.id ?? savedRow.assessment_id
+          : savedRow,
+      );
       if (Number.isFinite(id)) {
         setAssessmentId(id);
         return id;

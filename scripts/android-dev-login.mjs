@@ -36,10 +36,12 @@ if (!account?.username || !account?.password) {
   process.exit(2);
 }
 
-adb('shell pm clear com.eduvijna.app');
-sleep(4000);
+if (process.env.SKIP_PM_CLEAR !== '1') {
+  adb('shell pm clear com.eduvijna.app');
+  sleep(4000);
+}
 adb('shell am start -n com.eduvijna.app/.MainActivity');
-sleep(6000);
+sleep(process.env.SKIP_PM_CLEAR === '1' ? 2000 : 6000);
 adb('shell uiautomator dump /sdcard/login.xml');
 const xml = execSync(`adb -s ${serial} shell cat /sdcard/login.xml`, { encoding: 'utf8' });
 const emailMatch = xml.match(/text="Email or Username"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);

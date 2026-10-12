@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findTapTarget, parseUiTexts } from './lib/android-ui-parse.mjs';
 import { mkdirSync } from 'node:fs';
+import { adbUiDump } from './lib/adb-ui-dump.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence');
@@ -17,8 +18,7 @@ function sleep(ms) {
 function dump(name) {
   mkdirSync(evidence, { recursive: true });
   const local = join(evidence, name);
-  execSync(`adb -s ${serial} shell uiautomator dump /sdcard/ui.xml`, { stdio: 'ignore' });
-  execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
+  adbUiDump(serial, local);
   return local;
 }
 
@@ -33,6 +33,31 @@ if (texts.some((t) => /Enable Push Notifications/i.test(t))) {
     steps.push('push_maybe_later');
     sleep(2000);
     xml = dump('overlay-after-push.xml');
+    texts = parseUiTexts(xml);
+  }
+}
+
+if (texts.some((t) => /isn't responding|not responding/i.test(t))) {
+  const wait = findTapTarget(xml, 'Wait');
+  if (wait) {
+    adb(`shell input tap ${wait.x} ${wait.y}`);
+    steps.push('anr_wait');
+    sleep(3000);
+    xml = dump('overlay-after-anr.xml');
+    texts = parseUiTexts(xml);
+  }
+}
+
+if (texts.some((t) => /DEVELOPMENT SERVERS|development server/i.test(t))) {
+  const metro =
+    findTapTarget(xml, '127.0.0.1:8082') ||
+    findTapTarget(xml, '8082') ||
+    findTapTarget(xml, '10.0.2.2:8082');
+  if (metro) {
+    adb(`shell input tap ${metro.x} ${metro.y}`);
+    steps.push('select_metro_8082');
+    sleep(15000);
+    xml = dump('overlay-after-metro.xml');
     texts = parseUiTexts(xml);
   }
 }

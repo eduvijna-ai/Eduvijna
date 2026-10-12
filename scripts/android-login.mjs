@@ -15,6 +15,7 @@ import {
   parseUiXml,
   readXmlContent,
 } from './lib/android-journey-logic.mjs';
+import { adbUiDump } from './lib/adb-ui-dump.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-login');
@@ -33,8 +34,7 @@ function sleep(ms) {
 
 function dumpUi(name) {
   const local = join(evidence, name);
-  execSync(`adb -s ${serial} shell uiautomator dump /sdcard/ui.xml`, { stdio: 'ignore' });
-  execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
+  adbUiDump(serial, local);
   return local;
 }
 
@@ -72,42 +72,61 @@ function resetLoginFormFields(fields) {
   clearField();
 }
 
-function typeUsername(text) {
-  const safe = String(text).replace(/ /g, '%s');
-  adb(`shell input text "${safe.replace(/"/g, '\\"')}"`);
+function adbText(text) {
+  const escaped = String(text)
+    .replace(/ /g, '%s')
+    .replace(/(['"\\$`&|;<>()@])/g, '\\$1');
+  execSync(`adb -s ${serial} shell input text ${escaped}`, { stdio: 'ignore' });
 }
 
 function typeEscapedInput(text) {
   const escaped = String(text)
     .replace(/%/g, '%25')
     .replace(/ /g, '%s')
+    .replace(/@/g, '\\@')
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"');
   adb(`shell input text "${escaped}"`);
 }
 
+function typeLoginCredential(text) {
+  for (const ch of String(text)) {
+    if (ch === ' ') {
+      adb('shell input text %s');
+    } else if (ch === '@') {
+      adb('shell input text \\@');
+    } else if (/[a-zA-Z0-9]/.test(ch)) {
+      adb(`shell input text ${ch}`);
+    } else {
+      typeEscapedInput(ch);
+    }
+    sleep(30);
+  }
+}
+
 function typePasswordSecure(password) {
-  adbSetClipboard(password);
-  let clipLen = -1;
   try {
+    adbSetClipboard(password);
     const got = adb('shell cmd clipboard get-text').trim();
-    clipLen = got.length;
-    if (clipLen !== password.length) {
-      typeEscapedInput(password);
-      return { method: 'input_text', clipLen };
+    if (got.length === password.length) {
+      adbPaste();
+      return { method: 'clipboard_paste', clipLen: got.length };
     }
   } catch {
-    typeEscapedInput(password);
-    return { method: 'input_text', clipLen };
+    /* fall through */
   }
-  adbPaste();
-  return { method: 'clipboard_paste', clipLen };
+  typeLoginCredential(password);
+  return { method: 'per_char', clipLen: 0 };
 }
 
 function readEmailFieldText(xmlPath) {
   const s = readFileSync(xmlPath, 'utf8');
-  const m = s.match(/text="([^"]*)"[^>]*hint="Email or Username"/);
-  return m?.[1] ?? null;
+  const m =
+    s.match(/resource-id="login-email-input"[^>]*text="([^"]*)"/) ||
+    s.match(/text="([^"]*)"[^>]*resource-id="login-email-input"/);
+  const value = m?.[1] ?? null;
+  if (!value || value === 'Email or Username') return '';
+  return value;
 }
 
 function waitFor(predicate, { attempts = 24, pauseMs = 1000, dumpPrefix = 'wait' } = {}) {
@@ -129,7 +148,12 @@ function classifyScreen(content) {
     return 'outside_app';
   }
   if (texts.some((t) => /problem loading the project/i.test(t))) return 'bundle_error';
-  if (texts.some((t) => /Sign in/i.test(t))) return 'login_form';
+  if (
+    texts.some((t) => /Sign in/i.test(t)) ||
+    nodes.some((n) => (n['resource-id'] || '') === 'login-email-input')
+  ) {
+    return 'login_form';
+  }
   if (
     locateByLabel(nodes, 'Assessments', { minY: 0 }) ||
     locateByLabel(nodes, 'Analytics', { minY: 0 }) ||
@@ -208,7 +232,11 @@ async function runLogin(role) {
     (content) => {
       const screen = classifyScreen(content);
       if (screen === 'login_form') return { screen };
-      if (screen === 'authenticated_shell') return { screen, alreadyAuthenticated: true };
+      if (screen === 'authenticated_shell') {
+        const nodes = parseUiXml(content);
+        const stillOnLogin = nodes.some((n) => (n['resource-id'] || '') === 'login-email-input');
+        if (!stillOnLogin) return { screen, alreadyAuthenticated: true };
+      }
       return null;
     },
     { dumpPrefix: `${role}-form-ready` },
@@ -231,13 +259,17 @@ async function runLogin(role) {
   milestones.push({ step: 'fields_located', emailY: fields.email.y, passY: fields.pass.y });
 
   resetLoginFormFields(fields);
-  typeUsername(account.username);
+  tap(fields.email.x, fields.email.y);
+  sleep(200);
+  clearField();
+  adbText(account.username);
   sleep(400);
 
   tap(fields.pass.x, fields.pass.y);
   sleep(250);
   clearField();
-  const passwordEntry = typePasswordSecure(account.password);
+  adbText(account.password);
+  const passwordEntry = { method: 'adb_text' };
   sleep(500);
   milestones.push({ step: 'password_entry', ...passwordEntry });
 
@@ -255,12 +287,8 @@ async function runLogin(role) {
   const apiProbe = await probeApiLogin(role, account);
   milestones.push({ step: 'api_login_probe', ...apiProbe });
 
-  tap(fields.pass.x, fields.pass.y);
-  sleep(200);
-  adb('shell input keyevent 67');
-  sleep(150);
-  adb('shell input keyevent 66');
-  milestones.push({ step: 'submit_tapped', method: 'password_ime_go' });
+  tap(fields.btn.x, fields.btn.y);
+  milestones.push({ step: 'submit_tapped', method: 'sign_in_button' });
   sleep(2500);
 
   let logcatDiag = [];

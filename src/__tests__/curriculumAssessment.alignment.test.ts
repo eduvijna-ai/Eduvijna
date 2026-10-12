@@ -19,7 +19,7 @@ describe('curriculumAssessment alignment contracts', () => {
     expect(deriveVersionOptions(contexts, 'CBSE', '9', 'MAT')).toEqual(['2026-27']);
   });
 
-  it('builds /api/v1/quiz/generate payload when alignment ON', () => {
+  it('keeps registry quiz/generate builder for non-From-Books callers', () => {
     const payload = buildCurriculumQuizGenerateRequest({
       boardCode: 'CBSE',
       gradeCode: '9',

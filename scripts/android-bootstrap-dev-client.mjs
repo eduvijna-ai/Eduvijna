@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loginDevApi } from './lib/dev-api-auth.mjs';
 import { findLoginFields, findTapTarget, parseUiTexts } from './lib/android-ui-parse.mjs';
+import { adbUiDump } from './lib/adb-ui-dump.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence');
@@ -27,8 +28,7 @@ function sleep(ms) {
 function dumpUi(name) {
   mkdirSync(evidence, { recursive: true });
   const local = join(evidence, name);
-  adb('shell uiautomator dump /sdcard/ui.xml');
-  execSync(`adb -s ${serial} pull /sdcard/ui.xml "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
+  adbUiDump(serial, local);
   return local;
 }
 

@@ -1,12 +1,16 @@
 {
-  "runAt": "2026-10-12T04:52:00.000Z",
-  "testedImplementationSha": "ca92084904abff99a21e47aac52bfa2902dd8f0e",
-  "note": "Puppeteer on Expo web :8082 after bundle reload. Full step logs under .dev-api-document-workflow-run/runtime-evidence/web-journeys/ (local).",
-  "journeyA": { "pass": true, "path": "Assessments → fixture assignment → Aarya → attempt 207", "metrics": "60%, 6/10, identity quiz-479 attempt-207 student-70" },
+  "runAt": "2026-10-12T12:52:00.000Z",
+  "testedImplementationSha": "9be36b796b80c3034cd944b7ba96389fb670589e",
+  "note": "Puppeteer on engineering Expo web :8082. Step logs: .dev-api-document-workflow-run/runtime-evidence/web-journeys/journey-a.json, journey-b.json",
+  "journeyA": {
+    "pass": true,
+    "path": "Assessments → fixture assignment (quiz 479 / session a6882262…) → Aarya → attempt 207",
+    "metrics": "60%, 6/10, identity quiz-479 attempt-207 student-70"
+  },
   "journeyB": {
     "pass": true,
-    "path": "Analytics → Aug date range → class_4d82c60e → session-scoped View Analytics (quiz pagination) → View Details",
+    "path": "Analytics → Aug–Oct date range → class_4d82c60e → session-scoped View Analytics → View Details",
     "assignmentIdentity": "analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open",
-    "metrics": "60%, 6/10, saved answers"
+    "metrics": "60%, 6/10, persisted answers"
   }
 }

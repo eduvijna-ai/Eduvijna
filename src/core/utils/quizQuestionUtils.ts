@@ -12,6 +12,9 @@ export interface SanitizedQuizQuestion {
   correctAnswer: string;
   answer: string;
   explanation: string | null;
+  verification_level?: string;
+  original_item_index?: number;
+  slot_id?: string;
   /** Set when options were shuffled/normalized at generation time (web parity). */
   optionsNormalized?: boolean;
   correctOptionIndex?: number;
@@ -95,6 +98,11 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
           ? String(raw.explanation)
           : null,
     optionsNormalized: raw.optionsNormalized === true,
+    verification_level:
+      typeof raw.verification_level === 'string' ? raw.verification_level : undefined,
+    original_item_index:
+      typeof raw.original_item_index === 'number' ? raw.original_item_index : undefined,
+    slot_id: typeof raw.slot_id === 'string' ? raw.slot_id : undefined,
   };
 }
 

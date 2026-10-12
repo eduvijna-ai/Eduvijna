@@ -163,7 +163,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     } else if (autoAction === 'gallery') {
       void handleGalleryTilePress();
     } else if (autoAction === 'search') {
-      setActiveTab('search');
+      setActiveTab('upload');
+      setLibraryPickerOpen(true);
     }
 
     // Clear one-time action so it won't rerun on focus re-entry.
@@ -539,7 +540,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.tabRow}>
         {([
-          { key: 'upload', label: 'Upload' },
+          { key: 'upload', label: 'From Upload' },
           { key: 'fromBooks', label: 'From Books' },
         ] as const).map((tab) => {
           const active = activeTab === tab.key;

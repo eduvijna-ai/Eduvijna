@@ -1,11 +1,14 @@
 module.exports = function(api) {
-  api.cache(true);
+  // Key the cache on this checkout. A shared Metro transform cache must not
+  // reuse a sibling checkout's config result.
+  api.cache.using(() => __dirname);
   return {
     presets: ['babel-preset-expo'],
     plugins: [
       [
         'module-resolver',
         {
+          cwd: __dirname,
           root: ['./'],
           alias: {
             '@core': './src/core',
@@ -14,7 +17,6 @@ module.exports = function(api) {
             '@web': './src/platforms/web',
             '@context': './src/context',
             '@theme': './src/theme',
-            'react-native-original': 'react-native',
           },
         },
       ],
