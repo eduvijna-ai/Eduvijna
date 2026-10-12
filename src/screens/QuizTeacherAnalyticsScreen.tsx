@@ -51,6 +51,7 @@ import {
   computeQuizInsights,
   getQuizAttemptsForView,
   resolveQuizInClass,
+  type QuizAssignmentKey,
 } from '../core/utils/teacherAnalyticsHelpers';
 import type { QuizAttemptFilterKey } from '../core/utils/teacherAnalyticsHelpers';
 
@@ -75,7 +76,7 @@ export default function QuizTeacherAnalyticsScreen() {
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('classes');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState('');
-  const [selectedQuiz, setSelectedQuiz] = useState<number | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<QuizAssignmentKey | null>(null);
   const [selectedQuizName, setSelectedQuizName] = useState('');
   const [attemptFilter, setAttemptFilter] = useState<QuizAttemptFilterKey>(null);
   const [showKPIs, setShowKPIs] = useState(false);
@@ -143,13 +144,15 @@ export default function QuizTeacherAnalyticsScreen() {
     return aggregateQuizTiles(rawData, selectedClass);
   }, [rawData, selectedClass]);
 
-  const selectedQuizItem = useMemo(
-    () =>
-      selectedQuiz && selectedClass
-        ? resolveQuizInClass(rawData, selectedQuiz, selectedClass)
-        : null,
-    [rawData, selectedClass, selectedQuiz],
-  );
+  const selectedQuizItem = useMemo(() => {
+    if (!selectedAssignment) return null;
+    return resolveQuizInClass(
+      rawData,
+      selectedAssignment.quizId,
+      selectedAssignment.classroomId,
+      selectedAssignment.sessionId,
+    );
+  }, [rawData, selectedAssignment]);
 
   const classStats = useMemo(
     () => (selectedClass ? computeClassStats(classQuizzesRaw) : null),
@@ -171,15 +174,19 @@ export default function QuizTeacherAnalyticsScreen() {
     [classQuizzes, classQuizzesRaw],
   );
 
-  const selectedQuizMeta = useMemo(() => {
-    if (!selectedQuiz) return null;
-    return resolveQuizInClass(rawData, selectedQuiz, selectedClass);
-  }, [rawData, selectedQuiz, selectedClass]);
+  const selectedQuizMeta = selectedQuizItem;
 
   const selectedQuizTile = useMemo(() => {
-    if (!selectedQuiz) return null;
-    return classQuizzes.find((q) => q.quiz_id === selectedQuiz) ?? null;
-  }, [classQuizzes, selectedQuiz]);
+    if (!selectedAssignment) return null;
+    return (
+      classQuizzes.find(
+        (q) =>
+          q.quiz_id === selectedAssignment.quizId &&
+          q.session_id === selectedAssignment.sessionId &&
+          q.classroom_id === selectedAssignment.classroomId,
+      ) ?? null
+    );
+  }, [classQuizzes, selectedAssignment]);
 
   const quizAttemptStats = useMemo(
     () => (selectedQuizMeta ? computeQuizAttemptStats(selectedQuizMeta) : null),
@@ -235,9 +242,13 @@ export default function QuizTeacherAnalyticsScreen() {
     setSummaryPage(1);
   };
 
-  const handleQuizPress = (quiz: QuizTile | { quiz_id: number; quiz_name: string }) => {
-    setSelectedQuiz(quiz.quiz_id);
-    setSelectedQuizName(quiz.quiz_name);
+  const handleQuizPress = (tile: QuizTile) => {
+    setSelectedAssignment({
+      quizId: tile.quiz_id,
+      sessionId: tile.session_id,
+      classroomId: tile.classroom_id,
+    });
+    setSelectedQuizName(tile.quiz_name);
     setDrillLevel('quiz');
     setAttemptPage(1);
     setAttemptFilter(null);
@@ -246,16 +257,16 @@ export default function QuizTeacherAnalyticsScreen() {
   const openSavedQuizResult = (
     row: ReturnType<typeof getQuizAttemptsForView>[0],
   ) => {
-    if (!selectedQuiz || !row.attempt_id) return;
+    if (!selectedAssignment || !row.attempt_id || !row.canViewSavedResult) return;
     navigateRootStack('QuizResultsScreen', {
-      quizId: selectedQuiz,
+      quizId: selectedAssignment.quizId,
       attemptId: Number(row.attempt_id),
       studentId: row.student_id,
       studentName: row.student_fullname || row.student_username || 'Student',
       score: row.score,
       quizName: selectedQuizName,
-      sessionId: selectedQuizItem?.session_id ?? undefined,
-      classroomId: selectedQuizItem?.classroom_id ?? selectedClass ?? undefined,
+      sessionId: selectedAssignment.sessionId,
+      classroomId: selectedAssignment.classroomId,
       isTeacherView: true,
     });
   };
@@ -263,7 +274,7 @@ export default function QuizTeacherAnalyticsScreen() {
   const handleBack = useCallback(() => {
     if (drillLevel === 'quiz') {
       setDrillLevel('class');
-      setSelectedQuiz(null);
+      setSelectedAssignment(null);
       setSelectedQuizName('');
       setAttemptPage(1);
       setAttemptFilter(null);
@@ -361,17 +372,22 @@ export default function QuizTeacherAnalyticsScreen() {
   );
 
   const renderQuizCard = (quiz: QuizTile) => {
-    const originalQuiz = classQuizzesRaw.find((q) => q.quiz_id === quiz.quiz_id);
+    const originalQuiz = classQuizzesRaw.find(
+      (q) =>
+        q.quiz_id === quiz.quiz_id &&
+        q.session_id === quiz.session_id &&
+        q.classroom_id === quiz.classroom_id,
+    );
     const cardData = buildQuizCardData(quiz, originalQuiz, selectedClassName);
     return (
       <AnalyticsQuizCard
-        key={quiz.quiz_id}
+        key={`${quiz.quiz_id}-${quiz.session_id}`}
         tile={cardData.tile}
         originalQuiz={cardData.originalQuiz}
         classroomName={cardData.classroomName}
         performanceSummary={cardData.performanceSummary}
         urgency={cardData.urgency}
-        onViewAnalytics={(quizId, quizName) => handleQuizPress({ quiz_id: quizId, quiz_name: quizName })}
+        onViewAnalytics={() => handleQuizPress(quiz)}
         colors={colors}
       />
     );
@@ -383,11 +399,7 @@ export default function QuizTeacherAnalyticsScreen() {
       row={row}
       quizName={selectedQuizName}
       colors={colors}
-      onView={
-        row.status === 'completed' && row.log_data
-          ? () => openSavedQuizResult(row)
-          : undefined
-      }
+      onView={row.canViewSavedResult ? () => openSavedQuizResult(row) : undefined}
       viewResultTestId={
         row.attempt_id
           ? `analytics-view-result-${row.student_id}-${row.attempt_id}`
@@ -532,9 +544,31 @@ export default function QuizTeacherAnalyticsScreen() {
             </Text>
             {paginatedSummary.map((row) => (
               <QuizPerformanceSummaryCard
-                key={row.quiz_id}
+                key={`${row.quiz_id}-${row.session_id}`}
                 row={row}
-                onPress={() => handleQuizPress(row)}
+                onPress={() =>
+                  handleQuizPress({
+                    quiz_id: row.quiz_id,
+                    session_id: row.session_id,
+                    classroom_id: row.classroom_id,
+                    quiz_name: row.quiz_name,
+                    topic: row.topic,
+                    subject: null,
+                    total_students: row.total_students,
+                    completed_count: row.completed,
+                    pending_count: row.pending,
+                    in_progress_count: 0,
+                    missed_count: row.not_completed,
+                    expired_count: 0,
+                    avg_score: row.avg_score,
+                    highest_score: row.highest_score,
+                    lowest_score: row.lowest_score,
+                    at_risk_count: row.at_risk,
+                    completion_rate: row.completion_rate,
+                    created_at: '',
+                    due_date: null,
+                  })
+                }
                 colors={colors}
               />
             ))}

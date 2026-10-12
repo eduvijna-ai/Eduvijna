@@ -20,6 +20,19 @@ export function engineeringImplementationSha() {
 export const ENGINEERING_BUNDLE_MARKER = 'curriculum-generated-preview-v1';
 
 /** Fetches the dev bundle from the engineering Metro port and checks for the marker string. */
+export function extractLoadedBuildShaFromBundleText(text) {
+  const patterns = [
+    /GIT_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{7,40})/i,
+    /sha:\s*['"]([a-f0-9]{7,40})/i,
+    /EXPO_PUBLIC_GIT_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{7,40})/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) return m[1];
+  }
+  return null;
+}
+
 export async function probeEngineeringBundleMarker() {
   const url = `${ENGINEERING_EXPO_WEB_URL}/index.bundle?platform=android&dev=true&minify=false`;
   try {
@@ -29,21 +42,39 @@ export async function probeEngineeringBundleMarker() {
     }
     const text = await res.text();
     const markerFound = text.includes(ENGINEERING_BUNDLE_MARKER);
+    const loadedBuildSha = extractLoadedBuildShaFromBundleText(text);
     return {
       pass: markerFound,
       markerFound,
       metroUrl: url,
-      gitHeadSha: engineeringImplementationSha(),
+      runnerGitHeadSha: engineeringImplementationSha(),
+      loadedBuildSha,
       bundleBytes: text.length,
       error: markerFound ? null : 'marker_missing_in_bundle',
+      note: 'engineeringMarker is not a unique revision identifier',
     };
   } catch (e) {
     return {
       pass: false,
       markerFound: false,
       metroUrl: url,
-      gitHeadSha: engineeringImplementationSha(),
+      runnerGitHeadSha: engineeringImplementationSha(),
+      loadedBuildSha: null,
       error: e?.message || String(e),
     };
   }
+}
+
+export async function buildEngineeringRunRecord({ accountRole = 'instructor' } = {}) {
+  const bundleProbe = await probeEngineeringBundleMarker();
+  return {
+    runAt: new Date().toISOString(),
+    accountRole,
+    runnerGitHeadSha: engineeringImplementationSha(),
+    metroPort: ENGINEERING_METRO_PORT,
+    metroUrl: ENGINEERING_EXPO_WEB_URL,
+    bundleProbe,
+    evidenceNote:
+      'Historical journey JSON from other SHAs is not current-build evidence; compare runnerGitHeadSha and loadedBuildSha.',
+  };
 }

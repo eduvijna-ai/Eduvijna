@@ -1015,6 +1015,8 @@ export const aggregateQuizTiles = (data: QuizListItem[], classroomId: string): Q
     
     return {
       quiz_id: quiz.quiz_id,
+      session_id: quiz.session_id,
+      classroom_id: quiz.classroom_id,
       quiz_name: quiz.quiz_name,
       topic: quiz.topic,
       subject: quiz.subject,

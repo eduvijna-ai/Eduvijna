@@ -26,7 +26,7 @@ export default function QuizStudentAttemptCard({
   viewResultTestId,
   colors,
 }: Props) {
-  const isCompleted = row.status === 'completed' && !!row.log_data;
+  const isCompleted = row.status === 'completed';
   const statusStyle = STATUS_COLORS[row.derivedStatus] ?? STATUS_COLORS.pending;
   const summary = getAttemptSummaryText(row, isCompleted);
 

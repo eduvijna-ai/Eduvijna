@@ -207,6 +207,8 @@ export interface StatusSummary {
 // Quiz tile for quiz grid layer (instructor/admin only)
 export interface QuizTile {
   quiz_id: number;
+  session_id: string;
+  classroom_id: string;
   quiz_name: string;
   topic: string | null;
   subject: string | null;

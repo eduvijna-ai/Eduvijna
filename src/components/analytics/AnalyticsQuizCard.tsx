@@ -10,7 +10,7 @@ interface Props {
   classroomName: string;
   performanceSummary: QuizPerformanceSummary;
   urgency: { level: 'critical' | 'warning' | 'normal' | 'expired'; text: string };
-  onViewAnalytics: (quizId: number, quizName: string) => void;
+  onViewAnalytics: () => void;
   colors: {
     card: string;
     border: string;
@@ -57,7 +57,7 @@ export default function AnalyticsQuizCard({
 
   return (
     <View
-      testID={`analytics-quiz-card-${tile.quiz_id}`}
+      testID={`analytics-quiz-card-${tile.quiz_id}-${tile.session_id}`}
       style={[
         styles.card,
         {
@@ -214,9 +214,9 @@ export default function AnalyticsQuizCard({
         </View>
         <TouchableOpacity
           style={[styles.viewBtn, { backgroundColor: colors.primary }]}
-          onPress={() => onViewAnalytics(tile.quiz_id, tile.quiz_name)}
+          onPress={() => onViewAnalytics()}
           activeOpacity={0.85}
-          testID={`analytics-quiz-view-${tile.quiz_id}-open`}
+          testID={`analytics-quiz-view-${tile.quiz_id}-${tile.session_id}-open`}
           accessibilityRole="button"
           accessibilityLabel={`View analytics for ${tile.quiz_name} in ${classroomName}`}
         >

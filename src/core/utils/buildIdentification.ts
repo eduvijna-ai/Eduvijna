@@ -13,14 +13,30 @@ const BUILD_BRANCH =
   process.env.EXPO_PUBLIC_GIT_BRANCH ??
   'unknown';
 
-export function logMobileBuildIdentification(entrypoint = 'node_modules/expo/AppEntry.js'): void {
-  if (!__DEV__) return;
-  console.log('[Eduvijna Mobile Build]', {
+export type MobileBuildIdentity = {
+  branch: string;
+  sha: string;
+  engineeringMarker: string;
+  apiOrigin: string;
+  platform: string;
+};
+
+export function getMobileBuildIdentity(): MobileBuildIdentity {
+  return {
     branch: BUILD_BRANCH,
     sha: BUILD_SHA,
     engineeringMarker: ENGINEERING_BUILD_MARKER,
     apiOrigin: API_BASE_URL,
     platform: Platform.OS,
+  };
+}
+
+export function logMobileBuildIdentification(entrypoint = 'node_modules/expo/AppEntry.js'): void {
+  if (!__DEV__) return;
+  console.log('[Eduvijna Mobile Build]', {
+    ...getMobileBuildIdentity(),
     entrypoint,
   });
+  (globalThis as typeof globalThis & { __EDUVIJNA_BUILD_IDENTITY__?: MobileBuildIdentity }).__EDUVIJNA_BUILD_IDENTITY__ =
+    getMobileBuildIdentity();
 }

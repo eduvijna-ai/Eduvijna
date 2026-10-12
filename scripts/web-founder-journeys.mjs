@@ -246,7 +246,7 @@ async function journeyB(labels, resultEvidence = {}) {
   log.steps.push({ step: 'open_class', classroomId: FIXTURE.classroomId });
   await new Promise((r) => setTimeout(r, 1500));
 
-  await clickByTestId(page, `analytics-quiz-view-${FIXTURE.quizId}-open`);
+  await clickByTestId(page, `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`);
   log.steps.push({ step: 'view_analytics', quizId: FIXTURE.quizId });
   await new Promise((r) => setTimeout(r, 2000));
 

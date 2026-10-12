@@ -27,7 +27,7 @@ import {
   ENGINEERING_EXPO_WEB_URL,
   ENGINEERING_METRO_PORT,
   engineeringImplementationSha,
-  probeEngineeringBundleMarker,
+  buildEngineeringRunRecord,
 } from './lib/engineering-runtime-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -476,7 +476,7 @@ async function journeyB(labels, resultEvidence = {}) {
   }
   sleep(2500);
 
-  const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-open`;
+  const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   const quizNeedles = [labels.searchToken, labels.quizTitle.slice(0, 18), String(FIXTURE.quizId)].filter(
     Boolean,
   );
@@ -632,7 +632,8 @@ async function journeyB(labels, resultEvidence = {}) {
 async function main() {
   const which = process.argv[2] || 'all';
   const labels = await loadFixtureLabels();
-  const bundleProbe = await probeEngineeringBundleMarker();
+  const runRecord = await buildEngineeringRunRecord({ accountRole: 'instructor' });
+  const bundleProbe = runRecord.bundleProbe;
   if (!bundleProbe.pass) {
     console.error(
       JSON.stringify({
@@ -643,18 +644,26 @@ async function main() {
     );
     process.exit(2);
   }
-  const meta = {
-    sha,
-    loadedBundleVerified: bundleProbe.pass,
-    bundleProbe,
-    metroPort: ENGINEERING_METRO_PORT,
-    expoWebUrl: ENGINEERING_EXPO_WEB_URL,
-    fixtureQuizId: FIXTURE.quizId,
-    fixtureClassroomId: FIXTURE.classroomId,
-    fixtureSessionRedacted: `${FIXTURE.sessionId.slice(0, 8)}…`,
-    quizTitleRedacted: `${labels.quizTitle.slice(0, 10)}…`,
-  };
-  writeFileSync(join(evidence, 'meta.json'), JSON.stringify({ ...meta, availability: labels.availability }, null, 2));
+  writeFileSync(
+    join(evidence, 'meta.json'),
+    JSON.stringify(
+      {
+        ...runRecord,
+        fixtureQuizId: FIXTURE.quizId,
+        fixtureClassroomId: FIXTURE.classroomId,
+        fixtureSessionId: FIXTURE.sessionId,
+        fixtureStudentId: FIXTURE.studentId,
+        fixtureAttemptId: FIXTURE.attemptId,
+        quizTitleRedacted: `${labels.quizTitle.slice(0, 10)}…`,
+        availability: labels.availability,
+        supersededRuns: {
+          note: 'Runs at 0472b67 / d87d724 before this record are historical only.',
+        },
+      },
+      null,
+      2,
+    ),
+  );
 
   const coldLaunch = process.argv.includes('--cold') || process.env.COLD_LAUNCH === '1';
   if (coldLaunch) {
@@ -687,7 +696,9 @@ async function main() {
   }
   console.log(
     JSON.stringify({
-      sha,
+      runnerGitHeadSha: sha,
+      loadedBuildSha: bundleProbe.loadedBuildSha,
+      runAt: runRecord.runAt,
       results: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { pass: v.pass }])),
     }),
   );
