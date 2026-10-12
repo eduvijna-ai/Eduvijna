@@ -171,10 +171,29 @@ function ensureAnalyticsClassList(log, classTestId) {
       log.steps.push({ step: 'analytics_at_class_list', attempt: i });
       return true;
     }
+    if (locateByContentDesc(n, /Open class analytics:/i, { requireClickable: true }) != null) {
+      log.steps.push({ step: 'analytics_at_class_list', attempt: i, via: 'class_card_desc' });
+      return true;
+    }
+    if (locateByLabel(n, /attempt for/i) != null) {
+      const drillBack =
+        locateByTestId(n, 'analytics-drill-back') ||
+        locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 }) ||
+        locateClickableByLabel(n, /^All Classes$/i, { minY: 0 });
+      if (drillBack) {
+        log.steps.push({ step: 'analytics_leave_attempt_list', attempt: i, tap: tapTarget(drillBack) });
+        tapTarget(drillBack);
+        sleep(2500);
+        continue;
+      }
+      log.steps.push({ step: 'analytics_leave_attempt_list', attempt: i, via: 'hardware_back' });
+      adb('shell input keyevent 4');
+      sleep(2000);
+      continue;
+    }
     const onDashboard =
       locateByLabel(n, /Analytics Dashboard/i) != null &&
       locateByLabel(n, /attempt for/i) == null &&
-      locateByLabel(n, /^All Classes$/i) == null &&
       locateByLabel(n, /^Back to Quizzes$/i) == null;
     if (onDashboard && locateByLabel(n, /quizzes ·/i) != null) {
       log.steps.push({ step: 'analytics_at_class_list', attempt: i, via: 'class_subtitle' });
@@ -497,13 +516,28 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   const locateClassCard = (xml) => {
     const n = parseUiXml(xml);
     return (
+      locateByTestId(n, classTestId, { pick: 'top' }) ||
       (classOpenDesc
         ? locateByContentDesc(n, classOpenDesc, { requireClickable: true, pick: 'top' })
         : null) ||
-      locateByTestId(n, classTestId, { pick: 'top' }) ||
-      locateClickableByLabel(n, classLabel, { minY: 0, minHeight: 80 }) ||
-      locateByLabel(n, classLabel, { minY: 0 })
+      locateClickableByLabel(n, classLabel, { minY: 0, minHeight: 80 })
     );
+  };
+  const isClassDrillOpen = (xml) => {
+    const n = parseUiXml(xml);
+    return (
+      locateByTestId(n, 'analytics-drill-back') != null ||
+      locateByLabel(n, /Quizzes in this Class/i, { minY: 0 }) != null ||
+      locateByLabel(n, /Quiz Performance Summary/i, { minY: 0 }) != null ||
+      locateByTestId(n, `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`) != null ||
+      locateByTestId(n, `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`) != null
+    );
+  };
+  const tapOpenClassCard = (classTap) => {
+    tapTarget(classTap);
+    sleep(400);
+    tapTarget(classTap);
+    sleep(6000);
   };
   waitFor(
     (xml) => {
@@ -556,30 +590,45 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (classScrolls > 0) {
     log.steps.push({ step: 'class_scroll', scrolls: classScrolls });
   }
-  log.steps.push({ step: 'open_class', tap: tapTarget(classTap) });
   if (!classTap) {
     log.pass = false;
     log.verify = { label: 'analytics_class_selection', pass: false };
     writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  sleep(4500);
+  log.steps.push({ step: 'open_class', tap: tapTarget(classTap) });
+  tapOpenClassCard(classTap);
   const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   const quizCardId = `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
-  const classDrillReady = waitFor(
-    (xml) => {
-      const n = parseUiXml(xml);
-      return (
-        locateByLabel(n, /Quizzes in this Class/i, { minY: 0 }) != null ||
-        locateByTestId(n, quizCardId) != null ||
-        locateByTestId(n, viewAnalyticsId) != null ||
-        locateByLabel(n, /Performance Summary/i, { minY: 0 }) != null
-      );
-    },
-    { dumpName: 'b-01-wait-class-drill', attempts: 20, pauseMs: 2000 },
-  );
-  log.steps.push({ step: 'class_drill_ready', ok: Boolean(classDrillReady.xmlPath) });
-  for (let s = 0; s < 6; s++) scrollDown();
+  let classDrillReady = waitFor(isClassDrillOpen, {
+    dumpName: 'b-01-wait-class-drill',
+    attempts: 20,
+    pauseMs: 2000,
+  });
+  log.steps.push({ step: 'class_drill_ready', ok: classDrillReady.ok });
+  if (!classDrillReady.ok) {
+    for (let retry = 0; retry < 3 && !classDrillReady.ok; retry++) {
+      const pathRetry = dump(`b-01-reopen-class-${retry}.xml`);
+      const retryTap = locateClassCard(readXmlContent(pathRetry));
+      if (retryTap) {
+        log.steps.push({ step: 'open_class_retry', retry, tap: tapTarget(retryTap) });
+        tapOpenClassCard(retryTap);
+        classDrillReady = waitFor(isClassDrillOpen, {
+          dumpName: `b-01-wait-class-drill-retry-${retry}`,
+          attempts: 12,
+          pauseMs: 2000,
+        });
+      }
+    }
+    log.steps.push({ step: 'class_drill_ready_after_retry', ok: classDrillReady.ok });
+  }
+  if (!classDrillReady.ok) {
+    log.pass = false;
+    log.verify = { label: 'analytics_class_drill', pass: false, classTestId };
+    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
+  for (let s = 0; s < 2; s++) scrollDown();
   const titleNeedle = labels.quizTitle ? String(labels.quizTitle).slice(0, 28) : '';
   const fixtureViewDesc = labels.quizTitle
     ? `View analytics for ${labels.quizTitle}`
@@ -621,9 +670,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   }
   const summaryRowId = `analytics-summary-row-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
   let drillOpened = false;
-  for (let pageTry = 0; pageTry < 12 && !drillOpened; pageTry++) {
+  for (let pageTry = 0; pageTry < 6 && !drillOpened; pageTry++) {
     scrollToTop(4);
-    scrollToBottom(8);
+    scrollToBottom(6);
     const scrolledSummary = locateWithScroll({
       dumpFn: dump,
       scrollFn: () => {
