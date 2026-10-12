@@ -213,13 +213,40 @@ function waitAfterAction(actionAttempted) {
   if (actionAttempted === 'reload_bundle') return 28000;
   if (actionAttempted === 'outside_relaunch') return 8000;
   if (actionAttempted === 'login_in_progress_wait') return 2500;
+  if (actionAttempted === 'dismiss_anr') return 12000;
+  if (actionAttempted === 'developer_menu_close') return 8000;
+  if (actionAttempted === 'developer_menu_continue') return 5000;
   return 2000;
 }
 
 /**
  * One observed screen → one action → re-dump is handled by the caller loop.
  */
-function actOnceForState(serial, state, xmlPath) {
+function findTapTargetContentDesc(xmlPath, desc) {
+  const s = readFileSync(xmlPath, 'utf8');
+  const re = new RegExp(
+    `content-desc="${desc}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`,
+    'i',
+  );
+  const m = s.match(re);
+  if (!m) return null;
+  return {
+    label: desc,
+    x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
+    y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+  };
+}
+
+function tapLabelCenter(serial, xmlPath, pattern) {
+  const t = findTapTarget(xmlPath, pattern) || findTapTargetContentDesc(xmlPath, pattern);
+  if (!t) return null;
+  tap(serial, t.x, t.y);
+  sleep(250);
+  tap(serial, t.x, t.y);
+  return t.label;
+}
+
+function actOnceForState(serial, state, xmlPath, hints = {}) {
   /** @type {{ actionAttempted: string, actionSucceeded: boolean, targetLabel: string|null }} */
   const base = { actionAttempted: 'none', actionSucceeded: false, targetLabel: null };
 
@@ -235,16 +262,29 @@ function actOnceForState(serial, state, xmlPath) {
     };
   }
   if (state === 'developer_menu') {
-    const cont = tapIf(serial, xmlPath, 'Continue');
-    if (cont) {
-      return { actionAttempted: 'developer_menu_continue', actionSucceeded: true, targetLabel: cont };
+    const level = hints.devMenuEscalation ?? 0;
+    if (level === 0) {
+      adbIgnore(serial, 'shell input keyevent 66');
+      return { actionAttempted: 'developer_menu_enter', actionSucceeded: true, targetLabel: 'KEYCODE_ENTER' };
     }
-    const close = tapIf(serial, xmlPath, 'Close') || tapIf(serial, xmlPath, 'close');
-    if (close) {
-      return { actionAttempted: 'developer_menu_close', actionSucceeded: true, targetLabel: close };
+    const closeTarget = findTapTarget(xmlPath, 'Close') || findTapTargetContentDesc(xmlPath, 'Close');
+    const continueTarget = findTapTarget(xmlPath, 'Continue');
+    if (level === 1 && closeTarget) {
+      tap(serial, closeTarget.x, closeTarget.y);
+      return { actionAttempted: 'developer_menu_close', actionSucceeded: true, targetLabel: 'Close' };
     }
-    adbIgnore(serial, 'shell input keyevent 4');
-    return { actionAttempted: 'developer_menu_back', actionSucceeded: true, targetLabel: 'KEYCODE_BACK' };
+    if (level === 2 && continueTarget) {
+      tap(serial, continueTarget.x, continueTarget.y);
+      sleep(250);
+      tap(serial, continueTarget.x, continueTarget.y);
+      return { actionAttempted: 'developer_menu_continue', actionSucceeded: true, targetLabel: 'Continue' };
+    }
+    if (level === 3) {
+      tap(serial, 540, 1771);
+      return { actionAttempted: 'developer_menu_continue_coords', actionSucceeded: true, targetLabel: '540,1771' };
+    }
+    tap(serial, 540, 480);
+    return { actionAttempted: 'developer_menu_backdrop_tap', actionSucceeded: true, targetLabel: '540,480' };
   }
   if (state === 'push_notification') {
     const target = tapIf(serial, xmlPath, 'Maybe Later');
@@ -321,6 +361,8 @@ export function pollUntilPreLoginSurface(
   let lastSuccessfulAction = null;
   let outsideRelaunches = 0;
   let lastObs = null;
+  let devMenuEscalation = 0;
+  let previousScreen = null;
 
   for (let i = 0; i < maxIterations; i++) {
     const obs = observeScreen(serial, evidenceDir, `sm-${i}.xml`);
@@ -360,7 +402,13 @@ export function pollUntilPreLoginSurface(
     }
 
     const beforeScreen = obs.state;
-    let action = actOnceForState(serial, beforeScreen, obs.path);
+    if (beforeScreen === 'developer_menu' && previousScreen === 'developer_menu') {
+      devMenuEscalation = Math.min(devMenuEscalation + 1, 4);
+    } else if (beforeScreen !== 'developer_menu') {
+      devMenuEscalation = 0;
+    }
+    let action = actOnceForState(serial, beforeScreen, obs.path, { devMenuEscalation });
+    previousScreen = beforeScreen;
 
     if (beforeScreen === 'outside_app' && allowOutsideRelaunch) {
       if (outsideRelaunches < outsideRelaunchMax) {
@@ -421,7 +469,7 @@ export function launchExpoDevClientWithMetroUrl(serial, evidenceDir, log) {
   const launch = launchExpoDevClientIntent(serial);
   log.devClientLaunchPerformed = true;
   log.devClientLaunch = launch;
-  return pollUntilPreLoginSurface(serial, evidenceDir, log, { maxIterations: 50, stuckThreshold: 6 });
+  return pollUntilPreLoginSurface(serial, evidenceDir, log, { maxIterations: 55, stuckThreshold: 10 });
 }
 
 /** Journey overlay helper: bounded steps using the same state machine. */
