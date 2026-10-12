@@ -462,7 +462,12 @@ export default function QuizTeacherAnalyticsScreen() {
         ) : null}
 
         {drillLevel !== 'classes' ? (
-          <TouchableOpacity style={styles.backRow} onPress={handleBack}>
+          <TouchableOpacity
+            testID="analytics-drill-back"
+            accessibilityLabel={drillLevel === 'quiz' ? 'Back to Quizzes' : 'All Classes'}
+            style={styles.backRow}
+            onPress={handleBack}
+          >
             <Ionicons name="arrow-back" size={18} color={colors.primary} />
             <Text style={[styles.backText, { color: colors.primary }]}>
               {drillLevel === 'quiz' ? 'Back to Quizzes' : 'All Classes'}

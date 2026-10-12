@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ModalDropdownField from '../components/ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import useNotifications from '@core/hooks/useNotifications';
 import {
   generateAIQuiz,
@@ -50,6 +51,7 @@ const LANGUAGES = [
 const COUNT_OPTIONS = ['5', '10', '15', '20'];
 
 export default function CreateAIQuizScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateAIQuizScreen', navigation);
   const { theme } = useTheme();
   const { user } = useAuth();
   const { refreshAfterQuizGenerated } = useNotifications();

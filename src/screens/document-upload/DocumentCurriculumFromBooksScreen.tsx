@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -28,6 +29,16 @@ import {
   type CurriculumCatalogContext,
   type CurriculumResolveUnit,
 } from '@core/services/curriculumAssessment.service';
+import {
+  buildCurriculumGeneratedPreviewParams,
+  type CurriculumSource,
+} from '@core/utils/documentCurriculumGeneratedHandoff';
+
+const LANGUAGE_OPTIONS = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'te', label: 'Telugu' },
+];
 
 const COUNT_OPTIONS = [5, 10, 15, 20];
 const LEVELS = ['easy', 'medium', 'hard', 'mixed'];
@@ -51,12 +62,16 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
   const [generating, setGenerating] = useState(false);
   const [curriculumAlignmentEnabled, setCurriculumAlignmentEnabled] = useState(false);
   const [versionLabel, setVersionLabel] = useState('');
+  const [language, setLanguage] = useState('en');
+  const [additionalInstructions, setAdditionalInstructions] = useState('');
+  const [subtopicText, setSubtopicText] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
-        const data = await getCurriculumCatalog(true);
+        const data = await getCurriculumCatalog(!curriculumAlignmentEnabled);
         if (!cancelled) setContexts(data.contexts ?? []);
       } catch {
         if (!cancelled) Alert.alert('Error', 'Could not load curriculum catalogue.');
@@ -67,7 +82,16 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [curriculumAlignmentEnabled]);
+
+  useEffect(() => {
+    setVersionLabel('');
+    setSelectedUnits(new Set());
+    setBoardCode('');
+    setGradeCode('');
+    setSubjectCtx(null);
+    setUnits([]);
+  }, [curriculumAlignmentEnabled]);
 
   const boards = useMemo(() => deriveBoardOptions(contexts), [contexts]);
   const grades = useMemo(
@@ -118,8 +142,20 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
   };
 
   const onGenerate = async () => {
-    if (!subjectCtx || selectedUnits.size === 0) {
-      Alert.alert('Selection required', 'Choose board, class, subject, and at least one topic.');
+    if (!boardCode || !gradeCode || !subjectCtx) {
+      Alert.alert('Selection required', 'Choose board, class, and subject.');
+      return;
+    }
+    if (selectedUnits.size === 0) {
+      Alert.alert('Selection required', 'Select at least one curriculum topic.');
+      return;
+    }
+    if (!curriculumAlignmentEnabled && !additionalInstructions.trim()) {
+      Alert.alert('Instructions required', 'Additional instructions are required when alignment is OFF.');
+      return;
+    }
+    if (curriculumAlignmentEnabled && !versionLabel) {
+      Alert.alert('Version required', 'Select a curriculum version when alignment is ON.');
       return;
     }
     const primaryUnit = units.find((u) => selectedUnits.has(u.unit_code));
@@ -130,6 +166,14 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
         .filter((u) => selectedUnits.has(u.unit_code))
         .map((u) => u.title)
         .join('; ');
+      const subtopics = subtopicText
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const itext = additionalInstructions.trim();
+      const source: CurriculumSource = curriculumAlignmentEnabled
+        ? 'Doc-File-Curriculum'
+        : 'Doc-File-Curriculum';
       const result = curriculumAlignmentEnabled
         ? await generateCurriculumQuiz(
             buildCurriculumQuizGenerateRequest({
@@ -141,8 +185,10 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
               versionLabel: versionLabel || subjectCtx.version_label,
               unitCode: primaryUnit.unit_code,
               unitTitle: primaryUnit.title,
+              inputText: itext,
               level,
               count: questionCount,
+              language,
             }),
           )
         : await generateRegistryCurriculumQuiz({
@@ -155,19 +201,41 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
             },
             count: questionCount,
             level,
-            language: 'en',
+            language,
             topic: topicTitles,
-            itext: '',
+            subtopic: subtopics.join('; ') || undefined,
+            itext,
           });
-      const sessionId = result?.session_id ?? result?.data?.session_id;
-      navigation.navigate('DocumentUploadPreviewScreen', {
-        generatedQuiz: result,
+      const sessionId = result?.session_id ?? result?.data?.session_id ?? null;
+      const previewParams = buildCurriculumGeneratedPreviewParams({
+        generationResponse: result,
         sessionId,
-        source: 'Doc-File-Curriculum',
-        previewMode: 'curriculum',
+        source,
+        curriculumMeta: {
+          alignmentEnabled: curriculumAlignmentEnabled,
+          boardCode: subjectCtx.board.code,
+          gradeCode: subjectCtx.grade.code,
+          subjectCode: subjectCtx.subject.code,
+          versionLabel: versionLabel || subjectCtx.version_label,
+          unitCodes: [...selectedUnits],
+          topicTitles,
+          subtopics,
+          language,
+          additionalInstructions: itext,
+          level,
+          count: questionCount,
+          title: [subjectCtx.subject.label, topicTitles].filter(Boolean).join(' - '),
+          classLabel: subjectCtx.grade.label,
+          subjectLabel: subjectCtx.subject.label,
+        },
       });
+      navigation.navigate('DocumentCurriculumGeneratedPreviewScreen', previewParams);
     } catch (e: any) {
-      Alert.alert('Generation failed', e?.message || 'Please try again.');
+      const msg =
+        e?.message === 'generation_response_empty'
+          ? 'No questions were returned for this selection.'
+          : e?.message || 'Please try again.';
+      Alert.alert('Generation failed', msg);
     } finally {
       setGenerating(false);
     }
@@ -352,6 +420,58 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
           </View>
 
           <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Language</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {LANGUAGE_OPTIONS.map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[styles.chip, language === lang.code && styles.chipActive]}
+                  onPress={() => setLanguage(lang.code)}
+                >
+                  <Text style={[styles.chipText, language === lang.code && styles.chipTextActive]}>
+                    {lang.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Additional instructions{curriculumAlignmentEnabled ? '' : ' *'}
+            </Text>
+            <TextInput
+              testID="curriculum-additional-instructions"
+              value={additionalInstructions}
+              onChangeText={setAdditionalInstructions}
+              placeholder="Guidance for generation (required when alignment is OFF)"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              style={[
+                styles.input,
+                { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+              ]}
+            />
+          </View>
+
+          {!curriculumAlignmentEnabled ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Subtopics (optional)</Text>
+              <TextInput
+                testID="curriculum-subtopics"
+                value={subtopicText}
+                onChangeText={setSubtopicText}
+                placeholder="Comma-separated refinements"
+                placeholderTextColor={colors.textSecondary}
+                style={[
+                  styles.input,
+                  { borderColor: colors.border, color: colors.text, backgroundColor: colors.card },
+                ]}
+              />
+            </View>
+          ) : null}
+
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>Difficulty</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {LEVELS.map((lv) => (
@@ -439,6 +559,15 @@ function makeStyles(colors: any) {
     },
     unitRowActive: { backgroundColor: colors.surface },
     unitTitle: { flex: 1, color: colors.text, fontSize: 14 },
+    input: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      minHeight: 72,
+      textAlignVertical: 'top',
+      fontSize: 14,
+    },
     generateBtn: {
       marginTop: 8,
       backgroundColor: colors.primary,

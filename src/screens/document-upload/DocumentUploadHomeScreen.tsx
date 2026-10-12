@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import {
   DocumentUploadBook,
   fetchBookPageImage,
@@ -77,6 +78,7 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
 };
 
 export default function DocumentUploadHomeScreen({ navigation, route }: any) {
+  useQuizNavAccessRedirect('CreateDocumentQuizScreen', navigation);
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();

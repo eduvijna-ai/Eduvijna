@@ -45,6 +45,7 @@ import CreateAIQuizScreen from './src/screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from './src/screens/CreateDocumentQuizScreen';
 import DocumentUploadHomeScreen from './src/screens/document-upload/DocumentUploadHomeScreen';
 import DocumentUploadPreviewScreen from './src/screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentCurriculumGeneratedPreviewScreen from './src/screens/document-upload/DocumentCurriculumGeneratedPreviewScreen';
 import DocumentUploadHistoryScreen from './src/screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from './src/screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from './src/screens/document-upload/DocumentLibraryScreen';
@@ -543,6 +544,13 @@ function AppContent() {
         case 'DocumentUploadPreviewScreen':
           return (
             <DocumentUploadPreviewScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentCurriculumGeneratedPreviewScreen':
+          return (
+            <DocumentCurriculumGeneratedPreviewScreen
               navigation={createWebNavigation('DocumentUploadHomeScreen')}
               route={{ params: navigationParams }}
             />

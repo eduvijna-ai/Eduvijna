@@ -36,6 +36,7 @@ import {
 } from '../core/services/sharedApi';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import { loadDocumentAssessmentHistory } from '@core/services/documentAssessmentHistory.service';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 
 interface Props {
   navigation: any;
@@ -78,6 +79,7 @@ function decodeQuizQuestions(raw: any[]): any[] {
 // ── screen ─────────────────────────────────────────────────────────────────
 
 export default function AssessmentWorkspaceScreen({ navigation, route }: Props) {
+  useQuizNavAccessRedirect('CreateDocumentQuizScreen', navigation);
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 

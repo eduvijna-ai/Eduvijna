@@ -40,6 +40,7 @@ import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
 import AssessmentWorkspaceScreen from '@screens/AssessmentWorkspaceScreen';
 import DocumentUploadHomeScreen from '@screens/document-upload/DocumentUploadHomeScreen';
 import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentCurriculumGeneratedPreviewScreen from '@screens/document-upload/DocumentCurriculumGeneratedPreviewScreen';
 import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from '@screens/document-upload/DocumentLibraryScreen';
@@ -531,6 +532,15 @@ export default function MobileNavigation() {
         options={{
           headerShown: true,
           title: 'Preview',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="DocumentCurriculumGeneratedPreviewScreen"
+        component={DocumentCurriculumGeneratedPreviewScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Generated preview',
           headerBackTitle: 'Back',
         }}
       />

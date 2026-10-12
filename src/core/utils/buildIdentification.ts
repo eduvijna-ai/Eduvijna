@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { API_BASE_URL } from '../api/config';
+import { ENGINEERING_BUILD_MARKER } from './documentCurriculumGeneratedHandoff';
 
 const BUILD_SHA =
   (Constants.expoConfig?.extra as { GIT_SHA?: string } | undefined)?.GIT_SHA ??
@@ -17,6 +18,7 @@ export function logMobileBuildIdentification(entrypoint = 'node_modules/expo/App
   console.log('[Eduvijna Mobile Build]', {
     branch: BUILD_BRANCH,
     sha: BUILD_SHA,
+    engineeringMarker: ENGINEERING_BUILD_MARKER,
     apiOrigin: API_BASE_URL,
     platform: Platform.OS,
     entrypoint,

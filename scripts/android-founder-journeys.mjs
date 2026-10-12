@@ -27,6 +27,7 @@ import {
   ENGINEERING_EXPO_WEB_URL,
   ENGINEERING_METRO_PORT,
   engineeringImplementationSha,
+  probeEngineeringBundleMarker,
 } from './lib/engineering-runtime-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,6 +56,10 @@ function tapTarget(target) {
 }
 function scrollDown() {
   adb('shell input swipe 540 1500 540 700 350');
+  sleep(900);
+}
+function scrollUp() {
+  adb('shell input swipe 540 700 540 1500 350');
   sleep(900);
 }
 
@@ -91,6 +96,40 @@ function fillAnalyticsDateField(testId, isoDate) {
   adb(`shell input text "${String(isoDate).replace(/-/g, '\\-')}"`);
   sleep(300);
   return true;
+}
+
+function ensureAnalyticsClassList(log, classTestId) {
+  for (let i = 0; i < 8; i++) {
+    const path = dump(`b-reset-drill-${i}.xml`);
+    const n = parseUiXml(readXmlContent(path));
+    if (locateByTestId(n, classTestId) != null) {
+      log.steps.push({ step: 'analytics_at_class_list', attempt: i });
+      return true;
+    }
+    const onDashboard =
+      locateByLabel(n, /Analytics Dashboard/i) != null &&
+      locateByLabel(n, /attempt for/i) == null &&
+      locateByLabel(n, /^All Classes$/i) == null &&
+      locateByLabel(n, /^Back to Quizzes$/i) == null;
+    if (onDashboard && locateByLabel(n, /quizzes ·/i) != null) {
+      log.steps.push({ step: 'analytics_at_class_list', attempt: i, via: 'class_subtitle' });
+      return true;
+    }
+    const back =
+      locateByTestId(n, 'analytics-drill-back') ||
+      locateClickableByLabel(n, /^All Classes$/i, { minY: 0 }) ||
+      locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 });
+    if (back) {
+      log.steps.push({ step: 'analytics_drill_back', attempt: i, tap: tapTarget(back) });
+      tapTarget(back);
+      sleep(2200);
+      continue;
+    }
+    log.steps.push({ step: 'analytics_hardware_back', attempt: i });
+    adb('shell input keyevent 4');
+    sleep(1800);
+  }
+  return false;
 }
 
 function applyFixtureAnalyticsDateRange(log) {
@@ -390,6 +429,9 @@ async function journeyB(labels, resultEvidence = {}) {
     { dumpName: 'b-00-wait-hub', attempts: 12, pauseMs: 1500 },
   );
   applyFixtureAnalyticsDateRange(log);
+  if (!ensureAnalyticsClassList(log, classTestId)) {
+    log.steps.push({ step: 'analytics_class_list_reset', ok: false });
+  }
   waitFor(
     (xml) => locateClassCard(xml) != null || locateByTestId(parseUiXml(xml), classTestId) != null,
     { dumpName: 'b-00-wait-after-dates', attempts: 10, pauseMs: 1500 },
@@ -490,13 +532,16 @@ async function journeyB(labels, resultEvidence = {}) {
   }
   const viewResultId = `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
   sleep(2500);
+  const studentAttemptCardId = `analytics-student-attempt-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
   const drillReady = waitFor(
     (xml) => {
       const n = parseUiXml(xml);
       return (
         locateByLabel(n, /Back to Quizzes/i) != null ||
         locateByLabel(n, /Student Attempts/i) != null ||
-        locateByTestId(n, viewResultId) != null
+        locateByTestId(n, viewResultId) != null ||
+        locateByTestId(n, studentAttemptCardId) != null ||
+        locateByLabel(n, new RegExp(FIXTURE.studentName, 'i')) != null
       );
     },
     { dumpName: 'b-03-wait-drill', attempts: 12, pauseMs: 1500 },
@@ -515,25 +560,45 @@ async function journeyB(labels, resultEvidence = {}) {
     }
   }
 
+  for (let i = 0; i < 4; i++) scrollUp();
+  const locateStudentResult = (xml) => {
+    const n = parseUiXml(xml);
+    return (
+      locateByTestId(n, viewResultId) ||
+      locateClickableByLabel(n, 'View Details', { minY: 0, minHeight: 32 }) ||
+      locateByLabel(n, /View saved result/i, { minY: 0 }) ||
+      locateClickableByLabel(n, new RegExp(`^${FIXTURE.studentName}$`, 'i'), { minY: 0 }) ||
+      locateByTestId(n, studentAttemptCardId)
+    );
+  };
   path = dump('b-04-drill.xml');
   nodes = parseUiXml(readXmlContent(path));
-  let viewResultTap =
-    locateByTestId(nodes, viewResultId) ||
-    locateClickableByLabel(nodes, 'View Details', { minY: 0, minHeight: 32 }) ||
-    locateByLabel(nodes, 'View Details', { minY: 0 });
+  let viewResultTap = locateStudentResult(readXmlContent(path));
   if (!viewResultTap) {
     const scrolledStudent = locateWithScroll({
       dumpFn: dump,
       scrollFn: scrollDown,
-      maxScrolls: 8,
+      maxScrolls: 10,
       dumpNamePrefix: 'b-04-scroll-student',
-      locateFn: (xml) => {
-        const n = parseUiXml(xml);
-        return locateByTestId(n, viewResultId) || locateByLabel(n, 'View Details', { minY: 0 });
-      },
+      locateFn: locateStudentResult,
     });
     viewResultTap = scrolledStudent.hit;
     log.steps.push({ step: 'student_scroll', scrolls: scrolledStudent.scrolls });
+  }
+  if (!viewResultTap) {
+    for (let pageTry = 0; pageTry < 4 && !viewResultTap; pageTry++) {
+      path = dump(`b-04-attempt-page-${pageTry}.xml`);
+      nodes = parseUiXml(readXmlContent(path));
+      viewResultTap = locateStudentResult(readXmlContent(path));
+      if (viewResultTap) break;
+      const nextTap =
+        locateByTestId(nodes, 'analytics-pagination-next') ||
+        locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
+      if (!nextTap) break;
+      log.steps.push({ step: 'attempt_pagination_next', pageTry, tap: tapTarget(nextTap) });
+      tapTarget(nextTap);
+      sleep(2000);
+    }
   }
   log.steps.push({ step: 'open_saved_result', tap: tapTarget(viewResultTap), testId: viewResultId });
   if (!viewResultTap) {
@@ -567,8 +632,21 @@ async function journeyB(labels, resultEvidence = {}) {
 async function main() {
   const which = process.argv[2] || 'all';
   const labels = await loadFixtureLabels();
+  const bundleProbe = await probeEngineeringBundleMarker();
+  if (!bundleProbe.pass) {
+    console.error(
+      JSON.stringify({
+        error: 'engineering_bundle_not_verified',
+        bundleProbe,
+        hint: 'Restart Metro on port 8082 from the PR worktree and reload the dev client before journeys.',
+      }),
+    );
+    process.exit(2);
+  }
   const meta = {
     sha,
+    loadedBundleVerified: bundleProbe.pass,
+    bundleProbe,
     metroPort: ENGINEERING_METRO_PORT,
     expoWebUrl: ENGINEERING_EXPO_WEB_URL,
     fixtureQuizId: FIXTURE.quizId,
