@@ -16,6 +16,8 @@ import {
   readXmlContent,
 } from './lib/android-journey-logic.mjs';
 import { adbUiDump } from './lib/adb-ui-dump.mjs';
+const APP_PACKAGE = 'com.eduvijna.app';
+const METRO_URL = process.env.ENGINEERING_METRO_URL || 'http://127.0.0.1:8082';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-login');
@@ -72,11 +74,52 @@ function resetLoginFormFields(fields) {
   clearField();
 }
 
-function adbText(text) {
-  const escaped = String(text)
-    .replace(/ /g, '%s')
-    .replace(/(['"\\$`&|;<>()@])/g, '\\$1');
-  execSync(`adb -s ${serial} shell input text ${escaped}`, { stdio: 'ignore' });
+/** Per-character `adb shell input text` (works with secureTextEntry + RN onEndEditing sync). */
+function adbInputText(text) {
+  const specials = new Set('!@#$%^&*()_+-=[]{}|;:\'",.<>?/~`');
+  for (const ch of String(text)) {
+    if (ch === ' ') {
+      execSync(`adb -s ${serial} shell input text %s`, { stdio: 'ignore' });
+    } else if (/[a-zA-Z0-9]/.test(ch)) {
+      execSync(`adb -s ${serial} shell input text ${ch}`, { stdio: 'ignore' });
+    } else if (ch === '%') {
+      execSync(`adb -s ${serial} shell input text %25`, { stdio: 'ignore' });
+    } else if (specials.has(ch)) {
+      execSync(`adb -s ${serial} shell input text \\${ch}`, { stdio: 'ignore' });
+    } else {
+      typeEscapedInput(ch);
+    }
+    sleep(40);
+  }
+}
+
+function blurPasswordFieldSync(fields) {
+  tap(fields.email.x, fields.email.y);
+  sleep(350);
+  tap(fields.pass.x, fields.pass.y);
+  sleep(250);
+  adb('shell input keyevent 111');
+  sleep(200);
+}
+
+function readLoginDiagLogcat() {
+  try {
+    const log = execSync(`adb -s ${serial} logcat -d -s ReactNativeJS:I`, { encoding: 'utf8' });
+    const parsed = [];
+    for (const line of log.split('\n')) {
+      const idx = line.indexOf('LOGIN_DIAG');
+      if (idx < 0) continue;
+      const json = line.slice(idx + 'LOGIN_DIAG'.length).trim();
+      try {
+        parsed.push(JSON.parse(json));
+      } catch {
+        // ignore
+      }
+    }
+    return parsed;
+  } catch {
+    return [];
+  }
 }
 
 function typeEscapedInput(text) {
@@ -204,6 +247,14 @@ function dismissStartupOverlays() {
 }
 
 async function runLogin(role) {
+  const startedAt = new Date().toISOString();
+  adb('reverse tcp:8082 tcp:8082');
+  if (process.argv.includes('--fresh-login')) {
+    adb('shell pm clear com.eduvijna.app');
+    sleep(3500);
+    adb('shell am start -n com.eduvijna.app/.MainActivity');
+    sleep(8000);
+  }
   dismissStartupOverlays();
   const milestones = [];
   const fail = (boundary, detail) => {
@@ -213,6 +264,9 @@ async function runLogin(role) {
       pass: false,
       firstFailingBoundary: boundary,
       milestones,
+      appPackage: APP_PACKAGE,
+      metroUrl: METRO_URL,
+      startedAt,
       at: new Date().toISOString(),
     };
     writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
@@ -246,8 +300,18 @@ async function runLogin(role) {
     const failPath = dumpUi(`${role}-form-fail.xml`);
     return fail('login_form_ready', { screen: classifyScreen(readXmlContent(failPath)) });
   }
-  if (formReady.alreadyAuthenticated) {
-    const report = { role, pass: true, milestones, outcome: 'already_authenticated' };
+  if (formReady.alreadyAuthenticated && !process.argv.includes('--fresh-login')) {
+    const report = {
+      role,
+      pass: true,
+      milestones,
+      outcome: 'already_authenticated',
+      appPackage: APP_PACKAGE,
+      metroUrl: METRO_URL,
+      startedAt,
+      authenticatedShellDetection: 'assessments_or_analytics_tab',
+      at: new Date().toISOString(),
+    };
     writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));
     return report;
   }
@@ -262,15 +326,16 @@ async function runLogin(role) {
   tap(fields.email.x, fields.email.y);
   sleep(200);
   clearField();
-  adbText(account.username);
+  adbInputText(account.username);
   sleep(400);
 
   tap(fields.pass.x, fields.pass.y);
   sleep(250);
   clearField();
-  adbText(account.password);
-  const passwordEntry = { method: 'adb_text' };
-  sleep(500);
+  adbInputText(account.password);
+  blurPasswordFieldSync(fields);
+  const passwordEntry = { method: 'adb_input_per_char' };
+  sleep(400);
   milestones.push({ step: 'password_entry', ...passwordEntry });
 
   const usernameProbe = sha256(account.username);
@@ -287,9 +352,24 @@ async function runLogin(role) {
   const apiProbe = await probeApiLogin(role, account);
   milestones.push({ step: 'api_login_probe', ...apiProbe });
 
+  const preSubmitDiag = readLoginDiagLogcat();
+  const lastPassChange = preSubmitDiag.filter((e) => e.type === 'change' && e.field === 'password').pop();
+  const lastEmailChange = preSubmitDiag.filter((e) => e.type === 'change' && e.field === 'email').pop();
+  milestones.push({
+    step: 'pre_submit_diag_lengths',
+    emailChangeLength: lastEmailChange?.length ?? null,
+    passwordChangeLength: lastPassChange?.length ?? null,
+  });
+
+  try {
+    execSync(`adb -s ${serial} logcat -c`, { stdio: 'ignore' });
+  } catch {
+    /* ignore */
+  }
+
   tap(fields.btn.x, fields.btn.y);
   milestones.push({ step: 'submit_tapped', method: 'sign_in_button' });
-  sleep(2500);
+  sleep(3500);
 
   let logcatDiag = [];
   try {
@@ -367,7 +447,11 @@ async function runLogin(role) {
     pass: true,
     milestones,
     outcome: 'authenticated_shell',
+    authenticatedShellDetection: 'assessments_or_analytics_tab',
     apiProbeOk: apiProbe.ok,
+    appPackage: APP_PACKAGE,
+    metroUrl: METRO_URL,
+    startedAt,
     at: new Date().toISOString(),
   };
   writeFileSync(join(evidence, `login-${role}-report.json`), JSON.stringify(report, null, 2));

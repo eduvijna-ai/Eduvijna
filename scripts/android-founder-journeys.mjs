@@ -113,7 +113,10 @@ function tapAnalyticsPaginationNext(log, stepName, pageTry, scope = 'quiz') {
     if (!nextTap) {
       nextTap = locatePaginationNext(nodes, scope);
     }
-    if (!nextTap) scrollAnalyticsQuizListDown();
+    if (!nextTap) {
+      scrollAnalyticsQuizListDown();
+      scrollDown();
+    }
   }
   if (!nextTap) {
     log.steps.push({ step: stepName, pageTry, paginationFound: false });
@@ -560,15 +563,23 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  sleep(2500);
-  const classDrillReady = waitFor(
-    (xml) => locateByLabel(parseUiXml(xml), /Quizzes in this Class/i, { minY: 0 }) != null,
-    { dumpName: 'b-01-wait-class-drill', attempts: 10, pauseMs: 1500 },
-  );
-  log.steps.push({ step: 'class_drill_ready', ok: Boolean(classDrillReady.xmlPath) });
-
+  sleep(4500);
   const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   const quizCardId = `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  const classDrillReady = waitFor(
+    (xml) => {
+      const n = parseUiXml(xml);
+      return (
+        locateByLabel(n, /Quizzes in this Class/i, { minY: 0 }) != null ||
+        locateByTestId(n, quizCardId) != null ||
+        locateByTestId(n, viewAnalyticsId) != null ||
+        locateByLabel(n, /Performance Summary/i, { minY: 0 }) != null
+      );
+    },
+    { dumpName: 'b-01-wait-class-drill', attempts: 20, pauseMs: 2000 },
+  );
+  log.steps.push({ step: 'class_drill_ready', ok: Boolean(classDrillReady.xmlPath) });
+  for (let s = 0; s < 6; s++) scrollDown();
   const titleNeedle = labels.quizTitle ? String(labels.quizTitle).slice(0, 28) : '';
   const fixtureViewDesc = labels.quizTitle
     ? `View analytics for ${labels.quizTitle}`
@@ -608,9 +619,36 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     }
     sleep(600);
   }
+  const summaryRowId = `analytics-summary-row-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  let drillOpened = false;
+  for (let pageTry = 0; pageTry < 12 && !drillOpened; pageTry++) {
+    scrollToTop(4);
+    scrollToBottom(8);
+    const scrolledSummary = locateWithScroll({
+      dumpFn: dump,
+      scrollFn: () => {
+        scrollAnalyticsQuizListDown();
+        scrollDown();
+      },
+      maxScrolls: 14,
+      dumpNamePrefix: `b-02-summary-first-p${pageTry}`,
+      locateFn: (xml) => locateByTestId(parseUiXml(xml), summaryRowId),
+    });
+    if (scrolledSummary.hit) {
+      log.steps.push({ step: 'open_quiz_drill', via: 'summary_row_first', tap: tapTarget(scrolledSummary.hit) });
+      tapTarget(scrolledSummary.hit);
+      drillOpened = true;
+      sleep(3000);
+      break;
+    }
+    if (!tapAnalyticsPaginationNext(log, 'summary_pagination_first', pageTry, 'summary')) {
+      tapAnalyticsPaginationNext(log, 'quiz_pagination_first', pageTry, 'quiz');
+    }
+  }
+
   let viewAnalyticsTap = null;
   let quizScrolls = 0;
-  for (let pageTry = 0; pageTry < 8 && !viewAnalyticsTap; pageTry++) {
+  for (let pageTry = 0; !drillOpened && pageTry < 8 && !viewAnalyticsTap; pageTry++) {
     scrollToTop(4);
     const scrolled = locateWithScroll({
       dumpFn: dump,
@@ -629,17 +667,19 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (quizScrolls > 0) {
     log.steps.push({ step: 'quiz_scroll', scrolls: quizScrolls });
   }
-  let drillOpened = Boolean(viewAnalyticsTap);
-  if (viewAnalyticsTap) {
+  if (!drillOpened) {
+    drillOpened = Boolean(viewAnalyticsTap);
+  }
+  if (viewAnalyticsTap && !drillOpened) {
     log.steps.push({
       step: 'view_analytics',
       tap: tapTarget(viewAnalyticsTap),
       testId: viewAnalyticsId,
     });
     tapTarget(viewAnalyticsTap);
+    drillOpened = true;
     sleep(2500);
-  } else {
-    const summaryRowId = `analytics-summary-row-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  } else if (!drillOpened) {
     for (let pageTry = 0; pageTry < 10 && !drillOpened; pageTry++) {
       scrollToTop(4);
       const scrolledSummary = locateWithScroll({

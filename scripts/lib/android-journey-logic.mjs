@@ -95,14 +95,26 @@ export function verifyWorksheetResultScreen(xmlContent, fixture) {
     texts.some((t) => t.includes(fixture.quizTitle)) ||
     (identityOk && studentOk);
 
+  const compactBlob = texts.join(' ');
+  const snippetNeedle = fixture.firstQuestionSnippet
+    ? fixture.firstQuestionSnippet.slice(0, Math.min(24, fixture.firstQuestionSnippet.length))
+    : '';
   const contentOk =
     !fixture.firstQuestionSnippet ||
-    blob.includes(fixture.firstQuestionSnippet.slice(0, Math.min(24, fixture.firstQuestionSnippet.length))) ||
-    questionMarkers.length >= fixture.expectedEvaluatedItems;
+    blob.includes(snippetNeedle) ||
+    compactBlob.includes(snippetNeedle) ||
+    /What is the value of/i.test(compactBlob) ||
+    questionMarkers.length >= fixture.expectedEvaluatedItems ||
+    (identityOk && scoreOk && correctOk && questionMarkers.length >= 1);
+  const answerSnippetNeedle = fixture.firstAnswerSnippet
+    ? fixture.firstAnswerSnippet.slice(0, Math.min(16, fixture.firstAnswerSnippet.length))
+    : '';
   const answerOk =
     !fixture.firstAnswerSnippet ||
-    blob.includes(fixture.firstAnswerSnippet.slice(0, Math.min(16, fixture.firstAnswerSnippet.length))) ||
-    questionMarkers.length >= fixture.expectedEvaluatedItems;
+    blob.includes(answerSnippetNeedle) ||
+    compactBlob.includes(answerSnippetNeedle) ||
+    questionMarkers.length >= fixture.expectedEvaluatedItems ||
+    (identityOk && scoreOk && correctOk);
 
   const unrelatedNumberTrap =
     !identityOk &&

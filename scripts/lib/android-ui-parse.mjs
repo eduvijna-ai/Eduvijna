@@ -27,8 +27,37 @@ export function findTapTarget(xmlPath, pattern) {
   };
 }
 
+function centerFromMatch(m) {
+  return {
+    x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
+    y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+  };
+}
+
+function findBoundsForTestId(s, testId) {
+  const forward = s.match(
+    new RegExp(`resource-id="${testId}"[^>]*bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"`),
+  );
+  if (forward) return centerFromMatch(forward);
+  const reverse = s.match(
+    new RegExp(`bounds="\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]"[^>]*resource-id="${testId}"`),
+  );
+  if (reverse) return centerFromMatch(reverse);
+  return null;
+}
+
 export function findLoginFields(xmlPath) {
   const s = readFileSync(xmlPath, 'utf8');
+  const email = findBoundsForTestId(s, 'login-email-input');
+  const pass = findBoundsForTestId(s, 'login-password-input');
+  const btnCenter = findBoundsForTestId(s, 'login-submit-button');
+  const btn =
+    (btnCenter ? { label: 'Sign in', ...btnCenter } : null) || findTapTarget(xmlPath, 'Sign in');
+
+  if (email && pass && btn) {
+    return { email, pass, btn };
+  }
+
   const edits = [];
   for (const m of s.matchAll(
     /<node[^>]*class="android\.widget\.EditText"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*>/g,
@@ -36,16 +65,14 @@ export function findLoginFields(xmlPath) {
     const password = /password="true"/.test(m[0]);
     edits.push({
       password,
-      x: Math.floor((Number(m[1]) + Number(m[3])) / 2),
-      y: Math.floor((Number(m[2]) + Number(m[4])) / 2),
+      ...centerFromMatch(m),
     });
   }
   edits.sort((a, b) => a.y - b.y);
-  const email = edits.find((e) => !e.password) ?? edits[0];
-  const pass = edits.find((e) => e.password) ?? edits[1];
-  const btn = findTapTarget(xmlPath, 'Sign in');
-  if (!email || !pass || !btn) return null;
-  return { email, pass, btn };
+  const emailField = edits.find((e) => !e.password) ?? edits[0];
+  const passField = edits.find((e) => e.password) ?? edits[1];
+  if (!emailField || !passField || !btn) return null;
+  return { email: emailField, pass: passField, btn };
 }
 
 export function findPasswordField(xmlPath) {
