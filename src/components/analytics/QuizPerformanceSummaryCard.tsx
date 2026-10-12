@@ -16,6 +16,9 @@ export default function QuizPerformanceSummaryCard({ row, onPress, colors }: Pro
 
   return (
     <TouchableOpacity
+      testID={`analytics-summary-row-${row.quiz_id}-${row.session_id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Open quiz summary for ${row.quiz_name}`}
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={onPress}
       activeOpacity={0.85}

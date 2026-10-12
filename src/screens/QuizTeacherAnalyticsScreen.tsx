@@ -492,6 +492,7 @@ export default function QuizTeacherAnalyticsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Class Overview</Text>
             {paginatedClasses.map(renderClassCard)}
             <AnalyticsPagination
+              scope="class"
               page={classPage}
               totalPages={totalClassPages}
               onPageChange={setClassPage}
@@ -530,6 +531,7 @@ export default function QuizTeacherAnalyticsScreen() {
             </Text>
             {paginatedQuizzes.map(renderQuizCard)}
             <AnalyticsPagination
+              scope="quiz"
               page={quizPage}
               totalPages={totalQuizPages}
               onPageChange={setQuizPage}
@@ -573,6 +575,7 @@ export default function QuizTeacherAnalyticsScreen() {
               />
             ))}
             <AnalyticsPagination
+              scope="summary"
               page={summaryPage}
               totalPages={totalSummaryPages}
               onPageChange={setSummaryPage}
@@ -647,6 +650,7 @@ export default function QuizTeacherAnalyticsScreen() {
               paginatedRows.map(renderAttemptRow)
             )}
             <AnalyticsPagination
+              scope="attempt"
               page={attemptPage}
               totalPages={totalAttemptPages}
               onPageChange={setAttemptPage}

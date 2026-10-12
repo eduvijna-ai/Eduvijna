@@ -84,10 +84,15 @@ function scrollAnalyticsQuizListUp() {
   sleep(650);
 }
 
-function locatePaginationNext(nodes) {
-  const byTestId = locateByTestId(nodes, 'analytics-pagination-next');
+function locatePaginationNext(nodes, scope = 'quiz') {
+  const scopedId = `analytics-${scope}-pagination-next`;
+  const byTestId = locateByTestId(nodes, scopedId) || locateByTestId(nodes, 'analytics-pagination-next');
   if (byTestId) {
-    const raw = nodes.find((n) => (n['resource-id'] || '').includes('analytics-pagination-next'));
+    const raw = nodes.find(
+      (n) =>
+        (n['resource-id'] || '').includes(scopedId) ||
+        (n['resource-id'] || '').includes('analytics-pagination-next'),
+    );
     if (raw && raw.enabled === 'false') return null;
     return byTestId;
   }
@@ -97,16 +102,16 @@ function locatePaginationNext(nodes) {
   );
 }
 
-function tapAnalyticsPaginationNext(log, stepName, pageTry) {
+function tapAnalyticsPaginationNext(log, stepName, pageTry, scope = 'quiz') {
   let nextTap = null;
   for (let scroll = 0; scroll < 18 && !nextTap; scroll++) {
     const path = dump(`${stepName}-page-${pageTry}-s${scroll}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
     if (locateByLabel(nodes, /Page \d+ of \d+/i, { minY: 0 })) {
-      nextTap = locatePaginationNext(nodes);
+      nextTap = locatePaginationNext(nodes, scope);
     }
     if (!nextTap) {
-      nextTap = locatePaginationNext(nodes);
+      nextTap = locatePaginationNext(nodes, scope);
     }
     if (!nextTap) scrollAnalyticsQuizListDown();
   }
@@ -537,6 +542,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     path = dump(`b-01-class-page-${pageTry}.xml`);
     nodes = parseUiXml(readXmlContent(path));
     const nextClassPage =
+      locateByTestId(nodes, 'analytics-class-pagination-next') ||
       locateByTestId(nodes, 'analytics-pagination-next') ||
       locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
     if (!nextClassPage) break;
@@ -583,7 +589,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       index: quizPageHint.index,
       total: quizPageHint.total,
     });
-    const targetPageLabel = `Analytics page ${quizPageHint.page} of ${quizPageHint.totalPages}`;
+    const targetPageLabel = `Analytics quiz page ${quizPageHint.page} of ${quizPageHint.totalPages}`;
     for (let seek = 0; seek < quizPageHint.totalPages + 2; seek++) {
       for (let s = 0; s < 12; s++) scrollAnalyticsQuizListDown();
       const path = dump(`b-02-page-seek-${seek}.xml`);
@@ -623,14 +629,39 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (quizScrolls > 0) {
     log.steps.push({ step: 'quiz_scroll', scrolls: quizScrolls });
   }
-  log.steps.push({
-    step: 'view_analytics',
-    tap: tapTarget(viewAnalyticsTap),
-    testId: viewAnalyticsId,
-  });
-  if (!viewAnalyticsTap) {
+  let drillOpened = Boolean(viewAnalyticsTap);
+  if (viewAnalyticsTap) {
+    log.steps.push({
+      step: 'view_analytics',
+      tap: tapTarget(viewAnalyticsTap),
+      testId: viewAnalyticsId,
+    });
+    tapTarget(viewAnalyticsTap);
+    sleep(2500);
+  } else {
+    const summaryRowId = `analytics-summary-row-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+    for (let pageTry = 0; pageTry < 10 && !drillOpened; pageTry++) {
+      scrollToTop(4);
+      const scrolledSummary = locateWithScroll({
+        dumpFn: dump,
+        scrollFn: scrollAnalyticsQuizListDown,
+        maxScrolls: 12,
+        dumpNamePrefix: `b-02-summary-scroll-p${pageTry}`,
+        locateFn: (xml) => locateByTestId(parseUiXml(xml), summaryRowId),
+      });
+      if (scrolledSummary.hit) {
+        log.steps.push({ step: 'open_quiz_drill', via: 'summary_row', tap: tapTarget(scrolledSummary.hit) });
+        tapTarget(scrolledSummary.hit);
+        drillOpened = true;
+        sleep(2500);
+        break;
+      }
+      if (!tapAnalyticsPaginationNext(log, 'summary_pagination_next', pageTry, 'summary')) break;
+    }
+  }
+  if (!drillOpened) {
     log.pass = false;
-    log.verify = { label: 'analytics_view_analytics', pass: false };
+    log.verify = { label: 'analytics_view_analytics', pass: false, testId: viewAnalyticsId };
     writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
     return log;
   }
@@ -694,6 +725,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       viewResultTap = locateStudentResult(readXmlContent(path));
       if (viewResultTap) break;
       const nextTap =
+        locateByTestId(nodes, 'analytics-attempt-pagination-next') ||
         locateByTestId(nodes, 'analytics-pagination-next') ||
         locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
       if (!nextTap) break;

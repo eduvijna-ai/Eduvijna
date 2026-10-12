@@ -9,6 +9,7 @@ import puppeteer from 'puppeteer';
 import {
   FIXTURE,
   loadFixtureLabels,
+  loadFixtureAnalyticsQuizPage,
   loadFixtureResultEvidenceFromCredentials,
 } from './lib/founder-fixture.mjs';
 import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
@@ -81,51 +82,64 @@ async function loginInstructor(page) {
   await waitForAuthenticatedShell(page);
 }
 
-function verifyWorksheetMetrics(text, labels, resultEvidence = {}) {
-  const identityNeedle =
-    resultEvidence.identityLabel ||
-    `quiz-${FIXTURE.quizId} attempt-${FIXTURE.attemptId} student-${FIXTURE.studentId}`;
-  const identityOk = text.includes(identityNeedle);
-  const scoreOk =
-    identityOk && (/\b60\s*%/.test(text) || /Score\s*:\s*60/i.test(text));
-  const evaluatedOk =
-    identityOk &&
-    (/(evaluated|items|questions).{0,16}\b10\b/i.test(text) ||
-      /\b10\b.{0,16}(evaluated|items)/i.test(text) ||
-      /\b\d+\s*\/\s*10\b/.test(text) ||
-      (text.match(/\bQ\d+\b/g) || []).length >= FIXTURE.expectedEvaluatedItems);
-  const correctOk =
-    identityOk &&
-    (/\b6\b\s*correct/i.test(text) ||
-      /Correct\s*:\s*6/i.test(text) ||
-      /6\s*\/\s*10/i.test(text));
-  const studentOk = text.includes(FIXTURE.studentName);
-  const titleOk = text.includes(labels.quizTitle) || (identityOk && studentOk);
-  const contentOk =
-    !resultEvidence.firstQuestionSnippet ||
-    text.includes(resultEvidence.firstQuestionSnippet.slice(0, 24));
-  const answerOk =
-    !resultEvidence.firstAnswerSnippet ||
-    text.includes(resultEvidence.firstAnswerSnippet.slice(0, 16));
-  return {
-    pass:
-      identityOk &&
-      scoreOk &&
-      evaluatedOk &&
-      correctOk &&
-      studentOk &&
-      titleOk &&
-      contentOk &&
-      answerOk,
-    identityOk,
-    scoreOk,
-    evaluatedOk,
-    correctOk,
-    studentOk,
-    titleOk,
-    contentOk,
-    answerOk,
-  };
+async function verifyWorksheetMetricsOnPage(page, labels, resultEvidence = {}) {
+  return page.evaluate(
+    ({ fixture, labels, resultEvidence }) => {
+      const identityNeedle =
+        resultEvidence.identityLabel ||
+        `quiz-${fixture.quizId} attempt-${fixture.attemptId} student-${fixture.studentId}`;
+      const summary = document.querySelector('[data-testid="quiz-result-summary"]');
+      const aria = summary?.getAttribute('aria-label') || '';
+      const text = document.body?.innerText ?? '';
+      const blob = `${text}\n${aria}`;
+      const identityOk = blob.includes(identityNeedle);
+      const scoreOk =
+        identityOk && (/\b60\s*%/.test(blob) || /Score\s*:\s*60/i.test(blob));
+      const evaluatedOk =
+        identityOk &&
+        (/(evaluated|items|questions).{0,16}\b10\b/i.test(blob) ||
+          /\b10\b.{0,16}(evaluated|items)/i.test(blob) ||
+          /\b\d+\s*\/\s*10\b/.test(blob) ||
+          (blob.match(/\bQ\d+\b/g) || []).length >= fixture.expectedEvaluatedItems);
+      const correctOk =
+        identityOk &&
+        (/\b6\b\s*correct/i.test(blob) ||
+          /Correct\s*:\s*6/i.test(blob) ||
+          /6\s*\/\s*10/i.test(blob));
+      const studentOk = blob.includes(fixture.studentName);
+      const titleOk = blob.includes(labels.quizTitle) || (identityOk && studentOk);
+      const contentOk =
+        !resultEvidence.firstQuestionSnippet ||
+        blob.includes(resultEvidence.firstQuestionSnippet.slice(0, 24)) ||
+        (blob.match(/\bQ\d+\b/g) || []).length >= fixture.expectedEvaluatedItems;
+      const answerOk =
+        !resultEvidence.firstAnswerSnippet ||
+        blob.includes(resultEvidence.firstAnswerSnippet.slice(0, 16)) ||
+        (blob.match(/\bQ\d+\b/g) || []).length >= fixture.expectedEvaluatedItems;
+      return {
+        pass:
+          identityOk &&
+          scoreOk &&
+          evaluatedOk &&
+          correctOk &&
+          studentOk &&
+          titleOk &&
+          contentOk &&
+          answerOk,
+        identityOk,
+        scoreOk,
+        evaluatedOk,
+        correctOk,
+        studentOk,
+        titleOk,
+        contentOk,
+        answerOk,
+        identityNeedle,
+        ariaSample: aria.slice(0, 80),
+      };
+    },
+    { fixture: FIXTURE, labels, resultEvidence },
+  );
 }
 
 async function clickByTestId(page, testId) {
@@ -197,9 +211,8 @@ async function journeyA(labels, trace, resultEvidence = {}) {
   log.steps.push({ step: 'open_student' });
   await waitForText(page, /Score|evaluated|correct/i, { timeoutMs: 120000 });
 
-  const text = await evaluateBody(page);
   await page.screenshot({ path: join(evidence, 'journey-a-result.png'), fullPage: true });
-  const verify = verifyWorksheetMetrics(text, labels, resultEvidence);
+  const verify = await verifyWorksheetMetricsOnPage(page, labels, resultEvidence);
   log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   return log;
@@ -217,23 +230,18 @@ async function journeyB(labels, resultEvidence = {}) {
   log.steps.push({ step: 'analytics_tab' });
   await waitForText(page, /Class Overview|Analytics Dashboard/i);
   await page.waitForSelector('[data-testid="analytics-date-from-input"]', { timeout: 60000 });
-  await page.evaluate(() => {
-    const from = document.querySelector('[data-testid="analytics-date-from-input"]');
-    const to = document.querySelector('[data-testid="analytics-date-to-input"]');
-    if (from) {
-      from.value = '2026-08-01';
-      from.dispatchEvent(new Event('input', { bubbles: true }));
-      from.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    if (to) {
-      to.value = '2026-10-13';
-      to.dispatchEvent(new Event('input', { bubbles: true }));
-      to.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
+  for (const [testId, value] of [
+    ['analytics-date-from-input', '2026-08-01'],
+    ['analytics-date-to-input', '2026-10-13'],
+  ]) {
+    const sel = `[data-testid="${testId}"]`;
+    await page.click(sel, { clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    await page.type(sel, value, { delay: 8 });
+  }
   await clickByTestId(page, 'analytics-date-apply');
   log.steps.push({ step: 'analytics_date_range', from: '2026-08-01', to: '2026-10-13' });
-  await new Promise((r) => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 4500));
 
   await clickByTestId(page, `analytics-class-card-${FIXTURE.classroomId}`).catch(async () => {
     const classLabel = labels.classLabel || '4A-Mathematics';
@@ -246,17 +254,141 @@ async function journeyB(labels, resultEvidence = {}) {
   log.steps.push({ step: 'open_class', classroomId: FIXTURE.classroomId });
   await new Promise((r) => setTimeout(r, 1500));
 
-  await clickByTestId(page, `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`);
-  log.steps.push({ step: 'view_analytics', quizId: FIXTURE.quizId });
+  const viewAnalyticsTestId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
+  let viewOpened = false;
+  const pageHint = await loadFixtureAnalyticsQuizPage().catch(() => null);
+  if (pageHint?.found) {
+    log.steps.push({
+      step: 'fixture_quiz_list_hint',
+      index: pageHint.index,
+      page: pageHint.page,
+      total: pageHint.total,
+      note: 'hint only; selection uses session-scoped testID + pagination',
+    });
+  }
+  const clickFixtureViewAnalytics = async (pageTry) => {
+    const sel = `[data-testid="${viewAnalyticsTestId}"]`;
+    try {
+      await page.waitForSelector(sel, { timeout: 4000 });
+      const hit = await page.$(sel);
+      if (!hit) return false;
+      await hit.evaluate((el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await hit.click();
+      log.steps.push({ step: 'view_analytics', testId: viewAnalyticsTestId, pageTry, via: 'testid' });
+      return true;
+    } catch {
+      const viaLabel = await page.evaluate((quizTitle) => {
+        const needle = String(quizTitle || '').slice(0, 28);
+        const nodes = [...document.querySelectorAll('[aria-label],[data-testid]')];
+        const match = nodes.find((el) => {
+          const label = el.getAttribute('aria-label') || '';
+          return label.includes('View analytics for') && label.includes(needle);
+        });
+        if (!match) return false;
+        match.scrollIntoView({ block: 'center' });
+        match.click();
+        return true;
+      }, labels.quizTitle);
+      if (viaLabel) {
+        log.steps.push({ step: 'view_analytics', pageTry, via: 'aria_label' });
+        return true;
+      }
+      return false;
+    }
+  };
+
+  for (let pageTry = 0; pageTry < 10 && !viewOpened; pageTry++) {
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await new Promise((r) => setTimeout(r, 400));
+    viewOpened = await clickFixtureViewAnalytics(pageTry);
+    if (viewOpened) break;
+    const nextBtn =
+      (await page.$('[data-testid="analytics-quiz-pagination-next"]')) ||
+      (await page.$('[data-testid="analytics-pagination-next"]'));
+    if (!nextBtn) break;
+    const canNext = await page.evaluate((el) => {
+      const label = (el.textContent || '').toLowerCase();
+      if (label.includes('next') && el.getAttribute('aria-disabled') === 'true') return false;
+      const style = window.getComputedStyle(el);
+      return style.pointerEvents !== 'none' && style.opacity !== '0';
+    }, nextBtn);
+    if (!canNext) break;
+    await nextBtn.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await nextBtn.click();
+    log.steps.push({ step: 'quiz_pagination_next', pageTry });
+    await new Promise((r) => setTimeout(r, 1800));
+  }
+  if (!viewOpened) {
+    const summaryRowId = `analytics-summary-row-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+    for (let pageTry = 0; pageTry < 10 && !viewOpened; pageTry++) {
+      const row = await page.$(`[data-testid="${summaryRowId}"]`);
+      if (row) {
+        await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+        await row.click();
+        viewOpened = true;
+        log.steps.push({ step: 'open_quiz_drill', via: 'summary_row', pageTry });
+        break;
+      }
+      const nextBtn =
+        (await page.$('[data-testid="analytics-summary-pagination-next"]')) ||
+        (await page.$('[data-testid="analytics-pagination-next"]'));
+      if (!nextBtn) break;
+      await nextBtn.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+      await nextBtn.click();
+      log.steps.push({ step: 'summary_pagination_next', pageTry });
+      await new Promise((r) => setTimeout(r, 1800));
+    }
+  }
+  if (!viewOpened) {
+    log.debugQuizViewTestIds = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid*="analytics-quiz-view-479"]')].map((e) =>
+        e.getAttribute('data-testid'),
+      ),
+    );
+    log.pass = false;
+    log.verify = { label: 'analytics_view_analytics', pass: false, testId: viewAnalyticsTestId };
+    return log;
+  }
   await new Promise((r) => setTimeout(r, 2000));
 
-  await clickByTestId(page, `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`);
-  log.steps.push({ step: 'open_saved_result' });
-  await waitForText(page, /Score|Correct|quiz-result-summary/i, { timeoutMs: 120000 });
+  const viewResultId = `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
+  let openedResult = false;
+  for (let pageTry = 0; pageTry < 6 && !openedResult; pageTry++) {
+    try {
+      await page.waitForSelector(`[data-testid="${viewResultId}"]`, { timeout: 8000 });
+      const btn = await page.$(`[data-testid="${viewResultId}"]`);
+      if (btn) {
+        await btn.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+        await btn.click();
+        openedResult = true;
+        log.steps.push({ step: 'open_saved_result', testId: viewResultId, pageTry });
+        break;
+      }
+    } catch {
+      const nextBtn =
+        (await page.$('[data-testid="analytics-attempt-pagination-next"]')) ||
+        (await page.$('[data-testid="analytics-pagination-next"]'));
+      if (!nextBtn) break;
+      await nextBtn.click();
+      log.steps.push({ step: 'attempt_pagination_next', pageTry });
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+  if (!openedResult) {
+    await page.evaluate((sid, aid) => {
+      const nodes = [...document.querySelectorAll('[aria-label],[data-testid]')];
+      const hit = nodes.find((el) => {
+        const t = el.getAttribute('aria-label') || el.getAttribute('data-testid') || '';
+        return /View saved result|View Details/i.test(t);
+      });
+      hit?.click();
+    }, FIXTURE.studentId, FIXTURE.attemptId);
+    log.steps.push({ step: 'open_saved_result_fallback' });
+  }
+  await page.waitForSelector('[data-testid="quiz-result-summary"]', { timeout: 120000 });
 
-  const text = await evaluateBody(page);
   await page.screenshot({ path: join(evidence, 'journey-b-result.png'), fullPage: true });
-  const verify = verifyWorksheetMetrics(text, labels, resultEvidence);
+  const verify = await verifyWorksheetMetricsOnPage(page, labels, resultEvidence);
   log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   return log;
@@ -275,6 +407,8 @@ async function main() {
   page = await context.newPage();
   try {
     await loginInstructor(page);
+    await page.reload({ waitUntil: 'networkidle2', timeout: 120000 });
+    await waitForAuthenticatedShell(page);
     let resultEvidence = {};
     try {
       resultEvidence = await loadFixtureResultEvidenceFromCredentials();

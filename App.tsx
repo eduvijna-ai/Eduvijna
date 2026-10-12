@@ -16,7 +16,7 @@ import { AppSideNavProvider } from './src/context/AppSideNavContext';
 import { DropdownProvider } from './src/context/DropdownContext';
 import { AuthProvider } from './src/core/context/AuthContext';
 import ImageCropModal from './src/core/components/ImageCropModal';
-import { navigationRef } from './src/core/services/navigationService';
+import { navigationRef, setWebNavigateHandler } from './src/core/services/navigationService';
 import { setAuthErrorNavigationCallback } from './src/core/services/dashboardApi';
 import { initializeCache } from './src/core/services/cacheService';
 import {
@@ -36,7 +36,7 @@ import {
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
 import WebNavigation from './src/platforms/web/navigation/WebNavigation';
 import AssessmentsScreen from './src/screens/Assessments';
-import AnalyticsScreen from './src/platforms/web/screens/Analytics';
+import AnalyticsHubScreen from './src/screens/AnalyticsHubScreen';
 import ProfileScreen from './src/platforms/web/screens/Profile';
 import NotificationsScreen from './src/screens/Notifications';
 import ThemeSettingsScreen from './src/platforms/web/screens/ThemeSettings';
@@ -269,6 +269,17 @@ function AppContent() {
     setActiveScreen(resolved as WebShellScreen);
     setNavigationParams(params || {});
   };
+
+  const handleNavigateRef = useRef(handleNavigate);
+  handleNavigateRef.current = handleNavigate;
+  useEffect(() => {
+    if (!isWeb) {
+      setWebNavigateHandler(null);
+      return;
+    }
+    setWebNavigateHandler((screen, params) => handleNavigateRef.current(screen, params));
+    return () => setWebNavigateHandler(null);
+  }, [isWeb]);
 
   // Web screens are rendered outside React Navigation stack, so provide
   // a compatibility navigation object used by screen components that call
@@ -525,7 +536,7 @@ function AppContent() {
             route={{ params: navigationParams }}
           />;
         case 'analytics':
-          return <AnalyticsScreen />;
+          return <AnalyticsHubScreen />;
         case 'profile':
           return <ProfileScreen />;
         case 'notifications':

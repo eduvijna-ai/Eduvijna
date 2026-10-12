@@ -7,9 +7,19 @@ interface Props {
   totalPages: number;
   onPageChange: (page: number) => void;
   colors: { primary: string; border: string; text: string; textSecondary: string; card: string };
+  /** Disambiguates multiple pagers on one screen (e.g. quiz list vs summary). */
+  scope?: 'class' | 'quiz' | 'summary' | 'attempt';
 }
 
-export default function AnalyticsPagination({ page, totalPages, onPageChange, colors }: Props) {
+export default function AnalyticsPagination({
+  page,
+  totalPages,
+  onPageChange,
+  colors,
+  scope = 'class',
+}: Props) {
+  const infoTestId = `analytics-${scope}-pagination-info`;
+  const nextTestId = `analytics-${scope}-pagination-next`;
   if (totalPages <= 1) return null;
 
   return (
@@ -23,16 +33,16 @@ export default function AnalyticsPagination({ page, totalPages, onPageChange, co
         <Text style={[styles.btnText, { color: page === 1 ? colors.textSecondary : colors.primary }]}>Previous</Text>
       </TouchableOpacity>
       <Text
-        testID="analytics-pagination-info"
-        accessibilityLabel={`Analytics page ${page} of ${totalPages}`}
+        testID={infoTestId}
+        accessibilityLabel={`Analytics ${scope} page ${page} of ${totalPages}`}
         style={[styles.info, { color: colors.textSecondary }]}
       >
         Page {page} of {totalPages}
       </Text>
       <TouchableOpacity
-        testID="analytics-pagination-next"
+        testID={nextTestId}
         accessibilityRole="button"
-        accessibilityLabel="Next page"
+        accessibilityLabel={`Next ${scope} page`}
         style={[styles.btn, { borderColor: colors.border, backgroundColor: colors.card }, page === totalPages && styles.disabled]}
         onPress={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}

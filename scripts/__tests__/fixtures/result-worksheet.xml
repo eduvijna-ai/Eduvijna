@@ -2,7 +2,17 @@
 <hierarchy rotation="0">
   <node text="Results — MAT Mathematics Worksheet" bounds="[0,80][1080,160]" package="com.eduvijna.app"/>
   <node text="Aarya" bounds="[0,160][1080,220]" package="com.eduvijna.app"/>
-  <node text="Score: 60%" bounds="[0,300][1080,360]" package="com.eduvijna.app"/>
-  <node text="10 evaluated items" bounds="[0,360][1080,420]" package="com.eduvijna.app"/>
-  <node text="6 correct" bounds="[0,420][1080,480]" package="com.eduvijna.app"/>
+  <node
+    resource-id="com.eduvijna.app:id/quiz-result-summary"
+    content-desc="quiz-result-summary quiz-479 attempt-207 student-70"
+    bounds="[0,240][1080,500]"
+    package="com.eduvijna.app"
+  />
+  <node text="60%" bounds="[0,300][200,360]" package="com.eduvijna.app"/>
+  <node text="Score" bounds="[0,360][200,400]" package="com.eduvijna.app"/>
+  <node text="6/10" bounds="[400,300][600,360]" package="com.eduvijna.app"/>
+  <node text="Correct" bounds="[400,360][600,400]" package="com.eduvijna.app"/>
+  <node text="Score: 60%" bounds="[0,520][1080,580]" package="com.eduvijna.app"/>
+  <node text="10 evaluated items" bounds="[0,580][1080,640]" package="com.eduvijna.app"/>
+  <node text="6 correct" bounds="[0,640][1080,700]" package="com.eduvijna.app"/>
 </hierarchy>

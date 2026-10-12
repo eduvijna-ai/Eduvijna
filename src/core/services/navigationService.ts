@@ -8,10 +8,21 @@ import { CommonActions, createNavigationContainerRef, StackActions } from '@reac
 
 export const navigationRef = createNavigationContainerRef();
 
+let webNavigateHandler: ((name: string, params?: unknown) => void) | null = null;
+
+/** Expo web shell navigation (App.tsx handleNavigate). */
+export function setWebNavigateHandler(handler: ((name: string, params?: unknown) => void) | null) {
+  webNavigateHandler = handler;
+}
+
 /**
  * Navigate to a screen
  */
 export function navigate(name: string, params?: any) {
+  if (webNavigateHandler) {
+    webNavigateHandler(name, params);
+    return;
+  }
   if (!navigationRef.isReady()) {
     return;
   }
