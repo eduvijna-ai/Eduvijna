@@ -566,9 +566,7 @@ async function journeyB(labels, resultEvidence = {}) {
     return (
       locateByTestId(n, viewResultId) ||
       locateClickableByLabel(n, 'View Details', { minY: 0, minHeight: 32 }) ||
-      locateByLabel(n, /View saved result/i, { minY: 0 }) ||
-      locateClickableByLabel(n, new RegExp(`^${FIXTURE.studentName}$`, 'i'), { minY: 0 }) ||
-      locateByTestId(n, studentAttemptCardId)
+      locateByLabel(n, /View saved result/i, { minY: 0 })
     );
   };
   path = dump('b-04-drill.xml');
