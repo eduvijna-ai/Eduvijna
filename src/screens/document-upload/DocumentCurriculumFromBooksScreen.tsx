@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -18,6 +19,9 @@ import {
   deriveBoardOptions,
   deriveGradeOptions,
   deriveSubjectOptions,
+  deriveVersionOptions,
+  buildCurriculumQuizGenerateRequest,
+  generateCurriculumQuiz,
   generateRegistryCurriculumQuiz,
   getCurriculumCatalog,
   resolveCurriculumByCodes,
@@ -45,6 +49,8 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
   const [questionCount, setQuestionCount] = useState(10);
   const [level, setLevel] = useState('medium');
   const [generating, setGenerating] = useState(false);
+  const [curriculumAlignmentEnabled, setCurriculumAlignmentEnabled] = useState(false);
+  const [versionLabel, setVersionLabel] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -92,8 +98,18 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
     }
   }, []);
 
+  const subjectCode = subjectCtx?.subject.code ?? '';
+
+  const versionOptions = useMemo(() => {
+    if (!boardCode || !gradeCode || !subjectCode) return [];
+    return deriveVersionOptions(contexts, boardCode, gradeCode, subjectCode);
+  }, [contexts, boardCode, gradeCode, subjectCode]);
+
   const toggleUnit = (code: string) => {
     setSelectedUnits((prev) => {
+      if (curriculumAlignmentEnabled) {
+        return new Set([code]);
+      }
       const next = new Set(prev);
       if (next.has(code)) next.delete(code);
       else next.add(code);
@@ -114,20 +130,35 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
         .filter((u) => selectedUnits.has(u.unit_code))
         .map((u) => u.title)
         .join('; ');
-      const result = await generateRegistryCurriculumQuiz({
-        curriculum_context: {
-          board_code: subjectCtx.board.code,
-          grade_code: subjectCtx.grade.code,
-          subject_code: subjectCtx.subject.code,
-          version_label: subjectCtx.version_label,
-          unit_code: primaryUnit.unit_code,
-        },
-        count: questionCount,
-        level,
-        language: 'en',
-        topic: topicTitles,
-        itext: '',
-      });
+      const result = curriculumAlignmentEnabled
+        ? await generateCurriculumQuiz(
+            buildCurriculumQuizGenerateRequest({
+              boardCode: subjectCtx.board.code,
+              gradeCode: subjectCtx.grade.code,
+              gradeLabel: subjectCtx.grade.label,
+              subjectCode: subjectCtx.subject.code,
+              subjectLabel: subjectCtx.subject.label,
+              versionLabel: versionLabel || subjectCtx.version_label,
+              unitCode: primaryUnit.unit_code,
+              unitTitle: primaryUnit.title,
+              level,
+              count: questionCount,
+            }),
+          )
+        : await generateRegistryCurriculumQuiz({
+            curriculum_context: {
+              board_code: subjectCtx.board.code,
+              grade_code: subjectCtx.grade.code,
+              subject_code: subjectCtx.subject.code,
+              version_label: subjectCtx.version_label,
+              unit_code: primaryUnit.unit_code,
+            },
+            count: questionCount,
+            level,
+            language: 'en',
+            topic: topicTitles,
+            itext: '',
+          });
       const sessionId = result?.session_id ?? result?.data?.session_id;
       navigation.navigate('DocumentUploadPreviewScreen', {
         generatedQuiz: result,
@@ -179,18 +210,40 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        {!embedded ? (
+      {!embedded ? (
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </TouchableOpacity>
-        ) : (
-          <View style={styles.backBtn} />
-        )}
-        <Text style={styles.headerTitle}>From Books</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('DocumentLibraryScreen')}>
-          <Text style={styles.link}>Uploaded library</Text>
-        </TouchableOpacity>
+          <Text style={styles.headerTitle}>From Books</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('DocumentUploadHistoryScreen')}>
+            <Text style={styles.link}>History</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.embeddedToolbar}>
+          <TouchableOpacity onPress={() => navigation.navigate('DocumentUploadHistoryScreen')}>
+            <Text style={styles.link}>Document history</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={styles.alignmentRow} testID="curriculum-alignment-row">
+        <View style={{ flex: 1 }}>
+          <Text style={styles.alignmentTitle}>Curriculum Alignment</Text>
+          <Text style={styles.alignmentSub}>ADR-034 curriculum-aware generation</Text>
+        </View>
+        <Switch
+          testID="curriculum-alignment-switch"
+          accessibilityLabel="Curriculum Alignment"
+          value={curriculumAlignmentEnabled}
+          onValueChange={(enabled) => {
+            setCurriculumAlignmentEnabled(enabled);
+            setSelectedUnits(new Set());
+            if (!enabled) setVersionLabel('');
+          }}
+        />
+        <Text style={styles.alignmentState}>{curriculumAlignmentEnabled ? 'ON' : 'OFF'}</Text>
       </View>
 
       {loading ? (
@@ -228,7 +281,30 @@ export default function DocumentCurriculumFromBooksScreen({ navigation, embedded
               onSelect={(code, item) => {
                 const ctx = (item?.ctx ?? null) as CurriculumCatalogContext | null;
                 setSubjectCtx(ctx);
+                setVersionLabel(ctx?.version_label ?? '');
                 if (ctx) void loadUnits(ctx);
+              }}
+            />
+          ) : null}
+
+          {curriculumAlignmentEnabled && subjectCode && versionOptions.length > 0 ? (
+            <ChipRow
+              label="Version"
+              options={versionOptions.map((v) => ({ code: v, label: v }))}
+              selected={versionLabel}
+              onSelect={(code) => {
+                setVersionLabel(code);
+                const ctx = contexts.find(
+                  (c) =>
+                    c.board.code === boardCode &&
+                    c.grade.code === gradeCode &&
+                    c.subject.code === subjectCode &&
+                    c.version_label === code,
+                );
+                if (ctx) {
+                  setSubjectCtx(ctx);
+                  void loadUnits(ctx);
+                }
               }}
             />
           ) : null}
@@ -319,6 +395,24 @@ function makeStyles(colors: any) {
     },
     backBtn: { padding: 8 },
     headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
+    embeddedToolbar: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      paddingHorizontal: 16,
+      paddingBottom: 4,
+    },
+    alignmentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    alignmentTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+    alignmentSub: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+    alignmentState: { fontSize: 11, fontWeight: '700', color: colors.primary, minWidth: 28 },
     link: { fontSize: 12, color: colors.primary, fontWeight: '600' },
     body: { padding: 16, paddingBottom: 40 },
     section: { marginBottom: 16 },

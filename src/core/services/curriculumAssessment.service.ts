@@ -81,6 +81,102 @@ export function deriveSubjectOptions(
   );
 }
 
+export function deriveVersionOptions(
+  contexts: CurriculumCatalogContext[],
+  boardCode: string,
+  gradeCode: string,
+  subjectCode: string,
+): string[] {
+  const versions = new Set<string>();
+  for (const ctx of contexts) {
+    if (
+      ctx.board?.code === boardCode &&
+      ctx.grade?.code === gradeCode &&
+      ctx.subject?.code === subjectCode &&
+      ctx.version_label
+    ) {
+      versions.add(ctx.version_label);
+    }
+  }
+  return [...versions].sort((a, b) => a.localeCompare(b));
+}
+
+export function findCatalogContext(
+  contexts: CurriculumCatalogContext[],
+  boardCode: string,
+  gradeCode: string,
+  subjectCode: string,
+  versionLabel: string,
+): CurriculumCatalogContext | undefined {
+  return contexts.find(
+    (ctx) =>
+      ctx.board?.code === boardCode &&
+      ctx.grade?.code === gradeCode &&
+      ctx.subject?.code === subjectCode &&
+      ctx.version_label === versionLabel,
+  );
+}
+
+export interface CurriculumQuizGenerateRequest {
+  class: string;
+  subject: string;
+  lesson: string;
+  level: string | number;
+  count: number;
+  itext?: string;
+  type?: string;
+  input_text?: string;
+  language?: string;
+  curriculum_context: {
+    board_code: string;
+    grade_code: string;
+    subject_code: string;
+    version_label: string;
+    unit_code: string;
+  };
+  source_evidence?: Array<Record<string, unknown>>;
+}
+
+export function buildCurriculumQuizGenerateRequest(args: {
+  boardCode: string;
+  gradeCode: string;
+  gradeLabel: string;
+  subjectCode: string;
+  subjectLabel: string;
+  versionLabel: string;
+  unitCode: string;
+  unitTitle: string;
+  inputText?: string;
+  level?: string | number;
+  count?: number;
+  language?: string;
+}): CurriculumQuizGenerateRequest {
+  return {
+    class: args.gradeLabel || args.gradeCode,
+    subject: args.subjectLabel,
+    lesson: args.unitTitle,
+    level: args.level ?? 'medium',
+    count: args.count ?? 10,
+    type: 'document',
+    input_text: args.inputText ?? '',
+    language: args.language ?? 'en',
+    curriculum_context: {
+      board_code: args.boardCode,
+      grade_code: args.gradeCode,
+      subject_code: args.subjectCode,
+      version_label: args.versionLabel,
+      unit_code: args.unitCode,
+    },
+    source_evidence: [],
+  };
+}
+
+export async function generateCurriculumQuiz(payload: CurriculumQuizGenerateRequest) {
+  const res = await apiClient.post('/api/v1/quiz/generate', payload);
+  return res.data;
+}
+
+/** Registry-only path (alignment OFF / From Books default). */
 export async function generateRegistryCurriculumQuiz(payload: {
   curriculum_context: {
     board_code: string;

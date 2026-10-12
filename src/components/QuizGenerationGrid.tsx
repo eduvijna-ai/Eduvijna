@@ -17,6 +17,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -24,6 +25,7 @@ import {
   SCREEN_DEFAULTS,
   type ResolvedNavItem,
 } from '@core/hooks/useQuizNavItems';
+import { useQuizNavScreenAccess } from '@core/hooks/useQuizNavScreenAccess';
 import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
 
 /** Hard-coded fallback order – shown when the API returns no items */
@@ -57,6 +59,17 @@ const PLATFORM_EXPANSION_SCREENS = [
 ];
 
 /** Tiles hidden from the home Generate Assessment grid (still reachable via header menu). */
+function resolvedScreenForGuard(screen: string): string {
+  const useWorkspaceRedirect = Platform.OS !== 'web';
+  if (useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')) {
+    return 'AssessmentWorkspaceScreen';
+  }
+  if (useWorkspaceRedirect && screen === 'CreateImageQuizScreen') {
+    return 'ImageAssessmentScreen';
+  }
+  return screen;
+}
+
 const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
   // The platform itself is never shown as a tile; it is expanded into its parts.
   return isPlatformTile(tile);
@@ -80,6 +93,7 @@ export default function QuizGenerationGrid({
   onQuizTypePress,
 }: QuizGenerationGridProps) {
   const { items: navItems, loading } = useQuizNavItems();
+  const { canAccessScreen } = useQuizNavScreenAccess();
 
   /** Tiles to render — API items when available, defaults otherwise */
   const tiles: ResolvedNavItem[] = useMemo(() => {
@@ -134,6 +148,13 @@ export default function QuizGenerationGrid({
   }, [navItems]);
 
   const handlePress = (screen: string) => {
+    if (!canAccessScreen(resolvedScreenForGuard(screen))) {
+      Alert.alert(
+        'Not available',
+        'This assessment type is not enabled for your account. Contact your school administrator.',
+      );
+      return;
+    }
     // Tab-level destinations — use the root nav ref to switch tabs reliably
     if (screen === 'ERPSchools') {
       navigateToAppMainTab(APP_MAIN_TABS.ERP_SCHOOLS);

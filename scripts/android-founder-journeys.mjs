@@ -79,6 +79,34 @@ function tapLoadMore(nodes) {
   return false;
 }
 
+function fillAnalyticsDateField(testId, isoDate) {
+  let path = dump('b-date-field.xml');
+  let nodes = parseUiXml(readXmlContent(path));
+  const field = locateByTestId(nodes, testId);
+  if (!field) return false;
+  tapTarget(field);
+  sleep(400);
+  adb('shell input keyevent 123'); // move cursor end
+  for (let i = 0; i < 12; i++) adb('shell input keyevent 67');
+  adb(`shell input text "${String(isoDate).replace(/-/g, '\\-')}"`);
+  sleep(300);
+  return true;
+}
+
+function applyFixtureAnalyticsDateRange(log) {
+  const from = '2026-08-01';
+  const to = '2026-10-13';
+  const fromOk = fillAnalyticsDateField('analytics-date-from-input', from);
+  const toOk = fillAnalyticsDateField('analytics-date-to-input', to);
+  const path = dump('b-date-before-apply.xml');
+  const nodes = parseUiXml(readXmlContent(path));
+  const applyTap =
+    locateByTestId(nodes, 'analytics-date-apply') || locateByLabel(nodes, /^Apply$/i, { minY: 0 });
+  log.steps.push({ step: 'analytics_date_range', from, to, fromOk, toOk, applyTap: Boolean(applyTap) });
+  if (applyTap) tapTarget(applyTap);
+  sleep(2500);
+}
+
 function tapSearchField(nodes) {
   const hit =
     locateByTestId(nodes, 'assessments-search-input') ||
@@ -360,6 +388,11 @@ async function journeyB(labels, resultEvidence = {}) {
       );
     },
     { dumpName: 'b-00-wait-hub', attempts: 12, pauseMs: 1500 },
+  );
+  applyFixtureAnalyticsDateRange(log);
+  waitFor(
+    (xml) => locateClassCard(xml) != null || locateByTestId(parseUiXml(xml), classTestId) != null,
+    { dumpName: 'b-00-wait-after-dates', attempts: 10, pauseMs: 1500 },
   );
   const classWait = waitFor(
     (xml) => locateClassCard(xml) != null,

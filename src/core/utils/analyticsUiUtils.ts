@@ -111,25 +111,24 @@ export function generateStudentKPITiles(data: QuizListItem[] | null | undefined)
   ];
 }
 
-function toLocalIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Default teacher analytics window: current academic year (Aug 1 → tomorrow). */
+/**
+ * Default teacher analytics window — matches Quiz-React `AnalyticsPage` (last calendar month → tomorrow, UTC date slice).
+ */
 export function getDefaultDateRange() {
   const today = new Date();
-  const academicYearStart =
-    today.getMonth() >= 7 ? today.getFullYear() : today.getFullYear() - 1;
-  const from = new Date(academicYearStart, 7, 1);
+  const lastMonth = new Date();
+  lastMonth.setMonth(today.getMonth() - 1);
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
   return {
-    from: toLocalIsoDate(from),
-    to: toLocalIsoDate(tomorrow),
+    from: lastMonth.toISOString().split('T')[0],
+    to: tomorrow.toISOString().split('T')[0],
   };
+}
+
+/** Founder acceptance fixture (Aug 2026 assignment) — use via date filter UI, not product default. */
+export function getFounderFixtureAnalyticsDateRange() {
+  return { from: '2026-08-01', to: '2026-10-13' };
 }
 
 export function formatDuration(seconds: number | null | undefined): string {

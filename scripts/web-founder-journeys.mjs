@@ -216,6 +216,24 @@ async function journeyB(labels, resultEvidence = {}) {
   });
   log.steps.push({ step: 'analytics_tab' });
   await waitForText(page, /Class Overview|Analytics Dashboard/i);
+  await page.waitForSelector('[data-testid="analytics-date-from-input"]', { timeout: 60000 });
+  await page.evaluate(() => {
+    const from = document.querySelector('[data-testid="analytics-date-from-input"]');
+    const to = document.querySelector('[data-testid="analytics-date-to-input"]');
+    if (from) {
+      from.value = '2026-08-01';
+      from.dispatchEvent(new Event('input', { bubbles: true }));
+      from.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (to) {
+      to.value = '2026-10-13';
+      to.dispatchEvent(new Event('input', { bubbles: true }));
+      to.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+  await clickByTestId(page, 'analytics-date-apply');
+  log.steps.push({ step: 'analytics_date_range', from: '2026-08-01', to: '2026-10-13' });
+  await new Promise((r) => setTimeout(r, 2000));
 
   await clickByTestId(page, `analytics-class-card-${FIXTURE.classroomId}`).catch(async () => {
     const classLabel = labels.classLabel || '4A-Mathematics';

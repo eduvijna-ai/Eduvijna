@@ -21,7 +21,7 @@ import {
   isOptionTheCorrectAnswer,
   isOptionTheUserAnswer,
 } from '@core/utils/answerMappingUtils';
-import MathRenderer from '../components/MathRenderer';
+import EducationalContent from '../components/EducationalContent';
 
 interface QuizResultsScreenProps {
   route: any;
@@ -353,7 +353,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           </View>
         </View>
 
-        <MathRenderer text={questionText} colors={theme.colors} />
+        <EducationalContent content={questionText} />
 
         {options.length === 0 ? (
           <View style={styles.textAnswerBlock}>
@@ -419,17 +419,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <MathRenderer
-                    text={option}
-                    colors={{
-                      ...theme.colors,
-                      text: isCorrectAnswer
-                        ? theme.colors.onTintGreen
-                        : isUserAnswer
-                          ? theme.colors.danger
-                          : theme.colors.textPrimary,
-                    }}
-                  />
+                  <EducationalContent content={option} />
                 </View>
                 {isCorrectAnswer && (
                   <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
