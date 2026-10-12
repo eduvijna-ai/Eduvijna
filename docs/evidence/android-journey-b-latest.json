@@ -1,7 +1,9 @@
 {
-  "note": "Sanitised summary of the most recent Journey B run. Full UI dumps stay under .dev-api-document-workflow-run/ (local only).",
-  "runAt": "2026-10-12T02:56:16.859Z",
-  "runnerGitHeadSha": "640384221124e9cdfcb66a8dd9a814a1e751e479",
+  "note": "Sanitised summary. Full UI dumps under .dev-api-document-workflow-run/ (local only).",
+  "runAt": "2026-10-12T04:13:00.000Z",
+  "runnerGitHeadSha": "ceacfff11c03aa0f84f7e98223b37c917d9e5db4",
+  "loadedImplementationSha": "ceacfff11c03aa0f84f7e98223b37c917d9e5db4",
+  "exactBundleMatch": true,
   "accountRole": "instructor",
   "fixture": {
     "quizId": 479,
@@ -10,13 +12,10 @@
     "studentId": "70",
     "attemptId": 207
   },
+  "analyticsFixtureQuizListPage": 3,
+  "analyticsFixtureQuizListIndex": 23,
   "pass": false,
-  "progress": [
-    "analytics_date_apply",
-    "class_card_open",
-    "view_analytics_session_scoped_testid",
-    "quiz_drill_ready"
-  ],
-  "blocker": "Device still showed Aarya as Pending without View Details; tap fell through to name label. Requires dev-client reload after 6403842 and session-scoped assignment data.",
-  "supersedes": ["0472b67", "d87d724"]
+  "blocker": "Automation: class quiz list pagination (fixture on page 3 of 3). API trace confirms completed/60%/6/10; Pending UI was wrong assignment on page 1 (e.g. MATH_Quiz), not API disagreement.",
+  "traceEvidence": "docs/evidence/analytics-fixture-trace/fixture-479-70-207.json",
+  "buildIdentityEvidence": "docs/evidence/loaded-build-identity.json"
 }

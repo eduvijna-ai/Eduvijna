@@ -93,6 +93,36 @@ export function locateByTestId(nodes, testId, { minY = 0, pick = 'top' } = {}) {
  * @param {ReturnType<typeof parseUiXml>} nodes
  * @param {string|RegExp} pattern
  */
+export function locateByContentDesc(
+  nodes,
+  pattern,
+  { minY = 0, pick = 'top', requireClickable = false } = {},
+) {
+  const re = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
+  const hits = nodes
+    .filter((n) => {
+      if (!n.boundsRect || n.boundsRect.y1 < minY) return false;
+      const desc = n['content-desc'] || '';
+      if (!re.test(desc)) return false;
+      if (requireClickable && n.clickable !== 'true') return false;
+      return true;
+    })
+    .map((n) => ({
+      kind: 'contentDesc',
+      label: n['content-desc'],
+      x: n.boundsRect.cx,
+      y: n.boundsRect.cy,
+      bounds: n.boundsRect,
+    }));
+  if (!hits.length) return null;
+  hits.sort((a, b) => (pick === 'top' ? a.y - b.y : b.y - a.y));
+  return hits[0];
+}
+
+/**
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ * @param {string|RegExp} pattern
+ */
 export function locateClickableByLabel(
   nodes,
   pattern,

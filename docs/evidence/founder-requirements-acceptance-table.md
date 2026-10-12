@@ -9,7 +9,7 @@
 | Analytics default dates | **Last month → tomorrow** (Quiz-React `AnalyticsPage`, UTC ISO slice) | _pending commit_ | N/A | N/A | `analyticsUiUtils.test.ts` |
 | Fixture Aug range | UI date inputs + Apply (`analytics-date-*`) | _pending commit_ | Applied in B runner | Web runner | `journey-b.json` steps |
 | Analytics parity totals | `scripts/analytics-parity-compare.mjs` | _pending commit_ | N/A | N/A | `docs/evidence/analytics-parity/instructor-analytics-totals.json` |
-| Journey B | Date UI + scoped testIDs + saved result nav | _pending commit_ | **Fail** (quiz 479 View Analytics) | **Fail** (hub timeout) | `journey-b.json` |
+| Journey B | Date UI + scoped testIDs + saved result nav + quiz list page 3 | `ceacfff` + local | **Fail** (automation pagination/hub) | Not re-run | `android-journey-b-latest.json`, `analytics-fixture-trace/` |
 | From Books + alignment OFF/ON | Toggle, version, dual API paths | _pending commit_ | Unit | Unit | `books-from-parity-table.md` |
 | Math/Markdown surfaces | `EducationalContent` on results; taking/explanations已有 | _pending commit_ | Partial | Partial | Component audit |
 | quiz-navigation-items | `useQuizNavScreenAccess` on grid | _pending commit_ | Not E2E | Not E2E | Hook + grid guard |

@@ -27,7 +27,10 @@ import {
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
-import { logMobileBuildIdentification } from './src/core/utils/buildIdentification';
+import {
+  IMPLEMENTATION_SHA,
+  logMobileBuildIdentification,
+} from './src/core/utils/buildIdentification';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
@@ -102,6 +105,10 @@ function AppContent() {
   // Notification polling runs in background
 
   useEffect(() => {
+    if (__DEV__) {
+      (globalThis as typeof globalThis & { __EDUVIJNA_IMPLEMENTATION_SHA__?: string }).__EDUVIJNA_IMPLEMENTATION_SHA__ =
+        IMPLEMENTATION_SHA;
+    }
     logMobileBuildIdentification();
   }, []);
 

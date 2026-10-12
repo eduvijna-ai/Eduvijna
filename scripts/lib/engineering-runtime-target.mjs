@@ -20,11 +20,16 @@ export function engineeringImplementationSha() {
 export const ENGINEERING_BUNDLE_MARKER = 'curriculum-generated-preview-v1';
 
 /** Fetches the dev bundle from the engineering Metro port and checks for the marker string. */
-export function extractLoadedBuildShaFromBundleText(text) {
+export function extractLoadedBuildShaFromBundleText(text, intendedFullSha = null) {
+  if (intendedFullSha && text.includes(intendedFullSha)) {
+    return intendedFullSha;
+  }
   const patterns = [
-    /GIT_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{7,40})/i,
-    /sha:\s*['"]([a-f0-9]{7,40})/i,
-    /EXPO_PUBLIC_GIT_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{7,40})/i,
+    /ENGINEERING_IMPLEMENTATION_SHA\s*=\s*['"]([a-f0-9]{40})['"]/,
+    /IMPLEMENTATION_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{40})['"]/i,
+    /GIT_SHA['"]?\s*[:=]\s*['"]([a-f0-9]{40})['"]/i,
+    /"GIT_SHA"\s*:\s*"([a-f0-9]{40})"/i,
+    /sha:\s*['"]([a-f0-9]{40})['"]/i,
   ];
   for (const re of patterns) {
     const m = text.match(re);
@@ -42,9 +47,10 @@ export async function probeEngineeringBundleMarker() {
     }
     const text = await res.text();
     const markerFound = text.includes(ENGINEERING_BUNDLE_MARKER);
-    const loadedBuildSha = extractLoadedBuildShaFromBundleText(text);
+    const intended = engineeringImplementationSha();
+    const loadedBuildSha = extractLoadedBuildShaFromBundleText(text, intended);
     return {
-      pass: markerFound,
+      pass: markerFound && loadedBuildSha === intended,
       markerFound,
       metroUrl: url,
       runnerGitHeadSha: engineeringImplementationSha(),

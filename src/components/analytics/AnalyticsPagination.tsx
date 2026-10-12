@@ -22,7 +22,11 @@ export default function AnalyticsPagination({ page, totalPages, onPageChange, co
         <Ionicons name="chevron-back" size={16} color={page === 1 ? colors.textSecondary : colors.primary} />
         <Text style={[styles.btnText, { color: page === 1 ? colors.textSecondary : colors.primary }]}>Previous</Text>
       </TouchableOpacity>
-      <Text style={[styles.info, { color: colors.textSecondary }]}>
+      <Text
+        testID="analytics-pagination-info"
+        accessibilityLabel={`Analytics page ${page} of ${totalPages}`}
+        style={[styles.info, { color: colors.textSecondary }]}
+      >
         Page {page} of {totalPages}
       </Text>
       <TouchableOpacity

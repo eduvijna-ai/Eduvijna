@@ -4,6 +4,7 @@ import {
   locateByLabel,
   locateClickableByLabel,
   locateByTestId,
+  locateByContentDesc,
   parseUiXml,
   readXmlContent,
 } from './android-ui-nodes.mjs';
@@ -14,6 +15,7 @@ export {
   locateByLabel,
   locateClickableByLabel,
   locateByTestId,
+  locateByContentDesc,
   parseUiXml,
   readXmlContent,
 };

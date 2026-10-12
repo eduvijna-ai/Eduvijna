@@ -15,6 +15,46 @@ export const FIXTURE = {
   expectedCorrect: 6,
 };
 
+/** Matches Journey B / trace script analytics date filter. */
+export const ANALYTICS_FIXTURE_DATE_RANGE = {
+  created_from: '2026-08-01',
+  created_to: '2026-10-13',
+};
+
+export const ANALYTICS_ITEMS_PER_PAGE = 10;
+
+/** Quiz list page (1-based) where the fixture assignment appears in class drill. */
+export async function loadFixtureAnalyticsQuizPage() {
+  const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
+  if (!existsSync(credFile)) throw new Error('missing_credentials');
+  const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
+  const instructor = await loginDevApi(
+    cfg.accounts.instructor.username,
+    cfg.accounts.instructor.password,
+  );
+  const q = new URLSearchParams({
+    view_type: 'all',
+    limit: '500',
+    offset: '0',
+    created_from: ANALYTICS_FIXTURE_DATE_RANGE.created_from,
+    created_to: ANALYTICS_FIXTURE_DATE_RANGE.created_to,
+  });
+  const res = await fetch(`${getDevApiBase()}/api/v1/dashboard/quizzes?${q.toString()}`, {
+    headers: { Authorization: `Bearer ${instructor.token}` },
+  });
+  const data = await res.json();
+  const rows = Array.isArray(data?.data) ? data.data : [];
+  const classRows = rows.filter((r) => String(r.classroom_id) === FIXTURE.classroomId);
+  const index = classRows.findIndex(
+    (r) =>
+      Number(r.quiz_id) === FIXTURE.quizId && String(r.session_id) === FIXTURE.sessionId,
+  );
+  const total = classRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / ANALYTICS_ITEMS_PER_PAGE));
+  const page = index >= 0 ? Math.floor(index / ANALYTICS_ITEMS_PER_PAGE) + 1 : 1;
+  return { index, page, total, totalPages, found: index >= 0 };
+}
+
 export async function loadFixtureLabels() {
   const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
   if (!existsSync(credFile)) throw new Error('missing_credentials');

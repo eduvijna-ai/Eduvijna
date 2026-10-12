@@ -10,6 +10,7 @@ import {
   locateByLabel,
   locateClickableByLabel,
   locateByTestId,
+  locateByContentDesc,
   locateWithScroll,
   parseUiXml,
   readXmlContent,
@@ -20,6 +21,7 @@ import {
 import {
   FIXTURE,
   loadFixtureLabels,
+  loadFixtureAnalyticsQuizPage,
   loadFixtureResultEvidenceFromCredentials,
 } from './lib/founder-fixture.mjs';
 import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
@@ -61,6 +63,61 @@ function scrollDown() {
 function scrollUp() {
   adb('shell input swipe 540 700 540 1500 350');
   sleep(900);
+}
+
+function scrollToTop(times = 8) {
+  for (let i = 0; i < times; i++) scrollUp();
+}
+
+function scrollToBottom(times = 10) {
+  for (let i = 0; i < times; i++) scrollDown();
+}
+
+/** Swipe inside the analytics nested list (between header and bottom tabs). */
+function scrollAnalyticsQuizListDown() {
+  adb('shell input swipe 540 1450 540 850 280');
+  sleep(650);
+}
+
+function scrollAnalyticsQuizListUp() {
+  adb('shell input swipe 540 850 540 1450 280');
+  sleep(650);
+}
+
+function locatePaginationNext(nodes) {
+  const byTestId = locateByTestId(nodes, 'analytics-pagination-next');
+  if (byTestId) {
+    const raw = nodes.find((n) => (n['resource-id'] || '').includes('analytics-pagination-next'));
+    if (raw && raw.enabled === 'false') return null;
+    return byTestId;
+  }
+  return (
+    locateByContentDesc(nodes, /^Next page$/i, { requireClickable: true }) ||
+    locateClickableByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' })
+  );
+}
+
+function tapAnalyticsPaginationNext(log, stepName, pageTry) {
+  let nextTap = null;
+  for (let scroll = 0; scroll < 18 && !nextTap; scroll++) {
+    const path = dump(`${stepName}-page-${pageTry}-s${scroll}.xml`);
+    const nodes = parseUiXml(readXmlContent(path));
+    if (locateByLabel(nodes, /Page \d+ of \d+/i, { minY: 0 })) {
+      nextTap = locatePaginationNext(nodes);
+    }
+    if (!nextTap) {
+      nextTap = locatePaginationNext(nodes);
+    }
+    if (!nextTap) scrollAnalyticsQuizListDown();
+  }
+  if (!nextTap) {
+    log.steps.push({ step: stepName, pageTry, paginationFound: false });
+    return false;
+  }
+  log.steps.push({ step: stepName, pageTry, tap: tapTarget(nextTap) });
+  tapTarget(nextTap);
+  sleep(2200);
+  return true;
 }
 
 function adbTypeSearch(text) {
@@ -125,9 +182,20 @@ function ensureAnalyticsClassList(log, classTestId) {
       sleep(2200);
       continue;
     }
-    log.steps.push({ step: 'analytics_hardware_back', attempt: i });
-    adb('shell input keyevent 4');
-    sleep(1800);
+    const analyticsTab = locateByLabel(n, 'Analytics', { minY: 1200, pick: 'bottom' });
+    if (analyticsTab) {
+      log.steps.push({ step: 'analytics_tab_recover', attempt: i, tap: tapTarget(analyticsTab) });
+      tapTarget(analyticsTab);
+      sleep(3500);
+      continue;
+    }
+    if (i < 2) {
+      log.steps.push({ step: 'analytics_hardware_back', attempt: i });
+      adb('shell input keyevent 4');
+      sleep(1800);
+      continue;
+    }
+    break;
   }
   return false;
 }
@@ -135,6 +203,10 @@ function ensureAnalyticsClassList(log, classTestId) {
 function applyFixtureAnalyticsDateRange(log) {
   const from = '2026-08-01';
   const to = '2026-10-13';
+  waitFor(
+    (xml) => locateByTestId(parseUiXml(xml), 'analytics-date-from-input') != null,
+    { dumpName: 'b-date-wait-inputs', attempts: 12, pauseMs: 1500 },
+  );
   const fromOk = fillAnalyticsDateField('analytics-date-from-input', from);
   const toOk = fillAnalyticsDateField('analytics-date-to-input', to);
   const path = dump('b-date-before-apply.xml');
@@ -386,7 +458,7 @@ async function journeyA(labels, resultEvidence = {}) {
   return log;
 }
 
-async function journeyB(labels, resultEvidence = {}) {
+async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   const fx = fixtureContext(labels, resultEvidence);
   const log = { journey: 'B_analytics_view_analytics_result', steps: [] };
   await dismissOverlays();
@@ -406,13 +478,21 @@ async function journeyB(labels, resultEvidence = {}) {
     tap: tapTarget(locateByLabel(nodes, 'Analytics', { minY: 0, pick: 'bottom' })),
   });
   sleep(4500);
+  waitFor(
+    (xml) => locateByLabel(parseUiXml(xml), /Analytics Dashboard/i, { minY: 0 }) != null,
+    { dumpName: 'b-00-wait-analytics-hub', attempts: 12, pauseMs: 1500 },
+  );
 
   const classTestId = `analytics-class-card-${FIXTURE.classroomId}`;
   const classLabel = labels.classLabel || '4A-Mathematics';
+  const classOpenDesc = classLabel ? `Open class analytics: ${classLabel}` : null;
   const locateClassCard = (xml) => {
     const n = parseUiXml(xml);
     return (
-      locateByTestId(n, classTestId) ||
+      (classOpenDesc
+        ? locateByContentDesc(n, classOpenDesc, { requireClickable: true, pick: 'top' })
+        : null) ||
+      locateByTestId(n, classTestId, { pick: 'top' }) ||
       locateClickableByLabel(n, classLabel, { minY: 0, minHeight: 80 }) ||
       locateByLabel(n, classLabel, { minY: 0 })
     );
@@ -475,46 +555,70 @@ async function journeyB(labels, resultEvidence = {}) {
     return log;
   }
   sleep(2500);
+  const classDrillReady = waitFor(
+    (xml) => locateByLabel(parseUiXml(xml), /Quizzes in this Class/i, { minY: 0 }) != null,
+    { dumpName: 'b-01-wait-class-drill', attempts: 10, pauseMs: 1500 },
+  );
+  log.steps.push({ step: 'class_drill_ready', ok: Boolean(classDrillReady.xmlPath) });
 
   const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
-  const quizNeedles = [labels.searchToken, labels.quizTitle.slice(0, 18), String(FIXTURE.quizId)].filter(
-    Boolean,
-  );
-  const locateViewAnalytics = (xml) => {
+  const quizCardId = `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
+  const titleNeedle = labels.quizTitle ? String(labels.quizTitle).slice(0, 28) : '';
+  const fixtureViewDesc = labels.quizTitle
+    ? `View analytics for ${labels.quizTitle}`
+    : `View analytics for`;
+  const resolveViewAnalyticsOnScreen = (xml) => {
     const n = parseUiXml(xml);
-    const byId = locateByTestId(n, viewAnalyticsId);
-    if (byId) return byId;
-    const quizVisible = quizNeedles.some((needle) => locateByLabel(n, needle, { minY: 0 }) != null);
-    if (quizVisible) {
-      return (
-        locateClickableByLabel(n, 'View Analytics', { minY: 0, minHeight: 36 }) ||
-        locateByLabel(n, 'View Analytics', { minY: 0 })
-      );
-    }
-    return locateClickableByLabel(n, 'View Analytics', { minY: 0, minHeight: 36 });
+    const byTestId = locateByTestId(n, viewAnalyticsId);
+    if (byTestId) return byTestId;
+    const byDesc = locateByContentDesc(n, fixtureViewDesc, { requireClickable: true });
+    if (byDesc) return byDesc;
+    if (!titleNeedle || !locateByLabel(n, titleNeedle, { minY: 0 })) return null;
+    return locateClickableByLabel(n, 'View Analytics', { minY: 0, minHeight: 36, pick: 'bottom' });
   };
+  if (quizPageHint?.found) {
+    log.steps.push({
+      step: 'fixture_quiz_page_hint',
+      page: quizPageHint.page,
+      index: quizPageHint.index,
+      total: quizPageHint.total,
+    });
+    const targetPageLabel = `Analytics page ${quizPageHint.page} of ${quizPageHint.totalPages}`;
+    for (let seek = 0; seek < quizPageHint.totalPages + 2; seek++) {
+      for (let s = 0; s < 12; s++) scrollAnalyticsQuizListDown();
+      const path = dump(`b-02-page-seek-${seek}.xml`);
+      const nodes = parseUiXml(readXmlContent(path));
+      const onPage =
+        locateByContentDesc(nodes, targetPageLabel) ||
+        locateByLabel(nodes, new RegExp(`Page ${quizPageHint.page} of ${quizPageHint.totalPages}`, 'i'), {
+          minY: 0,
+        });
+      if (onPage) {
+        log.steps.push({ step: 'quiz_page_reached', seek, targetPageLabel });
+        break;
+      }
+      if (!tapAnalyticsPaginationNext(log, 'quiz_pagination_seek', seek)) break;
+      for (let s = 0; s < 8; s++) scrollAnalyticsQuizListUp();
+    }
+    sleep(600);
+  }
   let viewAnalyticsTap = null;
   let quizScrolls = 0;
-  for (let pageTry = 0; pageTry < 6 && !viewAnalyticsTap; pageTry++) {
+  for (let pageTry = 0; pageTry < 8 && !viewAnalyticsTap; pageTry++) {
+    scrollToTop(4);
     const scrolled = locateWithScroll({
       dumpFn: dump,
-      scrollFn: scrollDown,
-      maxScrolls: pageTry === 0 ? 14 : 8,
+      scrollFn: scrollAnalyticsQuizListDown,
+      maxScrolls: 10,
       dumpNamePrefix: `b-02-scroll-quiz-p${pageTry}`,
-      locateFn: locateViewAnalytics,
+      locateFn: resolveViewAnalyticsOnScreen,
     });
-    viewAnalyticsTap = scrolled.hit;
     quizScrolls += scrolled.scrolls;
+    if (scrolled.xmlPath) {
+      viewAnalyticsTap = resolveViewAnalyticsOnScreen(readXmlContent(scrolled.xmlPath));
+    }
     if (viewAnalyticsTap) break;
-    path = dump(`b-02-page-${pageTry}.xml`);
-    nodes = parseUiXml(readXmlContent(path));
-    const nextTap =
-      locateByTestId(nodes, 'analytics-pagination-next') ||
-      locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
-    if (!nextTap) break;
-    log.steps.push({ step: 'quiz_pagination_next', pageTry, tap: tapTarget(nextTap) });
-    tapTarget(nextTap);
-    sleep(2200);
+    if (!tapAnalyticsPaginationNext(log, 'quiz_pagination_next', pageTry)) break;
   }
   if (quizScrolls > 0) {
     log.steps.push({ step: 'quiz_scroll', scrolls: quizScrolls });
@@ -632,12 +736,15 @@ async function main() {
   const labels = await loadFixtureLabels();
   const runRecord = await buildEngineeringRunRecord({ accountRole: 'instructor' });
   const bundleProbe = runRecord.bundleProbe;
-  if (!bundleProbe.pass) {
+  const intendedSha = sha;
+  const loadedSha = bundleProbe.loadedBuildSha;
+  if (!bundleProbe.pass || loadedSha !== intendedSha) {
     console.error(
       JSON.stringify({
         error: 'engineering_bundle_not_verified',
+        intendedImplementationSha: intendedSha,
+        loadedImplementationSha: loadedSha,
         bundleProbe,
-        hint: 'Restart Metro on port 8082 from the PR worktree and reload the dev client before journeys.',
       }),
     );
     process.exit(2);
@@ -689,7 +796,8 @@ async function main() {
     if (!results.a.pass) failed = true;
   }
   if (which === 'b' || which === 'all') {
-    results.b = await journeyB(labels, resultEvidence);
+    const quizPageHint = await loadFixtureAnalyticsQuizPage();
+    results.b = await journeyB(labels, resultEvidence, quizPageHint);
     if (!results.b.pass) failed = true;
   }
   console.log(
