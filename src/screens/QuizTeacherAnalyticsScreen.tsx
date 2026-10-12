@@ -213,26 +213,53 @@ export default function QuizTeacherAnalyticsScreen() {
   const paginatedSummary = quizSummaryRows.slice((summaryPage - 1) * ITEMS_PER_PAGE, summaryPage * ITEMS_PER_PAGE);
   const paginatedRows = studentRows.slice((attemptPage - 1) * ITEMS_PER_PAGE, attemptPage * ITEMS_PER_PAGE);
 
-  const handleApplyDates = () => {
-    setAppliedStart(startDate);
-    setAppliedEnd(endDate);
+  const resetDrillToClasses = useCallback(() => {
+    setDrillLevel('classes');
+    setSelectedClass(null);
+    setSelectedClassName('');
+    setSelectedAssignment(null);
+    setSelectedQuizName('');
+    setAttemptFilter(null);
     setClassPage(1);
     setQuizPage(1);
     setSummaryPage(1);
     setAttemptPage(1);
+    setStudentsModal((s) => (s.visible ? { ...s, visible: false } : s));
+    setPopup((p) => (p.visible ? { ...p, visible: false } : p));
+  }, []);
+
+  const handleApplyDates = () => {
+    resetDrillToClasses();
+    setAppliedStart(startDate);
+    setAppliedEnd(endDate);
   };
 
   const handleClearDates = () => {
     const d = getDefaultDateRange();
+    resetDrillToClasses();
     setStartDate(d.from);
     setEndDate(d.to);
     setAppliedStart(d.from);
     setAppliedEnd(d.to);
-    setClassPage(1);
-    setQuizPage(1);
-    setSummaryPage(1);
-    setAttemptPage(1);
   };
+
+  const analyticsDrillTestId = useMemo(() => {
+    if (drillLevel === 'classes') return 'analytics-drill-classes';
+    if (drillLevel === 'class' && selectedClass) {
+      return `analytics-drill-class-${selectedClass}`;
+    }
+    if (drillLevel === 'quiz' && selectedAssignment) {
+      return `analytics-drill-quiz-${selectedAssignment.quizId}-${selectedAssignment.sessionId}`;
+    }
+    return 'analytics-drill-unknown';
+  }, [drillLevel, selectedClass, selectedAssignment]);
+
+  const analyticsDrillAccessibilityLabel = useMemo(() => {
+    if (drillLevel === 'quiz' && selectedAssignment) {
+      return `${analyticsDrillTestId} classroom-${selectedAssignment.classroomId}`;
+    }
+    return analyticsDrillTestId;
+  }, [analyticsDrillTestId, drillLevel, selectedAssignment]);
 
   const handleClassPress = (cls: ClassOverview) => {
     setSelectedClass(cls.classroom_id);
@@ -401,8 +428,8 @@ export default function QuizTeacherAnalyticsScreen() {
       colors={colors}
       onView={row.canViewSavedResult ? () => openSavedQuizResult(row) : undefined}
       viewResultTestId={
-        row.attempt_id
-          ? `analytics-view-result-${row.student_id}-${row.attempt_id}`
+        selectedAssignment && row.attempt_id
+          ? `analytics-view-result-${selectedAssignment.quizId}-${selectedAssignment.sessionId}-${row.student_id}-${row.attempt_id}`
           : undefined
       }
     />
@@ -467,6 +494,13 @@ export default function QuizTeacherAnalyticsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
+        <View
+          testID={analyticsDrillTestId}
+          accessibilityLabel={analyticsDrillAccessibilityLabel}
+          accessible
+          importantForAccessibility="yes"
+          style={styles.drillIdentityMarker}
+        />
         {drillLevel === 'classes' ? (
           <View style={styles.kpiSection}>
             <AnalyticsKPIGrid tiles={kpiTiles} />
@@ -749,6 +783,14 @@ function KpiLine({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  drillIdentityMarker: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: 0,
+    top: 0,
+  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontSize: 14 },
   hero: {

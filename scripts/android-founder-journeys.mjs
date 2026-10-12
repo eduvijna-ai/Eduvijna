@@ -263,6 +263,22 @@ function waitFor(predicate, { attempts = 12, pauseMs = 1200, dumpName = 'wait' }
   }
   return { ok: false, xmlPath: null, xml: null };
 }
+
+function failJourneyB(log, verify) {
+  log.pass = false;
+  log.verify = verify;
+  writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
+  return log;
+}
+
+function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
+  const result = waitFor(
+    (xml) => locateByTestId(parseUiXml(xml), expectedTestId) != null,
+    { dumpName, attempts: 16, pauseMs: 1500 },
+  );
+  log.steps.push({ step: 'assert_drill_identity', expected: expectedTestId, ok: result.ok });
+  return result.ok;
+}
 function screenshot(name) {
   const local = join(evidence, name);
   execSync(`adb -s ${serial} exec-out screencap -p > "${local.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
@@ -525,16 +541,8 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       pick: 'top',
     });
   };
-  const isClassDrillOpen = (xml) => {
-    const n = parseUiXml(xml);
-    return (
-      locateByTestId(n, 'analytics-drill-back') != null ||
-      locateByLabel(n, /Quizzes in this Class/i, { minY: 0 }) != null ||
-      locateByLabel(n, /Quiz Performance Summary/i, { minY: 0 }) != null ||
-      locateByTestId(n, `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`) != null ||
-      locateByTestId(n, `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`) != null
-    );
-  };
+  const classDrillId = `analytics-drill-class-${FIXTURE.classroomId}`;
+  const quizDrillId = `analytics-drill-quiz-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
   const tapOpenClassCard = (classTap) => {
     tapTarget(classTap);
     sleep(400);
@@ -553,6 +561,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     { dumpName: 'b-00-wait-hub', attempts: 12, pauseMs: 1500 },
   );
   applyFixtureAnalyticsDateRange(log);
+  if (!assertAnalyticsDrillIdentity(log, 'analytics-drill-classes', 'b-after-date-apply')) {
+    return failJourneyB(log, { label: 'analytics_drill_classes_after_date', pass: false });
+  }
   if (!ensureAnalyticsClassList(log, classTestId)) {
     log.steps.push({ step: 'analytics_class_list_reset', ok: false });
   }
@@ -610,47 +621,25 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   tapOpenClassCard(classTap);
   const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   const quizCardId = `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
-  let classDrillReady = waitFor(isClassDrillOpen, {
-    dumpName: 'b-01-wait-class-drill',
-    attempts: 20,
-    pauseMs: 2000,
-  });
-  log.steps.push({ step: 'class_drill_ready', ok: classDrillReady.ok });
-  if (!classDrillReady.ok) {
-    for (let retry = 0; retry < 3 && !classDrillReady.ok; retry++) {
+  let classDrillOk = assertAnalyticsDrillIdentity(log, classDrillId, 'b-after-class-open');
+  if (!classDrillOk) {
+    for (let retry = 0; retry < 3 && !classDrillOk; retry++) {
       const pathRetry = dump(`b-01-reopen-class-${retry}.xml`);
       const retryTap = locateClassCard(readXmlContent(pathRetry));
       if (retryTap) {
         log.steps.push({ step: 'open_class_retry', retry, tap: tapTarget(retryTap) });
         tapOpenClassCard(retryTap);
-        classDrillReady = waitFor(isClassDrillOpen, {
-          dumpName: `b-01-wait-class-drill-retry-${retry}`,
-          attempts: 12,
-          pauseMs: 2000,
-        });
+        classDrillOk = assertAnalyticsDrillIdentity(log, classDrillId, `b-after-class-retry-${retry}`);
       }
     }
-    log.steps.push({ step: 'class_drill_ready_after_retry', ok: classDrillReady.ok });
   }
-  if (!classDrillReady.ok) {
-    log.pass = false;
-    log.verify = { label: 'analytics_class_drill', pass: false, classTestId };
-    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
-    return log;
+  if (!classDrillOk) {
+    return failJourneyB(log, { label: 'analytics_class_drill', pass: false, classTestId, classDrillId });
   }
   for (let s = 0; s < 2; s++) scrollDown();
-  const titleNeedle = labels.quizTitle ? String(labels.quizTitle).slice(0, 28) : '';
-  const fixtureViewDesc = labels.quizTitle
-    ? `View analytics for ${labels.quizTitle}`
-    : `View analytics for`;
   const resolveViewAnalyticsOnScreen = (xml) => {
     const n = parseUiXml(xml);
-    const byTestId = locateByTestId(n, viewAnalyticsId);
-    if (byTestId) return byTestId;
-    const byDesc = locateByContentDesc(n, fixtureViewDesc, { requireClickable: true });
-    if (byDesc) return byDesc;
-    if (!titleNeedle || !locateByLabel(n, titleNeedle, { minY: 0 })) return null;
-    return locateClickableByLabel(n, 'View Analytics', { minY: 0, minHeight: 36, pick: 'bottom' });
+    return locateByTestId(n, viewAnalyticsId);
   };
   if (quizPageHint?.found) {
     log.steps.push({
@@ -759,50 +748,19 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     }
   }
   if (!drillOpened) {
-    log.pass = false;
-    log.verify = { label: 'analytics_view_analytics', pass: false, testId: viewAnalyticsId };
-    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
-    return log;
+    return failJourneyB(log, { label: 'analytics_view_analytics', pass: false, testId: viewAnalyticsId });
   }
-  const viewResultId = `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
-  sleep(2500);
-  const studentAttemptCardId = `analytics-student-attempt-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
-  const drillReady = waitFor(
-    (xml) => {
-      const n = parseUiXml(xml);
-      return (
-        locateByLabel(n, /Back to Quizzes/i) != null ||
-        locateByLabel(n, /Student Attempts/i) != null ||
-        locateByTestId(n, viewResultId) != null ||
-        locateByTestId(n, studentAttemptCardId) != null ||
-        locateByLabel(n, new RegExp(FIXTURE.studentName, 'i')) != null
-      );
-    },
-    { dumpName: 'b-03-wait-drill', attempts: 12, pauseMs: 1500 },
-  );
-  log.steps.push({ step: 'quiz_drill_ready', ok: Boolean(drillReady.xmlPath) });
-  if (!drillReady.xmlPath) {
-    path = dump('b-03-drill-miss.xml');
-    nodes = parseUiXml(readXmlContent(path));
-    const retryTap =
-      locateClickableByLabel(nodes, 'View Analytics', { minY: 0, minHeight: 36 }) ||
-      locateByLabel(nodes, 'View Analytics', { minY: 0 });
-    if (retryTap) {
-      log.steps.push({ step: 'view_analytics_retry', tap: tapTarget(retryTap) });
-      tapTarget(retryTap);
-      sleep(3500);
-    }
+  if (!assertAnalyticsDrillIdentity(log, quizDrillId, 'b-after-quiz-drill')) {
+    return failJourneyB(log, { label: 'analytics_quiz_drill', pass: false, quizDrillId });
+  }
+  const viewResultId = `analytics-view-result-${FIXTURE.quizId}-${FIXTURE.sessionId}-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
+  sleep(1500);
+  if (!assertAnalyticsDrillIdentity(log, quizDrillId, 'b-before-view-result')) {
+    return failJourneyB(log, { label: 'analytics_quiz_drill_before_result', pass: false, quizDrillId });
   }
 
   for (let i = 0; i < 4; i++) scrollUp();
-  const locateStudentResult = (xml) => {
-    const n = parseUiXml(xml);
-    return (
-      locateByTestId(n, viewResultId) ||
-      locateClickableByLabel(n, 'View Details', { minY: 0, minHeight: 32 }) ||
-      locateByLabel(n, /View saved result/i, { minY: 0 })
-    );
-  };
+  const locateStudentResult = (xml) => locateByTestId(parseUiXml(xml), viewResultId);
   path = dump('b-04-drill.xml');
   nodes = parseUiXml(readXmlContent(path));
   let viewResultTap = locateStudentResult(readXmlContent(path));
@@ -833,13 +791,10 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       sleep(2000);
     }
   }
-  log.steps.push({ step: 'open_saved_result', tap: tapTarget(viewResultTap), testId: viewResultId });
   if (!viewResultTap) {
-    log.pass = false;
-    log.verify = { label: 'analytics_saved_result', pass: false };
-    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
-    return log;
+    return failJourneyB(log, { label: 'analytics_saved_result', pass: false, viewResultId });
   }
+  log.steps.push({ step: 'open_saved_result', tap: tapTarget(viewResultTap), testId: viewResultId });
   sleep(4500);
 
   const resultWait = waitFor(

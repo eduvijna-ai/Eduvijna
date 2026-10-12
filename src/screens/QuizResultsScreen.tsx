@@ -573,7 +573,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           testID="quiz-result-summary"
           accessibilityLabel={
             quizId && attemptId && effectiveStudentId
-              ? `quiz-result-summary quiz-${quizId} attempt-${attemptId} student-${effectiveStudentId}`
+              ? `quiz-result-summary quiz-${quizId} session-${sessionId ?? 'unknown'} classroom-${routeClassroomId ?? 'unknown'} attempt-${attemptId} student-${effectiveStudentId}`
               : 'quiz-result-summary'
           }
           style={[styles.scoreCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}

@@ -34,11 +34,13 @@ describe('QuizStudentAttemptCard action visibility', () => {
         quizName="MATH_Quiz"
         colors={colors}
         onView={() => {}}
-        viewResultTestId="analytics-view-result-70-207"
+        viewResultTestId="analytics-view-result-479-a6882262-5c50-4cf5-a4a8-dc8786862916-70-207"
       />,
     );
     expect(getByText('View Details')).toBeTruthy();
-    expect(getByTestId('analytics-view-result-70-207')).toBeTruthy();
+    expect(
+      getByTestId('analytics-view-result-479-a6882262-5c50-4cf5-a4a8-dc8786862916-70-207'),
+    ).toBeTruthy();
   });
 
   it('hides View Details when canViewSavedResult is false', () => {

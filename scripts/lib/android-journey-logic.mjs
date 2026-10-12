@@ -61,7 +61,10 @@ export function verifyWorksheetResultScreen(xmlContent, fixture) {
     `quiz-${fixture.quizId} attempt-${fixture.attemptId} student-${fixture.studentId}`;
   const summaryHit = locateByTestId(nodes, 'quiz-result-summary');
   const identityOk =
-    summaryHit != null && texts.some((t) => t.includes(identityNeedle));
+    summaryHit != null &&
+    texts.some((t) => t.includes(identityNeedle)) &&
+    (fixture.sessionId == null || texts.some((t) => String(t).includes(`session-${fixture.sessionId}`))) &&
+    (fixture.classroomId == null || texts.some((t) => String(t).includes(`classroom-${fixture.classroomId}`)));
 
   const wrongAttemptId = fixture.wrongAttemptId;
   const wrongAttemptTrap =

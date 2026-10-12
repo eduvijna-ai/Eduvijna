@@ -241,7 +241,8 @@ async function journeyB(labels, resultEvidence = {}) {
   }
   await clickByTestId(page, 'analytics-date-apply');
   log.steps.push({ step: 'analytics_date_range', from: '2026-08-01', to: '2026-10-13' });
-  await new Promise((r) => setTimeout(r, 4500));
+  await page.waitForSelector('[data-testid="analytics-drill-classes"]', { timeout: 60000 });
+  log.steps.push({ step: 'assert_drill_identity', expected: 'analytics-drill-classes', ok: true });
 
   await clickByTestId(page, `analytics-class-card-${FIXTURE.classroomId}`).catch(async () => {
     const classLabel = labels.classLabel || '4A-Mathematics';
@@ -252,7 +253,14 @@ async function journeyB(labels, resultEvidence = {}) {
     }, classLabel);
   });
   log.steps.push({ step: 'open_class', classroomId: FIXTURE.classroomId });
-  await new Promise((r) => setTimeout(r, 1500));
+  await page.waitForSelector(`[data-testid="analytics-drill-class-${FIXTURE.classroomId}"]`, {
+    timeout: 60000,
+  });
+  log.steps.push({
+    step: 'assert_drill_identity',
+    expected: `analytics-drill-class-${FIXTURE.classroomId}`,
+    ok: true,
+  });
 
   const viewAnalyticsTestId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   let viewOpened = false;
@@ -349,9 +357,17 @@ async function journeyB(labels, resultEvidence = {}) {
     log.verify = { label: 'analytics_view_analytics', pass: false, testId: viewAnalyticsTestId };
     return log;
   }
-  await new Promise((r) => setTimeout(r, 2000));
+  await page.waitForSelector(
+    `[data-testid="analytics-drill-quiz-${FIXTURE.quizId}-${FIXTURE.sessionId}"]`,
+    { timeout: 60000 },
+  );
+  log.steps.push({
+    step: 'assert_drill_identity',
+    expected: `analytics-drill-quiz-${FIXTURE.quizId}-${FIXTURE.sessionId}`,
+    ok: true,
+  });
 
-  const viewResultId = `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
+  const viewResultId = `analytics-view-result-${FIXTURE.quizId}-${FIXTURE.sessionId}-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
   let openedResult = false;
   for (let pageTry = 0; pageTry < 6 && !openedResult; pageTry++) {
     try {
