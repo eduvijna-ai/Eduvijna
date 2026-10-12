@@ -69,11 +69,232 @@ export function userAnswersFromLogData(
   return userAnswersFromLogDataEntries(logData, questions);
 }
 
+type TeacherAssignmentRow = Record<string, unknown>;
+
+type TeacherAttemptRow = {
+  attempt_id?: number;
+  student_id?: string;
+  session_id?: string;
+  class_id?: string;
+  status?: string;
+  score?: number | null;
+  submission?: { log_data?: unknown };
+  log_data?: unknown;
+  time_spent_seconds?: number | null;
+  completed_at?: string | null;
+};
+
+function assignmentClassroomId(row: TeacherAssignmentRow): string | null {
+  const raw = row.classroom_id ?? row.class_id;
+  if (raw == null || String(raw).trim() === '') return null;
+  return String(raw);
+}
+
+function assignmentSessionId(row: TeacherAssignmentRow): string | null {
+  const raw = row.session_id;
+  if (raw == null || String(raw).trim() === '') return null;
+  return String(raw);
+}
+
+function classroomConflictsWithSession(classroomId: string, sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return String(classroomId) === String(sessionId);
+}
+
+function pickTeacherAssignment(
+  apiRows: TeacherAssignmentRow[],
+  params: { quizId: number; sessionId?: string | null; classroomId?: string | null },
+): { assignment: TeacherAssignmentRow } | { error: QuizResultLoadState } {
+  const matchingQuiz = apiRows.filter(
+    (row) => row.quiz_id != null && row.quiz_id !== '' && Number(row.quiz_id) === params.quizId,
+  );
+  if (matchingQuiz.length === 0) {
+    return {
+      error: {
+        status: 'error',
+        message: 'No assignment matches the requested quiz.',
+        retryable: false,
+      },
+    };
+  }
+
+  let candidates = matchingQuiz;
+  if (params.sessionId) {
+    const sessionMatches = matchingQuiz.filter(
+      (row) => assignmentSessionId(row) === String(params.sessionId),
+    );
+    if (sessionMatches.length === 0) {
+      return {
+        error: {
+          status: 'error',
+          message: 'No assignment matches the requested quiz and session.',
+          retryable: false,
+        },
+      };
+    }
+    if (sessionMatches.length > 1) {
+      return {
+        error: {
+          status: 'error',
+          message: 'Multiple assignments match this quiz and session.',
+          retryable: false,
+        },
+      };
+    }
+    candidates = sessionMatches;
+  } else if (matchingQuiz.length > 1) {
+    return {
+      error: {
+        status: 'error',
+        message:
+          'Multiple assignments match this quiz; open results from the specific class assignment.',
+        retryable: false,
+      },
+    };
+  }
+
+  const assignment = candidates[0];
+  const rowSession = assignmentSessionId(assignment);
+  if (params.sessionId) {
+    if (!rowSession) {
+      return {
+        error: {
+          status: 'error',
+          message: 'Assignment session could not be verified for this result.',
+          retryable: false,
+        },
+      };
+    }
+    if (rowSession !== String(params.sessionId)) {
+      return {
+        error: {
+          status: 'error',
+          message: 'Assignment session does not match the requested session.',
+          retryable: false,
+        },
+      };
+    }
+  }
+
+  const rowClassroom = assignmentClassroomId(assignment);
+  if (params.classroomId) {
+    if (classroomConflictsWithSession(String(params.classroomId), params.sessionId)) {
+      return {
+        error: {
+          status: 'error',
+          message: 'Classroom identifier must not be used as assignment session.',
+          retryable: false,
+        },
+      };
+    }
+    if (rowClassroom && rowClassroom !== String(params.classroomId)) {
+      return {
+        error: {
+          status: 'error',
+          message: 'Classroom does not match the selected assignment.',
+          retryable: false,
+        },
+      };
+    }
+  }
+  if (rowClassroom && params.sessionId && classroomConflictsWithSession(rowClassroom, params.sessionId)) {
+    return {
+      error: {
+        status: 'error',
+        message: 'Assignment classroom conflicts with assignment session identifier.',
+        retryable: false,
+      },
+    };
+  }
+
+  return { assignment };
+}
+
+function resolveAttemptClassroom(
+  assignment: TeacherAssignmentRow,
+  attempt: TeacherAttemptRow,
+  routeClassroomId?: string | null,
+): { classroomId?: string; error?: QuizResultLoadState } {
+  const fromAssignment = assignmentClassroomId(assignment);
+  const fromAttempt =
+    attempt.class_id != null && String(attempt.class_id).trim() !== ''
+      ? String(attempt.class_id)
+      : null;
+
+  if (fromAttempt && fromAssignment && fromAttempt !== fromAssignment) {
+    return {
+      error: {
+        status: 'error',
+        message: 'Attempt classroom conflicts with assignment classroom.',
+        retryable: false,
+      },
+    };
+  }
+
+  const effective = fromAttempt ?? fromAssignment ?? (routeClassroomId ? String(routeClassroomId) : undefined);
+  if (routeClassroomId && effective && effective !== String(routeClassroomId)) {
+    return {
+      error: {
+        status: 'error',
+        message: 'Classroom does not match the selected assignment.',
+        retryable: false,
+      },
+    };
+  }
+
+  return { classroomId: effective };
+}
+
+function verifyAttendedQuizIdentity(
+  attended: AttendedQuizResponse,
+  expected: {
+    studentId: string;
+    quizId: number | string;
+    sessionId: string;
+    classroomId?: string;
+  },
+): boolean {
+  if (String(attended.student_id) !== String(expected.studentId)) return false;
+  if (Number(attended.quiz_id) !== Number(expected.quizId)) return false;
+  if (String(attended.session_id ?? '') !== String(expected.sessionId)) return false;
+  if (
+    expected.classroomId &&
+    attended.classroom_id &&
+    String(attended.classroom_id) !== String(expected.classroomId)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function readyFromAttemptAndNormalized(
+  attempt: TeacherAttemptRow,
+  normalized: {
+    questions: PlayableQuizQuestion[];
+    userAnswers: string[];
+    score: number | null;
+    logData: Record<string, unknown> | null;
+    timeSpentSeconds: number | null;
+    completedAt: string | null;
+  },
+): QuizResultLoadState {
+  return {
+    status: 'ready',
+    quizData: { questions: normalized.questions },
+    userAnswers: normalized.userAnswers,
+    score: attempt.score != null ? Number(attempt.score) : normalized.score,
+    logData: normalized.logData,
+    timeSpentSeconds: attempt.time_spent_seconds ?? normalized.timeSpentSeconds,
+    completedAt: attempt.completed_at ?? normalized.completedAt,
+  };
+}
+
 async function fetchTeacherAttemptBundle(params: {
   quizId: number | string;
   studentId?: string;
   attemptId?: number;
   sessionId?: string | null;
+  classroomId?: string | null;
 }): Promise<QuizResultLoadState> {
   if (!params.studentId) {
     return {
@@ -91,72 +312,25 @@ async function fetchTeacherAttemptBundle(params: {
     return { status: 'missing' };
   }
 
-  const apiRows = response.data as unknown as Array<Record<string, unknown>>;
+  const apiRows = response.data as unknown as TeacherAssignmentRow[];
   const quizIdNum = Number(params.quizId);
-  const matchingRows = apiRows.filter((row) => {
-    if (row.quiz_id == null || row.quiz_id === '') {
-      return false;
-    }
-    return Number(row.quiz_id) === quizIdNum;
+  const picked = pickTeacherAssignment(apiRows, {
+    quizId: quizIdNum,
+    sessionId: params.sessionId,
+    classroomId: params.classroomId,
   });
-  const candidateRows = matchingRows.length > 0 ? matchingRows : apiRows;
-  let quiz: Record<string, unknown> | undefined;
-  if (params.sessionId) {
-    quiz = candidateRows.find(
-      (row) => String(row.session_id) === String(params.sessionId),
-    );
-    if (!quiz && candidateRows.length === 1) {
-      quiz = candidateRows[0];
-    }
-  } else if (candidateRows.length === 1) {
-    quiz = candidateRows[0];
-  } else if (matchingRows.length > 1) {
-    return {
-      status: 'error',
-      message:
-        'Multiple assignments match this quiz; open results from the specific class assignment.',
-      retryable: false,
-    };
-  } else if (candidateRows.length > 1) {
-    return {
-      status: 'error',
-      message:
-        'Multiple assignments match this quiz; open results from the specific class assignment.',
-      retryable: false,
-    };
-  } else {
-    quiz = candidateRows[0];
+  if ('error' in picked) {
+    return picked.error;
   }
+  const quiz = picked.assignment;
 
-  if (!quiz) {
-    return { status: 'missing' };
-  }
-
-  const quizAssignmentSessionId =
-    quiz.session_id != null && String(quiz.session_id).trim() !== ''
-      ? String(quiz.session_id)
-      : params.sessionId != null
-        ? String(params.sessionId)
-        : null;
+  const quizAssignmentSessionId = assignmentSessionId(quiz);
 
   const attempts =
     typeof quiz.attempts === 'string' ? JSON.parse(quiz.attempts) : quiz.attempts;
   if (!Array.isArray(attempts)) {
     return { status: 'missing' };
   }
-
-  type TeacherAttemptRow = {
-    attempt_id?: number;
-    student_id?: string;
-    session_id?: string;
-    class_id?: string;
-    status?: string;
-    score?: number | null;
-    submission?: { log_data?: unknown };
-    log_data?: unknown;
-    time_spent_seconds?: number | null;
-    completed_at?: string | null;
-  };
 
   const attemptRows = attempts as TeacherAttemptRow[];
   const studentMatches = attemptRows.filter(
@@ -231,6 +405,12 @@ async function fetchTeacherAttemptBundle(params: {
     return { status: 'missing' };
   }
 
+  const classroomPick = resolveAttemptClassroom(quiz, attempt, params.classroomId);
+  if (classroomPick.error) {
+    return classroomPick.error;
+  }
+  const effectiveClassroomId = classroomPick.classroomId;
+
   const logDataRaw = attempt.submission?.log_data ?? attempt.log_data;
   if (!logDataRaw) {
     return { status: 'missing' };
@@ -240,7 +420,7 @@ async function fetchTeacherAttemptBundle(params: {
     typeof logDataRaw === 'string' ? JSON.parse(logDataRaw) : logDataRaw;
 
   if (isWorksheetLogData(logData)) {
-    const sessionForAttended = params.sessionId ?? attempt.session_id ?? null;
+    const sessionForAttended = resolveAttemptSessionId(attempt);
     if (!sessionForAttended) {
       return {
         status: 'error',
@@ -248,103 +428,70 @@ async function fetchTeacherAttemptBundle(params: {
         retryable: false,
       };
     }
-    try {
-      const attended = await loadStudentAttendedWithWorksheetFallback(
-        {
-          student_id: params.studentId,
-          quiz_id: params.quizId,
-          session_id: sessionForAttended,
-          classroom_id: attempt.class_id || undefined,
-        },
-        attempt.class_id || params.sessionId,
-      );
+    if (params.sessionId && String(sessionForAttended) !== String(params.sessionId)) {
+      return {
+        status: 'error',
+        message: 'No attempt matches the supplied student and assignment session.',
+        retryable: false,
+      };
+    }
+
+    const attendedParams: AttendedQuizParams = {
+      student_id: params.studentId,
+      quiz_id: params.quizId,
+      session_id: sessionForAttended,
+      classroom_id: effectiveClassroomId,
+    };
+
+    const loadAttendedForAttempt = async (): Promise<AttendedQuizResponse | null> => {
+      try {
+        const attended = await loadStudentAttendedWithWorksheetFallback(
+          attendedParams,
+          effectiveClassroomId ?? null,
+        );
+        if (
+          !verifyAttendedQuizIdentity(attended, {
+            studentId: params.studentId!,
+            quizId: params.quizId,
+            sessionId: sessionForAttended,
+            classroomId: effectiveClassroomId,
+          })
+        ) {
+          return null;
+        }
+        return attended;
+      } catch {
+        return null;
+      }
+    };
+
+    const attended = await loadAttendedForAttempt();
+    if (attended) {
       const mergedAttended = {
         ...attended,
-        score:
-          attended.score != null && attended.score !== undefined
-            ? attended.score
-            : attempt.score,
         log_data: (attended.log_data as Record<string, unknown> | null) ?? logData,
       };
       const itemsNormalized = normalizeAttendedQuizResponse(mergedAttended);
       if (itemsNormalized) {
-        return {
-          status: 'ready',
-          quizData: { questions: itemsNormalized.questions },
-          userAnswers: itemsNormalized.userAnswers,
-          score:
-            attempt.score != null ? Number(attempt.score) : itemsNormalized.score,
-          logData: itemsNormalized.logData,
-          timeSpentSeconds:
-            attempt.time_spent_seconds ?? itemsNormalized.timeSpentSeconds,
-          completedAt: attempt.completed_at ?? itemsNormalized.completedAt,
-        };
+        return readyFromAttemptAndNormalized(attempt, itemsNormalized);
       }
       const worksheetNormalized = tryNormalizeWorksheetAttended(mergedAttended);
       if (worksheetNormalized) {
-        return {
-          status: 'ready',
-          quizData: { questions: worksheetNormalized.questions },
-          userAnswers: worksheetNormalized.userAnswers,
-          score:
-            attempt.score != null
-              ? Number(attempt.score)
-              : worksheetNormalized.score,
-          logData: worksheetNormalized.logData,
-          timeSpentSeconds:
-            attempt.time_spent_seconds ?? worksheetNormalized.timeSpentSeconds,
-          completedAt: attempt.completed_at ?? worksheetNormalized.completedAt,
-        };
+        return readyFromAttemptAndNormalized(attempt, worksheetNormalized);
       }
-      return {
-        status: 'error',
-        message: 'Worksheet submission found but review content is incomplete.',
-        retryable: true,
-      };
-    } catch {
-      try {
-        const attendedRetry = await getAttendedQuiz({
-          student_id: params.studentId,
-          quiz_id: params.quizId,
-          session_id: sessionForAttended,
-        });
-        const itemsRetry = normalizeAttendedQuizResponse({
-          ...attendedRetry,
-          score: attempt.score ?? attendedRetry.score,
-        });
-        if (itemsRetry) {
-          return {
-            status: 'ready',
-            quizData: { questions: itemsRetry.questions },
-            userAnswers: itemsRetry.userAnswers,
-            score: attempt.score != null ? Number(attempt.score) : itemsRetry.score,
-            logData: itemsRetry.logData,
-            timeSpentSeconds:
-              attempt.time_spent_seconds ?? itemsRetry.timeSpentSeconds,
-            completedAt: attempt.completed_at ?? itemsRetry.completedAt,
-          };
-        }
-      } catch {
-        // fall through
-      }
-      const fallback = normalizeQuestionsAndAnswersFromLogData(logData);
-      if (fallback) {
-        return {
-          status: 'ready',
-          quizData: { questions: fallback.questions },
-          userAnswers: fallback.userAnswers,
-          score: attempt.score != null ? Number(attempt.score) : fallback.score,
-          logData,
-          timeSpentSeconds: attempt.time_spent_seconds ?? fallback.timeSpentSeconds,
-          completedAt: attempt.completed_at ?? fallback.completedAt,
-        };
-      }
-      return {
-        status: 'error',
-        message: 'Could not load worksheet review content. Please try again.',
-        retryable: true,
-      };
     }
+
+    const fallback = normalizeQuestionsAndAnswersFromLogData(logData);
+    if (fallback) {
+      return readyFromAttemptAndNormalized(attempt, fallback);
+    }
+    return {
+      status: 'error',
+      message: attended
+        ? 'Worksheet submission found but review content is incomplete.'
+        : 'Could not load worksheet review content. Please try again.',
+      retryable: true,
+    };
   }
 
   const normalized = normalizeQuestionsAndAnswersFromLogData(logData);
@@ -352,18 +499,7 @@ async function fetchTeacherAttemptBundle(params: {
     return { status: 'missing' };
   }
 
-  return {
-    status: 'ready',
-    quizData: { questions: normalized.questions },
-    userAnswers: normalized.userAnswers,
-    score:
-      attempt.score != null
-        ? Number(attempt.score)
-        : normalized.score,
-    logData,
-    timeSpentSeconds: attempt.time_spent_seconds ?? normalized.timeSpentSeconds,
-    completedAt: attempt.completed_at ?? normalized.completedAt,
-  };
+  return readyFromAttemptAndNormalized(attempt, normalized);
 }
 
 async function loadStudentAttendedWithWorksheetFallback(
@@ -457,6 +593,7 @@ export async function fetchPersistedQuizResult(params: {
       studentId,
       attemptId,
       sessionId,
+      classroomId,
     });
   } catch {
     return {

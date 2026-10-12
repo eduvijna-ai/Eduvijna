@@ -5,11 +5,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { ENGINEERING_EXPO_WEB_URL } from './lib/engineering-runtime-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'web');
 const credFile = join(repoRoot, '.dev-api-credentials.local.json');
-const baseUrl = process.env.EXPO_WEB_URL || 'http://localhost:8083';
+
+const baseUrl = process.env.EXPO_WEB_URL || ENGINEERING_EXPO_WEB_URL;
 
 mkdirSync(evidence, { recursive: true });
 

@@ -132,6 +132,9 @@ describe('fetchPersistedQuizResult', () => {
       mockFetchTeacherQuizzes.mockResolvedValue({
         data: [
           {
+            quiz_id: 99,
+            session_id: 'session-a',
+            classroom_id: 'class-room-a',
             attempts: JSON.stringify([
               {
                 attempt_id: 1,
@@ -225,6 +228,7 @@ describe('fetchPersistedQuizResult', () => {
           {
             quiz_id: 479,
             session_id: 'sess-ws',
+            classroom_id: 'class_4d82c60e',
             attempts: JSON.stringify([
               {
                 attempt_id: 207,
@@ -265,6 +269,7 @@ describe('fetchPersistedQuizResult', () => {
       const result = await fetchPersistedQuizResult({
         quizId: 479,
         sessionId: 'sess-ws',
+        classroomId: 'class_4d82c60e',
         studentId: '70',
         attemptId: 207,
         isTeacherView: true,
@@ -274,6 +279,95 @@ describe('fetchPersistedQuizResult', () => {
         expect(result.score).toBe(60);
         expect(result.quizData.questions).toHaveLength(10);
       }
+      expect(mockGet.mock.calls[0][0]).toContain('classroom_id=class_4d82c60e');
+      expect(mockGet.mock.calls[0][0]).not.toContain('classroom_id=sess-ws');
+    });
+
+    it('rejects API rows when requested quiz_id is absent from dashboard response', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 100,
+            session_id: 'other-session',
+            attempts: JSON.stringify([]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('requested quiz');
+      }
+    });
+
+    it('rejects when route classroom_id is the session uuid (session must not be classroom)', async () => {
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        classroomId: 'session-a',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('session');
+      }
+    });
+
+    it('loads parent assignment classroom when attempt row omits class_id', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-parent',
+            classroom_id: 'class_4d82c60e',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                status: 'completed',
+                score: 60,
+                log_data: logPayload,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-parent',
+        classroomId: 'class_4d82c60e',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+    });
+
+    it('errors when multiple assignments share quiz_id without session', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          { quiz_id: 99, session_id: 'session-a', attempts: '[]' },
+          { quiz_id: 99, session_id: 'session-b', attempts: '[]' },
+        ],
+        pagination: { total: 2, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
     });
 
     it('errors when attemptId does not match session-scoped rows', async () => {

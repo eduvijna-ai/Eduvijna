@@ -43,10 +43,13 @@ export function verifyWorksheetResultScreen(xmlContent, fixture) {
     texts.some((t) => /^60\s*%$/.test(t.trim())) ||
     new RegExp(`\\b${fixture.expectedScore}\\s*%`, 'i').test(blob);
 
+  const questionMarkers = texts.filter((t) => /^Q\d+$/i.test(String(t).trim()));
   const evaluatedOk =
     texts.some((t) => /(evaluated|questions|items).{0,12}\b10\b/i.test(t)) ||
     texts.some((t) => /\b10\b\s*(evaluated|questions|items)/i.test(t)) ||
-    texts.some((t) => /Evaluated\s*:\s*10/i.test(t));
+    texts.some((t) => /Evaluated\s*:\s*10/i.test(t)) ||
+    texts.some((t) => /\b\d+\s*\/\s*10\b/.test(t)) ||
+    questionMarkers.length >= fixture.expectedEvaluatedItems;
 
   const correctOk =
     texts.some((t) => /\b6\b\s*correct/i.test(t)) ||

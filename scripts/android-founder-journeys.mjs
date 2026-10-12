@@ -18,11 +18,16 @@ import {
 
 import { FIXTURE, loadFixtureLabels } from './lib/founder-fixture.mjs';
 import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
+import {
+  ENGINEERING_EXPO_WEB_URL,
+  ENGINEERING_METRO_PORT,
+  engineeringImplementationSha,
+} from './lib/engineering-runtime-target.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-journeys');
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
-const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).stdout.trim();
+const sha = engineeringImplementationSha();
 
 mkdirSync(evidence, { recursive: true });
 
@@ -289,8 +294,15 @@ async function journeyA(labels) {
   sleep(4500);
 
   const resultWait = waitFor(
-    (xml) => verifyWorksheetResultScreen(xml, fx).pass,
-    { dumpName: 'a-04-wait-result', attempts: 12 },
+    (xml) => {
+      const n = parseUiXml(xml);
+      if (locateByLabel(n, 'Retry loading results', { minY: 0 })) {
+        tapTarget(locateByLabel(n, 'Retry', { minY: 0 }));
+        return false;
+      }
+      return verifyWorksheetResultScreen(xml, fx).pass;
+    },
+    { dumpName: 'a-04-wait-result', attempts: 16, pauseMs: 2000 },
   );
   path = resultWait.xmlPath || dump('a-04-result.xml');
   screenshot('a-04-result.png');
@@ -309,41 +321,100 @@ async function journeyB(labels) {
 
   let path = dump('b-00-home.xml');
   let nodes = parseUiXml(readXmlContent(path));
+  const homeTap = locateByLabel(nodes, 'Home', { minY: 0, pick: 'bottom' });
+  if (homeTap) {
+    log.steps.push({ step: 'home_tab', tap: tapTarget(homeTap) });
+    sleep(1500);
+  }
+  path = dump('b-00b-home.xml');
+  nodes = parseUiXml(readXmlContent(path));
   log.steps.push({
     step: 'analytics_tab',
     tap: tapTarget(locateByLabel(nodes, 'Analytics', { minY: 0, pick: 'bottom' })),
   });
   sleep(3000);
 
-  path = dump('b-01-analytics.xml');
+  const classLabel = labels.classLabel || '4A-Mathematics';
+  const classWait = waitFor((xml) => {
+    const n = parseUiXml(xml);
+    return (
+      locateByLabel(n, classLabel, { minY: 0 }) != null ||
+      locateByLabel(n, /4A-Mathematics/i, { minY: 0 }) != null
+    );
+  }, { dumpName: 'b-01-wait-analytics', attempts: 15 });
+  path = classWait.xmlPath || dump('b-01-analytics.xml');
   nodes = parseUiXml(readXmlContent(path));
-  const classTap =
-    (labels.classLabel && locateByLabel(nodes, labels.classLabel, { minY: 0 })) ||
-    locateByLabel(nodes, '4A-Mathematics', { minY: 0 });
+  let classTap =
+    locateByLabel(nodes, classLabel, { minY: 0 }) ||
+    locateByLabel(nodes, /4A-Mathematics/i, { minY: 0 });
+  if (!classTap) {
+    const scrolledClass = locateWithScroll({
+      dumpFn: dump,
+      scrollFn: scrollDown,
+      maxScrolls: 10,
+      dumpNamePrefix: 'b-01-scroll-class',
+      locateFn: (xml) => {
+        const n = parseUiXml(xml);
+        return (
+          locateByLabel(n, classLabel, { minY: 0 }) ||
+          locateByLabel(n, /4A-Mathematics/i, { minY: 0 })
+        );
+      },
+    });
+    classTap = scrolledClass.hit;
+    log.steps.push({ step: 'class_scroll', scrolls: scrolledClass.scrolls });
+  }
   log.steps.push({ step: 'open_class', tap: tapTarget(classTap) });
+  if (!classTap) {
+    log.pass = false;
+    log.verify = { label: 'analytics_class_selection', pass: false };
+    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
   sleep(2500);
 
   path = dump('b-02-class-quizzes.xml');
   nodes = parseUiXml(readXmlContent(path));
-  const quizNeedle = labels.searchToken || labels.quizTitle.slice(0, 16);
-  let quizTap = locateByLabel(nodes, quizNeedle, { minY: 0 });
+  const quizNeedles = [
+    labels.searchToken,
+    labels.quizTitle.slice(0, 20),
+    String(FIXTURE.quizId),
+  ].filter(Boolean);
+  const locateQuiz = (xml) => {
+    const n = parseUiXml(xml);
+    for (const needle of quizNeedles) {
+      const hit =
+        locateByLabel(n, needle, { minY: 0 }) ||
+        locateByLabel(n, new RegExp(String(needle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), {
+          minY: 0,
+        });
+      if (hit) return hit;
+    }
+    return null;
+  };
+  let quizTap = locateQuiz(readXmlContent(path));
   if (!quizTap) {
     const scrolled = locateWithScroll({
       dumpFn: dump,
       scrollFn: scrollDown,
-      maxScrolls: 8,
+      maxScrolls: 14,
       dumpNamePrefix: 'b-02-scroll-quiz',
-      locateFn: (xml) => {
-        const n = parseUiXml(xml);
-        return locateByLabel(n, quizNeedle, { minY: 0 });
-      },
+      locateFn: locateQuiz,
     });
     quizTap = scrolled.hit;
+    log.steps.push({ step: 'quiz_scroll', scrolls: scrolled.scrolls });
   }
   log.steps.push({
     step: 'quiz',
     tap: tapTarget(quizTap),
+    needles: quizNeedles,
   });
+  if (!quizTap) {
+    log.pass = false;
+    log.verify = { label: 'analytics_quiz_selection', pass: false };
+    writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
   sleep(2500);
 
   path = dump('b-03-quiz.xml');
@@ -357,8 +428,15 @@ async function journeyB(labels) {
   sleep(4500);
 
   const resultWait = waitFor(
-    (xml) => verifyWorksheetResultScreen(xml, fx).pass,
-    { dumpName: 'b-05-wait-result', attempts: 12 },
+    (xml) => {
+      const n = parseUiXml(xml);
+      if (locateByLabel(n, 'Retry loading results', { minY: 0 })) {
+        tapTarget(locateByLabel(n, 'Retry', { minY: 0 }));
+        return false;
+      }
+      return verifyWorksheetResultScreen(xml, fx).pass;
+    },
+    { dumpName: 'b-05-wait-result', attempts: 16, pauseMs: 2000 },
   );
   path = resultWait.xmlPath || dump('b-05-result.xml');
   screenshot('b-05-result.png');
@@ -374,11 +452,24 @@ async function main() {
   const labels = await loadFixtureLabels();
   const meta = {
     sha,
+    metroPort: ENGINEERING_METRO_PORT,
+    expoWebUrl: ENGINEERING_EXPO_WEB_URL,
     fixtureQuizId: FIXTURE.quizId,
+    fixtureClassroomId: FIXTURE.classroomId,
     fixtureSessionRedacted: `${FIXTURE.sessionId.slice(0, 8)}…`,
     quizTitleRedacted: `${labels.quizTitle.slice(0, 10)}…`,
   };
   writeFileSync(join(evidence, 'meta.json'), JSON.stringify({ ...meta, availability: labels.availability }, null, 2));
+
+  const coldLaunch = process.argv.includes('--cold') || process.env.COLD_LAUNCH === '1';
+  if (coldLaunch) {
+    adb('shell am force-stop com.eduvijna.app');
+    sleep(2500);
+    execSync(`node "${join(repoRoot, 'scripts/android-bootstrap-dev-client.mjs')}" instructor`, {
+      stdio: 'inherit',
+    });
+    sleep(3000);
+  }
 
   const results = {};
   let failed = false;

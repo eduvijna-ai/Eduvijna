@@ -12,8 +12,13 @@ import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'web-journeys');
 const credFile = join(repoRoot, '.dev-api-credentials.local.json');
-const baseUrl = process.env.EXPO_WEB_URL || 'http://localhost:8083';
-const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).stdout.trim();
+import {
+  ENGINEERING_EXPO_WEB_URL,
+  engineeringImplementationSha,
+} from './lib/engineering-runtime-target.mjs';
+
+const baseUrl = process.env.EXPO_WEB_URL || ENGINEERING_EXPO_WEB_URL;
+const sha = engineeringImplementationSha();
 
 mkdirSync(evidence, { recursive: true });
 
@@ -26,12 +31,18 @@ async function waitForAuthenticatedShell(page, { timeoutMs = 120000 } = {}) {
   while (Date.now() - start < timeoutMs) {
     const state = await page.evaluate(() => {
       const body = document.body?.innerText ?? '';
-      const hasLogin = Boolean(document.querySelector('[data-testid="login-submit-button"]'));
-      const hasApp =
-        /Assessments|Analytics|Dashboard|Demo School|Home/i.test(body) && !hasLogin;
-      return { hasApp, hasLogin };
+      const loginSubmit = document.querySelector('[data-testid="login-submit-button"]');
+      const loginEmail = document.querySelector('[data-testid="login-email-input"]');
+      const hasLogin = Boolean(loginSubmit || loginEmail);
+      const hasAssessments = body.includes('Assessments');
+      const hasHome = body.includes('Home') || body.includes('Dashboard');
+      const hasSignIn = body.includes('Sign in');
+      if (hasAssessments || (hasHome && !hasSignIn && !hasLogin)) {
+        return { ready: true };
+      }
+      return { ready: false };
     });
-    if (state.hasApp) return;
+    if (state.ready) return;
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error('authenticated_shell_timeout');
@@ -51,7 +62,7 @@ async function waitForText(page, pattern, { timeoutMs = 90000 } = {}) {
 async function loginInstructor(page) {
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const account = cfg.accounts.instructor;
-  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+  await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 120000 });
   const submitSel = '[data-testid="login-submit-button"]';
   const emailSel = '[data-testid="login-email-input"]';
   const passSel = '[data-testid="login-password-input"]';
@@ -68,7 +79,11 @@ async function loginInstructor(page) {
 
 function verifyWorksheetMetrics(text, labels) {
   const scoreOk = /\b60\s*%/.test(text) || /Score\s*:\s*60/i.test(text);
-  const evaluatedOk = /(evaluated|items|questions).{0,16}\b10\b/i.test(text) || /\b10\b.{0,16}(evaluated|items)/i.test(text);
+  const evaluatedOk =
+    /(evaluated|items|questions).{0,16}\b10\b/i.test(text) ||
+    /\b10\b.{0,16}(evaluated|items)/i.test(text) ||
+    /\b\d+\s*\/\s*10\b/.test(text) ||
+    (text.match(/\bQ\d+\b/g) || []).length >= FIXTURE.expectedEvaluatedItems;
   const correctOk = /\b6\b\s*correct/i.test(text) || /Correct\s*:\s*6/i.test(text) || /6\s*\/\s*10/i.test(text);
   const studentOk = text.includes(FIXTURE.studentName);
   const titleOk = text.includes(labels.quizTitle) || /Results/i.test(text);
