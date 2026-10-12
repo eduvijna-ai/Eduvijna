@@ -196,98 +196,243 @@ function tapIf(serial, xmlPath, pattern) {
   return null;
 }
 
-function dismissKnownDevClientOverlays(serial, evidenceDir, log) {
-  let xml = dumpUi(serial, evidenceDir, 'prep-overlay-0.xml');
-  let texts = parseUiTexts(xml);
-  for (let round = 0; round < 6; round++) {
-    let acted = false;
-    if (texts.some((t) => /Enable Push Notifications/i.test(t))) {
-      log.steps.push({ step: 'dismiss_push', tapped: tapIf(serial, xml, 'Maybe Later') });
-      acted = true;
-      sleep(2000);
-    }
-    if (texts.some((t) => /isn't responding|not responding/i.test(t))) {
-      log.steps.push({ step: 'dismiss_anr', tapped: tapIf(serial, xml, 'Wait') });
-      acted = true;
-      sleep(2500);
-    }
-    if (texts.some((t) => /developer menu/i.test(t))) {
-      const tapped =
-        tapIf(serial, xml, 'Continue') || tapIf(serial, xml, 'Close') || tapIf(serial, xml, 'close');
-      log.steps.push({ step: 'dismiss_dev_menu', tapped });
-      acted = true;
-      adbIgnore(serial, 'shell input keyevent 4');
-      sleep(2500);
-    }
-    if (texts.some((t) => /DEVELOPMENT SERVERS|development server/i.test(t))) {
-      const tapped =
-        tapIf(serial, xml, '127.0.0.1:8082') || tapIf(serial, xml, '8082') || tapIf(serial, xml, '10.0.2.2:8082');
-      log.steps.push({ step: 'select_metro_server', tapped });
-      acted = true;
-      sleep(15000);
-    }
-    if (!acted) break;
-    xml = dumpUi(serial, evidenceDir, `prep-overlay-${round + 1}.xml`);
-    texts = parseUiTexts(xml);
+function observeScreen(serial, evidenceDir, dumpName) {
+  const path = dumpUi(serial, evidenceDir, dumpName);
+  const content = readXmlContent(path);
+  const state = classifyAndroidRuntimeScreen(content);
+  const textSample = parseUiTexts(path).slice(0, 20);
+  return { path, content, state, textSample };
+}
+
+function screenSignature(obs) {
+  return `${obs.state}|${obs.textSample.slice(0, 8).join('§')}`;
+}
+
+function waitAfterAction(actionAttempted) {
+  if (actionAttempted === 'select_metro') return 14000;
+  if (actionAttempted === 'reload_bundle') return 28000;
+  if (actionAttempted === 'outside_relaunch') return 8000;
+  if (actionAttempted === 'login_in_progress_wait') return 2500;
+  return 2000;
+}
+
+/**
+ * One observed screen → one action → re-dump is handled by the caller loop.
+ */
+function actOnceForState(serial, state, xmlPath) {
+  /** @type {{ actionAttempted: string, actionSucceeded: boolean, targetLabel: string|null }} */
+  const base = { actionAttempted: 'none', actionSucceeded: false, targetLabel: null };
+
+  if (state === 'development_servers') {
+    const target =
+      tapIf(serial, xmlPath, '127.0.0.1:8082') ||
+      tapIf(serial, xmlPath, 'http://127.0.0.1:8082') ||
+      tapIf(serial, xmlPath, '8082');
+    return {
+      actionAttempted: 'select_metro',
+      actionSucceeded: Boolean(target),
+      targetLabel: target,
+    };
   }
-  return xml;
+  if (state === 'developer_menu') {
+    const cont = tapIf(serial, xmlPath, 'Continue');
+    if (cont) {
+      return { actionAttempted: 'developer_menu_continue', actionSucceeded: true, targetLabel: cont };
+    }
+    const close = tapIf(serial, xmlPath, 'Close') || tapIf(serial, xmlPath, 'close');
+    if (close) {
+      return { actionAttempted: 'developer_menu_close', actionSucceeded: true, targetLabel: close };
+    }
+    adbIgnore(serial, 'shell input keyevent 4');
+    return { actionAttempted: 'developer_menu_back', actionSucceeded: true, targetLabel: 'KEYCODE_BACK' };
+  }
+  if (state === 'push_notification') {
+    const target = tapIf(serial, xmlPath, 'Maybe Later');
+    return {
+      actionAttempted: 'dismiss_push',
+      actionSucceeded: Boolean(target),
+      targetLabel: target,
+    };
+  }
+  if (state === 'anr_dialog') {
+    const target = tapIf(serial, xmlPath, 'Wait');
+    return {
+      actionAttempted: 'dismiss_anr',
+      actionSucceeded: Boolean(target),
+      targetLabel: target,
+    };
+  }
+  if (state === 'bundle_error') {
+    const target = tapIf(serial, xmlPath, 'Reload');
+    return {
+      actionAttempted: 'reload_bundle',
+      actionSucceeded: Boolean(target),
+      targetLabel: target,
+    };
+  }
+  if (state === 'login_in_progress') {
+    return { actionAttempted: 'login_in_progress_wait', actionSucceeded: true, targetLabel: null };
+  }
+  return base;
+}
+
+function parseAmStartW(output) {
+  const lines = String(output || '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const status = lines.find((l) => l.startsWith('Status:'))?.replace('Status:', '').trim() ?? null;
+  const activity = lines.find((l) => l.startsWith('Activity:'))?.replace('Activity:', '').trim() ?? null;
+  const totalTime = lines.find((l) => l.startsWith('TotalTime:'))?.replace('TotalTime:', '').trim() ?? null;
+  return { status, activity, totalTimeMs: totalTime, rawLineCount: lines.length };
+}
+
+export function launchExpoDevClientIntent(serial) {
+  setupAdbReverse(serial);
+  const url = `exp+eduvijna://expo-development-client/?url=${encodeURIComponent(METRO_URL)}`;
+  let raw = '';
+  try {
+    raw = adb(
+      serial,
+      `shell am start -W -a android.intent.action.VIEW -d "${url}" ${APP_PACKAGE}`,
+    );
+  } catch (e) {
+    raw = String(e?.stdout || e?.message || e);
+  }
+  return { metroUrl: METRO_URL, ...parseAmStartW(raw) };
+}
+
+/**
+ * Shared dev-client startup state machine (single authority for overlay dismissal).
+ */
+export function pollUntilPreLoginSurface(
+  serial,
+  evidenceDir,
+  log,
+  {
+    maxIterations = 45,
+    stuckThreshold = 6,
+    outsideRelaunchMax = 1,
+    allowOutsideRelaunch = true,
+  } = {},
+) {
+  let lastSignature = null;
+  let sameSignatureStreak = 0;
+  let lastSuccessfulAction = null;
+  let outsideRelaunches = 0;
+  let lastObs = null;
+
+  for (let i = 0; i < maxIterations; i++) {
+    const obs = observeScreen(serial, evidenceDir, `sm-${i}.xml`);
+    lastObs = obs;
+
+    if (isAcceptablePreLoginScreen(obs.state)) {
+      return {
+        ok: true,
+        screen: obs.state,
+        xmlPath: obs.path,
+        iterations: i + 1,
+        lastSuccessfulAction,
+      };
+    }
+
+    const signature = screenSignature(obs);
+    if (signature === lastSignature) {
+      sameSignatureStreak += 1;
+    } else {
+      sameSignatureStreak = 0;
+      lastSignature = signature;
+    }
+
+    if (sameSignatureStreak >= stuckThreshold) {
+      return {
+        ok: false,
+        error: 'dev_client_overlay_stuck',
+        screen: obs.state,
+        xmlPath: obs.path,
+        textSample: obs.textSample,
+        attemptCount: i + 1,
+        sameSignatureStreak,
+        lastSuccessfulAction,
+        runnerGitHeadSha: engineeringImplementationSha(),
+        loadedBuildSha: log.loadedBuildSha ?? null,
+      };
+    }
+
+    const beforeScreen = obs.state;
+    let action = actOnceForState(serial, beforeScreen, obs.path);
+
+    if (beforeScreen === 'outside_app' && allowOutsideRelaunch) {
+      if (outsideRelaunches < outsideRelaunchMax) {
+        const launch = launchExpoDevClientIntent(serial);
+        outsideRelaunches += 1;
+        action = {
+          actionAttempted: 'outside_relaunch',
+          actionSucceeded: true,
+          targetLabel: launch.activity || 'am_start',
+        };
+        log.devClientLaunch = launch;
+      }
+    }
+
+    const transition = {
+      iteration: i,
+      beforeScreen,
+      actionAttempted: action.actionAttempted,
+      actionSucceeded: action.actionSucceeded,
+      targetLabel: action.targetLabel,
+    };
+    log.steps.push(transition);
+
+    if (action.actionSucceeded && action.actionAttempted !== 'none') {
+      lastSuccessfulAction = transition;
+    }
+
+    if (action.actionAttempted === 'none' && beforeScreen === 'unknown_in_app') {
+      sleep(2000);
+      continue;
+    }
+
+    if (!action.actionSucceeded && beforeScreen !== 'login_in_progress' && beforeScreen !== 'unknown_in_app') {
+      sleep(1500);
+      continue;
+    }
+
+    sleep(waitAfterAction(action.actionAttempted));
+  }
+
+  const failObs = lastObs || observeScreen(serial, evidenceDir, 'sm-fail.xml');
+  return {
+    ok: false,
+    error: 'pre_login_surface_timeout',
+    screen: failObs.state,
+    xmlPath: failObs.path,
+    textSample: failObs.textSample,
+    attemptCount: maxIterations,
+    lastSuccessfulAction,
+    runnerGitHeadSha: engineeringImplementationSha(),
+    loadedBuildSha: log.loadedBuildSha ?? null,
+  };
 }
 
 export function launchExpoDevClientWithMetroUrl(serial, evidenceDir, log) {
-  setupAdbReverse(serial);
   adbIgnore(serial, `shell am force-stop ${APP_PACKAGE}`);
   sleep(800);
-  const url = `exp+eduvijna://expo-development-client/?url=${encodeURIComponent(METRO_URL)}`;
-  adbIgnore(serial, `shell am start -a android.intent.action.VIEW -d "${url}"`);
+  const launch = launchExpoDevClientIntent(serial);
   log.devClientLaunchPerformed = true;
-  sleep(45000);
-  let xml = dismissKnownDevClientOverlays(serial, evidenceDir, log);
-  try {
-    execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, {
-      stdio: 'ignore',
-      env: { ...process.env, ANDROID_SERIAL: serial },
-    });
-    log.steps.push({ step: 'dismiss_overlays_script' });
-  } catch {
-    /* ignore */
-  }
-  xml = dumpUi(serial, evidenceDir, 'prep-after-dismiss-script.xml');
-  let texts = parseUiTexts(xml);
-  for (let back = 0; back < 3 && texts.some((t) => /developer menu/i.test(t)); back++) {
-    adbIgnore(serial, 'shell input keyevent 4');
-    sleep(1500);
-    xml = dumpUi(serial, evidenceDir, `prep-devmenu-back-${back}.xml`);
-    texts = parseUiTexts(xml);
-  }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (!texts.some((t) => /problem loading the project/i.test(t))) break;
-    log.steps.push({ step: 'reload_bundle', attempt, tapped: tapIf(serial, xml, 'Reload') });
-    sleep(35000);
-    xml = dumpUi(serial, evidenceDir, `prep-reload-${attempt}.xml`);
-    texts = parseUiTexts(xml);
-  }
-  return xml;
+  log.devClientLaunch = launch;
+  return pollUntilPreLoginSurface(serial, evidenceDir, log, { maxIterations: 50, stuckThreshold: 6 });
 }
 
-export async function waitForPreLoginSurface(serial, evidenceDir, { attempts = 28, pauseMs = 2000 } = {}) {
-  for (let i = 0; i < attempts; i++) {
-    const path = dumpUi(serial, evidenceDir, `prep-prelogin-${i}.xml`);
-    const content = readXmlContent(path);
-    const screen = classifyAndroidRuntimeScreen(content);
-    if (isAcceptablePreLoginScreen(screen)) {
-      return { ok: true, screen, xmlPath: path };
-    }
-    if (screen === 'bundle_error') {
-      tapIf(serial, path, 'Reload');
-      sleep(20000);
-    } else if (screen === 'dev_client_shell') {
-      dismissKnownDevClientOverlays(serial, evidenceDir, { steps: [] });
-      sleep(4000);
-    }
-    sleep(pauseMs);
-  }
-  const path = dumpUi(serial, evidenceDir, 'prep-prelogin-fail.xml');
-  return { ok: false, screen: classifyAndroidRuntimeScreen(readXmlContent(path)), xmlPath: path };
+/** Journey overlay helper: bounded steps using the same state machine. */
+export function resolveDevClientOverlays(serial, evidenceRoot, { maxIterations = 8 } = {}) {
+  const evidenceDir = join(evidenceRoot, 'android-runtime-prep');
+  const log = { steps: [], loadedBuildSha: null };
+  return pollUntilPreLoginSurface(serial, evidenceDir, log, {
+    maxIterations,
+    stuckThreshold: maxIterations,
+    allowOutsideRelaunch: false,
+  });
 }
 
 export function writeRuntimePreconditionReport(evidenceRoot, report) {
@@ -387,18 +532,32 @@ export async function prepareAndroidEngineeringRuntime(options = {}) {
     sleep(3500);
   }
 
+  report.loadedBuildSha = bundleWait.loadedBuildSha;
+
+  let preLogin;
   if (options.fresh || options.relaunchDevClient) {
-    launchExpoDevClientWithMetroUrl(serial, evidenceDir, report);
+    preLogin = launchExpoDevClientWithMetroUrl(serial, evidenceDir, report);
   } else {
-    dismissKnownDevClientOverlays(serial, evidenceDir, report);
+    preLogin = pollUntilPreLoginSurface(serial, evidenceDir, report, {
+      maxIterations: 24,
+      stuckThreshold: 5,
+      allowOutsideRelaunch: false,
+    });
   }
 
-  const preLogin = await waitForPreLoginSurface(serial, evidenceDir);
-  report.finalPreLoginScreen = preLogin.screen;
-  report.steps.push({ step: 'pre_login_surface', ok: preLogin.ok, screen: preLogin.screen });
+  report.finalPreLoginScreen = preLogin.screen ?? null;
+  report.steps.push({
+    step: 'pre_login_surface',
+    ok: preLogin.ok,
+    screen: preLogin.screen,
+    error: preLogin.error ?? null,
+    attemptCount: preLogin.attemptCount ?? null,
+    textSample: preLogin.textSample ?? null,
+    lastSuccessfulAction: preLogin.lastSuccessfulAction ?? null,
+  });
 
   if (!preLogin.ok) {
-    report.error = 'pre_login_surface_timeout';
+    report.error = preLogin.error || 'pre_login_surface_timeout';
     report.completedAt = new Date().toISOString();
     writeRuntimePreconditionReport(evidenceRoot, report);
     return { ok: false, report };
