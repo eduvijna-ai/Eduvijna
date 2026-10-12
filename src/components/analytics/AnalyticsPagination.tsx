@@ -26,6 +26,9 @@ export default function AnalyticsPagination({ page, totalPages, onPageChange, co
         Page {page} of {totalPages}
       </Text>
       <TouchableOpacity
+        testID="analytics-pagination-next"
+        accessibilityRole="button"
+        accessibilityLabel="Next page"
         style={[styles.btn, { borderColor: colors.border, backgroundColor: colors.card }, page === totalPages && styles.disabled]}
         onPress={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}

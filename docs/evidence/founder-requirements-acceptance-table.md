@@ -4,17 +4,20 @@
 
 | Requirement | Implementation | Fixing commit | Android runtime | Expo web runtime | Evidence / blocker |
 | --- | --- | --- | --- | --- | --- |
-| Normal instructor login | Preserved (`android-login.mjs`, `web-ui-journey.mjs`) | e83b0d4 | Pass (prior evidence; not re-run) | Pass | `docs/evidence/login-milestones-sanitized-instructor.json`, `web/login-instructor.png` |
-| Normal student login | Preserved | e83b0d4 | Pass (prior evidence) | Pass | `web/login-student.png` |
-| Teacher result identity (quiz/session/classroom/attempt) | `quizResultRetrieval.service.ts` strict assignment pick + classroom forward | 13521e6 | N/A (unit) | N/A (unit) | `quizResultRetrieval.test.ts` 14 cases |
-| Assessments → quiz **479** / student **70** / attempt **207** | Trace + search + root-stack nav | 13521e6 | **Pass** (journey A warm) | **Pass** (journey A) | `.dev-api-document-workflow-run/runtime-evidence/*/journey-a.json` |
-| Analytics → same result | Journey B runner | 13521e6 | **Fail** — `analytics_class_selection` (class card not located on hub) | **Fail** — analytics navigation timeout | `journey-b.json` |
-| Saved worksheet review (60%, 10 items, 6 correct, answers) | Attended `items` + attempt-scoped metrics | 13521e6 | Pass on result screen (A) | Pass on result screen (A) | 60%, 6/10, saved answers on result UI |
-| Cold launch reliability | `--cold` on journey runner | 13521e6 | A reached result after cold bootstrap | Not run | `android-founder-journeys.mjs a --cold` |
-| Books alignment OFF/ON + preview/save/history | Not completed this pass | — | Not verified | Not verified | **Product gap** — no `Alignment` controls found under `document-upload/` |
-| Math/Markdown educational content | Not completed this pass | — | Not verified | Not verified | **Product gap** |
-| API-assigned module visibility / deep-link guards | Not completed this pass | — | Not verified | Not verified | **Product gap** |
-| Answer option identity (gen → review) | Partial via result normalization | _pending_ | Exercised on A result | Exercised on A result | Needs cross-surface audit |
-| Document History / Recent Completions + account switch | Not completed this pass | — | Not verified | Not verified | **Product gap** |
+| Normal instructor login | Preserved (`android-login.mjs`, `web-ui-journey.mjs`) | e83b0d4 | Pass (prior) | Pass (prior) | `docs/evidence/login-milestones-sanitized-instructor.json` |
+| Normal student login | Preserved | e83b0d4 | Pass (prior) | Pass (prior) | `web/login-student.png` |
+| Teacher result identity | `quizResultRetrieval.service.ts` | 13521e6 | N/A (unit) | N/A (unit) | `quizResultRetrieval.test.ts` |
+| Journey A Assessments → 479 / 70 / 207 | Trace + root-stack nav | 13521e6 | **Pass** (prior warm) | **Pass** (prior) | `journey-a.json` |
+| Journey B Analytics → saved result | Academic-year default dates; scoped testIDs; `QuizResultsScreen` from analytics; trace script | _this commit_ | **Fail** (class hub / drill flaky on emulator; reached View Analytics in one run) | **Fail** (analytics hub timeout) | `scripts/analytics-fixture-trace.mjs`, `journey-b.json` |
+| Result verifier (identity + Q/A) | `quiz-result-summary` a11y; API snippets in `founder-fixture.mjs`; scoped metrics | _this commit_ | Partial (identity needs fresh bundle) | Partial | `android-journey-logic.mjs` |
+| Analytics API includes fixture 479 | Default `created_from` Aug 1 academic year | _this commit_ | N/A | N/A | `analytics-trace`: narrow range excludes 479; wide includes |
+| Books alignment OFF/ON + preview/save/history | `DocumentCurriculumFromBooksScreen` exists; alignment toggle not ported from web | — | Not verified | Not verified | **Product gap** |
+| Math/Markdown surfaces | `MathRenderer` on `QuizResultsScreen` Q/options | _this commit_ | Not re-run | Not re-run | Partial coverage |
+| `quiz-navigation-items` / deep links | `QuizGenerationGrid` + `useQuizNavItems` (existing) | prior | Not verified this pass | Not verified | **Needs dedicated E2E** |
+| New assessment option identity | Not exercised this pass | — | Not verified | Not verified | **Product gap** |
+| Document history / Recent Completions | Not implemented this pass | — | Not verified | Not verified | **Product gap** |
+| Cold launch (no data clear) | Runner `--cold` | 13521e6 | Not re-run this pass | — | Prior A cold evidence |
 
-**READY FOR FOUNDER EMULATOR E2E:** **No** — Analytics journey B and listed product workflows remain open.
+**READY FOR FOUNDER EMULATOR E2E:** **No** — Journey B not green on both platforms; Books alignment, modules E2E, new-assessment grading, and history/completions remain open.
+
+**Release gates (unchanged):** physical-device push separately unverified; founder emulator E2E blocked on engineering acceptance above.

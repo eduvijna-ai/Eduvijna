@@ -57,6 +57,7 @@ export default function AnalyticsQuizCard({
 
   return (
     <View
+      testID={`analytics-quiz-card-${tile.quiz_id}`}
       style={[
         styles.card,
         {
@@ -215,6 +216,9 @@ export default function AnalyticsQuizCard({
           style={[styles.viewBtn, { backgroundColor: colors.primary }]}
           onPress={() => onViewAnalytics(tile.quiz_id, tile.quiz_name)}
           activeOpacity={0.85}
+          testID={`analytics-quiz-view-${tile.quiz_id}-open`}
+          accessibilityRole="button"
+          accessibilityLabel={`View analytics for ${tile.quiz_name} in ${classroomName}`}
         >
           <Text style={styles.viewBtnText}>View Analytics</Text>
           <Ionicons name="chevron-forward" size={16} color="#fff" />

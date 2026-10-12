@@ -111,15 +111,24 @@ export function generateStudentKPITiles(data: QuizListItem[] | null | undefined)
   ];
 }
 
+function toLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Default teacher analytics window: current academic year (Aug 1 → tomorrow). */
 export function getDefaultDateRange() {
   const today = new Date();
-  const lastMonth = new Date();
-  lastMonth.setMonth(today.getMonth() - 1);
+  const academicYearStart =
+    today.getMonth() >= 7 ? today.getFullYear() : today.getFullYear() - 1;
+  const from = new Date(academicYearStart, 7, 1);
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
   return {
-    from: lastMonth.toISOString().split('T')[0],
-    to: tomorrow.toISOString().split('T')[0],
+    from: toLocalIsoDate(from),
+    to: toLocalIsoDate(tomorrow),
   };
 }
 

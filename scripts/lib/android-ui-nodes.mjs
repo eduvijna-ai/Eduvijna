@@ -93,6 +93,31 @@ export function locateByTestId(nodes, testId, { minY = 0, pick = 'top' } = {}) {
  * @param {ReturnType<typeof parseUiXml>} nodes
  * @param {string|RegExp} pattern
  */
+export function locateClickableByLabel(
+  nodes,
+  pattern,
+  { minY = 0, pick = 'bottom', minHeight = 28 } = {},
+) {
+  const re = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
+  const hits = nodes
+    .filter((n) => {
+      if (!n.boundsRect || n.boundsRect.y1 < minY) return false;
+      if (!re.test(nodeLabels(n))) return false;
+      const h = n.boundsRect.y2 - n.boundsRect.y1;
+      return n.clickable === 'true' || h >= minHeight;
+    })
+    .map((n) => ({
+      kind: 'label',
+      label: nodeLabels(n),
+      x: n.boundsRect.cx,
+      y: n.boundsRect.cy,
+      bounds: n.boundsRect,
+    }));
+  if (!hits.length) return null;
+  hits.sort((a, b) => (pick === 'bottom' ? b.y - a.y : a.y - b.y));
+  return hits[0];
+}
+
 export function locateByLabel(nodes, pattern, { minY = 0, pick = 'bottom' } = {}) {
   const re = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
   const hits = nodes

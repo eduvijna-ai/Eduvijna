@@ -4,6 +4,9 @@ import { apiClient } from '../core/api/config';
 import QuizTeacherAnalyticsScreen from '../screens/QuizTeacherAnalyticsScreen';
 
 jest.mock('../components/analytics/AnalyticsDateFilter', () => () => null);
+jest.mock('@core/services/navigationService', () => ({
+  navigate: jest.fn(),
+}));
 jest.mock('../components/analytics/ClassStudentsModal', () => () => null);
 jest.mock('../components/analytics/QuizAttemptDetailModal', () => () => null);
 

@@ -21,6 +21,7 @@ import {
   isOptionTheCorrectAnswer,
   isOptionTheUserAnswer,
 } from '@core/utils/answerMappingUtils';
+import MathRenderer from '../components/MathRenderer';
 
 interface QuizResultsScreenProps {
   route: any;
@@ -352,7 +353,7 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           </View>
         </View>
 
-        <Text style={[styles.questionText, { color: theme.colors.textPrimary }]}>{questionText}</Text>
+        <MathRenderer text={questionText} colors={theme.colors} />
 
         {options.length === 0 ? (
           <View style={styles.textAnswerBlock}>
@@ -417,22 +418,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
                     {optionLabel}
                   </Text>
                 </View>
-                <Text
-                  style={[
-                    styles.optionText,
-                    {
-                      color: isCorrectAnswer
+                <View style={{ flex: 1 }}>
+                  <MathRenderer
+                    text={option}
+                    colors={{
+                      ...theme.colors,
+                      text: isCorrectAnswer
                         ? theme.colors.onTintGreen
                         : isUserAnswer
                           ? theme.colors.danger
                           : theme.colors.textPrimary,
-                      fontWeight: isCorrectAnswer || isUserAnswer ? '600' : '400',
-                      flex: 1,
-                    },
-                  ]}
-                >
-                  {option}
-                </Text>
+                    }}
+                  />
+                </View>
                 {isCorrectAnswer && (
                   <Ionicons name="checkmark-circle" size={18} color={theme.colors.success} />
                 )}
@@ -581,7 +579,15 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         </View>
 
         {/* Score card */}
-        <View style={[styles.scoreCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <View
+          testID="quiz-result-summary"
+          accessibilityLabel={
+            quizId && attemptId && effectiveStudentId
+              ? `quiz-result-summary quiz-${quizId} attempt-${attemptId} student-${effectiveStudentId}`
+              : 'quiz-result-summary'
+          }
+          style={[styles.scoreCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+        >
           <View style={styles.scoreRow}>
             <View style={styles.scoreItem}>
               <Text style={[styles.scoreValue, { color: perf.color }]}>{finalScore}%</Text>

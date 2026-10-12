@@ -48,3 +48,46 @@ export async function loadFixtureLabels() {
     openStudentsLabel,
   };
 }
+
+/** First saved question + answer snippets for journey result verification (not shown in UI). */
+export async function loadFixtureResultEvidence(instructorToken) {
+  const q = new URLSearchParams({
+    student_id: FIXTURE.studentId,
+    classroom_id: FIXTURE.classroomId,
+    session_id: FIXTURE.sessionId,
+    quiz_id: String(FIXTURE.quizId),
+  });
+  const res = await fetch(
+    `${getDevApiBase()}/api/v1/dashboard/attended-quiz?${q.toString()}`,
+    { headers: { Authorization: `Bearer ${instructorToken}` } },
+  );
+  const body = await res.json();
+  const items = body?.items ?? body?.data?.items ?? body?.questions ?? [];
+  const first = Array.isArray(items) ? items[0] : null;
+  const question =
+    first?.question ?? first?.question_text ?? first?.text ?? body?.worksheet_data?.questions?.[0]?.question;
+  const answers = body?.log_data?.answers ?? body?.submission?.log_data?.answers;
+  let userAnswer = '';
+  if (Array.isArray(answers) && answers[0]) {
+    userAnswer = answers[0].userAnswer ?? answers[0].answer ?? '';
+  }
+  const snippet = typeof question === 'string' ? question.replace(/\s+/g, ' ').trim().slice(0, 48) : '';
+  const answerSnippet =
+    typeof userAnswer === 'string' ? userAnswer.replace(/\s+/g, ' ').trim().slice(0, 32) : '';
+  return {
+    firstQuestionSnippet: snippet,
+    firstAnswerSnippet: answerSnippet,
+    identityLabel: `quiz-${FIXTURE.quizId} attempt-${FIXTURE.attemptId} student-${FIXTURE.studentId}`,
+  };
+}
+
+export async function loadFixtureResultEvidenceFromCredentials() {
+  const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
+  if (!existsSync(credFile)) throw new Error('missing_credentials');
+  const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
+  const instructor = await loginDevApi(
+    cfg.accounts.instructor.username,
+    cfg.accounts.instructor.password,
+  );
+  return loadFixtureResultEvidence(instructor.token);
+}

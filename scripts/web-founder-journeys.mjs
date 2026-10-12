@@ -6,7 +6,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import puppeteer from 'puppeteer';
-import { FIXTURE, loadFixtureLabels } from './lib/founder-fixture.mjs';
+import {
+  FIXTURE,
+  loadFixtureLabels,
+  loadFixtureResultEvidenceFromCredentials,
+} from './lib/founder-fixture.mjs';
 import { loadFixtureTrace } from './lib/assessments-android-locate.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,23 +81,50 @@ async function loginInstructor(page) {
   await waitForAuthenticatedShell(page);
 }
 
-function verifyWorksheetMetrics(text, labels) {
-  const scoreOk = /\b60\s*%/.test(text) || /Score\s*:\s*60/i.test(text);
+function verifyWorksheetMetrics(text, labels, resultEvidence = {}) {
+  const identityNeedle =
+    resultEvidence.identityLabel ||
+    `quiz-${FIXTURE.quizId} attempt-${FIXTURE.attemptId} student-${FIXTURE.studentId}`;
+  const identityOk = text.includes(identityNeedle);
+  const scoreOk =
+    identityOk && (/\b60\s*%/.test(text) || /Score\s*:\s*60/i.test(text));
   const evaluatedOk =
-    /(evaluated|items|questions).{0,16}\b10\b/i.test(text) ||
-    /\b10\b.{0,16}(evaluated|items)/i.test(text) ||
-    /\b\d+\s*\/\s*10\b/.test(text) ||
-    (text.match(/\bQ\d+\b/g) || []).length >= FIXTURE.expectedEvaluatedItems;
-  const correctOk = /\b6\b\s*correct/i.test(text) || /Correct\s*:\s*6/i.test(text) || /6\s*\/\s*10/i.test(text);
+    identityOk &&
+    (/(evaluated|items|questions).{0,16}\b10\b/i.test(text) ||
+      /\b10\b.{0,16}(evaluated|items)/i.test(text) ||
+      /\b\d+\s*\/\s*10\b/.test(text) ||
+      (text.match(/\bQ\d+\b/g) || []).length >= FIXTURE.expectedEvaluatedItems);
+  const correctOk =
+    identityOk &&
+    (/\b6\b\s*correct/i.test(text) ||
+      /Correct\s*:\s*6/i.test(text) ||
+      /6\s*\/\s*10/i.test(text));
   const studentOk = text.includes(FIXTURE.studentName);
-  const titleOk = text.includes(labels.quizTitle) || /Results/i.test(text);
+  const titleOk = text.includes(labels.quizTitle) || (identityOk && studentOk);
+  const contentOk =
+    !resultEvidence.firstQuestionSnippet ||
+    text.includes(resultEvidence.firstQuestionSnippet.slice(0, 24));
+  const answerOk =
+    !resultEvidence.firstAnswerSnippet ||
+    text.includes(resultEvidence.firstAnswerSnippet.slice(0, 16));
   return {
-    pass: scoreOk && evaluatedOk && correctOk && studentOk && titleOk,
+    pass:
+      identityOk &&
+      scoreOk &&
+      evaluatedOk &&
+      correctOk &&
+      studentOk &&
+      titleOk &&
+      contentOk &&
+      answerOk,
+    identityOk,
     scoreOk,
     evaluatedOk,
     correctOk,
     studentOk,
     titleOk,
+    contentOk,
+    answerOk,
   };
 }
 
@@ -103,7 +134,7 @@ async function clickByTestId(page, testId) {
   await page.click(sel);
 }
 
-async function journeyA(labels, trace) {
+async function journeyA(labels, trace, resultEvidence = {}) {
   const log = { journey: 'A_assessments_students_result', steps: [] };
   log.fixtureTrace = trace;
   if (trace.boundary !== 'ok') {
@@ -168,60 +199,46 @@ async function journeyA(labels, trace) {
 
   const text = await evaluateBody(page);
   await page.screenshot({ path: join(evidence, 'journey-a-result.png'), fullPage: true });
-  const verify = verifyWorksheetMetrics(text, labels);
+  const verify = verifyWorksheetMetrics(text, labels, resultEvidence);
   log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   return log;
 }
 
-async function journeyB(labels) {
+async function journeyB(labels, resultEvidence = {}) {
   const log = { journey: 'B_analytics_view_analytics_result', steps: [] };
-  await page.evaluate(() => {
-    const nodes = [...document.querySelectorAll('a,button,[role="button"]')];
-    const hit = nodes.find((el) => /Analytics/i.test(el.textContent || ''));
-    hit?.click();
+  await clickByTestId(page, 'nav-analytics').catch(async () => {
+    await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('a,button,[role="button"]')];
+      const hit = nodes.find((el) => /Analytics/i.test(el.textContent || ''));
+      hit?.click();
+    });
   });
   log.steps.push({ step: 'analytics_tab' });
-  await waitForText(page, /Analytics|Class/i);
+  await waitForText(page, /Class Overview|Analytics Dashboard/i);
 
-  const classLabel = labels.classLabel || '4A-Mathematics';
-  await page.evaluate((label) => {
-    const nodes = [...document.querySelectorAll('button,[role="button"],div,span')];
-    const hit = nodes.find((el) => (el.textContent || '').includes(label));
-    hit?.click();
-  }, classLabel);
-  log.steps.push({ step: 'open_class', classLabel });
-  await new Promise((r) => setTimeout(r, 1500));
-
-  const quizNeedle = labels.searchToken || labels.quizTitle.slice(0, 16);
-  await waitForText(page, quizNeedle);
-  await page.evaluate((needle) => {
-    const nodes = [...document.querySelectorAll('button,[role="button"],div,span,a')];
-    const hit = nodes.find((el) => (el.textContent || '').includes(needle));
-    hit?.click();
-  }, quizNeedle);
-  log.steps.push({ step: 'quiz', needle: quizNeedle });
-  await new Promise((r) => setTimeout(r, 1500));
-
-  await page.evaluate(() => {
-    const nodes = [...document.querySelectorAll('button,[role="button"],a')];
-    const hit = nodes.find((el) => /View Analytics/i.test(el.textContent || ''));
-    hit?.click();
+  await clickByTestId(page, `analytics-class-card-${FIXTURE.classroomId}`).catch(async () => {
+    const classLabel = labels.classLabel || '4A-Mathematics';
+    await page.evaluate((label) => {
+      const nodes = [...document.querySelectorAll('button,[role="button"],div,span')];
+      const hit = nodes.find((el) => (el.textContent || '').includes(label));
+      hit?.click();
+    }, classLabel);
   });
-  log.steps.push({ step: 'view_analytics' });
+  log.steps.push({ step: 'open_class', classroomId: FIXTURE.classroomId });
+  await new Promise((r) => setTimeout(r, 1500));
+
+  await clickByTestId(page, `analytics-quiz-view-${FIXTURE.quizId}-open`);
+  log.steps.push({ step: 'view_analytics', quizId: FIXTURE.quizId });
   await new Promise((r) => setTimeout(r, 2000));
 
-  await page.evaluate((name) => {
-    const nodes = [...document.querySelectorAll('button,[role="button"],div,span,tr')];
-    const hit = nodes.find((el) => (el.textContent || '').includes(name));
-    hit?.click();
-  }, FIXTURE.studentName);
-  log.steps.push({ step: 'open_student' });
-  await waitForText(page, /Score|evaluated|correct/i, { timeoutMs: 120000 });
+  await clickByTestId(page, `analytics-view-result-${FIXTURE.studentId}-${FIXTURE.attemptId}`);
+  log.steps.push({ step: 'open_saved_result' });
+  await waitForText(page, /Score|Correct|quiz-result-summary/i, { timeoutMs: 120000 });
 
   const text = await evaluateBody(page);
   await page.screenshot({ path: join(evidence, 'journey-b-result.png'), fullPage: true });
-  const verify = verifyWorksheetMetrics(text, labels);
+  const verify = verifyWorksheetMetrics(text, labels, resultEvidence);
   log.verify = { label: 'worksheet_metrics', ...verify };
   log.pass = verify.pass;
   return log;
@@ -240,15 +257,23 @@ async function main() {
   page = await context.newPage();
   try {
     await loginInstructor(page);
+    let resultEvidence = {};
+    try {
+      resultEvidence = await loadFixtureResultEvidenceFromCredentials();
+    } catch {
+      resultEvidence = {
+        identityLabel: `quiz-${FIXTURE.quizId} attempt-${FIXTURE.attemptId} student-${FIXTURE.studentId}`,
+      };
+    }
     const results = {};
     let failed = false;
     if (which === 'a' || which === 'all') {
-      results.a = await journeyA(labels, trace);
+      results.a = await journeyA(labels, trace, resultEvidence);
       writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(results.a, null, 2));
       if (!results.a.pass) failed = true;
     }
     if (which === 'b' || which === 'all') {
-      results.b = await journeyB(labels);
+      results.b = await journeyB(labels, resultEvidence);
       writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(results.b, null, 2));
       if (!results.b.pass) failed = true;
     }

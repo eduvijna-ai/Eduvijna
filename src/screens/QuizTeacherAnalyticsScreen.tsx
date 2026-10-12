@@ -27,6 +27,7 @@ import QuizStudentAttemptCard from '../components/analytics/QuizStudentAttemptCa
 import QuizPerformanceSummaryCard from '../components/analytics/QuizPerformanceSummaryCard';
 import ClassStudentsModal from '../components/analytics/ClassStudentsModal';
 import QuizAttemptDetailModal from '../components/analytics/QuizAttemptDetailModal';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
 import {
   getQuizAnalytics,
   aggregateClassOverview,
@@ -242,6 +243,23 @@ export default function QuizTeacherAnalyticsScreen() {
     setAttemptFilter(null);
   };
 
+  const openSavedQuizResult = (
+    row: ReturnType<typeof getQuizAttemptsForView>[0],
+  ) => {
+    if (!selectedQuiz || !row.attempt_id) return;
+    navigateRootStack('QuizResultsScreen', {
+      quizId: selectedQuiz,
+      attemptId: Number(row.attempt_id),
+      studentId: row.student_id,
+      studentName: row.student_fullname || row.student_username || 'Student',
+      score: row.score,
+      quizName: selectedQuizName,
+      sessionId: selectedQuizItem?.session_id ?? undefined,
+      classroomId: selectedQuizItem?.classroom_id ?? selectedClass ?? undefined,
+      isTeacherView: true,
+    });
+  };
+
   const handleBack = useCallback(() => {
     if (drillLevel === 'quiz') {
       setDrillLevel('class');
@@ -314,6 +332,9 @@ export default function QuizTeacherAnalyticsScreen() {
   const renderClassCard = (cls: ClassOverview) => (
     <TouchableOpacity
       key={cls.classroom_id}
+      testID={`analytics-class-card-${cls.classroom_id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Open class analytics: ${cls.classroom_name}`}
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={() => handleClassPress(cls)}
       activeOpacity={0.8}
@@ -364,21 +385,12 @@ export default function QuizTeacherAnalyticsScreen() {
       colors={colors}
       onView={
         row.status === 'completed' && row.log_data
-          ? () =>
-              setPopup({
-                visible: true,
-                quizName: selectedQuizName,
-                studentName: row.student_fullname || row.student_username || 'Student',
-                studentId: row.student_id,
-                quizId: selectedQuiz,
-                sessionId: selectedQuizItem?.session_id ?? null,
-                classroomId: selectedQuizItem?.classroom_id ?? null,
-                attemptId: row.attempt_id ? Number(row.attempt_id) : undefined,
-                score: row.score,
-                timeSpent: row.time_spent_seconds ?? null,
-                logData: row.log_data,
-                submittedAt: row.submitted_at,
-              })
+          ? () => openSavedQuizResult(row)
+          : undefined
+      }
+      viewResultTestId={
+        row.attempt_id
+          ? `analytics-view-result-${row.student_id}-${row.attempt_id}`
           : undefined
       }
     />

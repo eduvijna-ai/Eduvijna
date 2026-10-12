@@ -15,16 +15,31 @@ interface Props {
   row: QuizAttemptViewRow;
   quizName: string;
   onView?: () => void;
+  viewResultTestId?: string;
   colors: { card: string; border: string; text: string; textSecondary: string; primary: string };
 }
 
-export default function QuizStudentAttemptCard({ row, quizName, onView, colors }: Props) {
+export default function QuizStudentAttemptCard({
+  row,
+  quizName,
+  onView,
+  viewResultTestId,
+  colors,
+}: Props) {
   const isCompleted = row.status === 'completed' && !!row.log_data;
   const statusStyle = STATUS_COLORS[row.derivedStatus] ?? STATUS_COLORS.pending;
   const summary = getAttemptSummaryText(row, isCompleted);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+      testID={
+        row.attempt_id
+          ? `analytics-student-attempt-${row.student_id}-${row.attempt_id}`
+          : undefined
+      }
+      accessibilityLabel={`${row.student_fullname || row.student_username || 'Student'} attempt for ${quizName}`}
+    >
       <View style={styles.topRow}>
         <View style={[styles.avatar, { backgroundColor: `${colors.primary}14` }]}>
           <Ionicons name="person-outline" size={18} color={colors.primary} />
@@ -62,7 +77,13 @@ export default function QuizStudentAttemptCard({ row, quizName, onView, colors }
       </Text>
 
       {isCompleted && onView ? (
-        <TouchableOpacity style={[styles.viewBtn, { backgroundColor: colors.primary }]} onPress={onView}>
+        <TouchableOpacity
+          style={[styles.viewBtn, { backgroundColor: colors.primary }]}
+          onPress={onView}
+          testID={viewResultTestId}
+          accessibilityRole="button"
+          accessibilityLabel={`View saved result for ${row.student_fullname || row.student_username || 'student'}`}
+        >
           <Text style={styles.viewBtnText}>View Details</Text>
           <Ionicons name="chevron-forward" size={14} color="#fff" />
         </TouchableOpacity>
