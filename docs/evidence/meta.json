@@ -1,21 +1,27 @@
 {
   "branch": "integration/mobile-founder-acceptance-20261011",
-  "sha": "13521e6",
+  "sha": "a077a2e",
   "pr": 26,
   "androidLogin": {
     "instructor": "pass",
-    "student": "pass",
-    "script": "scripts/android-login.mjs"
+    "student": "pass"
   },
   "expoWeb": {
-    "bundleBoundary": "js_bundle_http_fixed_via_metro_shim",
+    "bundlePort": 8082,
     "loginInstructor": "pass",
-    "loginStudent": "pass",
-    "journeys": "A/B pending"
+    "loginStudent": "pass"
   },
-  "androidJourneys": {
-    "fixtureTrace": "479 expired search MAT_Mathematic index 0",
-    "journeyA": "navigation_and_worksheet_result_in_progress"
+  "analyticsFixtureTrace": {
+    "script": "scripts/analytics-fixture-trace.mjs",
+    "boundary": "ok",
+    "narrowRangeIncludes479": false,
+    "academicYearIncludes479": true
   },
-  "updatedAt": "2026-10-11T19:30:00.000Z"
+  "journeys": {
+    "A_android": "pass_prior",
+    "A_web": "pass_prior",
+    "B_android": "fail_class_or_drill",
+    "B_web": "fail_analytics_hub_timeout"
+  },
+  "updatedAt": "2026-10-12T02:10:00.000Z"
 }
