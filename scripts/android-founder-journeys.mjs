@@ -652,6 +652,18 @@ function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
         locateClickableByLabel(n, /^All Classes$/i, { minY: 0 }) != null
       );
     }
+    const quizDrill = expectedTestId.match(/^analytics-drill-quiz-(\d+)-(.+)$/);
+    if (quizDrill) {
+      const quizId = quizDrill[1];
+      const sessionId = quizDrill[2];
+      return (
+        locateByTestId(n, `analytics-summary-row-${quizId}-${sessionId}`) != null ||
+        locateByTestId(n, `analytics-quiz-card-${quizId}-${sessionId}`) != null ||
+        locateByTestId(n, `analytics-quiz-view-${quizId}-${sessionId}-open`) != null ||
+        locateByLabel(n, /attempt for/i, { minY: 0 }) != null ||
+        locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 }) != null
+      );
+    }
     return false;
   }, { dumpName, attempts: 16, pauseMs: 1500 });
   log.steps.push({ step: 'assert_drill_identity', expected: expectedTestId, ok: result.ok });
