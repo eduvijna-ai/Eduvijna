@@ -134,28 +134,23 @@ function readHeroQuizPageFromDump(dumpName, classDrillId) {
   return { path, xml, hero: readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId) };
 }
 
-function locateQuizPaginationNextBounded(log, maxScrolls = 14) {
+function relocateQuizPaginationNextSmall(log, label, maxScrolls = 5) {
   for (let i = 0; i < maxScrolls; i++) {
-    const path = dump(`b-02-locate-quiz-next-${i}.xml`);
+    const path = dump(`b-02-relocate-next-${label}-up-${i}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
     const next = locateQuizPaginationNext(nodes);
     if (next) {
-      log.steps.push({ step: 'quiz_pagination_next_located', scroll: i, tap: tapTarget(next) });
-      return { next, path };
+      log.steps.push({ step: 'quiz_pagination_next_relocated', label, direction: 'up', scroll: i });
+      return next;
     }
-    scrollAnalyticsClassDrillDown();
+    scrollAnalyticsQuizListUp();
   }
-  log.steps.push({ step: 'quiz_pagination_next_located', scroll: maxScrolls, found: false });
-  return { next: null, path: null };
-}
-
-function relocateQuizPaginationNextSmall(log, label, maxScrolls = 4) {
   for (let i = 0; i < maxScrolls; i++) {
-    const path = dump(`b-02-relocate-next-${label}-${i}.xml`);
+    const path = dump(`b-02-relocate-next-${label}-down-${i}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
     const next = locateQuizPaginationNext(nodes);
     if (next) {
-      log.steps.push({ step: 'quiz_pagination_next_relocated', label, scroll: i });
+      log.steps.push({ step: 'quiz_pagination_next_relocated', label, direction: 'down', scroll: i });
       return next;
     }
     scrollAnalyticsClassDrillDown();
@@ -173,7 +168,6 @@ function collectPagerDiagnostics(xml) {
 
 function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDrillId) {
   const totalPages = totalPagesFromHint;
-  locateQuizPaginationNextBounded(log);
   let { hero } = readHeroQuizPageFromDump('b-02-hero-initial', classDrillId);
   log.steps.push({ step: 'quiz_hero_page_initial', hero, targetPage, totalPages });
   if (hero.current == null) {
@@ -190,6 +184,10 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDri
     return { ok: false, label: 'analytics_quiz_hero_page_missing', targetPage, totalPages };
   }
   let current = hero.current;
+  if (current === targetPage) {
+    log.steps.push({ step: 'quiz_hero_page_at_target', hero, targetPage });
+    return { ok: true, currentPage: targetPage, totalPages: hero.totalPages ?? totalPages };
+  }
   if (totalPages != null && hero.totalPages != null && hero.totalPages !== totalPages) {
     log.steps.push({
       step: 'quiz_hero_total_pages_mismatch',
@@ -198,12 +196,12 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDri
     });
   }
   while (current < targetPage) {
-    const beforePath = dump(`b-02-quiz-pager-before-${current}.xml`);
-    const beforeXml = readXmlContent(beforePath);
-    let next = locateQuizPaginationNext(parseUiXml(beforeXml));
+    const before = readHeroQuizPageFromDump(`b-02-quiz-pager-before-${current}`, classDrillId);
+    let next = locateQuizPaginationNext(parseUiXml(before.xml));
     if (!next) {
       next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
     }
+    const beforeXml = before.xml;
     if (!next) {
       return {
         ok: false,
