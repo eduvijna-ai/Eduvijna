@@ -642,6 +642,14 @@ function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
         locateByLabel(n, /Class Overview/i, { minY: 0 }) != null
       );
     }
+    if (expectedTestId.startsWith('analytics-drill-class-')) {
+      const classId = expectedTestId.slice('analytics-drill-class-'.length);
+      return (
+        locateByTestId(n, `analytics-class-card-${classId}`) != null ||
+        locateByLabel(n, /View Analytics/i, { minY: 0 }) != null ||
+        locateByLabel(n, /quizzes ·/i, { minY: 0 }) != null
+      );
+    }
     return false;
   }, { dumpName, attempts: 16, pauseMs: 1500 });
   log.steps.push({ step: 'assert_drill_identity', expected: expectedTestId, ok: result.ok });
