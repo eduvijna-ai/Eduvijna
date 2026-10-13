@@ -2,7 +2,7 @@
  * Deterministic Android engineering runtime prep (Metro 8082 + dev client + pre-login surface).
  */
 import { execSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adbUiDump } from './adb-ui-dump.mjs';
@@ -19,8 +19,10 @@ import {
   engineeringImplementationSha,
   probeEngineeringBundleMarker,
 } from './engineering-runtime-target.mjs';
+import { resolveCommandArgv } from '../resolve-cli-entry.mjs';
 
 const repoRoot = ENGINEERING_REPO_ROOT || join(dirname(fileURLToPath(import.meta.url)), '../..');
+const defaultEvidenceRoot = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence');
 export const APP_PACKAGE = 'com.eduvijna.app';
 export const METRO_ANDROID_HOST = process.env.METRO_ANDROID_HOST || '127.0.0.1:8082';
 export const METRO_URL = `http://${METRO_ANDROID_HOST}`;
@@ -102,36 +104,108 @@ export function readMetroActiveSession(evidenceRoot) {
   }
 }
 
-export function startEngineeringMetroDetached() {
+function isProcessAlive(pid) {
+  if (!pid || pid <= 0) return false;
+  if (process.platform === 'win32') {
+    const r = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { 'true' } else { 'false' }`,
+      ],
+      { encoding: 'utf8' },
+    );
+    return (r.stdout || '').trim().toLowerCase() === 'true';
+  }
+  return spawnSync('kill', ['-0', String(pid)], { encoding: 'utf8' }).status === 0;
+}
+
+export function readEngineeringMetroLaunch(evidenceRoot = defaultEvidenceRoot) {
+  const path = join(evidenceRoot, 'engineering-metro-launch.json');
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function startEngineeringMetroDetached(evidenceRoot = defaultEvidenceRoot) {
   killMetroPort(ENGINEERING_METRO_PORT);
+  mkdirSync(evidenceRoot, { recursive: true });
   const headSha = engineeringImplementationSha();
   execSync('node scripts/write-engineering-build-stamp.mjs', {
     cwd: repoRoot,
     stdio: 'inherit',
     env: { ...process.env, EDUVIJNA_GIT_SHA: headSha },
   });
-  const child = spawn(
-    'npx',
-    ['expo', 'start', '--port', String(ENGINEERING_METRO_PORT), '--dev-client'],
-    {
-      cwd: repoRoot,
-      detached: true,
-      stdio: 'ignore',
-      shell: true,
-      env: { ...process.env, EDUVIJNA_GIT_SHA: headSha },
-    },
-  );
+  const resolved = resolveCommandArgv([
+    'expo',
+    'start',
+    '--port',
+    String(ENGINEERING_METRO_PORT),
+    '--dev-client',
+  ]);
+  const stdoutLog = join(evidenceRoot, 'engineering-metro.stdout.log');
+  const stderrLog = join(evidenceRoot, 'engineering-metro.stderr.log');
+  const stdoutFd = openSync(stdoutLog, 'a');
+  const stderrFd = openSync(stderrLog, 'a');
+  const startedAt = new Date().toISOString();
+  const child = spawn(resolved.executable, resolved.args, {
+    cwd: repoRoot,
+    detached: true,
+    shell: false,
+    windowsHide: true,
+    stdio: ['ignore', stdoutFd, stderrFd],
+    env: { ...process.env, EDUVIJNA_GIT_SHA: headSha },
+  });
   child.unref();
-  return { pid: child.pid, port: ENGINEERING_METRO_PORT, runnerGitHeadSha: headSha };
+  const launch = {
+    pid: child.pid,
+    port: ENGINEERING_METRO_PORT,
+    runnerGitHeadSha: headSha,
+    startedAt,
+    executable: resolved.executable,
+    cliEntry: resolved.args[0],
+    display: resolved.display,
+    stdoutLog,
+    stderrLog,
+  };
+  writeFileSync(join(evidenceRoot, 'engineering-metro-launch.json'), JSON.stringify(launch, null, 2));
+  return launch;
 }
 
 export async function waitForEngineeringBundleReady({
   maxAttempts = 45,
   pauseMs = 2000,
+  metroPid = null,
+  metroLaunch = null,
+  evidenceRoot = defaultEvidenceRoot,
 } = {}) {
+  const launch = metroLaunch || readEngineeringMetroLaunch(evidenceRoot);
+  const pid = metroPid ?? launch?.pid ?? null;
   let lastProbe = null;
   let metroHttpReady = false;
   for (let i = 0; i < maxAttempts; i++) {
+    if (pid && !isProcessAlive(pid)) {
+      return {
+        ok: false,
+        metroProcessStarted: true,
+        metroProcessExitedEarly: true,
+        metroHttpReady: false,
+        bundleMarkerFound: lastProbe?.markerFound ?? false,
+        runnerGitHeadSha: engineeringImplementationSha(),
+        loadedBuildSha: lastProbe?.loadedBuildSha ?? null,
+        bundleProbePass: false,
+        attempts: i + 1,
+        probe: lastProbe,
+        error: 'metro_process_exited_early',
+        metroLaunch: launch,
+        metroStdoutLog: launch?.stdoutLog ?? null,
+        metroStderrLog: launch?.stderrLog ?? null,
+      };
+    }
     try {
       const ping = await fetch(`${ENGINEERING_EXPO_WEB_URL}/status`);
       metroHttpReady = ping.ok;
@@ -541,13 +615,18 @@ export async function prepareAndroidEngineeringRuntime(options = {}) {
     return { ok: false, report };
   }
 
+  let metroLaunch = null;
   if (options.restartMetro) {
-    const metro = startEngineeringMetroDetached();
+    metroLaunch = startEngineeringMetroDetached(evidenceRoot);
     report.metroProcessStarted = true;
-    report.steps.push({ step: 'metro_started', pid: metro.pid, port: metro.port });
+    report.steps.push({ step: 'metro_started', pid: metroLaunch.pid, port: metroLaunch.port });
   }
 
-  const bundleWait = await waitForEngineeringBundleReady();
+  const bundleWait = await waitForEngineeringBundleReady({
+    metroPid: metroLaunch?.pid ?? null,
+    metroLaunch,
+    evidenceRoot,
+  });
   report.metroHttpReady = bundleWait.metroHttpReady;
   report.bundleMarkerFound = bundleWait.bundleMarkerFound;
   report.loadedBuildSha = bundleWait.loadedBuildSha;

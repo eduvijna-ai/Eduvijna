@@ -46,6 +46,7 @@ import {
   engineeringImplementationSha,
   buildEngineeringRunRecord,
 } from './lib/engineering-runtime-target.mjs';
+import { executeTapWith } from './lib/android-journey-tap.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-journeys');
@@ -69,6 +70,10 @@ function tapTarget(target) {
   if (!target) return null;
   adb(`shell input tap ${target.x} ${target.y}`);
   return target;
+}
+
+function executeTap(log, step, target, extra = {}) {
+  return executeTapWith(log, step, target, tapTarget, extra);
 }
 function scrollDown() {
   adb('shell input swipe 540 1500 540 700 350');
@@ -243,13 +248,7 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDri
       };
     }
     const expectedPage = current + 1;
-    log.steps.push({
-      step: 'quiz_pagination_next',
-      from: current,
-      to: expectedPage,
-      tap: tapTarget(next),
-    });
-    tapTarget(next);
+    executeTap(log, 'quiz_pagination_next', next, { from: current, to: expectedPage });
     sleep(2500);
     const after = readHeroQuizPageFromDump(`b-02-hero-after-next-${expectedPage}`, classDrillId);
     log.steps.push({
@@ -373,8 +372,7 @@ function tapAnalyticsPaginationNext(log, stepName, pageTry, scope = 'quiz') {
     log.steps.push({ step: stepName, pageTry, paginationFound: false });
     return false;
   }
-  log.steps.push({ step: stepName, pageTry, tap: tapTarget(nextTap) });
-  tapTarget(nextTap);
+  executeTap(log, stepName, nextTap, { pageTry });
   sleep(2200);
   return true;
 }
@@ -700,8 +698,7 @@ function ensureAnalyticsClassList(log, classTestId) {
         locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 }) ||
         locateClickableByLabel(n, /^All Classes$/i, { minY: 0 });
       if (drillBack) {
-        log.steps.push({ step: 'analytics_leave_attempt_list', attempt: i, tap: tapTarget(drillBack) });
-        tapTarget(drillBack);
+        executeTap(log, 'analytics_leave_attempt_list', drillBack, { attempt: i });
         sleep(2500);
         continue;
       }
@@ -723,15 +720,13 @@ function ensureAnalyticsClassList(log, classTestId) {
       locateClickableByLabel(n, /^All Classes$/i, { minY: 0 }) ||
       locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 });
     if (back) {
-      log.steps.push({ step: 'analytics_drill_back', attempt: i, tap: tapTarget(back) });
-      tapTarget(back);
+      executeTap(log, 'analytics_drill_back', back, { attempt: i });
       sleep(2200);
       continue;
     }
     const analyticsTab = locateByLabel(n, 'Analytics', { minY: 1200, pick: 'bottom' });
     if (analyticsTab) {
-      log.steps.push({ step: 'analytics_tab_recover', attempt: i, tap: tapTarget(analyticsTab) });
-      tapTarget(analyticsTab);
+      executeTap(log, 'analytics_tab_recover', analyticsTab, { attempt: i });
       sleep(3500);
       continue;
     }
@@ -916,12 +911,7 @@ async function returnToMainShell(log, { dumpNamePrefix = 'transition-main-shell'
     locateByContentDesc(nodes, 'Go to main dashboard', { requireClickable: true }) ||
     locateByLabel(nodes, 'Go to main dashboard', { minY: 0 });
   if (goDash) {
-    log.steps.push({
-      step: 'return_to_main_shell',
-      via: 'go_to_main_dashboard',
-      tap: tapTarget(goDash),
-    });
-    tapTarget(goDash);
+    executeTap(log, 'return_to_main_shell', goDash, { via: 'go_to_main_dashboard' });
     sleep(3500);
     path = dump(`${dumpNamePrefix}-after-dashboard.xml`);
     nodes = parseUiXml(readXmlContent(path));
@@ -979,9 +969,7 @@ async function enterAnalyticsDashboardFromMainShell(log) {
     log.steps.push({ step: 'analytics_tab', tap: null });
     return { ok: false, label: 'analytics_tab_missing_from_main_shell' };
   }
-  const analyticsTap = tapTarget(analyticsTab);
-  log.steps.push({ step: 'analytics_tab', tap: analyticsTap });
-  tapTarget(analyticsTab);
+  executeTap(log, 'analytics_tab', analyticsTab);
   sleep(4500);
   const hubWait = waitFor(
     (xml) => locateByLabel(parseUiXml(xml), /Analytics Dashboard/i, { minY: 0 }) != null,
@@ -1075,10 +1063,7 @@ async function journeyA(labels, resultEvidence = {}) {
 
   let path = dump('a-00-home.xml');
   let nodes = parseUiXml(readXmlContent(path));
-  log.steps.push({
-    step: 'home',
-    tap: tapTarget(locateByLabel(nodes, 'Assessments', { minY: 0, pick: 'bottom' })),
-  });
+  executeTap(log, 'home', locateByLabel(nodes, 'Assessments', { minY: 0, pick: 'bottom' }));
   sleep(2500);
 
   const tabWait = waitFor((xml) => {
@@ -1285,11 +1270,7 @@ async function journeyA(labels, resultEvidence = {}) {
 
   adb('shell input keyevent 111');
   sleep(400);
-  log.steps.push({
-    step: 'open_student_list',
-    testId: studentsTestId,
-    tap: tapTarget(studentListTap),
-  });
+  executeTap(log, 'open_student_list', studentListTap, { testId: studentsTestId });
   sleep(4500);
 
   const listWait = waitFor(
@@ -1310,7 +1291,7 @@ async function journeyA(labels, resultEvidence = {}) {
   const studentTap =
     locateByTestId(nodes, `student-row-${fx.studentId}`) ||
     locateByLabel(nodes, fx.studentName, { minY: 0 });
-  log.steps.push({ step: 'open_student', tap: tapTarget(studentTap) });
+  executeTap(log, 'open_student', studentTap);
   sleep(4500);
 
   const resultWait = waitFor(
@@ -1414,8 +1395,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       locateByTestId(nodes, 'analytics-pagination-next') ||
       locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
     if (!nextClassPage) break;
-    log.steps.push({ step: 'class_pagination_next', pageTry, tap: tapTarget(nextClassPage) });
-    tapTarget(nextClassPage);
+    executeTap(log, 'class_pagination_next', nextClassPage, { pageTry });
     sleep(2000);
   }
   if (classScrolls > 0) {
@@ -1524,14 +1504,11 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     });
   }
 
-  log.steps.push({
-    step: 'view_analytics',
-    tap: tapTarget(fixtureLocate.viewTap),
+  executeTap(log, 'view_analytics', fixtureLocate.viewTap, {
     testId: viewAnalyticsId,
     expectedDrillIdentity: quizDrillId,
     expectedClassroom: FIXTURE.classroomId,
   });
-  tapTarget(fixtureLocate.viewTap);
   sleep(2500);
   const drillOpened = assertAnalyticsQuizDrillIdentity(
     log,
@@ -1582,8 +1559,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
         locateByTestId(nodes, 'analytics-pagination-next') ||
         locateByLabel(nodes, /^Next$/i, { minY: 0, pick: 'top' });
       if (!nextTap) break;
-      log.steps.push({ step: 'attempt_pagination_next', pageTry, tap: tapTarget(nextTap) });
-      tapTarget(nextTap);
+      executeTap(log, 'attempt_pagination_next', nextTap, { pageTry });
       sleep(2000);
     }
   }
@@ -1598,7 +1574,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     studentId: FIXTURE.studentId,
     attemptId: FIXTURE.attemptId,
   });
-  log.steps.push({ step: 'open_saved_result', tap: tapTarget(viewResultTap), testId: viewResultId });
+  executeTap(log, 'open_saved_result', viewResultTap, { testId: viewResultId });
   sleep(4500);
 
   const resultWait = waitFor(
