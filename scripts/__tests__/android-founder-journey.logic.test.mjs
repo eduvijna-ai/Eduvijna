@@ -10,6 +10,7 @@ import {
   locateByLabel,
   locateByTestId,
   parseUiXml,
+  readAnalyticsQuizPagerState,
   shouldExecuteViewAnalyticsTap,
   verifyStudentListDestination,
   verifyWorksheetResultScreen,
@@ -83,6 +84,14 @@ test('exact analytics drill identity rejects generic drill UI without marker', (
     '<node text="" content-desc="analytics-drill-class-class_4d82c60e" bounds="[0,0][1080,120]"/>',
   );
   assert.equal(hasExactAnalyticsDrillIdentity(exact, 'analytics-drill-class-class_4d82c60e'), true);
+});
+
+test('quiz pager state reads analytics-quiz-pagination-info label', () => {
+  const xml =
+    '<node resource-id="analytics-quiz-pagination-info" content-desc="Analytics quiz page 3 of 5" bounds="[0,0][10,10]"/>';
+  const state = readAnalyticsQuizPagerState(xml);
+  assert.equal(state.current, 3);
+  assert.equal(state.totalPages, 5);
 });
 
 test('main tab shell requires Home Assessments and Analytics tabs', () => {

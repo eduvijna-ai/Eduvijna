@@ -310,6 +310,48 @@ export function shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap })
   return Boolean(viewAnalyticsTap) && !drillOpened;
 }
 
+/**
+ * @param {string} xmlContent
+ * @returns {{ current: number|null, totalPages: number|null, raw: string|null }}
+ */
+export function readAnalyticsQuizPagerState(xmlContent) {
+  const nodes = parseUiXml(xmlContent);
+  const infoNode =
+    nodes.find((n) => (n['resource-id'] || '').includes('analytics-quiz-pagination-info')) ||
+    nodes.find((n) => /Analytics quiz page \d+ of \d+/i.test(String(n['content-desc'] || '')));
+  const raw = String(infoNode?.['content-desc'] || infoNode?.text || '').trim();
+  const m =
+    raw.match(/Analytics quiz page (\d+) of (\d+)/i) ||
+    raw.match(/Page (\d+) of (\d+)/i) ||
+    collectUiTexts(nodes)
+      .map((t) => t.match(/Analytics quiz page (\d+) of (\d+)/i))
+      .find(Boolean);
+  if (!m) return { current: null, totalPages: null, raw: raw || null };
+  return { current: Number(m[1]), totalPages: Number(m[2]), raw };
+}
+
+/**
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ */
+export function listVisibleAnalyticsQuizCardTestIds(nodes, limit = 40) {
+  const ids = new Set();
+  for (const n of nodes) {
+    const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''}`;
+    const m = blob.match(/analytics-quiz-card-\d+-[0-9a-f-]+/gi);
+    if (m) m.forEach((id) => ids.add(id));
+  }
+  return [...ids].slice(0, limit);
+}
+
+export function hasExactAnalyticsQuizDrillIdentity(nodes, quizDrillId, classroomId) {
+  const expectedLabel = `${quizDrillId} classroom-${classroomId}`;
+  if (!hasExactAnalyticsDrillIdentity(nodes, quizDrillId)) return false;
+  return nodes.some((n) => {
+    const desc = String(n['content-desc'] || '').trim();
+    return desc === expectedLabel || desc.startsWith(`${expectedLabel}`);
+  });
+}
+
 export function readAnalyticsDateState(xmlContent) {
   const nodes = parseUiXml(xmlContent);
   const node = nodes.find((n) => {
