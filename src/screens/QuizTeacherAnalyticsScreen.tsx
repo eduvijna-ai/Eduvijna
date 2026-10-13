@@ -2,7 +2,7 @@
  * Teacher Analytics Screen — mirrors Quiz-React AnalyticsPage (/analytics)
  * API: GET /api/v1/dashboard/quizzes?view_type=all
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -89,6 +89,9 @@ export default function QuizTeacherAnalyticsScreen() {
     loading: false,
     students: [] as any[],
   });
+  const mainScrollRef = useRef<ScrollView>(null);
+  const quizListSectionOffsetY = useRef(0);
+
   const [popup, setPopup] = useState({
     visible: false,
     quizName: '',
@@ -220,6 +223,17 @@ export default function QuizTeacherAnalyticsScreen() {
   }, [drillLevel, quizPage, classQuizPageMemberTokens]);
   const paginatedSummary = quizSummaryRows.slice((summaryPage - 1) * ITEMS_PER_PAGE, summaryPage * ITEMS_PER_PAGE);
   const paginatedRows = studentRows.slice((attemptPage - 1) * ITEMS_PER_PAGE, attemptPage * ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    if (drillLevel !== 'class' || !selectedClass) return;
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(0, quizListSectionOffsetY.current - 8),
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [drillLevel, selectedClass, quizPage]);
 
   const resetDrillToClasses = useCallback(() => {
     setDrillLevel('classes');
@@ -513,6 +527,9 @@ export default function QuizTeacherAnalyticsScreen() {
       ) : null}
 
       <ScrollView
+        ref={mainScrollRef}
+        testID="analytics-class-drill-scroll"
+        accessibilityLabel="analytics-class-drill-scroll"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -587,6 +604,9 @@ export default function QuizTeacherAnalyticsScreen() {
               accessible
               importantForAccessibility="yes"
               collapsable={false}
+              onLayout={(event) => {
+                quizListSectionOffsetY.current = event.nativeEvent.layout.y;
+              }}
             >
               <Text
                 style={[styles.subSectionTitle, { color: colors.text }]}

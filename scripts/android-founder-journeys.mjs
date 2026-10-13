@@ -617,8 +617,13 @@ function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, 
       return { ok: true, path, xml, nodes, scrollRect, viewTap, progress };
     }
 
-    if (progress.signature === lastSignature) noProgressStreak += 1;
-    else noProgressStreak = 0;
+    if (progress.seesQuizSummarySection) {
+      noProgressStreak = 0;
+    } else if (progress.signature === lastSignature) {
+      noProgressStreak += 1;
+    } else {
+      noProgressStreak = 0;
+    }
     lastSignature = progress.signature;
     const terminate = shouldTerminateFixtureViewportSearch({
       noProgressStreak,
