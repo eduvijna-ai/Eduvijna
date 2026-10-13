@@ -79,10 +79,6 @@ function decodeQuizQuestions(raw: any[]): any[] {
 // ── screen ─────────────────────────────────────────────────────────────────
 
 export default function AssessmentWorkspaceScreen({ navigation, route }: Props) {
-  useQuizNavAccessRedirect('CreateDocumentQuizScreen', navigation);
-  const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
-
   const {
     mode,
     centerTab,
@@ -91,6 +87,13 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
     setCenterTab,
     updateAiSettings,
   } = useAssessmentWorkspaceStore();
+
+  const workspaceMode = route?.params?.mode ?? mode ?? 'document';
+  useQuizNavAccessRedirect('AssessmentWorkspaceScreen', navigation, {
+    workspaceMode,
+  });
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const styles = useMemo(() => createStyles(theme.colors), [theme.colors]);
 

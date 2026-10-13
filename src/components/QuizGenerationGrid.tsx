@@ -58,18 +58,6 @@ const PLATFORM_EXPANSION_SCREENS = [
   'CreateImageQuizScreen',
 ];
 
-/** Tiles hidden from the home Generate Assessment grid (still reachable via header menu). */
-function resolvedScreenForGuard(screen: string): string {
-  const useWorkspaceRedirect = Platform.OS !== 'web';
-  if (useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')) {
-    return 'AssessmentWorkspaceScreen';
-  }
-  if (useWorkspaceRedirect && screen === 'CreateImageQuizScreen') {
-    return 'ImageAssessmentScreen';
-  }
-  return screen;
-}
-
 const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
   // The platform itself is never shown as a tile; it is expanded into its parts.
   return isPlatformTile(tile);
@@ -92,15 +80,16 @@ export default function QuizGenerationGrid({
   showTitle = true,
   onQuizTypePress,
 }: QuizGenerationGridProps) {
-  const { items: navItems, loading } = useQuizNavItems();
+  const { items: navItems, loading, fetchStatus } = useQuizNavItems();
   const { canAccessScreen } = useQuizNavScreenAccess();
 
   /** Tiles to render — API items when available, defaults otherwise */
   const tiles: ResolvedNavItem[] = useMemo(() => {
     const source =
-      navItems.length > 0
+      fetchStatus === 'ready'
         ? navItems
-        : FALLBACK_SCREENS.map((screen, i) => {
+        : fetchStatus === 'error'
+        ? FALLBACK_SCREENS.map((screen, i) => {
             const d = SCREEN_DEFAULTS[screen]!;
             return {
               screen,
@@ -111,7 +100,8 @@ export default function QuizGenerationGrid({
               bgColor: d.bg,
               display_order: i,
             };
-          });
+          })
+        : [];
 
     // Whether the user is granted the AI Assessment Platform (its workspace
     // includes AI Assessment / Document & Handwritten / Image on web).
@@ -145,10 +135,16 @@ export default function QuizGenerationGrid({
     return [...visible, ...expanded].sort(
       (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
     );
-  }, [navItems]);
+  }, [navItems, fetchStatus]);
 
   const handlePress = (screen: string) => {
-    if (!canAccessScreen(resolvedScreenForGuard(screen))) {
+    const workspaceMode =
+      screen === 'CreateHandwrittenQuizScreen'
+        ? 'handwritten'
+        : screen === 'CreateDocumentQuizScreen'
+          ? 'document'
+          : undefined;
+    if (!canAccessScreen(screen, workspaceMode ? { workspaceMode } : undefined)) {
       Alert.alert(
         'Not available',
         'This assessment type is not enabled for your account. Contact your school administrator.',

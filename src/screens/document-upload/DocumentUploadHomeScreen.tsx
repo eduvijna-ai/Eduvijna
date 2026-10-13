@@ -78,7 +78,7 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
 };
 
 export default function DocumentUploadHomeScreen({ navigation, route }: any) {
-  useQuizNavAccessRedirect('CreateDocumentQuizScreen', navigation);
+  useQuizNavAccessRedirect('DocumentUploadHomeScreen', navigation);
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();

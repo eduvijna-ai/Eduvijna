@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Alert } from 'react-native';
+import type { WorkspaceMode } from '@core/store/assessmentWorkspace.store';
 import { useQuizNavScreenAccess } from './useQuizNavScreenAccess';
 
 /**
@@ -8,14 +9,15 @@ import { useQuizNavScreenAccess } from './useQuizNavScreenAccess';
 export function useQuizNavAccessRedirect(
   screenName: string,
   navigation: { goBack?: () => void; navigate?: (s: string, p?: unknown) => void } | undefined,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; workspaceMode?: WorkspaceMode },
 ) {
   const enabled = options?.enabled ?? true;
+  const workspaceMode = options?.workspaceMode;
   const { canAccessScreen, loading } = useQuizNavScreenAccess();
 
   useEffect(() => {
     if (!enabled || loading || !navigation) return;
-    if (canAccessScreen(screenName)) return;
+    if (canAccessScreen(screenName, { workspaceMode })) return;
     Alert.alert(
       'Not available',
       'This assessment module is not enabled for your account.',
@@ -30,5 +32,5 @@ export function useQuizNavAccessRedirect(
       ],
       { cancelable: false },
     );
-  }, [enabled, loading, canAccessScreen, screenName, navigation]);
+  }, [enabled, loading, canAccessScreen, screenName, navigation, workspaceMode]);
 }
