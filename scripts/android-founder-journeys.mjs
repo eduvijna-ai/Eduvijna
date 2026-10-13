@@ -736,7 +736,9 @@ function ensureFixtureQuizCardInViewport(
       attempt,
       direction,
     });
-    if (!inv.ok) break;
+    if (!inv.ok) {
+      return { path, xml, nodes, scrollRect, invariantFailure: inv };
+    }
     nodes = parseUiXml(xml);
     scrollRect = findClassDrillNestedScrollViewport(nodes) || scrollRect;
     log.steps.push({
@@ -784,14 +786,25 @@ function locateFixtureQuizViewAnalyticsOnPage(
   let xml = reposition.xml || readXmlContent(path);
   let nodes = reposition.nodes || parseUiXml(xml);
   let scrollRect = reposition.scrollRect || findClassDrillNestedScrollViewport(nodes);
-  ({ path, xml, nodes, scrollRect } = ensureFixtureQuizCardInViewport(
+  const cardHunt = ensureFixtureQuizCardInViewport(
     log,
     discoveryCtx,
     quizCardId,
     viewAnalyticsId,
     mobileFixturePage,
     { path, xml, nodes, scrollRect },
-  ));
+  );
+  ({ path, xml, nodes, scrollRect } = cardHunt);
+  if (cardHunt.invariantFailure) {
+    return {
+      ok: false,
+      label: cardHunt.invariantFailure.label,
+      mobileFixturePage,
+      visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes, 12),
+      xmlPath: path,
+      viewportProgress: null,
+    };
+  }
   let viewTap =
     reposition.viewTap ||
     (scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null);
