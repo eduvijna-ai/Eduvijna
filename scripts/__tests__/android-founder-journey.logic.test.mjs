@@ -113,6 +113,15 @@ test('quiz page members accessibility exposes paginated quiz identities', () => 
   );
 });
 
+test('class drill hero quiz-members suffix is readable when section is off-screen', () => {
+  const xml =
+    '<node resource-id="analytics-drill-class-class_9" content-desc="analytics-drill-class-class_9 quiz-page-3-of-5 quiz-count-25 quiz-members-474:a4f24fe6-3c02-4372-9248-e8c3267c4c05;479:a6882262-5c50-4cf5-a4a8-dc8786862916" bounds="[0,0][10,10]"/>';
+  const state = readAnalyticsQuizPageMembers(xml, 'analytics-drill-class-class_9');
+  assert.equal(state.page, 3);
+  assert.equal(state.source, 'hero');
+  assert.equal(state.members.length, 2);
+});
+
 test('quiz pager state reads analytics-quiz-pagination-info label', () => {
   const xml =
     '<node resource-id="analytics-quiz-pagination-info" content-desc="Analytics quiz page 3 of 5" bounds="[0,0][10,10]"/>';

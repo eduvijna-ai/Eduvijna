@@ -210,11 +210,14 @@ export default function QuizTeacherAnalyticsScreen() {
 
   const paginatedClasses = classOverviews.slice((classPage - 1) * ITEMS_PER_PAGE, classPage * ITEMS_PER_PAGE);
   const paginatedQuizzes = classQuizzes.slice((quizPage - 1) * ITEMS_PER_PAGE, quizPage * ITEMS_PER_PAGE);
+  const classQuizPageMemberTokens = useMemo(
+    () => paginatedQuizzes.map((tile) => `${tile.quiz_id}:${tile.session_id}`),
+    [paginatedQuizzes],
+  );
   const analyticsQuizPageMembersAccessibilityLabel = useMemo(() => {
     if (drillLevel !== 'class') return '';
-    const memberTokens = paginatedQuizzes.map((tile) => `${tile.quiz_id}:${tile.session_id}`);
-    return `analytics-quiz-page-members page-${quizPage} ${memberTokens.join(' ')}`.trim();
-  }, [drillLevel, paginatedQuizzes, quizPage]);
+    return `analytics-quiz-page-members page-${quizPage} ${classQuizPageMemberTokens.join(' ')}`.trim();
+  }, [drillLevel, quizPage, classQuizPageMemberTokens]);
   const paginatedSummary = quizSummaryRows.slice((summaryPage - 1) * ITEMS_PER_PAGE, summaryPage * ITEMS_PER_PAGE);
   const paginatedRows = studentRows.slice((attemptPage - 1) * ITEMS_PER_PAGE, attemptPage * ITEMS_PER_PAGE);
 
@@ -264,7 +267,10 @@ export default function QuizTeacherAnalyticsScreen() {
       return `${analyticsDrillTestId} classroom-${selectedAssignment.classroomId}`;
     }
     if (drillLevel === 'class' && selectedClass) {
-      return `${analyticsDrillTestId} quiz-page-${quizPage}-of-${totalQuizPages} quiz-count-${classQuizzes.length}`;
+      const membersSuffix = classQuizPageMemberTokens.length
+        ? ` quiz-members-${classQuizPageMemberTokens.join(';')}`
+        : '';
+      return `${analyticsDrillTestId} quiz-page-${quizPage}-of-${totalQuizPages} quiz-count-${classQuizzes.length}${membersSuffix}`;
     }
     return analyticsDrillTestId;
   }, [
@@ -275,6 +281,7 @@ export default function QuizTeacherAnalyticsScreen() {
     quizPage,
     totalQuizPages,
     classQuizzes.length,
+    classQuizPageMemberTokens,
   ]);
 
   const handleClassPress = (cls: ClassOverview) => {

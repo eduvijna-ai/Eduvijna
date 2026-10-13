@@ -195,7 +195,7 @@ const FIXTURE_QUIZ_IDENTITY = { quizId: FIXTURE.quizId, sessionId: FIXTURE.sessi
 
 function snapshotMobileQuizPageMembership(xml, classDrillId, pageLabel) {
   const hero = readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId);
-  const pageMembers = readAnalyticsQuizPageMembers(xml);
+  const pageMembers = readAnalyticsQuizPageMembers(xml, classDrillId);
   return {
     page: pageMembers.page ?? hero.current,
     hero,
@@ -396,7 +396,7 @@ function locateFixtureQuizViewAnalyticsOnPage(
     const visibleQuizCardIds = listVisibleAnalyticsQuizCardTestIds(nodes);
     const viewTap = locateByTestId(nodes, viewAnalyticsId);
     const cardTap = locateByTestId(nodes, quizCardId);
-    const pageMembers = readAnalyticsQuizPageMembers(xml);
+    const pageMembers = readAnalyticsQuizPageMembers(xml, classDrillId);
     log.steps.push({
       step: 'fixture_quiz_search',
       searchDirection: 'down',

@@ -334,24 +334,47 @@ export function analyticsPageMembersContainFixture(members, fixture) {
  * Parses engineering metadata from analytics-quiz-page-members (visible section title).
  * @param {string} xmlContent
  */
-export function readAnalyticsQuizPageMembers(xmlContent) {
+function parseQuizMemberTokensFromRaw(raw) {
+  const members = [];
+  if (!raw) return members;
+  const membersChunk = raw.match(/quiz-members-([^\s]+)/i);
+  const tokenSource = membersChunk ? membersChunk[1].split(';') : raw.split(/\s+/);
+  for (const token of tokenSource) {
+    const m = String(token).match(/^(\d+):([0-9a-f-]+)$/i);
+    if (m) members.push({ quizId: Number(m[1]), sessionId: m[2] });
+  }
+  return members;
+}
+
+export function readAnalyticsQuizPageMembers(xmlContent, classDrillId = null) {
   const nodes = parseUiXml(xmlContent);
-  const node = nodes.find(
+  const sectionNode = nodes.find(
     (n) =>
       (n['resource-id'] || '').includes('analytics-quiz-page-members') ||
       String(n['content-desc'] || '').includes('analytics-quiz-page-members'),
   );
-  const raw = String(node?.['content-desc'] || node?.text || '').trim();
-  const pageM = raw.match(/\bpage-(\d+)\b/i);
-  const members = [];
-  for (const token of raw.split(/\s+/)) {
-    const m = token.match(/^(\d+):([0-9a-f-]+)$/i);
-    if (m) members.push({ quizId: Number(m[1]), sessionId: m[2] });
-  }
+  const heroNode =
+    classDrillId != null
+      ? nodes.find((n) => {
+          const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''} ${n.text || ''}`;
+          return blob.includes(classDrillId) && /quiz-page-\d+-of-\d+/i.test(blob);
+        })
+      : null;
+  const raw = String(
+    sectionNode?.['content-desc'] ||
+      sectionNode?.text ||
+      heroNode?.['content-desc'] ||
+      heroNode?.text ||
+      '',
+  ).trim();
+  const pageM =
+    raw.match(/\bpage-(\d+)\b/i) || raw.match(/quiz-page-(\d+)-of-\d+/i);
+  const members = parseQuizMemberTokensFromRaw(raw);
   return {
     raw: raw || null,
     page: pageM ? Number(pageM[1]) : null,
     members,
+    source: sectionNode ? 'section' : heroNode ? 'hero' : null,
   };
 }
 
