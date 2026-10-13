@@ -402,11 +402,16 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   );
 
   const assessmentsDataStateMarker = (
-    <View
+    <TextInput
       testID="assessments-data-state"
       accessibilityLabel={assessmentsDataStateLabel}
       accessible
       importantForAccessibility="yes"
+      editable={false}
+      showSoftInputOnFocus={false}
+      caretHidden
+      value=""
+      collapsable={false}
       style={styles.dataStateMarker}
     />
   );

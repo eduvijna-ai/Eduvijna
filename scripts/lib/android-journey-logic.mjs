@@ -230,7 +230,10 @@ export function readAssessmentsDataState(xmlContent) {
     const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''} ${n.text || ''}`;
     return blob.includes('assessments-data-state');
   });
-  const desc = String(node?.['content-desc'] || node?.text || '');
+  const fromTestId = readTextInputByTestId(xmlContent, 'assessments-data-state');
+  const desc = String(
+    node?.['content-desc'] || fromTestId || node?.text || '',
+  );
   const pickNum = (key) => {
     const m = desc.match(new RegExp(`${key}-(\\d+)`));
     return m ? Number(m[1]) : null;
@@ -272,7 +275,8 @@ export function readAnalyticsDateState(xmlContent) {
     const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''}`;
     return blob.includes('analytics-date-state') || /Analytics date state from-/i.test(blob);
   });
-  const desc = String(node?.['content-desc'] || '');
+  const fromTestId = readTextInputByTestId(xmlContent, 'analytics-date-state');
+  const desc = String(node?.['content-desc'] || fromTestId || '');
   const m = desc.match(/from-([\d-]+)\s+to-([\d-]+)/i);
   return {
     raw: desc,

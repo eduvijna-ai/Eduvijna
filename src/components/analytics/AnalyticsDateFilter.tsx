@@ -45,11 +45,16 @@ export default function AnalyticsDateFilter({
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-      <View
+      <TextInput
         testID="analytics-date-state"
         accessibilityLabel={analyticsDateStateLabel}
         accessible
         importantForAccessibility="yes"
+        editable={false}
+        showSoftInputOnFocus={false}
+        caretHidden
+        value=""
+        collapsable={false}
         style={styles.dateStateMarker}
       />
       <View style={styles.row}>

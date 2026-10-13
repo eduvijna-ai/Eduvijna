@@ -281,16 +281,23 @@ function tapNativeDatePickerConfirm(nodes) {
   );
 }
 
+function androidCalendarCellLabel(y, m, d) {
+  const month = MONTH_NAMES[m - 1];
+  const day = String(d).padStart(2, '0');
+  return `${day} ${month} ${y}`;
+}
+
 function navigateAndroidMaterialDatePicker(targetIso, log, label) {
   const [y, m, d] = targetIso.split('-').map(Number);
   const targetMonthName = MONTH_NAMES[m - 1];
+  const targetCellLabel = androidCalendarCellLabel(y, m, d);
   let daySelected = false;
   for (let attempt = 0; attempt < 40; attempt++) {
     const path = dump(`b-native-picker-${label}-${attempt}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
     const headerNode = nodes.find((n) => {
-      const t = String(n.text || '');
-      return /20\d{2}/.test(t) && MONTH_NAMES.some((mon) => t.includes(mon));
+      const t = String(n.text || '').trim();
+      return /^[A-Za-z]+ 20\d{2}$/.test(t);
     });
     if (headerNode) {
       const headerText = String(headerNode.text);
@@ -319,16 +326,20 @@ function navigateAndroidMaterialDatePicker(targetIso, log, label) {
       if (!daySelected) {
         const dayHit = nodes.find((n) => {
           if (n.clickable !== 'true') return false;
-          if (String(n.text) !== String(d)) return false;
-          if (!n.boundsRect) return false;
-          return n.boundsRect.y1 > 220;
+          const text = String(n.text || n['content-desc'] || '');
+          if (text !== targetCellLabel && text !== String(d) && text !== String(d).padStart(2, '0')) {
+            return false;
+          }
+          if (text === targetCellLabel) return Boolean(n.boundsRect);
+          if (!n.boundsRect || n.boundsRect.y1 <= 220) return false;
+          return text === String(d) || text === String(d).padStart(2, '0');
         });
         if (dayHit) {
           tapTarget({
             x: dayHit.boundsRect.cx,
             y: dayHit.boundsRect.cy,
             kind: 'native-day',
-            label: String(d),
+            label: targetCellLabel,
           });
           sleep(500);
           daySelected = true;
@@ -735,6 +746,12 @@ async function journeyA(labels, resultEvidence = {}) {
 
   let assessmentsDataState = readAssessmentsDataState(readXmlContent(path));
   log.assessmentsDataState = assessmentsDataState;
+  if (!assessmentsDataState.raw) {
+    log.pass = false;
+    log.verify = { pass: false, label: 'assessments_data_state_missing' };
+    writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
   let journeyADataClassification = classifyJourneyAAssessmentsState(assessmentsDataState);
   log.journeyADataClassification = journeyADataClassification;
 
