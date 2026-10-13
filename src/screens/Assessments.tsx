@@ -45,6 +45,7 @@ import {
   type QuizAssignmentListSource,
 } from '@core/types/studentListNavigation.types';
 import { navigate as navigateRootStack } from '@core/services/navigationService';
+import { formatAssessmentsDataStateAccessibility } from '@core/utils/assessmentsDataState';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -377,6 +378,39 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     });
   }, [baseFilteredQuizzes, selectedTab, isTeacher]);
 
+  const assessmentsDataStateLabel = React.useMemo(
+    () =>
+      formatAssessmentsDataStateAccessibility({
+        teacherSourceCount: isTeacher ? allQuizzes.length : 0,
+        baseFilteredCount: baseFilteredQuizzes.length,
+        filteredCount: filteredQuizzes.length,
+        selectedTab,
+        selectedClassroom,
+        selectedDateFilter,
+        loading: Boolean(loading),
+      }),
+    [
+      allQuizzes.length,
+      baseFilteredQuizzes.length,
+      filteredQuizzes.length,
+      isTeacher,
+      loading,
+      selectedClassroom,
+      selectedDateFilter,
+      selectedTab,
+    ],
+  );
+
+  const assessmentsDataStateMarker = (
+    <View
+      testID="assessments-data-state"
+      accessibilityLabel={assessmentsDataStateLabel}
+      accessible
+      importantForAccessibility="yes"
+      style={styles.dataStateMarker}
+    />
+  );
+
   // const handleCreateAssessment = () => {
   //   console.log('Create new assessment');
   //   // TODO: Navigate to create assessment screen
@@ -532,6 +566,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (teacherLoading && filteredQuizzes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.loadingContainer}>
           <LoadingSpinner size={60} />
         </View>
@@ -542,6 +577,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={64} color={theme.colors.error} />
           <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
@@ -563,6 +599,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         {...(Platform.OS === 'ios' ? { backgroundColor: theme.colors.background } : {})}
       />
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {assessmentsDataStateMarker}
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card }]}>
         {/* <View style={styles.headerTop}>
@@ -1197,6 +1234,14 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  dataStateMarker: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: 0,
+    top: 0,
   },
   loadingContainer: {
     flex: 1,

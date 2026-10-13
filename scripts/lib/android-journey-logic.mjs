@@ -220,3 +220,63 @@ export function locateWithScroll({
   }
   return { hit: null, scrolls: maxScrolls, xmlPath: null };
 }
+
+/**
+ * @param {string} xmlContent
+ */
+export function readAssessmentsDataState(xmlContent) {
+  const nodes = parseUiXml(xmlContent);
+  const node = nodes.find((n) => {
+    const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''} ${n.text || ''}`;
+    return blob.includes('assessments-data-state');
+  });
+  const desc = String(node?.['content-desc'] || node?.text || '');
+  const pickNum = (key) => {
+    const m = desc.match(new RegExp(`${key}-(\\d+)`));
+    return m ? Number(m[1]) : null;
+  };
+  const pickToken = (key) => {
+    const m = desc.match(new RegExp(`${key}-([^\\s]+)`));
+    return m ? m[1] : null;
+  };
+  const loadingRaw = pickToken('loading');
+  return {
+    raw: desc,
+    teacherSourceCount: pickNum('source'),
+    baseFilteredCount: pickNum('base'),
+    filteredCount: pickNum('filtered'),
+    selectedTab: pickToken('tab'),
+    selectedClassroom: pickToken('classroom'),
+    selectedDateFilter: pickToken('date'),
+    loading: loadingRaw === 'true',
+  };
+}
+
+/** @param {ReturnType<typeof readAssessmentsDataState>} state */
+export function classifyJourneyAAssessmentsState(state) {
+  const source = state.teacherSourceCount ?? 0;
+  const base = state.baseFilteredCount ?? 0;
+  const filtered = state.filteredCount ?? 0;
+  if (source === 0) return 'CASE_A';
+  if (base === 0) return 'CASE_B';
+  if (filtered === 0) return 'CASE_C';
+  return 'CASE_OK';
+}
+
+/**
+ * @param {string} xmlContent
+ */
+export function readAnalyticsDateState(xmlContent) {
+  const nodes = parseUiXml(xmlContent);
+  const node = nodes.find((n) => {
+    const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''}`;
+    return blob.includes('analytics-date-state') || /Analytics date state from-/i.test(blob);
+  });
+  const desc = String(node?.['content-desc'] || '');
+  const m = desc.match(/from-([\d-]+)\s+to-([\d-]+)/i);
+  return {
+    raw: desc,
+    from: m?.[1] ?? null,
+    to: m?.[2] ?? null,
+  };
+}

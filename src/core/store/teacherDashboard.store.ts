@@ -12,6 +12,7 @@ import {
   fetchTeacherQuizzes,
 } from '../services/dashboardApi';
 import { getPendingCropUri, subscribeCropSession } from '../services/imageCropSession';
+import * as TokenStorage from '../services/tokenStorage';
 import type {
   TeacherQuiz,
   TeacherDashboardStats,
@@ -300,6 +301,11 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       return;
     }
     if (lastBackgroundAt && Date.now() - lastBackgroundAt < BACKGROUND_FETCH_COOLDOWN_MS) {
+      return;
+    }
+
+    const accessToken = await TokenStorage.getAccessToken();
+    if (!accessToken) {
       return;
     }
 

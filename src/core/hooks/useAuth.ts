@@ -21,6 +21,7 @@ import {
   storeUserDataForSession,
 } from '../api/apiRefreshCoordinator';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
+import { invalidateTeacherDashboardCaches } from '../services/teacherDashboardCacheInvalidation';
 import { useDashboardStore } from '../store/dashboard.store';
 import {
   classifyStartupAuthError,
@@ -338,6 +339,8 @@ export function useAuth(): UseAuthReturn {
           setAuthenticated,
           setSchoolId,
         });
+        await invalidateTeacherDashboardCaches();
+        useTeacherDashboardStore.getState().reset();
         await storeUserDataForSession(sessionEpoch, JSON.stringify(enrichedUser));
       } catch (err) {
         commit.run(() => {

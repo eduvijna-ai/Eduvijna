@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'r
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { getDefaultDateRange } from '../../core/utils/analyticsUiUtils';
+import { formatAnalyticsDateStateAccessibility } from '../../core/utils/analyticsDateState';
 
 interface Props {
   startDate: string;
@@ -40,9 +41,17 @@ export default function AnalyticsDateFilter({
   const [showTo, setShowTo] = useState(false);
   const defaults = getDefaultDateRange();
   const isCustom = startDate !== defaults.from || endDate !== defaults.to;
+  const analyticsDateStateLabel = formatAnalyticsDateStateAccessibility(startDate, endDate);
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View
+        testID="analytics-date-state"
+        accessibilityLabel={analyticsDateStateLabel}
+        accessible
+        importantForAccessibility="yes"
+        style={styles.dateStateMarker}
+      />
       <View style={styles.row}>
         <View style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
@@ -136,6 +145,14 @@ export default function AnalyticsDateFilter({
 }
 
 const styles = StyleSheet.create({
+  dateStateMarker: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: 0,
+    top: 0,
+  },
   wrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, gap: 8 },
   row: { flexDirection: 'row', gap: 8 },
   dateBtn: {

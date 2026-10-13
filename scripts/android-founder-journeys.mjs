@@ -15,6 +15,9 @@ import {
   locateWithScroll,
   parseAssessmentsTabCounts,
   parseUiXml,
+  readAssessmentsDataState,
+  classifyJourneyAAssessmentsState,
+  readAnalyticsDateState,
   readTextInputByTestId,
   readXmlContent,
   verifyStudentListDestination,
@@ -245,6 +248,118 @@ function readAnalyticsDateValue(testId) {
   return { ok: Boolean(text), value: text ?? null };
 }
 
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function assessmentsPullToRefresh() {
+  adb('shell input swipe 540 450 540 1350 500');
+  sleep(2500);
+}
+
+function readAnalyticsDateStateFromDump(dumpName = 'b-analytics-date-state') {
+  const path = dump(`${dumpName}.xml`);
+  return readAnalyticsDateState(readXmlContent(path));
+}
+
+function tapNativeDatePickerConfirm(nodes) {
+  return (
+    locateClickableByLabel(nodes, /^OK$/i) ||
+    locateClickableByLabel(nodes, /^Set$/i) ||
+    locateByContentDesc(nodes, /^OK$/i, { requireClickable: true })
+  );
+}
+
+function navigateAndroidMaterialDatePicker(targetIso, log, label) {
+  const [y, m, d] = targetIso.split('-').map(Number);
+  const targetMonthName = MONTH_NAMES[m - 1];
+  let daySelected = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const path = dump(`b-native-picker-${label}-${attempt}.xml`);
+    const nodes = parseUiXml(readXmlContent(path));
+    const headerNode = nodes.find((n) => {
+      const t = String(n.text || '');
+      return /20\d{2}/.test(t) && MONTH_NAMES.some((mon) => t.includes(mon));
+    });
+    if (headerNode) {
+      const headerText = String(headerNode.text);
+      const curMonth = MONTH_NAMES.findIndex((mon) => headerText.includes(mon));
+      const curYearMatch = headerText.match(/20\d{2}/);
+      const curYear = curYearMatch ? Number(curYearMatch[0]) : y;
+      if (curYear > y || (curYear === y && curMonth > m - 1)) {
+        const prev =
+          locateByContentDesc(nodes, /Previous month/i, { requireClickable: true }) ||
+          locateClickableByLabel(nodes, /Previous month/i);
+        if (prev) {
+          tapTarget(prev);
+          sleep(450);
+          continue;
+        }
+      } else if (curYear < y || (curYear === y && curMonth < m - 1)) {
+        const next =
+          locateByContentDesc(nodes, /Next month/i, { requireClickable: true }) ||
+          locateClickableByLabel(nodes, /Next month/i);
+        if (next) {
+          tapTarget(next);
+          sleep(450);
+          continue;
+        }
+      }
+      if (!daySelected) {
+        const dayHit = nodes.find((n) => {
+          if (n.clickable !== 'true') return false;
+          if (String(n.text) !== String(d)) return false;
+          if (!n.boundsRect) return false;
+          return n.boundsRect.y1 > 220;
+        });
+        if (dayHit) {
+          tapTarget({
+            x: dayHit.boundsRect.cx,
+            y: dayHit.boundsRect.cy,
+            kind: 'native-day',
+            label: String(d),
+          });
+          sleep(500);
+          daySelected = true;
+          continue;
+        }
+      }
+    }
+    const ok = tapNativeDatePickerConfirm(nodes);
+    if (ok && daySelected) {
+      tapTarget(ok);
+      sleep(700);
+      log?.steps?.push({ step: 'native_date_picker_confirmed', label, targetIso });
+      return { ok: true };
+    }
+  }
+  return { ok: false, label: 'native_date_picker_failed', which: label, targetIso };
+}
+
+function setAnalyticsDateViaNativePicker(which, targetIso, log) {
+  const openLabel = which === 'from' ? 'Open from date picker' : 'Open to date picker';
+  const path = dump(`b-open-${which}-picker.xml`);
+  const nodes = parseUiXml(readXmlContent(path));
+  const open = locateByContentDesc(nodes, openLabel, { requireClickable: true });
+  if (!open) {
+    return { ok: false, label: 'analytics_date_picker_open_missing', which };
+  }
+  tapTarget(open);
+  sleep(900);
+  return navigateAndroidMaterialDatePicker(targetIso, log, which);
+}
+
 function fillAnalyticsDateField(testId, isoDate) {
   const path = dump(`b-date-fill-${testId}.xml`);
   const nodes = parseUiXml(readXmlContent(path));
@@ -379,12 +494,39 @@ function applyFixtureAnalyticsDateRange(log) {
   }
   const from = ANALYTICS_FIXTURE_DATE_RANGE.created_from;
   const to = ANALYTICS_FIXTURE_DATE_RANGE.created_to;
-  const fromResult = fillAnalyticsDateField('analytics-date-from-input', from);
-  const toResult = fillAnalyticsDateField('analytics-date-to-input', to);
-  log.steps.push({ step: 'analytics_date_fill', from: fromResult, to: toResult });
-  if (!fromResult.ok || !toResult.ok) {
-    return { ok: false, label: 'analytics_date_value_mismatch', from: fromResult, to: toResult };
+  let state = readAnalyticsDateStateFromDump('b-date-state-initial');
+  log.steps.push({ step: 'analytics_date_state_initial', state });
+  if (state.from !== from) {
+    const fromResult = setAnalyticsDateViaNativePicker('from', from, log);
+    log.steps.push({ step: 'analytics_date_native_from', fromResult });
+    if (!fromResult.ok) return fromResult;
+    state = readAnalyticsDateStateFromDump('b-date-state-after-from');
+    if (state.from !== from) {
+      return {
+        ok: false,
+        label: 'analytics_date_state_mismatch',
+        field: 'from',
+        expected: from,
+        actual: state.from,
+      };
+    }
   }
+  if (state.to !== to) {
+    const toResult = setAnalyticsDateViaNativePicker('to', to, log);
+    log.steps.push({ step: 'analytics_date_native_to', toResult });
+    if (!toResult.ok) return toResult;
+    state = readAnalyticsDateStateFromDump('b-date-state-after-to');
+    if (state.to !== to) {
+      return {
+        ok: false,
+        label: 'analytics_date_state_mismatch',
+        field: 'to',
+        expected: to,
+        actual: state.to,
+      };
+    }
+  }
+  log.steps.push({ step: 'analytics_date_state_ready', state });
   const path = dump('b-date-before-apply.xml');
   const nodes = parseUiXml(readXmlContent(path));
   const applyTap =
@@ -588,6 +730,49 @@ async function journeyA(labels, resultEvidence = {}) {
   }, { dumpName: 'a-01-wait-assessments', attempts: 20 });
   path = tabWait.xmlPath || dump('a-01-assessments.xml');
   path = resetAssessmentsListFilters(log);
+  clearAssessmentsSearchField(parseUiXml(readXmlContent(path)), log);
+  path = dump('a-reset-search-cleared.xml');
+
+  let assessmentsDataState = readAssessmentsDataState(readXmlContent(path));
+  log.assessmentsDataState = assessmentsDataState;
+  let journeyADataClassification = classifyJourneyAAssessmentsState(assessmentsDataState);
+  log.journeyADataClassification = journeyADataClassification;
+
+  if (journeyADataClassification === 'CASE_A') {
+    log.steps.push({ step: 'assessments_diagnostic_refresh' });
+    const beforeSource = assessmentsDataState.teacherSourceCount ?? 0;
+    assessmentsPullToRefresh();
+    path = dump('a-after-diagnostic-refresh.xml');
+    assessmentsDataState = readAssessmentsDataState(readXmlContent(path));
+    log.assessmentsDataStateAfterRefresh = assessmentsDataState;
+    journeyADataClassification = classifyJourneyAAssessmentsState(assessmentsDataState);
+    log.journeyADataClassification = journeyADataClassification;
+    const afterSource = assessmentsDataState.teacherSourceCount ?? 0;
+    if (beforeSource === 0 && afterSource > 0) {
+      log.assessmentsInitialLoadStale = true;
+      log.steps.push({ step: 'assessments_initial_load_stale', beforeSource, afterSource });
+    }
+  }
+
+  if (journeyADataClassification !== 'CASE_OK') {
+    log.pass = false;
+    log.verify = {
+      pass: false,
+      label: `journey_a_${journeyADataClassification.toLowerCase()}`,
+      classification: journeyADataClassification,
+      state: assessmentsDataState,
+    };
+    log.fixtureUiReconciliation = buildFixtureUiReconciliation({
+      apiRow,
+      trace,
+      labels,
+      studentsTestId: trace.openStudentsTestId,
+      tabSnapshots: [],
+      searchQuery: trace.filterStrategy?.searchQuery || '',
+    });
+    writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
+    return log;
+  }
 
   const studentsTestId = trace.openStudentsTestId;
   const searchQ = trace.filterStrategy?.searchQuery || labels.searchToken || '';
