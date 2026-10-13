@@ -410,26 +410,27 @@ function tapQuizPagerNextOnce(log, current, classDrillId, discoveryCtx) {
   }
   let next = locateQuizPaginationNext(parseUiXml(before.xml));
   if (!next) {
-    const relocated = relocateQuizPaginationNextSmall(log, `to-${current + 1}`, classDrillId, discoveryCtx);
-    if (relocated.failure) {
-      return { ok: false, ...relocated.failure, currentPage: current };
-    }
-    next = relocated.tap;
-  }
-  if (!next) {
     const visible = ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx);
     if (!visible.ok) {
-      recordProbeDriftForensics(log, classDrillId);
-      return {
-        ok: false,
-        label: visible.label || 'analytics_quiz_pagination_next_missing',
-        currentPage: current,
-        ...collectPagerDiagnostics(before.xml),
-        ...visible,
-      };
+      const relocated = relocateQuizPaginationNextSmall(log, `to-${current + 1}`, classDrillId, discoveryCtx);
+      if (relocated.failure) {
+        return { ok: false, ...relocated.failure, currentPage: current };
+      }
+      next = relocated.tap;
+      if (!next) {
+        recordProbeDriftForensics(log, classDrillId);
+        return {
+          ok: false,
+          label: visible.label || 'analytics_quiz_pagination_next_missing',
+          currentPage: current,
+          ...collectPagerDiagnostics(before.xml),
+          ...visible,
+        };
+      }
+    } else {
+      const retrySnap = readHeroQuizPageFromDump(`b-02-quiz-pager-retry-${current}`, classDrillId);
+      next = locateQuizPaginationNext(parseUiXml(retrySnap.xml));
     }
-    const retrySnap = readHeroQuizPageFromDump(`b-02-quiz-pager-retry-${current}`, classDrillId);
-    next = locateQuizPaginationNext(parseUiXml(retrySnap.xml));
   }
   if (!next) {
     recordProbeDriftForensics(log, classDrillId);
