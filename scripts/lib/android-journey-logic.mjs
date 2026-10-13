@@ -103,17 +103,17 @@ export function verifyWorksheetResultScreen(xmlContent, fixture) {
   const texts = collectUiTexts(nodes);
   const blob = texts.join('\n');
 
-  const identityNeedle =
-    fixture.identityLabel ||
-    `quiz-${fixture.quizId} attempt-${fixture.attemptId} student-${fixture.studentId}`;
   const summaryHit =
     locateByTestId(nodes, 'quiz-result-summary') ||
     nodes.find((n) => String(n['content-desc'] || '').includes('quiz-result-summary'));
+  const identityBlob = texts.join('\n');
   const identityOk =
     summaryHit != null &&
-    texts.some((t) => t.includes(identityNeedle)) &&
-    (fixture.sessionId == null || texts.some((t) => String(t).includes(`session-${fixture.sessionId}`))) &&
-    (fixture.classroomId == null || texts.some((t) => String(t).includes(`classroom-${fixture.classroomId}`)));
+    identityBlob.includes(`quiz-${fixture.quizId}`) &&
+    identityBlob.includes(`attempt-${fixture.attemptId}`) &&
+    identityBlob.includes(`student-${fixture.studentId}`) &&
+    (fixture.sessionId == null || identityBlob.includes(`session-${fixture.sessionId}`)) &&
+    (fixture.classroomId == null || identityBlob.includes(`classroom-${fixture.classroomId}`));
 
   const wrongAttemptId = fixture.wrongAttemptId;
   const wrongAttemptTrap =

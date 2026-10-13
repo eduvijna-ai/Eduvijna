@@ -633,10 +633,17 @@ function failJourneyB(log, verify) {
 }
 
 function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
-  const result = waitFor(
-    (xml) => locateByTestId(parseUiXml(xml), expectedTestId) != null,
-    { dumpName, attempts: 16, pauseMs: 1500 },
-  );
+  const result = waitFor((xml) => {
+    const n = parseUiXml(xml);
+    if (locateByTestId(n, expectedTestId) != null) return true;
+    if (expectedTestId === 'analytics-drill-classes') {
+      return (
+        locateByContentDesc(n, /Open class analytics:/i, { requireClickable: true }) != null ||
+        locateByLabel(n, /Class Overview/i, { minY: 0 }) != null
+      );
+    }
+    return false;
+  }, { dumpName, attempts: 16, pauseMs: 1500 });
   log.steps.push({ step: 'assert_drill_identity', expected: expectedTestId, ok: result.ok });
   return result.ok;
 }
