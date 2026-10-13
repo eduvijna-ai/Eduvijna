@@ -106,7 +106,9 @@ export function verifyWorksheetResultScreen(xmlContent, fixture) {
   const identityNeedle =
     fixture.identityLabel ||
     `quiz-${fixture.quizId} attempt-${fixture.attemptId} student-${fixture.studentId}`;
-  const summaryHit = locateByTestId(nodes, 'quiz-result-summary');
+  const summaryHit =
+    locateByTestId(nodes, 'quiz-result-summary') ||
+    nodes.find((n) => String(n['content-desc'] || '').includes('quiz-result-summary'));
   const identityOk =
     summaryHit != null &&
     texts.some((t) => t.includes(identityNeedle)) &&

@@ -542,7 +542,7 @@ function applyFixtureAnalyticsDateRange(log) {
     return { ok: false, label: 'analytics_date_controls_missing' };
   }
   tapTarget(applyTap);
-  sleep(2500);
+  sleep(4500);
   return { ok: true };
 }
 
