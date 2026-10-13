@@ -134,6 +134,24 @@ function readHeroQuizPageFromDump(dumpName, classDrillId) {
   return { path, xml, hero: readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId) };
 }
 
+function ensureQuizPaginationNextVisible(log, classDrillId, maxScrolls = 16) {
+  let snap = readHeroQuizPageFromDump('b-02-quiz-next-probe-0', classDrillId);
+  if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
+    log.steps.push({ step: 'quiz_pagination_next_visible', scroll: 0 });
+    return true;
+  }
+  for (let i = 0; i < maxScrolls; i++) {
+    scrollAnalyticsClassDrillDown();
+    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-${i + 1}`, classDrillId);
+    if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
+      log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1 });
+      return true;
+    }
+  }
+  log.steps.push({ step: 'quiz_pagination_next_visible', scroll: maxScrolls, found: false });
+  return false;
+}
+
 function relocateQuizPaginationNextSmall(log, label, maxScrolls = 5) {
   for (let i = 0; i < maxScrolls; i++) {
     const path = dump(`b-02-relocate-next-${label}-up-${i}.xml`);
@@ -187,6 +205,18 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDri
   if (current === targetPage) {
     log.steps.push({ step: 'quiz_hero_page_at_target', hero, targetPage });
     return { ok: true, currentPage: targetPage, totalPages: hero.totalPages ?? totalPages };
+  }
+  if (current < targetPage && !ensureQuizPaginationNextVisible(log, classDrillId)) {
+    const diagPath = dump('b-02-quiz-next-missing.xml');
+    const diagXml = readXmlContent(diagPath);
+    return {
+      ok: false,
+      label: 'analytics_quiz_pagination_next_missing',
+      currentPage: current,
+      targetPage,
+      totalPages,
+      ...collectPagerDiagnostics(diagXml),
+    };
   }
   if (totalPages != null && hero.totalPages != null && hero.totalPages !== totalPages) {
     log.steps.push({
