@@ -625,7 +625,7 @@ function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, 
       attempt,
       maxAttempts: FIXTURE_QUIZ_SECTION_REPOSITION_MAX,
     });
-    if (terminate.terminate && noProgressStreak >= 3) {
+    if (terminate.terminate && noProgressStreak >= 6) {
       log.steps.push({
         step: 'fixture_quiz_section_reposition_exhausted',
         attempt,
@@ -644,7 +644,13 @@ function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, 
     }
 
     const direction = inferQuizListRepositionDirection(progress) || 'up';
-    const swipe = swipeInNestedQuizScroll(scrollRect, direction);
+    let swipe = null;
+    if (progress.seesQuizSummarySection && !progress.anchorInViewport) {
+      scrollAnalyticsQuizListUp();
+      swipe = { mode: 'list_up_legacy', direction: 'up' };
+    } else {
+      swipe = { ...swipeInNestedQuizScroll(scrollRect, direction), mode: 'nested_bounds' };
+    }
     log.steps.push({
       step: 'fixture_quiz_section_reposition_swipe',
       attempt,

@@ -654,7 +654,8 @@ export function locateAnalyticsQuizListSectionAnchor(nodes) {
   return (
     locateByTestId(nodes, 'analytics-class-quiz-list-section') ||
     locateByTestId(nodes, 'analytics-quiz-page-members') ||
-    locateByTestId(nodes, 'analytics-quiz-list-hint')
+    locateByTestId(nodes, 'analytics-quiz-list-hint') ||
+    locateByLabel(nodes, /Quizzes in this Class/i, { minY: 0 })
   );
 }
 
