@@ -647,7 +647,9 @@ function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
       return (
         locateByTestId(n, `analytics-class-card-${classId}`) != null ||
         locateByLabel(n, /View Analytics/i, { minY: 0 }) != null ||
-        locateByLabel(n, /quizzes ·/i, { minY: 0 }) != null
+        locateByLabel(n, /quizzes ·/i, { minY: 0 }) != null ||
+        locateByLabel(n, /Class Performance/i, { minY: 0 }) != null ||
+        locateClickableByLabel(n, /^All Classes$/i, { minY: 0 }) != null
       );
     }
     return false;
@@ -1118,7 +1120,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     for (let retry = 0; retry < 3 && !classDrillOk; retry++) {
       const pathRetry = dump(`b-01-reopen-class-${retry}.xml`);
       const retryNodes = parseUiXml(readXmlContent(pathRetry));
-      const stillOnClassList = locateByTestId(retryNodes, 'analytics-drill-classes') != null;
+      const stillOnClassList =
+        locateByContentDesc(retryNodes, /Open class analytics:/i, { requireClickable: true }) != null ||
+        locateByLabel(retryNodes, /Class Overview/i, { minY: 0 }) != null;
       if (!stillOnClassList) {
         log.steps.push({ step: 'open_class_retry_blocked', retry, reason: 'not_on_class_list' });
         break;
