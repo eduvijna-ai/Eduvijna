@@ -402,18 +402,16 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   );
 
   const assessmentsDataStateMarker = (
-    <TextInput
+    <Text
       testID="assessments-data-state"
       accessibilityLabel={assessmentsDataStateLabel}
       accessible
       importantForAccessibility="yes"
-      editable={false}
-      showSoftInputOnFocus={false}
-      caretHidden
-      value=""
       collapsable={false}
       style={styles.dataStateMarker}
-    />
+    >
+      {' '}
+    </Text>
   );
 
   // const handleCreateAssessment = () => {
@@ -604,7 +602,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         {...(Platform.OS === 'ios' ? { backgroundColor: theme.colors.background } : {})}
       />
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {assessmentsDataStateMarker}
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.card }]}>
         {/* <View style={styles.headerTop}>
@@ -657,6 +654,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
+          {assessmentsDataStateMarker}
         </View>
 
         {/* Filters Section */}
@@ -1241,12 +1239,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dataStateMarker: {
-    position: 'absolute',
     width: 1,
     height: 1,
-    opacity: 0,
-    left: 0,
-    top: 0,
+    fontSize: 1,
+    lineHeight: 1,
+    color: 'transparent',
+    opacity: 0.01,
+    margin: 0,
+    padding: 0,
   },
   loadingContainer: {
     flex: 1,

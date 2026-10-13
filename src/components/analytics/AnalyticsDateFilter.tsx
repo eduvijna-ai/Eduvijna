@@ -45,18 +45,16 @@ export default function AnalyticsDateFilter({
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-      <TextInput
+      <Text
         testID="analytics-date-state"
         accessibilityLabel={analyticsDateStateLabel}
         accessible
         importantForAccessibility="yes"
-        editable={false}
-        showSoftInputOnFocus={false}
-        caretHidden
-        value=""
         collapsable={false}
         style={styles.dateStateMarker}
-      />
+      >
+        {' '}
+      </Text>
       <View style={styles.row}>
         <View style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
@@ -151,12 +149,14 @@ export default function AnalyticsDateFilter({
 
 const styles = StyleSheet.create({
   dateStateMarker: {
-    position: 'absolute',
     width: 1,
     height: 1,
-    opacity: 0,
-    left: 0,
-    top: 0,
+    fontSize: 1,
+    lineHeight: 1,
+    color: 'transparent',
+    opacity: 0.01,
+    margin: 0,
+    padding: 0,
   },
   wrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, gap: 8 },
   row: { flexDirection: 'row', gap: 8 },

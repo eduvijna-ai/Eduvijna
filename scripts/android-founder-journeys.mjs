@@ -287,54 +287,48 @@ function androidCalendarCellLabel(y, m, d) {
   return `${day} ${month} ${y}`;
 }
 
+function readAndroidPickerMonthYear(nodes) {
+  const sample = nodes.find((n) => /^\d{2} [A-Za-z]+ 20\d{2}$/.test(String(n['content-desc'] || '')));
+  if (!sample) return null;
+  const m = String(sample['content-desc']).match(/(\d{2}) ([A-Za-z]+) (20\d{2})/);
+  if (!m) return null;
+  return { monthName: m[2], year: Number(m[3]) };
+}
+
 function navigateAndroidMaterialDatePicker(targetIso, log, label) {
   const [y, m, d] = targetIso.split('-').map(Number);
-  const targetMonthName = MONTH_NAMES[m - 1];
   const targetCellLabel = androidCalendarCellLabel(y, m, d);
   let daySelected = false;
   for (let attempt = 0; attempt < 40; attempt++) {
     const path = dump(`b-native-picker-${label}-${attempt}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
-    const headerNode = nodes.find((n) => {
-      const t = String(n.text || '').trim();
-      return /^[A-Za-z]+ 20\d{2}$/.test(t);
-    });
-    if (headerNode) {
-      const headerText = String(headerNode.text);
-      const curMonth = MONTH_NAMES.findIndex((mon) => headerText.includes(mon));
-      const curYearMatch = headerText.match(/20\d{2}/);
-      const curYear = curYearMatch ? Number(curYearMatch[0]) : y;
-      if (curYear > y || (curYear === y && curMonth > m - 1)) {
+    const visible = readAndroidPickerMonthYear(nodes);
+    if (visible) {
+      const curIdx = MONTH_NAMES.indexOf(visible.monthName);
+      const targetIdx = m - 1;
+      if (visible.year > y || (visible.year === y && curIdx > targetIdx)) {
         const prev =
-          locateByContentDesc(nodes, /Previous month/i, { requireClickable: true }) ||
+          locateByContentDesc(nodes, /^Previous month$/i, { requireClickable: true }) ||
           locateClickableByLabel(nodes, /Previous month/i);
         if (prev) {
           tapTarget(prev);
           sleep(450);
           continue;
         }
-      } else if (curYear < y || (curYear === y && curMonth < m - 1)) {
+      } else if (visible.year < y || (visible.year === y && curIdx < targetIdx)) {
         const next =
-          locateByContentDesc(nodes, /Next month/i, { requireClickable: true }) ||
+          locateByContentDesc(nodes, /^Next month$/i, { requireClickable: true }) ||
           locateClickableByLabel(nodes, /Next month/i);
         if (next) {
           tapTarget(next);
           sleep(450);
           continue;
         }
-      }
-      if (!daySelected) {
-        const dayHit = nodes.find((n) => {
-          if (n.clickable !== 'true') return false;
-          const text = String(n.text || n['content-desc'] || '');
-          if (text !== targetCellLabel && text !== String(d) && text !== String(d).padStart(2, '0')) {
-            return false;
-          }
-          if (text === targetCellLabel) return Boolean(n.boundsRect);
-          if (!n.boundsRect || n.boundsRect.y1 <= 220) return false;
-          return text === String(d) || text === String(d).padStart(2, '0');
-        });
-        if (dayHit) {
+      } else if (!daySelected) {
+        const dayHit = nodes.find(
+          (n) => n.clickable === 'true' && String(n['content-desc'] || '') === targetCellLabel,
+        );
+        if (dayHit?.boundsRect) {
           tapTarget({
             x: dayHit.boundsRect.cx,
             y: dayHit.boundsRect.cy,
