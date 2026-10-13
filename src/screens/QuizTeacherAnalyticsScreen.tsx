@@ -258,8 +258,19 @@ export default function QuizTeacherAnalyticsScreen() {
     if (drillLevel === 'quiz' && selectedAssignment) {
       return `${analyticsDrillTestId} classroom-${selectedAssignment.classroomId}`;
     }
+    if (drillLevel === 'class' && selectedClass) {
+      return `${analyticsDrillTestId} quiz-page-${quizPage}-of-${totalQuizPages} quiz-count-${classQuizzes.length}`;
+    }
     return analyticsDrillTestId;
-  }, [analyticsDrillTestId, drillLevel, selectedAssignment]);
+  }, [
+    analyticsDrillTestId,
+    drillLevel,
+    selectedAssignment,
+    selectedClass,
+    quizPage,
+    totalQuizPages,
+    classQuizzes.length,
+  ]);
 
   const handleClassPress = (cls: ClassOverview) => {
     setSelectedClass(cls.classroom_id);

@@ -27,11 +27,13 @@ import {
   hasExactAnalyticsDrillIdentity,
   hasExactAnalyticsQuizDrillIdentity,
   readAnalyticsQuizPagerState,
+  readAnalyticsClassDrillHeroQuizPageState,
   listVisibleAnalyticsQuizCardTestIds,
 } from './lib/android-journey-logic.mjs';
 
 import {
   ANALYTICS_FIXTURE_DATE_RANGE,
+  ANALYTICS_ITEMS_PER_PAGE,
   FIXTURE,
   loadFixtureLabels,
   loadFixtureAnalyticsQuizPage,
@@ -126,195 +128,185 @@ function locateQuizPaginationNext(nodes) {
   );
 }
 
-function scrollUntilQuizPagerReadable(dumpNamePrefix = 'b-02-pager-visible') {
-  for (let i = 0; i < 36; i++) {
-    const path = dump(`${dumpNamePrefix}-${i}.xml`);
-    const xml = readXmlContent(path);
-    const nodes = parseUiXml(xml);
-    const state = readAnalyticsQuizPagerState(xml);
-    const quizPagerControl =
-      locateQuizPaginationNext(nodes) || locateByTestId(nodes, 'analytics-quiz-pagination-info');
-    if (state.current != null && state.totalPages != null && quizPagerControl) {
-      return { path, xml, state };
-    }
-    if (quizPagerControl && state.current == null) {
-      return {
-        path,
-        xml,
-        state: { current: 1, totalPages: null, raw: 'inferred_page_1_via_quiz_next_control' },
-      };
+function readHeroQuizPageFromDump(dumpName, classDrillId) {
+  const path = dump(`${dumpName}.xml`);
+  const xml = readXmlContent(path);
+  return { path, xml, hero: readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId) };
+}
+
+function locateQuizPaginationNextBounded(log, maxScrolls = 14) {
+  for (let i = 0; i < maxScrolls; i++) {
+    const path = dump(`b-02-locate-quiz-next-${i}.xml`);
+    const nodes = parseUiXml(readXmlContent(path));
+    const next = locateQuizPaginationNext(nodes);
+    if (next) {
+      log.steps.push({ step: 'quiz_pagination_next_located', scroll: i, tap: tapTarget(next) });
+      return { next, path };
     }
     scrollAnalyticsClassDrillDown();
   }
-  const path = dump(`${dumpNamePrefix}-final.xml`);
-  const xml = readXmlContent(path);
-  const nodes = parseUiXml(readXmlContent(path));
-  const control = locateQuizPaginationNext(nodes);
-  const state = readAnalyticsQuizPagerState(xml);
-  if (control && state.current == null) {
-    return { path, xml, state: { current: 1, totalPages: null, raw: 'inferred_page_1_via_quiz_next_control' } };
-  }
-  return { path, xml, state };
+  log.steps.push({ step: 'quiz_pagination_next_located', scroll: maxScrolls, found: false });
+  return { next: null, path: null };
 }
 
-function assertQuizPagerPage(log, expectedCurrent, expectedTotalPages, dumpName) {
-  let state = { current: null, totalPages: null, raw: null };
-  let path = null;
-  for (let retry = 0; retry < 4; retry++) {
-    if (retry > 0) {
-      scrollUntilQuizPagerReadable(`${dumpName}-relocate-${retry}`);
-    }
-    path = dump(`${dumpName}-r${retry}.xml`);
-    state = readAnalyticsQuizPagerState(readXmlContent(path));
-    const ok =
-      state.current === expectedCurrent &&
-      (expectedTotalPages == null || state.totalPages === expectedTotalPages);
-    if (ok) {
-      log.steps.push({
-        step: 'quiz_pager_page_assert',
-        expectedCurrent,
-        expectedTotalPages,
-        actual: state,
-        ok: true,
-        retry,
-      });
-      return { ok: true, state, xmlPath: path };
-    }
-  }
-  log.steps.push({
-    step: 'quiz_pager_page_assert',
-    expectedCurrent,
-    expectedTotalPages,
-    actual: state,
-    ok: false,
-  });
-  return { ok: false, state, xmlPath: path };
-}
-
-function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint) {
-  let pager = scrollUntilQuizPagerReadable();
-  let { current, totalPages } = pager.state;
-  if (current == null && totalPagesFromHint === 1 && targetPage === 1) {
-    log.steps.push({ step: 'quiz_pager_single_page', targetPage, totalPages: 1 });
-    return { ok: true, currentPage: 1, totalPages: 1 };
-  }
-  if (current == null) {
-    return { ok: false, label: 'analytics_quiz_pagination_missing' };
-  }
-  if (totalPages == null) {
-    totalPages = totalPagesFromHint;
-  }
-  if (totalPagesFromHint != null && totalPages !== totalPagesFromHint) {
-    log.steps.push({
-      step: 'quiz_pager_total_pages_mismatch',
-      hintTotalPages: totalPagesFromHint,
-      uiTotalPages: totalPages,
-    });
-  }
-  for (let guard = 0; guard < totalPages + 2 && current !== targetPage; guard++) {
-    const path = dump(`b-02-quiz-pager-before-${guard}.xml`);
+function relocateQuizPaginationNextSmall(log, label, maxScrolls = 4) {
+  for (let i = 0; i < maxScrolls; i++) {
+    const path = dump(`b-02-relocate-next-${label}-${i}.xml`);
     const nodes = parseUiXml(readXmlContent(path));
-    if (current < targetPage) {
-      const next = locateQuizPaginationNext(nodes);
-      if (!next) {
-        return { ok: false, label: 'analytics_quiz_pagination_next_missing', currentPage: current };
-      }
-      const nextPage = current + 1;
-      log.steps.push({
-        step: 'quiz_pagination_next',
-        from: current,
-        to: nextPage,
-        tap: tapTarget(next),
-      });
-      tapTarget(next);
-      sleep(2800);
-      scrollUntilQuizPagerReadable(`b-02-relocate-after-next-${guard}`);
-      const asserted = assertQuizPagerPage(log, nextPage, totalPages, `b-02-after-next-${guard}`);
-      if (asserted.ok) {
-        current = asserted.state.current;
-        totalPages = asserted.state.totalPages ?? totalPages;
-      } else {
-        current = nextPage;
-        log.steps.push({
-          step: 'quiz_pager_page_inferred_after_next',
-          current,
-          totalPages,
-          readState: asserted.state,
-        });
-      }
-      continue;
+    const next = locateQuizPaginationNext(nodes);
+    if (next) {
+      log.steps.push({ step: 'quiz_pagination_next_relocated', label, scroll: i });
+      return next;
     }
-    const prev =
-      locateClickableByLabel(nodes, /^Previous$/i, { minY: 0, pick: 'top' }) ||
-      locateByContentDesc(nodes, /Previous/i, { requireClickable: true });
-    if (!prev) {
-      return { ok: false, label: 'analytics_quiz_pagination_prev_missing', currentPage: current };
-    }
-    const prevPage = current - 1;
-    log.steps.push({
-      step: 'quiz_pagination_prev',
-      from: current,
-      to: prevPage,
-      tap: tapTarget(prev),
-    });
-    tapTarget(prev);
-    sleep(2200);
-    const asserted = assertQuizPagerPage(log, prevPage, totalPages, `b-02-after-prev-${guard}`);
-    if (!asserted.ok) {
-      return {
-        ok: false,
-        label: 'analytics_quiz_pagination_page_assert_failed',
-        currentPage: asserted.state.current,
-        totalPages: asserted.state.totalPages,
-      };
-    }
-    current = asserted.state.current;
-    totalPages = asserted.state.totalPages ?? totalPages;
+    scrollAnalyticsClassDrillDown();
   }
-  const finalAssert = assertQuizPagerPage(log, targetPage, totalPages, 'b-02-target-page');
-  if (!finalAssert.ok && current !== targetPage) {
-    return {
-      ok: false,
-      label: 'analytics_quiz_pagination_page_assert_failed',
-      currentPage: finalAssert.state.current ?? current,
-      totalPages: finalAssert.state.totalPages ?? totalPages,
-      targetPage,
-    };
-  }
+  return null;
+}
+
+function collectPagerDiagnostics(xml) {
+  const nodes = parseUiXml(xml);
   return {
-    ok: true,
-    currentPage: targetPage,
-    totalPages: finalAssert.state.totalPages ?? totalPages,
+    quizNextVisible: locateQuizPaginationNext(nodes) != null,
+    pagerInfoState: readAnalyticsQuizPagerState(xml),
   };
 }
 
-function locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId) {
-  for (let scroll = 0; scroll < 16; scroll++) {
-    const path = dump(`b-02-fixture-quiz-card-s${scroll}.xml`);
+function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDrillId) {
+  const totalPages = totalPagesFromHint;
+  locateQuizPaginationNextBounded(log);
+  let { hero } = readHeroQuizPageFromDump('b-02-hero-initial', classDrillId);
+  log.steps.push({ step: 'quiz_hero_page_initial', hero, targetPage, totalPages });
+  if (hero.current == null) {
+    const heroWait = waitFor(
+      (xml) => readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId).current != null,
+      { dumpName: 'b-02-wait-hero-page', attempts: 10, pauseMs: 1200 },
+    );
+    if (heroWait.xml) {
+      hero = readAnalyticsClassDrillHeroQuizPageState(heroWait.xml, classDrillId);
+      log.steps.push({ step: 'quiz_hero_page_after_wait', hero });
+    }
+  }
+  if (hero.current == null) {
+    return { ok: false, label: 'analytics_quiz_hero_page_missing', targetPage, totalPages };
+  }
+  let current = hero.current;
+  if (totalPages != null && hero.totalPages != null && hero.totalPages !== totalPages) {
+    log.steps.push({
+      step: 'quiz_hero_total_pages_mismatch',
+      hintTotalPages: totalPages,
+      heroTotalPages: hero.totalPages,
+    });
+  }
+  while (current < targetPage) {
+    const beforePath = dump(`b-02-quiz-pager-before-${current}.xml`);
+    const beforeXml = readXmlContent(beforePath);
+    let next = locateQuizPaginationNext(parseUiXml(beforeXml));
+    if (!next) {
+      next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
+    }
+    if (!next) {
+      return {
+        ok: false,
+        label: 'analytics_quiz_pagination_next_missing',
+        currentPage: current,
+        targetPage,
+        totalPages,
+        ...collectPagerDiagnostics(beforeXml),
+      };
+    }
+    const expectedPage = current + 1;
+    log.steps.push({
+      step: 'quiz_pagination_next',
+      from: current,
+      to: expectedPage,
+      tap: tapTarget(next),
+    });
+    tapTarget(next);
+    sleep(2500);
+    const after = readHeroQuizPageFromDump(`b-02-hero-after-next-${expectedPage}`, classDrillId);
+    log.steps.push({
+      step: 'quiz_hero_page_after_next',
+      expectedPage,
+      hero: after.hero,
+      pagerDiagnostics: collectPagerDiagnostics(after.xml),
+    });
+    if (after.hero.current !== expectedPage) {
+      return {
+        ok: false,
+        label: 'analytics_quiz_page_transition_failed',
+        expectedPage,
+        observedHeroPage: after.hero.current,
+        targetPage,
+        totalPages: after.hero.totalPages ?? totalPages,
+        heroRaw: after.hero.raw,
+        ...collectPagerDiagnostics(after.xml),
+      };
+    }
+    current = after.hero.current;
+  }
+  if (current !== targetPage) {
+    return {
+      ok: false,
+      label: 'analytics_quiz_page_transition_failed',
+      expectedPage: targetPage,
+      observedHeroPage: current,
+      targetPage,
+      totalPages,
+    };
+  }
+  log.steps.push({ step: 'quiz_hero_page_at_target', hero: readAnalyticsClassDrillHeroQuizPageState(
+    readXmlContent(dump('b-02-hero-at-target.xml')),
+    classDrillId,
+  ) });
+  return { ok: true, currentPage: targetPage, totalPages: hero.totalPages ?? totalPages };
+}
+
+function locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId, quizPageHint, classDrillId) {
+  const fixtureApiIndex = quizPageHint.index;
+  const targetPage = quizPageHint.page;
+  const indexWithinPage = fixtureApiIndex % ANALYTICS_ITEMS_PER_PAGE;
+  const maxScrolls = Math.min(14, indexWithinPage + 4);
+  for (let scroll = 0; scroll <= maxScrolls; scroll++) {
+    const path = dump(`b-02-fixture-quiz-search-up-${scroll}.xml`);
     const xml = readXmlContent(path);
     const nodes = parseUiXml(xml);
+    const visibleQuizCardIds = listVisibleAnalyticsQuizCardTestIds(nodes);
     const viewTap = locateByTestId(nodes, viewAnalyticsId);
     const cardTap = locateByTestId(nodes, quizCardId);
+    log.steps.push({
+      step: 'fixture_quiz_search',
+      searchDirection: 'up',
+      fixtureApiIndex,
+      targetPage,
+      indexWithinPage,
+      scrollAttempt: scroll,
+      visibleQuizCardIds,
+      viewAnalyticsVisible: Boolean(viewTap),
+      quizCardVisible: Boolean(cardTap),
+    });
     if (viewTap) {
       log.steps.push({
         step: 'fixture_quiz_card_located',
-        scroll,
+        scrollAttempt: scroll,
         quizCardId,
         viewAnalyticsId,
         cardPresent: Boolean(cardTap),
       });
       return { ok: true, viewTap, xmlPath: path };
     }
-    scrollAnalyticsQuizListDown();
+    scrollAnalyticsQuizListUp();
   }
   const path = dump('b-02-fixture-quiz-card-missing.xml');
   const nodes = parseUiXml(readXmlContent(path));
-  const pager = readAnalyticsQuizPagerState(readXmlContent(path));
+  const hero = readAnalyticsClassDrillHeroQuizPageState(readXmlContent(path), classDrillId);
   return {
     ok: false,
     visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes),
-    currentPage: pager.current,
-    totalPages: pager.totalPages,
+    currentPage: hero.current,
+    totalPages: hero.totalPages,
+    fixtureApiIndex,
+    targetPage,
+    indexWithinPage,
     xmlPath: path,
   };
 }
@@ -1472,12 +1464,18 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   }
 
   const targetPage = quizPageHint.page;
-  const seekResult = seekQuizPagerToTargetPage(log, targetPage, quizPageHint.totalPages);
+  const seekResult = seekQuizPagerToTargetPage(log, targetPage, quizPageHint.totalPages, classDrillId);
   if (!seekResult.ok) {
     return failJourneyB(log, { label: seekResult.label, pass: false, ...seekResult });
   }
 
-  const fixtureLocate = locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId);
+  const fixtureLocate = locateFixtureQuizViewAnalytics(
+    log,
+    viewAnalyticsId,
+    quizCardId,
+    quizPageHint,
+    classDrillId,
+  );
   if (!fixtureLocate.ok) {
     log.steps.push({
       step: 'fixture_quiz_not_on_page',

@@ -314,6 +314,28 @@ export function shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap })
  * @param {string} xmlContent
  * @returns {{ current: number|null, totalPages: number|null, raw: string|null }}
  */
+/**
+ * Class-drill hero exposes quiz-page-N-of-M and quiz-count on the always-visible header.
+ * @param {string} xmlContent
+ * @param {string} classDrillId e.g. analytics-drill-class-class_4d82c60e
+ */
+export function readAnalyticsClassDrillHeroQuizPageState(xmlContent, classDrillId) {
+  const nodes = parseUiXml(xmlContent);
+  const hero = nodes.find((n) => {
+    const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''} ${n.text || ''}`;
+    return blob.includes(classDrillId) && /quiz-page-\d+-of-\d+/i.test(blob);
+  });
+  const raw = String(hero?.['content-desc'] || hero?.text || '').trim();
+  const pageM = raw.match(/quiz-page-(\d+)-of-(\d+)/i);
+  const countM = raw.match(/quiz-count-(\d+)/i);
+  return {
+    raw: raw || null,
+    current: pageM ? Number(pageM[1]) : null,
+    totalPages: pageM ? Number(pageM[2]) : null,
+    quizCount: countM ? Number(countM[1]) : null,
+  };
+}
+
 export function readAnalyticsQuizPagerState(xmlContent) {
   const nodes = parseUiXml(xmlContent);
   const infoNode = nodes.find((n) => (n['resource-id'] || '').includes('analytics-quiz-pagination-info'));
