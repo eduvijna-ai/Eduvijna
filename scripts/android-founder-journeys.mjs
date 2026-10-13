@@ -390,38 +390,40 @@ function locateFixtureQuizViewAnalyticsOnPage(
   classDrillId,
 ) {
   scrollQuizCardSectionTowardTop(log);
-  const maxScrolls = 18;
-  for (let scroll = 0; scroll <= maxScrolls; scroll++) {
-    const path = dump(`b-02-fixture-quiz-search-down-${scroll}.xml`);
-    const xml = readXmlContent(path);
-    const nodes = parseUiXml(xml);
-    const visibleQuizCardIds = listVisibleAnalyticsQuizCardTestIds(nodes);
-    const viewTap = locateByTestId(nodes, viewAnalyticsId);
-    const cardTap = locateByTestId(nodes, quizCardId);
-    const pageMembers = readAnalyticsQuizPageMembers(xml, classDrillId);
+  const locateViewTap = (xml) => locateByTestId(parseUiXml(xml), viewAnalyticsId);
+  let path = dump('b-02-fixture-quiz-search-0.xml');
+  let viewTap = locateViewTap(readXmlContent(path));
+  if (!viewTap) {
+    const scrolled = locateWithScroll({
+      dumpFn: dump,
+      scrollFn: scrollAnalyticsClassDrillDown,
+      maxScrolls: 24,
+      dumpNamePrefix: 'b-02-fixture-quiz-search-down',
+      locateFn: locateViewTap,
+    });
+    viewTap = scrolled.hit;
     log.steps.push({
       step: 'fixture_quiz_search',
       searchDirection: 'down',
       mobileFixturePage,
-      scrollAttempt: scroll,
-      visibleQuizCardIds,
-      viewAnalyticsVisible: Boolean(viewTap),
-      quizCardVisible: Boolean(cardTap),
-      pageMembers: pageMembers.members,
+      scrolls: scrolled.scrolls,
+      located: Boolean(viewTap),
     });
-    if (viewTap) {
-      log.steps.push({
-        step: 'fixture_quiz_card_located',
-        scrollAttempt: scroll,
-        quizCardId,
-        viewAnalyticsId,
-        cardPresent: Boolean(cardTap),
-      });
-      return { ok: true, viewTap, xmlPath: path };
-    }
-    scrollAnalyticsClassDrillDown();
+    path = scrolled.xmlPath || path;
   }
-  const path = dump('b-02-fixture-quiz-card-missing.xml');
+  if (viewTap) {
+    const nodes = parseUiXml(readXmlContent(path));
+    log.steps.push({
+      step: 'fixture_quiz_card_located',
+      mobileFixturePage,
+      quizCardId,
+      viewAnalyticsId,
+      cardPresent: Boolean(locateByTestId(nodes, quizCardId)),
+      visibleQuizCardIds: listVisibleAnalyticsQuizCardTestIds(nodes),
+    });
+    return { ok: true, viewTap, xmlPath: path };
+  }
+  path = dump('b-02-fixture-quiz-card-missing.xml');
   const nodes = parseUiXml(readXmlContent(path));
   const hero = readAnalyticsClassDrillHeroQuizPageState(readXmlContent(path), classDrillId);
   return {
