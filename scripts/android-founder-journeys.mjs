@@ -693,6 +693,65 @@ function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, 
   };
 }
 
+function ensureFixtureQuizCardInViewport(
+  log,
+  discoveryCtx,
+  quizCardId,
+  viewAnalyticsId,
+  mobileFixturePage,
+  initial,
+) {
+  let { path, xml, nodes, scrollRect } = initial;
+  if (!scrollRect || !quizCardId) return initial;
+
+  for (let attempt = 0; attempt < FIXTURE_QUIZ_INNER_SEARCH_MAX; attempt++) {
+    const progress = buildFixtureViewportProgressSignature(
+      nodes,
+      viewAnalyticsId,
+      quizCardId,
+      scrollRect,
+    );
+    const card = locateByTestId(nodes, quizCardId);
+    const cardInView =
+      card && isTapTargetWithinScrollViewport(card, scrollRect, { margin: 4 });
+    if (cardInView) {
+      log.steps.push({
+        step: 'fixture_quiz_card_located',
+        attempt,
+        bounds: card.bounds,
+        ...progress,
+      });
+      return { path, xml, nodes, scrollRect };
+    }
+
+    const direction =
+      progress.seesQuizSummarySection || progress.cardCount === 0 ? 'up' : 'down';
+    swipeInNestedQuizScroll(scrollRect, direction);
+    path = dump(`b-02-fixture-card-hunt-${direction}-${attempt + 1}.xml`);
+    xml = readXmlContent(path);
+    const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_card_hunt', {
+      page: mobileFixturePage,
+      attempt,
+      direction,
+    });
+    if (!inv.ok) break;
+    nodes = parseUiXml(xml);
+    scrollRect = findClassDrillNestedScrollViewport(nodes) || scrollRect;
+    log.steps.push({
+      step: 'fixture_quiz_card_hunt_swipe',
+      attempt,
+      direction,
+      progress: buildFixtureViewportProgressSignature(
+        nodes,
+        viewAnalyticsId,
+        quizCardId,
+        scrollRect,
+      ),
+    });
+  }
+  return { path, xml, nodes, scrollRect };
+}
+
 function locateFixtureQuizViewAnalyticsOnPage(
   log,
   viewAnalyticsId,
@@ -723,6 +782,14 @@ function locateFixtureQuizViewAnalyticsOnPage(
   let xml = reposition.xml || readXmlContent(path);
   let nodes = reposition.nodes || parseUiXml(xml);
   let scrollRect = reposition.scrollRect || findClassDrillNestedScrollViewport(nodes);
+  ({ path, xml, nodes, scrollRect } = ensureFixtureQuizCardInViewport(
+    log,
+    discoveryCtx,
+    quizCardId,
+    viewAnalyticsId,
+    mobileFixturePage,
+    { path, xml, nodes, scrollRect },
+  ));
   let viewTap =
     reposition.viewTap ||
     (scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null);
