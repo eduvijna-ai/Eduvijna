@@ -285,8 +285,10 @@ test('fixture view analytics requires visible bounds inside scroll viewport', ()
     ),
     null,
   );
-  const swipe = deriveBoundedVerticalSwipeInRect(scrollRect, 'up');
-  assert.ok(swipe.startY > swipe.endY);
+  const swipeUp = deriveBoundedVerticalSwipeInRect(scrollRect, 'up');
+  assert.ok(swipeUp.startY < swipeUp.endY);
+  const swipeDown = deriveBoundedVerticalSwipeInRect(scrollRect, 'down');
+  assert.ok(swipeDown.startY > swipeDown.endY);
 });
 
 test('unexpected quiz drill still fails class drill invariant during viewport search', () => {

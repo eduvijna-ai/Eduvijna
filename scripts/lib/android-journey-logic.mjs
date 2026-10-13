@@ -664,12 +664,14 @@ export function locateAnalyticsQuizListSectionAnchor(nodes) {
 export function deriveBoundedVerticalSwipeInRect(rect, direction = 'up', { margin = 40 } = {}) {
   const x = rect.cx;
   if (direction === 'up') {
-    const startY = Math.min(rect.y2 - margin, rect.cy + 140);
-    const endY = Math.max(rect.y1 + margin, rect.cy - 320);
+    // Finger moves down the screen to reveal content above the current viewport.
+    const startY = Math.max(rect.y1 + margin, rect.cy - 120);
+    const endY = Math.min(rect.y2 - margin, rect.cy + 320);
     return { x, startY, endY, direction };
   }
-  const startY = Math.max(rect.y1 + margin, rect.cy - 140);
-  const endY = Math.min(rect.y2 - margin, rect.cy + 320);
+  // Finger moves up the screen to reveal content below the current viewport.
+  const startY = Math.min(rect.y2 - margin, rect.cy + 140);
+  const endY = Math.max(rect.y1 + margin, rect.cy - 320);
   return { x, startY, endY, direction };
 }
 
