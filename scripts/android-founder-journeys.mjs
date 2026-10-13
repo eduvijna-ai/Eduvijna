@@ -219,25 +219,16 @@ function recordProbeDriftForensics(log, classDrillId) {
       break;
     }
   }
-  const numbered = join(evidence, `${prefix}-10.xml`);
-  if (!driftDump && existsSync(numbered)) {
-    const xml = readXmlContent(numbered);
-    const quizDrill = readObservedAnalyticsDrillMarkers(parseUiXml(xml)).find((d) =>
-      d.startsWith('analytics-drill-quiz-'),
-    );
-    if (quizDrill) {
-      driftDump = `${prefix}-10.xml`;
-      firstDriftAction = firstDriftAction || 'quiz_pagination_probe';
-    }
+  if (driftDump && previousDump) {
+    log.steps.push({
+      step: 'quiz_discovery_drift_forensics',
+      previousDump,
+      driftDump,
+      firstDriftAction,
+      note:
+        'Probe sequence left class drill then entered quiz drill before fixture View Analytics (see previousDump → driftDump).',
+    });
   }
-  log.steps.push({
-    step: 'quiz_discovery_drift_forensics',
-    previousDump,
-    driftDump,
-    firstDriftAction,
-    note:
-      'Historical 0e8d166 evidence: last class drill b-02-quiz-next-probe-up-9.xml then quiz 531 drill b-02-quiz-next-probe-10.xml after unsafe class-drill down swipe.',
-  });
 }
 
 function locatePaginationNext(nodes, scope = 'quiz') {
@@ -281,6 +272,19 @@ function ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx) {
     log.steps.push({ step: 'quiz_pagination_next_visible', scroll: 0, direction: 'none' });
     return { ok: true };
   }
+  for (let i = 0; i < CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS; i++) {
+    scrollAnalyticsQuizListDown();
+    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-list-down-${i + 1}`, classDrillId);
+    const inv = discoveryCtx.checkClassDrillInvariant(snap.xml, snap.path, 'quiz_pagination_probe_list_down', {
+      phase: 'after',
+      page: readAnalyticsClassDrillHeroQuizPageState(snap.xml, classDrillId).current,
+    });
+    if (!inv.ok) return { ok: false, ...inv };
+    if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
+      log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1, direction: 'list_down' });
+      return { ok: true };
+    }
+  }
   for (let i = 0; i < CLASS_QUIZ_DISCOVERY_MAX_UP_SCROLLS; i++) {
     scrollAnalyticsQuizListUp();
     snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-up-${i + 1}`, classDrillId);
@@ -316,6 +320,22 @@ function ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx) {
 }
 
 function relocateQuizPaginationNextSmall(log, label, classDrillId, discoveryCtx) {
+  for (let i = 0; i < CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS; i++) {
+    const path = dump(`b-02-relocate-next-${label}-list-down-${i}.xml`);
+    const xml = readXmlContent(path);
+    const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'quiz_pagination_relocate_list_down', {
+      phase: 'before',
+      page: label,
+    });
+    if (!inv.ok) return { tap: null, failure: inv };
+    const nodes = parseUiXml(xml);
+    const next = locateQuizPaginationNext(nodes);
+    if (next) {
+      log.steps.push({ step: 'quiz_pagination_next_relocated', label, direction: 'list_down', scroll: i });
+      return { tap: next, failure: null };
+    }
+    scrollAnalyticsQuizListDown();
+  }
   for (let i = 0; i < CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS; i++) {
     const path = dump(`b-02-relocate-next-${label}-up-${i}.xml`);
     const xml = readXmlContent(path);
