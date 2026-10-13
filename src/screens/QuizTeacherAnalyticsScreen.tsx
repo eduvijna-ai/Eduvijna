@@ -232,21 +232,23 @@ export default function QuizTeacherAnalyticsScreen() {
     const timer = setTimeout(() => {
       const sectionTop = quizListSectionOffsetY.current;
       const sectionBottom = sectionTop + quizListSectionHeight.current;
+      const sectionTopY = Math.max(0, sectionTop - 8);
       const revealPaginationY = Math.max(
         0,
         sectionBottom - CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT + 32,
       );
+      const onLastQuizPage = quizPage >= totalQuizPages;
       const targetY =
-        quizListSectionHeight.current > 0
-          ? Math.max(sectionTop - 8, revealPaginationY)
-          : Math.max(0, sectionTop - 8);
+        !onLastQuizPage && quizListSectionHeight.current > 0
+          ? Math.max(sectionTopY, revealPaginationY)
+          : sectionTopY;
       mainScrollRef.current?.scrollTo({
         y: targetY,
         animated: false,
       });
     }, 80);
     return () => clearTimeout(timer);
-  }, [drillLevel, selectedClass, quizPage]);
+  }, [drillLevel, selectedClass, quizPage, totalQuizPages]);
 
   const resetDrillToClasses = useCallback(() => {
     setDrillLevel('classes');
