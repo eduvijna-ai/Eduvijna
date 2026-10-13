@@ -581,26 +581,41 @@ export default function QuizTeacherAnalyticsScreen() {
               </View>
             ) : null}
 
-            <Text
-              style={[styles.subSectionTitle, { color: colors.text }]}
-              testID="analytics-quiz-page-members"
-              accessibilityLabel={analyticsQuizPageMembersAccessibilityLabel}
+            <View
+              testID="analytics-class-quiz-list-section"
+              accessibilityLabel="analytics-class-quiz-list-section"
               accessible
               importantForAccessibility="yes"
+              collapsable={false}
             >
-              Quizzes in this Class
-            </Text>
-            <Text style={[styles.hint, { color: colors.textSecondary }]}>
-              {classQuizzes.length} quiz{classQuizzes.length === 1 ? '' : 'zes'} · open a quiz for detailed analytics
-            </Text>
-            {paginatedQuizzes.map(renderQuizCard)}
-            <AnalyticsPagination
-              scope="quiz"
-              page={quizPage}
-              totalPages={totalQuizPages}
-              onPageChange={setQuizPage}
-              colors={colors}
-            />
+              <Text
+                style={[styles.subSectionTitle, { color: colors.text }]}
+                testID="analytics-quiz-page-members"
+                accessibilityLabel={analyticsQuizPageMembersAccessibilityLabel}
+                accessible
+                importantForAccessibility="yes"
+              >
+                Quizzes in this Class
+              </Text>
+              <Text
+                style={[styles.hint, { color: colors.textSecondary }]}
+                testID="analytics-quiz-list-hint"
+                accessibilityLabel="analytics-quiz-list-hint"
+                accessible
+                importantForAccessibility="yes"
+              >
+                {classQuizzes.length} quiz{classQuizzes.length === 1 ? '' : 'zes'} · open a quiz for
+                detailed analytics
+              </Text>
+              {paginatedQuizzes.map(renderQuizCard)}
+              <AnalyticsPagination
+                scope="quiz"
+                page={quizPage}
+                totalPages={totalQuizPages}
+                onPageChange={setQuizPage}
+                colors={colors}
+              />
+            </View>
 
             <Text style={[styles.subSectionTitle, { color: colors.text, marginTop: 8 }]}>
               Quiz Performance Summary

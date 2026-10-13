@@ -633,6 +633,111 @@ export function buildMobileQuizDiscoveryState(mobilePageMemberships, expectedTot
 /**
  * @param {{ quizId: number; sessionId: string }} fixtureIdentity
  */
+/** @param {ReturnType<typeof parseUiXml>} nodes */
+export function findClassDrillNestedScrollViewport(nodes, { minY = 680, maxY = 1780 } = {}) {
+  const scrolls = nodes
+    .filter(
+      (n) =>
+        n.class === 'android.widget.ScrollView' &&
+        n.scrollable === 'true' &&
+        n.boundsRect &&
+        n.boundsRect.y1 >= minY - 80 &&
+        n.boundsRect.y2 <= maxY + 40,
+    )
+    .map((n) => n.boundsRect)
+    .sort((a, b) => b.y2 - b.y1 - (a.y2 - a.y1));
+  return scrolls[0] ?? null;
+}
+
+/** @param {ReturnType<typeof parseUiXml>} nodes */
+export function locateAnalyticsQuizListSectionAnchor(nodes) {
+  return (
+    locateByTestId(nodes, 'analytics-class-quiz-list-section') ||
+    locateByTestId(nodes, 'analytics-quiz-page-members') ||
+    locateByTestId(nodes, 'analytics-quiz-list-hint')
+  );
+}
+
+/**
+ * @param {{ x1: number; y1: number; x2: number; y2: number; cx: number; cy: number }} rect
+ */
+export function deriveBoundedVerticalSwipeInRect(rect, direction = 'up', { margin = 40 } = {}) {
+  const x = rect.cx;
+  if (direction === 'up') {
+    const startY = Math.min(rect.y2 - margin, rect.cy + 140);
+    const endY = Math.max(rect.y1 + margin, rect.cy - 320);
+    return { x, startY, endY, direction };
+  }
+  const startY = Math.max(rect.y1 + margin, rect.cy - 140);
+  const endY = Math.min(rect.y2 - margin, rect.cy + 320);
+  return { x, startY, endY, direction };
+}
+
+/** @param {{ bounds?: { y1: number; y2: number } }} tap */
+export function isTapTargetWithinScrollViewport(tap, scrollRect, { margin = 8 } = {}) {
+  if (!tap?.bounds || !scrollRect) return false;
+  const { y1, y2 } = tap.bounds;
+  return y1 >= scrollRect.y1 + margin && y2 <= scrollRect.y2 - margin;
+}
+
+/**
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ */
+export function locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect = null) {
+  const hit = locateByTestId(nodes, viewAnalyticsId);
+  if (!hit) return null;
+  if (scrollRect && !isTapTargetWithinScrollViewport(hit, scrollRect)) return null;
+  return hit;
+}
+
+export function buildFixtureViewportProgressSignature(
+  nodes,
+  viewAnalyticsId,
+  quizCardId,
+  scrollRect = null,
+) {
+  const anchor = locateAnalyticsQuizListSectionAnchor(nodes);
+  const cards = listVisibleAnalyticsQuizCardTestIds(nodes, 12);
+  const view = scrollRect
+    ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect)
+    : locateByTestId(nodes, viewAnalyticsId);
+  const card = quizCardId ? locateByTestId(nodes, quizCardId) : null;
+  const texts = collectUiTexts(nodes);
+  const seesSummary = texts.some((t) => /Open quiz summary for/i.test(t));
+  const anchorInViewport =
+    anchor?.bounds && scrollRect
+      ? isTapTargetWithinScrollViewport(anchor, scrollRect, { margin: 0 })
+      : anchor != null;
+  return {
+    anchorY: anchor?.y ?? null,
+    anchorInViewport,
+    cardCount: cards.length,
+    firstCardId: cards[0] ?? null,
+    fixtureCardVisible: Boolean(card),
+    viewAnalyticsVisible: Boolean(view),
+    seesQuizSummarySection: seesSummary,
+    signature: `${anchorInViewport}|${cards.length}|${cards[0] ?? '-'}|${Boolean(view)}|${seesSummary}`,
+  };
+}
+
+export function shouldTerminateFixtureViewportSearch({ noProgressStreak, attempt, maxAttempts }) {
+  if (attempt >= maxAttempts) {
+    return { terminate: true, label: 'analytics_fixture_quiz_section_anchor_missing' };
+  }
+  if (noProgressStreak >= 3) {
+    return { terminate: true, label: 'analytics_fixture_viewport_no_progress' };
+  }
+  return { terminate: false, label: null };
+}
+
+export function inferQuizListRepositionDirection(progress) {
+  if (progress.viewAnalyticsVisible) return null;
+  if (!progress.anchorInViewport && progress.seesQuizSummarySection) return 'up';
+  if (!progress.anchorInViewport) return 'up';
+  if (progress.cardCount === 0) return 'up';
+  return 'down';
+}
+
 export function classifyFixtureDiscoveryOutcome(
   quizPageHint,
   discovery,

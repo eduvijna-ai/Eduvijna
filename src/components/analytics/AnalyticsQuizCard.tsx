@@ -58,6 +58,7 @@ export default function AnalyticsQuizCard({
   return (
     <View
       testID={`analytics-quiz-card-${tile.quiz_id}-${tile.session_id}`}
+      collapsable={false}
       style={[
         styles.card,
         {

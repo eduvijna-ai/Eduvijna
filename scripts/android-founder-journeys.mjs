@@ -36,6 +36,13 @@ import {
   buildMobileQuizDiscoveryState,
   classifyFixtureDiscoveryOutcome,
   readObservedAnalyticsDrillMarkers,
+  findClassDrillNestedScrollViewport,
+  deriveBoundedVerticalSwipeInRect,
+  locateFixtureViewAnalyticsTap,
+  buildFixtureViewportProgressSignature,
+  shouldTerminateFixtureViewportSearch,
+  inferQuizListRepositionDirection,
+  isTapTargetWithinScrollViewport,
 } from './lib/android-journey-logic.mjs';
 
 import {
@@ -113,6 +120,8 @@ function scrollAnalyticsQuizListUp() {
 const CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS = 12;
 const CLASS_QUIZ_DISCOVERY_MAX_UP_SCROLLS = 8;
 const CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS = 5;
+const FIXTURE_QUIZ_SECTION_REPOSITION_MAX = 14;
+const FIXTURE_QUIZ_INNER_SEARCH_MAX = 16;
 
 function createClassDrillDiscoveryContext(log, classDrillId) {
   function readDumpPair(name) {
@@ -561,9 +570,106 @@ function logApiMobileOrderCrosscheck(log, quizPageHint, discovery) {
   return divergence;
 }
 
-function scrollQuizCardSectionTowardTop(log) {
-  for (let i = 0; i < 6; i++) scrollAnalyticsQuizListUp();
-  log.steps.push({ step: 'quiz_card_section_scroll_to_top', swipes: 6 });
+function swipeInNestedQuizScroll(scrollRect, direction) {
+  const swipe = deriveBoundedVerticalSwipeInRect(scrollRect, direction);
+  adb(`shell input swipe ${swipe.x} ${swipe.startY} ${swipe.x} ${swipe.endY} 300`);
+  sleep(650);
+  return swipe;
+}
+
+function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, viewAnalyticsId, quizCardId) {
+  let lastSignature = null;
+  let noProgressStreak = 0;
+  let lastPath = null;
+  let lastXml = null;
+  let lastNodes = null;
+  let lastScrollRect = null;
+
+  for (let attempt = 0; attempt < FIXTURE_QUIZ_SECTION_REPOSITION_MAX; attempt++) {
+    const path = dump(`b-02-fixture-section-reposition-${attempt}.xml`);
+    const xml = readXmlContent(path);
+    const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_section_reposition', {
+      page: mobileFixturePage,
+      attempt,
+    });
+    if (!inv.ok) return { ok: false, ...inv };
+
+    const nodes = parseUiXml(xml);
+    const scrollRect = findClassDrillNestedScrollViewport(nodes);
+    if (!scrollRect) {
+      return { ok: false, label: 'analytics_quiz_list_scroll_viewport_missing', attempt };
+    }
+    const progress = buildFixtureViewportProgressSignature(
+      nodes,
+      viewAnalyticsId,
+      quizCardId,
+      scrollRect,
+    );
+    const viewTap = locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect);
+    if (viewTap) {
+      log.steps.push({
+        step: 'fixture_quiz_section_in_view',
+        attempt,
+        ...progress,
+        scrollViewport: scrollRect,
+      });
+      return { ok: true, path, xml, nodes, scrollRect, viewTap, progress };
+    }
+
+    if (progress.signature === lastSignature) noProgressStreak += 1;
+    else noProgressStreak = 0;
+    lastSignature = progress.signature;
+    const terminate = shouldTerminateFixtureViewportSearch({
+      noProgressStreak,
+      attempt,
+      maxAttempts: FIXTURE_QUIZ_SECTION_REPOSITION_MAX,
+    });
+    if (terminate.terminate && noProgressStreak >= 3) {
+      log.steps.push({
+        step: 'fixture_quiz_section_reposition_exhausted',
+        attempt,
+        label: terminate.label,
+        lastProgress: progress,
+        scrollViewport: scrollRect,
+      });
+      return {
+        ok: false,
+        label: terminate.label,
+        attempt,
+        lastProgress: progress,
+        xmlPath: path,
+        scrollViewport: scrollRect,
+      };
+    }
+
+    const direction = inferQuizListRepositionDirection(progress) || 'up';
+    const swipe = swipeInNestedQuizScroll(scrollRect, direction);
+    log.steps.push({
+      step: 'fixture_quiz_section_reposition_swipe',
+      attempt,
+      direction,
+      ...progress,
+      nestedScrollSwipe: swipe,
+      scrollViewport: scrollRect,
+    });
+    lastPath = path;
+    lastXml = xml;
+    lastNodes = nodes;
+    lastScrollRect = scrollRect;
+
+    if (progress.anchorInViewport && progress.cardCount > 0) {
+      break;
+    }
+  }
+
+  return {
+    ok: true,
+    path: lastPath,
+    xml: lastXml,
+    nodes: lastNodes,
+    scrollRect: lastScrollRect,
+    viewTap: null,
+  };
 }
 
 function locateFixtureQuizViewAnalyticsOnPage(
@@ -574,64 +680,152 @@ function locateFixtureQuizViewAnalyticsOnPage(
   classDrillId,
   discoveryCtx,
 ) {
-  scrollQuizCardSectionTowardTop(log);
-  const locateViewTap = (xml) => locateByTestId(parseUiXml(xml), viewAnalyticsId);
-  let path = dump('b-02-fixture-quiz-search-0.xml');
-  let viewTap = locateViewTap(readXmlContent(path));
-  discoveryCtx.checkClassDrillInvariant(readXmlContent(path), path, 'fixture_quiz_search_initial', {
+  const reposition = bringQuizListSectionIntoViewport(
+    log,
+    discoveryCtx,
+    mobileFixturePage,
+    viewAnalyticsId,
+    quizCardId,
+  );
+  if (!reposition.ok) {
+    return {
+      ok: false,
+      label: reposition.label,
+      mobileFixturePage,
+      visibleQuizCardTestIds: [],
+      xmlPath: reposition.xmlPath ?? null,
+      viewportProgress: reposition.lastProgress ?? null,
+    };
+  }
+
+  let path = reposition.path || dump('b-02-fixture-quiz-search-0.xml');
+  let xml = reposition.xml || readXmlContent(path);
+  let nodes = reposition.nodes || parseUiXml(xml);
+  let scrollRect = reposition.scrollRect || findClassDrillNestedScrollViewport(nodes);
+  let viewTap =
+    reposition.viewTap ||
+    (scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null);
+
+  discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_search_initial', {
     page: mobileFixturePage,
   });
-  if (!viewTap) {
-    let scrolls = 0;
-    for (let i = 0; i < 24 && !viewTap; i++) {
+
+  let innerScrolls = 0;
+  let lastInnerSignature = null;
+  let innerNoProgress = 0;
+  const directions = ['down', 'up'];
+
+  while (!viewTap && innerScrolls < FIXTURE_QUIZ_INNER_SEARCH_MAX && scrollRect) {
+    const progress = buildFixtureViewportProgressSignature(
+      nodes,
+      viewAnalyticsId,
+      quizCardId,
+      scrollRect,
+    );
+    viewTap = locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect);
+    if (viewTap) break;
+
+    if (progress.signature === lastInnerSignature) innerNoProgress += 1;
+    else innerNoProgress = 0;
+    lastInnerSignature = progress.signature;
+    if (innerNoProgress >= 3) {
+      log.steps.push({
+        step: 'fixture_quiz_inner_search_no_progress',
+        innerScrolls,
+        progress,
+      });
+      break;
+    }
+
+    const direction = directions[innerScrolls % directions.length];
+    const swipe = swipeInNestedQuizScroll(scrollRect, direction);
+    innerScrolls += 1;
+    path = dump(`b-02-fixture-quiz-inner-${direction}-${innerScrolls}.xml`);
+    xml = readXmlContent(path);
+    const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_inner_search', {
+      page: mobileFixturePage,
+      direction,
+      innerScrolls,
+    });
+    if (!inv.ok) {
+      return { ok: false, ...inv, mobileFixturePage, visibleQuizCardTestIds: [] };
+    }
+    nodes = parseUiXml(xml);
+    scrollRect = findClassDrillNestedScrollViewport(nodes) || scrollRect;
+    log.steps.push({
+      step: 'fixture_quiz_inner_search_swipe',
+      direction,
+      innerScrolls,
+      nestedScrollSwipe: swipe,
+      progress: buildFixtureViewportProgressSignature(
+        nodes,
+        viewAnalyticsId,
+        quizCardId,
+        scrollRect,
+      ),
+      scrollViewport: scrollRect,
+    });
+    viewTap = locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect);
+  }
+
+  if (!viewTap && scrollRect) {
+    for (let i = 0; i < 4 && !viewTap; i++) {
       const scrolled = discoveryCtx.safeScrollClassDrillDown(
-        'fixture_quiz_viewport_search',
-        `b-02-fixture-quiz-search-down-${i}`,
+        'fixture_quiz_outer_recovery',
+        `b-02-fixture-quiz-outer-${i}`,
         mobileFixturePage,
       );
-      scrolls = i + 1;
-      if (!scrolled.ok) {
-        log.steps.push({
-          step: 'fixture_quiz_search',
-          searchDirection: 'down',
-          mobileFixturePage,
-          scrolls,
-          located: false,
-          failure: scrolled.label,
-        });
-        return {
-          ok: false,
-          label: scrolled.label,
-          mobileFixturePage,
-          visibleQuizCardTestIds: [],
-        };
-      }
-      viewTap = locateViewTap(scrolled.xml);
+      if (!scrolled.ok) break;
       path = scrolled.path;
-      if (viewTap) break;
+      xml = scrolled.xml;
+      nodes = scrolled.nodes;
+      scrollRect = findClassDrillNestedScrollViewport(nodes);
+      viewTap = scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null;
+      if (viewTap) {
+        log.steps.push({ step: 'fixture_quiz_outer_recovery_hit', attempt: i });
+        break;
+      }
     }
-    log.steps.push({
-      step: 'fixture_quiz_search',
-      searchDirection: 'down',
-      mobileFixturePage,
-      scrolls,
-      located: Boolean(viewTap),
-    });
   }
+
+  log.steps.push({
+    step: 'fixture_quiz_search',
+    mobileFixturePage,
+    innerScrolls,
+    located: Boolean(viewTap),
+    viewportProgress: buildFixtureViewportProgressSignature(
+      nodes,
+      viewAnalyticsId,
+      quizCardId,
+      scrollRect,
+    ),
+  });
+
+  if (viewTap && scrollRect && !isTapTargetWithinScrollViewport(viewTap, scrollRect)) {
+    return {
+      ok: false,
+      label: 'analytics_fixture_view_analytics_not_in_viewport',
+      mobileFixturePage,
+      viewTap,
+      scrollViewport: scrollRect,
+    };
+  }
+
   if (viewTap) {
-    const nodes = parseUiXml(readXmlContent(path));
     log.steps.push({
       step: 'fixture_quiz_card_located',
       mobileFixturePage,
       quizCardId,
       viewAnalyticsId,
       cardPresent: Boolean(locateByTestId(nodes, quizCardId)),
-      visibleQuizCardIds: listVisibleAnalyticsQuizCardTestIds(nodes),
+      visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes),
+      tapBounds: viewTap.bounds ?? null,
     });
     return { ok: true, viewTap, xmlPath: path };
   }
+
   path = dump('b-02-fixture-quiz-card-missing.xml');
-  const nodes = parseUiXml(readXmlContent(path));
+  nodes = parseUiXml(readXmlContent(path));
   const hero = readAnalyticsClassDrillHeroQuizPageState(readXmlContent(path), classDrillId);
   return {
     ok: false,
@@ -640,6 +834,13 @@ function locateFixtureQuizViewAnalyticsOnPage(
     totalPages: hero.totalPages,
     mobileFixturePage,
     xmlPath: path,
+    viewportProgress: buildFixtureViewportProgressSignature(
+      nodes,
+      viewAnalyticsId,
+      quizCardId,
+      findClassDrillNestedScrollViewport(nodes),
+    ),
+    scrollViewport: findClassDrillNestedScrollViewport(nodes),
   };
 }
 

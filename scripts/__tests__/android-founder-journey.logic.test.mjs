@@ -21,6 +21,14 @@ import {
   buildMobileQuizDiscoveryState,
   classifyFixtureDiscoveryOutcome,
   findSafeAnalyticsClassDrillScrollStart,
+  findClassDrillNestedScrollViewport,
+  locateAnalyticsQuizListSectionAnchor,
+  deriveBoundedVerticalSwipeInRect,
+  locateFixtureViewAnalyticsTap,
+  buildFixtureViewportProgressSignature,
+  shouldTerminateFixtureViewportSearch,
+  inferQuizListRepositionDirection,
+  isTapTargetWithinScrollViewport,
 } from '../lib/android-journey-logic.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -216,6 +224,79 @@ test('class drill invariant holds on exact class drill marker', () => {
   const safe = findSafeAnalyticsClassDrillScrollStart(nodes);
   assert.ok(safe);
   assert.equal(safe.clickableOverlapAtStart, false);
+});
+
+test('nested scroll viewport is derived from scrollable class drill list', () => {
+  const xml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    '<node class="android.widget.ScrollView" scrollable="false" bounds="[0,0][1080,500]"/>';
+  const rect = findClassDrillNestedScrollViewport(parseUiXml(xml));
+  assert.equal(rect?.y1, 721);
+  assert.equal(rect?.y2, 1700);
+});
+
+test('clipped quiz section infers upward reposition when summary is visible', () => {
+  const xml =
+    '<node resource-id="analytics-class-quiz-list-section" bounds="[42,2400][1038,2500]"/>' +
+    '<node text="Open quiz summary for DEV_MATRIX" bounds="[42,1200][900,1280]"/>';
+  const scrollRect = { x1: 0, y1: 721, x2: 1080, y2: 1700, cx: 540, cy: 1210 };
+  const progress = buildFixtureViewportProgressSignature(
+    parseUiXml(xml),
+    'analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open',
+    'analytics-quiz-card-479-a6882262-5c50-4cf5-a4a8-dc8786862916',
+    scrollRect,
+  );
+  assert.equal(progress.anchorInViewport, false);
+  assert.equal(progress.seesQuizSummarySection, true);
+  assert.equal(inferQuizListRepositionDirection(progress), 'up');
+});
+
+test('missing scroll viewport anchor terminates with bounded no-progress label', () => {
+  const terminate = shouldTerminateFixtureViewportSearch({
+    noProgressStreak: 3,
+    attempt: 2,
+    maxAttempts: 14,
+  });
+  assert.equal(terminate.terminate, true);
+  assert.equal(terminate.label, 'analytics_fixture_viewport_no_progress');
+});
+
+test('fixture view analytics requires visible bounds inside scroll viewport', () => {
+  const scrollRect = { x1: 0, y1: 721, x2: 1080, y2: 1700, cx: 540, cy: 1210 };
+  const xml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    '<node resource-id="analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open" clickable="true" bounds="[89,964][999,1078]"/>';
+  const nodes = parseUiXml(xml);
+  const inView = locateFixtureViewAnalyticsTap(
+    nodes,
+    'analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open',
+    scrollRect,
+  );
+  assert.ok(inView);
+  assert.equal(isTapTargetWithinScrollViewport(inView, scrollRect), true);
+  const clippedXml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    '<node resource-id="analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open" clickable="true" bounds="[89,2400][999,2500]"/>';
+  assert.equal(
+    locateFixtureViewAnalyticsTap(
+      parseUiXml(clippedXml),
+      'analytics-quiz-view-479-a6882262-5c50-4cf5-a4a8-dc8786862916-open',
+      scrollRect,
+    ),
+    null,
+  );
+  const swipe = deriveBoundedVerticalSwipeInRect(scrollRect, 'up');
+  assert.ok(swipe.startY > swipe.endY);
+});
+
+test('unexpected quiz drill still fails class drill invariant during viewport search', () => {
+  const classDrill = 'analytics-drill-class-class_4d82c60e';
+  const xml =
+    '<node resource-id="analytics-drill-quiz-531-abc" content-desc="analytics-drill-quiz-531-abc" bounds="[0,221][1080,427]"/>';
+  const result = assertClassDrillInvariant(xml, classDrill, {
+    actionAttempted: 'fixture_quiz_section_reposition',
+  });
+  assert.equal(result.label, 'analytics_navigation_drift_during_quiz_discovery');
 });
 
 test('safe scroll start avoids View Analytics clickable bounds', () => {
