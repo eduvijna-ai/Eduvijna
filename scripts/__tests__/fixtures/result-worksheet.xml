@@ -4,7 +4,7 @@
   <node text="Aarya" bounds="[0,160][1080,220]" package="com.eduvijna.app"/>
   <node
     resource-id="com.eduvijna.app:id/quiz-result-summary"
-    content-desc="quiz-result-summary quiz-479 attempt-207 student-70"
+    content-desc="quiz-result-summary quiz-479 session-a6882262-5c50-4cf5-a4a8-dc8786862916 attempt-207 student-70 classroom-class_4d82c60e"
     bounds="[0,240][1080,500]"
     package="com.eduvijna.app"
   />

@@ -17,6 +17,10 @@ import {
   shouldExecuteViewAnalyticsTap,
   verifyStudentListDestination,
   verifyWorksheetResultScreen,
+  assertClassDrillInvariant,
+  buildMobileQuizDiscoveryState,
+  classifyFixtureDiscoveryOutcome,
+  findSafeAnalyticsClassDrillScrollStart,
 } from '../lib/android-journey-logic.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -150,4 +154,76 @@ test('unrelated bare numbers do not pass worksheet metrics', () => {
   assert.equal(bad.unrelatedNumberTrap, true);
   const good = verifyWorksheetResultScreen(fx('result-worksheet.xml'), FIXTURE);
   assert.equal(good.pass, true);
+});
+
+test('incomplete page traversal cannot classify Case C', () => {
+  const fixtureIdentity = { quizId: 479, sessionId: FIXTURE.sessionId };
+  const discovery = {
+    mobilePageMemberships: [{ page: 1, members: [{ quizId: 541, sessionId: 'x' }], hero: { current: 1, totalPages: 3 } }],
+    totalPages: 3,
+    discoveryState: buildMobileQuizDiscoveryState(
+      [{ page: 1, members: [], hero: { current: 1 } }],
+      3,
+    ),
+  };
+  assert.equal(discovery.discoveryState.discoveryComplete, false);
+  const caseLabel = classifyFixtureDiscoveryOutcome(
+    { found: true, apiHintPage: 3, pageMembers: [{ quizId: 479, sessionId: FIXTURE.sessionId }] },
+    discovery,
+    false,
+    fixtureIdentity,
+  );
+  assert.equal(caseLabel, null);
+});
+
+test('Case C requires full discovery and fixture absent on every page', () => {
+  const fixtureIdentity = { quizId: 479, sessionId: FIXTURE.sessionId };
+  const memberships = [
+    { page: 1, members: [{ quizId: 541, sessionId: 'a' }], hero: { current: 1, totalPages: 3 } },
+    { page: 2, members: [{ quizId: 540, sessionId: 'b' }], hero: { current: 2, totalPages: 3 } },
+    { page: 3, members: [{ quizId: 538, sessionId: 'c' }], hero: { current: 3, totalPages: 3 } },
+  ];
+  const discovery = {
+    mobilePageMemberships: memberships,
+    totalPages: 3,
+    discoveryState: buildMobileQuizDiscoveryState(memberships, 3),
+  };
+  assert.equal(discovery.discoveryState.discoveryComplete, true);
+  assert.equal(
+    classifyFixtureDiscoveryOutcome({ found: true, apiHintPage: 3, pageMembers: [fixtureIdentity] }, discovery, false, fixtureIdentity),
+    'C',
+  );
+});
+
+test('unexpected quiz drill before fixture tap fails class drill invariant', () => {
+  const classDrill = 'analytics-drill-class-class_4d82c60e';
+  const xml =
+    '<node resource-id="analytics-drill-quiz-531-1f380dcc-917c-4894-90b6-71877cfdde56" content-desc="analytics-drill-quiz-531-1f380dcc-917c-4894-90b6-71877cfdde56 classroom-class_4d82c60e" bounds="[0,221][1080,427]"/>';
+  const result = assertClassDrillInvariant(xml, classDrill, { actionAttempted: 'quiz_pagination_probe_down' });
+  assert.equal(result.ok, false);
+  assert.equal(result.label, 'analytics_navigation_drift_during_quiz_discovery');
+  assert.match(String(result.observedDrillIdentity), /analytics-drill-quiz-531/);
+});
+
+test('class drill invariant holds on exact class drill marker', () => {
+  const classDrill = 'analytics-drill-class-class_4d82c60e';
+  const xml =
+    `<node resource-id="${classDrill}" content-desc="${classDrill} quiz-page-1-of-3 quiz-count-28" bounds="[0,221][1080,427]"/>` +
+    '<node text="Card body" clickable="false" bounds="[120,900][400,940]"/>';
+  const result = assertClassDrillInvariant(xml, classDrill, { actionAttempted: 'safe_scroll' });
+  assert.equal(result.ok, true);
+  const nodes = parseUiXml(xml);
+  const safe = findSafeAnalyticsClassDrillScrollStart(nodes);
+  assert.ok(safe);
+  assert.equal(safe.clickableOverlapAtStart, false);
+});
+
+test('safe scroll start avoids View Analytics clickable bounds', () => {
+  const xml =
+    '<node resource-id="analytics-drill-class-class_4d82c60e" content-desc="analytics-drill-class-class_4d82c60e quiz-page-1-of-3" bounds="[0,221][1080,427]"/>' +
+    '<node resource-id="analytics-quiz-view-531-abc-open" clickable="true" bounds="[89,1500][999,1610]"/>' +
+    '<node text="HIGHEST" clickable="false" bounds="[255,1200][368,1250]"/>';
+  const safe = findSafeAnalyticsClassDrillScrollStart(parseUiXml(xml));
+  assert.ok(safe);
+  assert.equal(safe.y < 1500 || safe.y > 1610, true);
 });

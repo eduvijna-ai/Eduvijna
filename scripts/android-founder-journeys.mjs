@@ -31,6 +31,11 @@ import {
   readAnalyticsQuizPageMembers,
   analyticsPageMembersContainFixture,
   listVisibleAnalyticsQuizCardTestIds,
+  assertClassDrillInvariant,
+  findSafeAnalyticsClassDrillScrollStart,
+  buildMobileQuizDiscoveryState,
+  classifyFixtureDiscoveryOutcome,
+  readObservedAnalyticsDrillMarkers,
 } from './lib/android-journey-logic.mjs';
 
 import {
@@ -105,9 +110,134 @@ function scrollAnalyticsQuizListUp() {
   sleep(650);
 }
 
-function scrollAnalyticsClassDrillDown() {
-  adb('shell input swipe 540 1650 540 350 320');
-  sleep(750);
+const CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS = 12;
+const CLASS_QUIZ_DISCOVERY_MAX_UP_SCROLLS = 8;
+const CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS = 5;
+
+function createClassDrillDiscoveryContext(log, classDrillId) {
+  function readDumpPair(name) {
+    const path = dump(name);
+    const xml = readXmlContent(path);
+    return { path, xml, nodes: parseUiXml(xml) };
+  }
+
+  function checkClassDrillInvariant(xml, path, actionLabel, extra = {}) {
+    const result = assertClassDrillInvariant(xml, classDrillId, {
+      actionAttempted: actionLabel,
+      xmlPath: path,
+      ...extra,
+    });
+    if (!result.ok) {
+      log.steps.push({ step: 'class_drill_invariant_failed', ...result });
+    }
+    return result;
+  }
+
+  function safeScrollClassDrillDown(actionLabel, dumpSuffix, page = null) {
+    const before = readDumpPair(`${dumpSuffix}-before.xml`);
+    const invBefore = checkClassDrillInvariant(before.xml, before.path, actionLabel, {
+      phase: 'before',
+      page,
+    });
+    if (!invBefore.ok) {
+      return {
+        ok: false,
+        label: invBefore.label,
+        ...invBefore,
+        beforeXml: before.path,
+        afterXml: before.path,
+        firstDriftAction: actionLabel,
+      };
+    }
+
+    const start = findSafeAnalyticsClassDrillScrollStart(before.nodes);
+    if (!start) {
+      log.steps.push({ step: 'safe_scroll_point_missing', actionLabel, page });
+      return { ok: false, label: 'analytics_quiz_safe_scroll_point_missing', actionLabel, page };
+    }
+    const endY = Math.max(360, start.y - 1180);
+    adb(`shell input swipe ${start.x} ${start.y} ${start.x} ${endY} 320`);
+    sleep(750);
+    const after = readDumpPair(`${dumpSuffix}-after.xml`);
+    const invAfter = checkClassDrillInvariant(after.xml, after.path, actionLabel, {
+      phase: 'after',
+      page,
+    });
+    log.steps.push({
+      step: 'safe_class_drill_scroll',
+      actionLabel,
+      page,
+      safeScrollStartX: start.x,
+      safeScrollStartY: start.y,
+      safeScrollEndX: start.x,
+      safeScrollEndY: endY,
+      clickableOverlapAtStart: false,
+    });
+    if (!invAfter.ok) {
+      return {
+        ok: false,
+        label: invAfter.label,
+        ...invAfter,
+        beforeXml: before.path,
+        afterXml: after.path,
+        firstDriftAction: actionLabel,
+        actionCoordinates: { x: start.x, y: start.y, endY },
+      };
+    }
+    return { ok: true, ...after };
+  }
+
+  return { readDumpPair, checkClassDrillInvariant, safeScrollClassDrillDown };
+}
+
+function recordProbeDriftForensics(log, classDrillId) {
+  const prefix = 'b-02-quiz-next-probe';
+  let previousDump = null;
+  let driftDump = null;
+  let firstDriftAction = null;
+  for (let i = 0; i <= CLASS_QUIZ_DISCOVERY_MAX_UP_SCROLLS; i++) {
+    const name = i === 0 ? `${prefix}-0.xml` : `${prefix}-up-${i}.xml`;
+    const local = join(evidence, name);
+    if (!existsSync(local)) continue;
+    const xml = readXmlContent(local);
+    if (hasExactAnalyticsDrillIdentity(parseUiXml(xml), classDrillId)) {
+      previousDump = name;
+    }
+  }
+  for (let i = 1; i <= CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS; i++) {
+    const name = `${prefix}-down-${i}.xml`;
+    const local = join(evidence, name);
+    if (!existsSync(local)) continue;
+    const xml = readXmlContent(local);
+    const nodes = parseUiXml(xml);
+    const quizDrill = readObservedAnalyticsDrillMarkers(nodes).find((d) =>
+      d.startsWith('analytics-drill-quiz-'),
+    );
+    if (quizDrill && !driftDump) {
+      driftDump = name;
+      firstDriftAction = `scrollAnalyticsClassDrillDown:probe-down-${i}`;
+      break;
+    }
+  }
+  const numbered = join(evidence, `${prefix}-10.xml`);
+  if (!driftDump && existsSync(numbered)) {
+    const xml = readXmlContent(numbered);
+    const quizDrill = readObservedAnalyticsDrillMarkers(parseUiXml(xml)).find((d) =>
+      d.startsWith('analytics-drill-quiz-'),
+    );
+    if (quizDrill) {
+      driftDump = `${prefix}-10.xml`;
+      firstDriftAction = firstDriftAction || 'quiz_pagination_probe';
+    }
+  }
+  log.steps.push({
+    step: 'quiz_discovery_drift_forensics',
+    previousDump,
+    driftDump,
+    firstDriftAction,
+    note:
+      'Historical 0e8d166 evidence: last class drill b-02-quiz-next-probe-up-9.xml then quiz 531 drill b-02-quiz-next-probe-10.xml after unsafe class-drill down swipe.',
+  });
 }
 
 function locatePaginationNext(nodes, scope = 'quiz') {
@@ -141,54 +271,81 @@ function readHeroQuizPageFromDump(dumpName, classDrillId) {
   return { path, xml, hero: readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId) };
 }
 
-function ensureQuizPaginationNextVisible(log, classDrillId, maxScrolls = 16) {
+function ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx) {
   let snap = readHeroQuizPageFromDump('b-02-quiz-next-probe-0', classDrillId);
+  discoveryCtx.checkClassDrillInvariant(snap.xml, snap.path, 'quiz_pagination_probe_initial', {
+    phase: 'before',
+    page: readAnalyticsClassDrillHeroQuizPageState(snap.xml, classDrillId).current,
+  });
   if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
     log.steps.push({ step: 'quiz_pagination_next_visible', scroll: 0, direction: 'none' });
-    return true;
+    return { ok: true };
   }
-  for (let i = 0; i < maxScrolls; i++) {
+  for (let i = 0; i < CLASS_QUIZ_DISCOVERY_MAX_UP_SCROLLS; i++) {
     scrollAnalyticsQuizListUp();
     snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-up-${i + 1}`, classDrillId);
+    const inv = discoveryCtx.checkClassDrillInvariant(snap.xml, snap.path, 'quiz_pagination_probe_up', {
+      phase: 'after',
+      page: readAnalyticsClassDrillHeroQuizPageState(snap.xml, classDrillId).current,
+    });
+    if (!inv.ok) return { ok: false, ...inv };
     if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
       log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1, direction: 'up' });
-      return true;
+      return { ok: true };
     }
   }
-  for (let i = 0; i < maxScrolls; i++) {
-    scrollAnalyticsClassDrillDown();
-    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-down-${i + 1}`, classDrillId);
-    if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
+  for (let i = 0; i < CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS; i++) {
+    const scrolled = discoveryCtx.safeScrollClassDrillDown(
+      'quiz_pagination_probe_down',
+      `b-02-quiz-next-probe-down-${i + 1}`,
+      readAnalyticsClassDrillHeroQuizPageState(snap.xml, classDrillId).current,
+    );
+    if (!scrolled.ok) return scrolled;
+    snap = { path: scrolled.path, xml: scrolled.xml };
+    if (locateQuizPaginationNext(scrolled.nodes)) {
       log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1, direction: 'down' });
-      return true;
+      return { ok: true };
     }
   }
-  log.steps.push({ step: 'quiz_pagination_next_visible', scroll: maxScrolls, found: false });
-  return false;
+  log.steps.push({
+    step: 'quiz_pagination_next_visible',
+    scroll: CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS,
+    found: false,
+  });
+  return { ok: false, label: 'analytics_quiz_pagination_next_missing' };
 }
 
-function relocateQuizPaginationNextSmall(log, label, maxScrolls = 5) {
-  for (let i = 0; i < maxScrolls; i++) {
+function relocateQuizPaginationNextSmall(log, label, classDrillId, discoveryCtx) {
+  for (let i = 0; i < CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS; i++) {
     const path = dump(`b-02-relocate-next-${label}-up-${i}.xml`);
-    const nodes = parseUiXml(readXmlContent(path));
+    const xml = readXmlContent(path);
+    const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'quiz_pagination_relocate_up', {
+      phase: 'before',
+      page: label,
+    });
+    if (!inv.ok) return { tap: null, failure: inv };
+    const nodes = parseUiXml(xml);
     const next = locateQuizPaginationNext(nodes);
     if (next) {
       log.steps.push({ step: 'quiz_pagination_next_relocated', label, direction: 'up', scroll: i });
-      return next;
+      return { tap: next, failure: null };
     }
     scrollAnalyticsQuizListUp();
   }
-  for (let i = 0; i < maxScrolls; i++) {
-    const path = dump(`b-02-relocate-next-${label}-down-${i}.xml`);
-    const nodes = parseUiXml(readXmlContent(path));
-    const next = locateQuizPaginationNext(nodes);
+  for (let i = 0; i < CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS; i++) {
+    const scrolled = discoveryCtx.safeScrollClassDrillDown(
+      'quiz_pagination_relocate_down',
+      `b-02-relocate-next-${label}-down-${i}`,
+      label,
+    );
+    if (!scrolled.ok) return { tap: null, failure: scrolled };
+    const next = locateQuizPaginationNext(scrolled.nodes);
     if (next) {
       log.steps.push({ step: 'quiz_pagination_next_relocated', label, direction: 'down', scroll: i });
-      return next;
+      return { tap: next, failure: null };
     }
-    scrollAnalyticsClassDrillDown();
   }
-  return null;
+  return { tap: null, failure: null };
 }
 
 function collectPagerDiagnostics(xml) {
@@ -213,17 +370,40 @@ function snapshotMobileQuizPageMembership(xml, classDrillId, pageLabel) {
   };
 }
 
-function tapQuizPagerNextOnce(log, current, classDrillId) {
+function tapQuizPagerNextOnce(log, current, classDrillId, discoveryCtx) {
   const before = readHeroQuizPageFromDump(`b-02-quiz-pager-before-${current}`, classDrillId);
+  const invBefore = discoveryCtx.checkClassDrillInvariant(before.xml, before.path, 'quiz_pagination_next', {
+    phase: 'before',
+    page: current,
+  });
+  if (!invBefore.ok) {
+    return { ok: false, ...invBefore, currentPage: current };
+  }
   let next = locateQuizPaginationNext(parseUiXml(before.xml));
   if (!next) {
-    next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
+    const relocated = relocateQuizPaginationNextSmall(log, `to-${current + 1}`, classDrillId, discoveryCtx);
+    if (relocated.failure) {
+      return { ok: false, ...relocated.failure, currentPage: current };
+    }
+    next = relocated.tap;
   }
-  if (!next && ensureQuizPaginationNextVisible(log, classDrillId)) {
+  if (!next) {
+    const visible = ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx);
+    if (!visible.ok) {
+      recordProbeDriftForensics(log, classDrillId);
+      return {
+        ok: false,
+        label: visible.label || 'analytics_quiz_pagination_next_missing',
+        currentPage: current,
+        ...collectPagerDiagnostics(before.xml),
+        ...visible,
+      };
+    }
     const retrySnap = readHeroQuizPageFromDump(`b-02-quiz-pager-retry-${current}`, classDrillId);
     next = locateQuizPaginationNext(parseUiXml(retrySnap.xml));
   }
   if (!next) {
+    recordProbeDriftForensics(log, classDrillId);
     return {
       ok: false,
       label: 'analytics_quiz_pagination_next_missing',
@@ -235,6 +415,13 @@ function tapQuizPagerNextOnce(log, current, classDrillId) {
   executeTap(log, 'quiz_pagination_next', next, { from: current, to: expectedPage });
   sleep(2500);
   const after = readHeroQuizPageFromDump(`b-02-hero-after-next-${expectedPage}`, classDrillId);
+  const invAfter = discoveryCtx.checkClassDrillInvariant(after.xml, after.path, 'quiz_pagination_next', {
+    phase: 'after',
+    page: expectedPage,
+  });
+  if (!invAfter.ok) {
+    return { ok: false, ...invAfter, currentPage: current, expectedPage };
+  }
   log.steps.push({
     step: 'quiz_hero_page_after_next',
     expectedPage,
@@ -255,6 +442,7 @@ function tapQuizPagerNextOnce(log, current, classDrillId) {
 }
 
 function discoverFixturePageOnMobile(log, classDrillId) {
+  const discoveryCtx = createClassDrillDiscoveryContext(log, classDrillId);
   let { hero } = readHeroQuizPageFromDump('b-02-hero-initial', classDrillId);
   log.steps.push({ step: 'quiz_hero_page_initial', hero, discovery: 'ui_derived' });
   if (hero.current == null) {
@@ -268,7 +456,13 @@ function discoverFixturePageOnMobile(log, classDrillId) {
     }
   }
   if (hero.current == null) {
-    return { ok: false, label: 'analytics_quiz_hero_page_missing', mobilePageMemberships: [] };
+    return {
+      ok: false,
+      label: 'analytics_quiz_hero_page_missing',
+      mobilePageMemberships: [],
+      discoveryState: buildMobileQuizDiscoveryState([], null),
+      discoveryCtx,
+    };
   }
 
   const mobilePageMemberships = [];
@@ -287,29 +481,40 @@ function discoverFixturePageOnMobile(log, classDrillId) {
         mobileFixturePage: entry.page ?? current,
         hero: entry.hero,
       });
+      const discoveryState = buildMobileQuizDiscoveryState(
+        mobilePageMemberships,
+        entry.hero.totalPages ?? totalPages,
+      );
       return {
         ok: true,
         mobileFixturePage: entry.page ?? current,
         currentPage: entry.hero.current ?? current,
         totalPages: entry.hero.totalPages ?? totalPages,
         mobilePageMemberships,
+        discoveryState,
+        discoveryCtx,
       };
     }
 
     totalPages = entry.hero.totalPages ?? totalPages;
     if (current >= totalPages) break;
 
-    const nextStep = tapQuizPagerNextOnce(log, current, classDrillId);
+    const nextStep = tapQuizPagerNextOnce(log, current, classDrillId, discoveryCtx);
     if (!nextStep.ok) {
-      return { ...nextStep, mobilePageMemberships };
+      const discoveryState = buildMobileQuizDiscoveryState(mobilePageMemberships, totalPages);
+      return { ...nextStep, mobilePageMemberships, totalPages, discoveryState, discoveryCtx };
     }
     current = nextStep.currentPage;
   }
 
+  const discoveryState = buildMobileQuizDiscoveryState(mobilePageMemberships, totalPages);
   return {
     ok: false,
     label: 'analytics_fixture_quiz_missing_from_mobile_class_pages',
     mobilePageMemberships,
+    totalPages,
+    discoveryState,
+    discoveryCtx,
   };
 }
 
@@ -336,47 +541,6 @@ function logApiMobileOrderCrosscheck(log, quizPageHint, discovery) {
   return divergence;
 }
 
-function classifyFixtureDiscoveryOutcome(quizPageHint, discovery, viewportFound) {
-  const mobilePages = discovery.mobilePageMemberships || [];
-  const apiPage = quizPageHint?.apiHintPage ?? quizPageHint?.page ?? null;
-  const mobileFixturePage =
-    discovery.mobileFixturePage ??
-    mobilePages.find((p) => analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY))
-      ?.page ??
-    null;
-  const fixtureOnApiPage =
-    apiPage != null &&
-    quizPageHint?.found === true &&
-    Array.isArray(quizPageHint?.pageMembers) &&
-    analyticsPageMembersContainFixture(quizPageHint.pageMembers, FIXTURE_QUIZ_IDENTITY);
-  const fixtureOnMobileApiPage =
-    apiPage != null &&
-    mobilePages.some(
-      (p) => (p.page ?? p.hero?.current) === apiPage && analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY),
-    );
-  const fixtureOnAnyMobile = mobilePages.some((p) =>
-    analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY),
-  );
-
-  if (!viewportFound && fixtureOnAnyMobile && mobileFixturePage != null) {
-    return 'B';
-  }
-  if (
-    quizPageHint?.found === true &&
-    fixtureOnApiPage &&
-    !fixtureOnMobileApiPage &&
-    fixtureOnAnyMobile &&
-    mobileFixturePage != null &&
-    mobileFixturePage !== apiPage
-  ) {
-    return 'A';
-  }
-  if (quizPageHint?.found === true && !fixtureOnAnyMobile) {
-    return 'C';
-  }
-  return null;
-}
-
 function scrollQuizCardSectionTowardTop(log) {
   for (let i = 0; i < 6; i++) scrollAnalyticsQuizListUp();
   log.steps.push({ step: 'quiz_card_section_scroll_to_top', swipes: 6 });
@@ -388,28 +552,51 @@ function locateFixtureQuizViewAnalyticsOnPage(
   quizCardId,
   mobileFixturePage,
   classDrillId,
+  discoveryCtx,
 ) {
   scrollQuizCardSectionTowardTop(log);
   const locateViewTap = (xml) => locateByTestId(parseUiXml(xml), viewAnalyticsId);
   let path = dump('b-02-fixture-quiz-search-0.xml');
   let viewTap = locateViewTap(readXmlContent(path));
+  discoveryCtx.checkClassDrillInvariant(readXmlContent(path), path, 'fixture_quiz_search_initial', {
+    page: mobileFixturePage,
+  });
   if (!viewTap) {
-    const scrolled = locateWithScroll({
-      dumpFn: dump,
-      scrollFn: scrollAnalyticsClassDrillDown,
-      maxScrolls: 24,
-      dumpNamePrefix: 'b-02-fixture-quiz-search-down',
-      locateFn: locateViewTap,
-    });
-    viewTap = scrolled.hit;
+    let scrolls = 0;
+    for (let i = 0; i < 24 && !viewTap; i++) {
+      const scrolled = discoveryCtx.safeScrollClassDrillDown(
+        'fixture_quiz_viewport_search',
+        `b-02-fixture-quiz-search-down-${i}`,
+        mobileFixturePage,
+      );
+      scrolls = i + 1;
+      if (!scrolled.ok) {
+        log.steps.push({
+          step: 'fixture_quiz_search',
+          searchDirection: 'down',
+          mobileFixturePage,
+          scrolls,
+          located: false,
+          failure: scrolled.label,
+        });
+        return {
+          ok: false,
+          label: scrolled.label,
+          mobileFixturePage,
+          visibleQuizCardTestIds: [],
+        };
+      }
+      viewTap = locateViewTap(scrolled.xml);
+      path = scrolled.path;
+      if (viewTap) break;
+    }
     log.steps.push({
       step: 'fixture_quiz_search',
       searchDirection: 'down',
       mobileFixturePage,
-      scrolls: scrolled.scrolls,
+      scrolls,
       located: Boolean(viewTap),
     });
-    path = scrolled.xmlPath || path;
   }
   if (viewTap) {
     const nodes = parseUiXml(readXmlContent(path));
@@ -1571,14 +1758,31 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   const discovery = discoverFixturePageOnMobile(log, classDrillId);
   logApiMobileOrderCrosscheck(log, quizPageHint, discovery);
   if (!discovery.ok) {
-    const classification = classifyFixtureDiscoveryOutcome(quizPageHint, discovery, false);
+    const classification = classifyFixtureDiscoveryOutcome(
+      quizPageHint,
+      discovery,
+      false,
+      FIXTURE_QUIZ_IDENTITY,
+    );
     if (classification) {
-      log.steps.push({ step: 'analytics_fixture_page_classification', case: classification });
+      log.steps.push({
+        step: 'analytics_fixture_page_classification',
+        case: classification,
+        discoveryState: discovery.discoveryState ?? null,
+      });
+    } else if (discovery.discoveryState) {
+      log.steps.push({
+        step: 'analytics_fixture_page_classification',
+        case: null,
+        discoveryState: discovery.discoveryState,
+        note: 'Incomplete mobile page traversal — Case C suppressed',
+      });
     }
     return failJourneyB(log, {
       label: discovery.label,
       pass: false,
       mobilePageMemberships: discovery.mobilePageMemberships,
+      discoveryState: discovery.discoveryState ?? null,
       quizId: FIXTURE.quizId,
       sessionId: FIXTURE.sessionId,
     });
@@ -1591,9 +1795,15 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     quizCardId,
     mobileFixturePage,
     classDrillId,
+    discovery.discoveryCtx,
   );
   if (!fixtureLocate.ok) {
-    const classification = classifyFixtureDiscoveryOutcome(quizPageHint, discovery, false);
+    const classification = classifyFixtureDiscoveryOutcome(
+      quizPageHint,
+      discovery,
+      false,
+      FIXTURE_QUIZ_IDENTITY,
+    );
     log.steps.push({
       step: 'fixture_quiz_viewport_miss',
       mobileFixturePage,
@@ -1616,12 +1826,40 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     });
   }
 
+  const preViewAnalyticsPath = dump('b-02-before-fixture-view-analytics.xml');
+  const preViewAnalyticsXml = readXmlContent(preViewAnalyticsPath);
+  const preViewInvariant = discovery.discoveryCtx.checkClassDrillInvariant(
+    preViewAnalyticsXml,
+    preViewAnalyticsPath,
+    'view_analytics_fixture',
+    { page: mobileFixturePage, phase: 'before' },
+  );
+  if (!preViewInvariant.ok) {
+    return failJourneyB(log, { pass: false, ...preViewInvariant });
+  }
+
   executeTap(log, 'view_analytics', fixtureLocate.viewTap, {
     testId: viewAnalyticsId,
     expectedDrillIdentity: quizDrillId,
     expectedClassroom: FIXTURE.classroomId,
   });
   sleep(2500);
+  const immediateAfterPath = dump('b-02-after-fixture-view-analytics.xml');
+  const immediateAfterXml = readXmlContent(immediateAfterPath);
+  const immediateNodes = parseUiXml(immediateAfterXml);
+  if (!hasExactAnalyticsQuizDrillIdentity(immediateNodes, quizDrillId, FIXTURE.classroomId)) {
+    const observedQuizDrill = readObservedAnalyticsDrillMarkers(immediateNodes).find((d) =>
+      d.startsWith('analytics-drill-quiz-'),
+    );
+    if (observedQuizDrill && observedQuizDrill !== quizDrillId) {
+      return failJourneyB(log, {
+        label: 'analytics_wrong_quiz_drill_opened',
+        pass: false,
+        expectedQuizDrillId: quizDrillId,
+        observedQuizDrill,
+      });
+    }
+  }
   const drillOpened = assertAnalyticsQuizDrillIdentity(
     log,
     quizDrillId,

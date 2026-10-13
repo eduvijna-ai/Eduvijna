@@ -472,6 +472,224 @@ export function hasExactAnalyticsQuizDrillIdentity(nodes, quizDrillId, classroom
   });
 }
 
+/** @param {ReturnType<typeof parseUiXml>} nodes */
+export function readObservedAnalyticsDrillMarkers(nodes) {
+  const drills = new Set();
+  for (const n of nodes) {
+    const blob = `${n['resource-id'] || ''} ${n['content-desc'] || ''}`;
+    const classM = blob.match(/analytics-drill-class-[A-Za-z0-9_]+/);
+    const quizM = blob.match(/analytics-drill-quiz-\d+-[0-9a-f-]+/i);
+    if (classM) drills.add(classM[0]);
+    if (quizM) drills.add(quizM[0]);
+  }
+  return [...drills];
+}
+
+/**
+ * During class-quiz discovery the harness must remain on the exact class drill until fixture View Analytics.
+ * @param {string} xmlContent
+ * @param {string} expectedClassDrillId
+ * @param {Record<string, unknown>} [context]
+ */
+export function assertClassDrillInvariant(xmlContent, expectedClassDrillId, context = {}) {
+  const nodes = parseUiXml(xmlContent);
+  const hero = readAnalyticsClassDrillHeroQuizPageState(xmlContent, expectedClassDrillId);
+  const pageMembers = readAnalyticsQuizPageMembers(xmlContent, expectedClassDrillId);
+  const observedDrills = readObservedAnalyticsDrillMarkers(nodes);
+  const quizDrill = observedDrills.find((d) => d.startsWith('analytics-drill-quiz-'));
+  const classOk = hasExactAnalyticsDrillIdentity(nodes, expectedClassDrillId);
+
+  if (quizDrill) {
+    return {
+      ok: false,
+      label: 'analytics_navigation_drift_during_quiz_discovery',
+      expectedClassDrillId,
+      observedDrillIdentity: quizDrill,
+      heroAccessibilityLabel: hero.raw,
+      pageNumber: pageMembers.page ?? hero.current,
+      currentPageMembership: pageMembers.members,
+      ...context,
+    };
+  }
+  if (!classOk) {
+    return {
+      ok: false,
+      label: 'analytics_class_drill_invariant_broken',
+      expectedClassDrillId,
+      observedDrillIdentity: observedDrills[0] ?? null,
+      heroAccessibilityLabel: hero.raw,
+      pageNumber: pageMembers.page ?? hero.current,
+      currentPageMembership: pageMembers.members,
+      ...context,
+    };
+  }
+  return {
+    ok: true,
+    hero,
+    pageMembers,
+    heroAccessibilityLabel: hero.raw,
+    pageNumber: pageMembers.page ?? hero.current,
+    currentPageMembership: pageMembers.members,
+  };
+}
+
+const EXCLUDED_ANALYTICS_CLICKABLE_PATTERNS = [
+  /analytics-quiz-view-/i,
+  /analytics-quiz-pagination/i,
+  /analytics-pagination-/i,
+  /analytics-drill-back/i,
+];
+
+/** @param {ReturnType<typeof parseUiXml>[number]} node */
+export function isExcludedAnalyticsDiscoveryClickable(node) {
+  const blob = `${node['resource-id'] || ''} ${node['content-desc'] || ''} ${node.text || ''}`;
+  if (EXCLUDED_ANALYTICS_CLICKABLE_PATTERNS.some((re) => re.test(blob))) return true;
+  if (/^Students$/i.test(String(node.text || '').trim())) return true;
+  if (/^View Analytics$/i.test(String(node.text || '').trim())) return true;
+  return false;
+}
+
+function pointInsideBoundsRect(x, y, rect) {
+  return x >= rect.x1 && x <= rect.x2 && y >= rect.y1 && y <= rect.y2;
+}
+
+/**
+ * Pick ACTION_DOWN for class-drill discovery scroll outside clickable controls.
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ */
+export function findSafeAnalyticsClassDrillScrollStart(
+  nodes,
+  { contentMinY = 760, contentMaxY = 1620 } = {},
+) {
+  const clickables = nodes.filter(
+    (n) =>
+      n.clickable === 'true' &&
+      n.boundsRect &&
+      n.boundsRect.y2 >= contentMinY &&
+      n.boundsRect.y1 <= contentMaxY + 80,
+  );
+
+  const overlapsClickable = (x, y) => {
+    for (const c of clickables) {
+      if (!c.boundsRect) continue;
+      if (!pointInsideBoundsRect(x, y, c.boundsRect)) continue;
+      if (isExcludedAnalyticsDiscoveryClickable(c)) return true;
+      if (c.boundsRect.y1 >= 1680) return true;
+      return true;
+    }
+    return false;
+  };
+
+  const textCandidates = nodes
+    .filter((n) => {
+      if (!n.boundsRect) return false;
+      const { cy } = n.boundsRect;
+      if (cy < contentMinY || cy > contentMaxY) return false;
+      if (n.clickable === 'true') return false;
+      const text = String(n.text || '').trim();
+      return text.length > 0 && !/^View Analytics$/i.test(text);
+    })
+    .sort((a, b) => b.boundsRect.cy - a.boundsRect.cy);
+
+  for (const c of textCandidates) {
+    const { cx, cy } = c.boundsRect;
+    if (!overlapsClickable(cx, cy)) {
+      return { x: cx, y: cy, clickableOverlapAtStart: false, source: 'text', label: c.text };
+    }
+  }
+
+  for (let y = contentMaxY; y >= contentMinY; y -= 36) {
+    for (let x = 160; x <= 920; x += 64) {
+      if (!overlapsClickable(x, y)) {
+        return { x, y, clickableOverlapAtStart: false, source: 'grid' };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {{ page?: number|null; hero?: { current?: number|null }; members?: unknown[] }[]} mobilePageMemberships
+ * @param {number|null|undefined} expectedTotalPages
+ */
+export function buildMobileQuizDiscoveryState(mobilePageMemberships, expectedTotalPages) {
+  const pagesVisited = (mobilePageMemberships || [])
+    .map((m) => m.page ?? m.hero?.current ?? null)
+    .filter((p) => p != null);
+  const uniquePages = [...new Set(pagesVisited)].sort((a, b) => a - b);
+  const total = expectedTotalPages ?? null;
+  const discoveryComplete =
+    total != null &&
+    total > 0 &&
+    uniquePages.length === total &&
+    uniquePages.every((p, idx) => p === idx + 1);
+  return {
+    discoveryComplete,
+    pagesVisited: uniquePages,
+    expectedTotalPages: total,
+  };
+}
+
+/**
+ * @param {{ quizId: number; sessionId: string }} fixtureIdentity
+ */
+export function classifyFixtureDiscoveryOutcome(
+  quizPageHint,
+  discovery,
+  viewportFound,
+  fixtureIdentity,
+) {
+  const mobilePages = discovery.mobilePageMemberships || [];
+  const discoveryState =
+    discovery.discoveryState ??
+    buildMobileQuizDiscoveryState(
+      mobilePages,
+      discovery.totalPages ?? mobilePages[0]?.hero?.totalPages ?? quizPageHint?.totalPages ?? null,
+    );
+  const apiPage = quizPageHint?.apiHintPage ?? quizPageHint?.page ?? null;
+  const mobileFixturePage =
+    discovery.mobileFixturePage ??
+    mobilePages.find((p) => analyticsPageMembersContainFixture(p.members, fixtureIdentity))?.page ??
+    null;
+  const fixtureOnApiPage =
+    apiPage != null &&
+    quizPageHint?.found === true &&
+    Array.isArray(quizPageHint?.pageMembers) &&
+    analyticsPageMembersContainFixture(quizPageHint.pageMembers, fixtureIdentity);
+  const fixtureOnMobileApiPage =
+    apiPage != null &&
+    mobilePages.some(
+      (p) =>
+        (p.page ?? p.hero?.current) === apiPage &&
+        analyticsPageMembersContainFixture(p.members, fixtureIdentity),
+    );
+  const fixtureOnAnyMobile = mobilePages.some((p) =>
+    analyticsPageMembersContainFixture(p.members, fixtureIdentity),
+  );
+
+  if (!viewportFound && fixtureOnAnyMobile && mobileFixturePage != null) {
+    return 'B';
+  }
+  if (
+    quizPageHint?.found === true &&
+    fixtureOnApiPage &&
+    !fixtureOnMobileApiPage &&
+    fixtureOnAnyMobile &&
+    mobileFixturePage != null &&
+    mobileFixturePage !== apiPage
+  ) {
+    return 'A';
+  }
+  if (
+    quizPageHint?.found === true &&
+    discoveryState.discoveryComplete &&
+    !fixtureOnAnyMobile
+  ) {
+    return 'C';
+  }
+  return null;
+}
+
 export function readAnalyticsDateState(xmlContent) {
   const nodes = parseUiXml(xmlContent);
   const node = nodes.find((n) => {
