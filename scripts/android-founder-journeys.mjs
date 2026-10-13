@@ -144,14 +144,22 @@ function readHeroQuizPageFromDump(dumpName, classDrillId) {
 function ensureQuizPaginationNextVisible(log, classDrillId, maxScrolls = 16) {
   let snap = readHeroQuizPageFromDump('b-02-quiz-next-probe-0', classDrillId);
   if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
-    log.steps.push({ step: 'quiz_pagination_next_visible', scroll: 0 });
+    log.steps.push({ step: 'quiz_pagination_next_visible', scroll: 0, direction: 'none' });
     return true;
   }
   for (let i = 0; i < maxScrolls; i++) {
-    scrollAnalyticsClassDrillDown();
-    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-${i + 1}`, classDrillId);
+    scrollAnalyticsQuizListUp();
+    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-up-${i + 1}`, classDrillId);
     if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
-      log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1 });
+      log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1, direction: 'up' });
+      return true;
+    }
+  }
+  for (let i = 0; i < maxScrolls; i++) {
+    scrollAnalyticsClassDrillDown();
+    snap = readHeroQuizPageFromDump(`b-02-quiz-next-probe-down-${i + 1}`, classDrillId);
+    if (locateQuizPaginationNext(parseUiXml(snap.xml))) {
+      log.steps.push({ step: 'quiz_pagination_next_visible', scroll: i + 1, direction: 'down' });
       return true;
     }
   }
@@ -206,20 +214,14 @@ function snapshotMobileQuizPageMembership(xml, classDrillId, pageLabel) {
 }
 
 function tapQuizPagerNextOnce(log, current, classDrillId) {
-  if (!ensureQuizPaginationNextVisible(log, classDrillId)) {
-    const diagPath = dump('b-02-quiz-next-missing.xml');
-    const diagXml = readXmlContent(diagPath);
-    return {
-      ok: false,
-      label: 'analytics_quiz_pagination_next_missing',
-      currentPage: current,
-      ...collectPagerDiagnostics(diagXml),
-    };
-  }
   const before = readHeroQuizPageFromDump(`b-02-quiz-pager-before-${current}`, classDrillId);
   let next = locateQuizPaginationNext(parseUiXml(before.xml));
   if (!next) {
     next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
+  }
+  if (!next && ensureQuizPaginationNextVisible(log, classDrillId)) {
+    const retrySnap = readHeroQuizPageFromDump(`b-02-quiz-pager-retry-${current}`, classDrillId);
+    next = locateQuizPaginationNext(parseUiXml(retrySnap.xml));
   }
   if (!next) {
     return {
