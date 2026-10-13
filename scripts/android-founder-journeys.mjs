@@ -152,19 +152,37 @@ function scrollUntilQuizPagerReadable(dumpNamePrefix = 'b-02-pager-visible') {
 }
 
 function assertQuizPagerPage(log, expectedCurrent, expectedTotalPages, dumpName) {
-  const path = dump(`${dumpName}.xml`);
-  const state = readAnalyticsQuizPagerState(readXmlContent(path));
-  const ok =
-    state.current === expectedCurrent &&
-    (expectedTotalPages == null || state.totalPages === expectedTotalPages);
+  let state = { current: null, totalPages: null, raw: null };
+  let path = null;
+  for (let retry = 0; retry < 4; retry++) {
+    if (retry > 0) {
+      scrollUntilQuizPagerReadable(`${dumpName}-relocate-${retry}`);
+    }
+    path = dump(`${dumpName}-r${retry}.xml`);
+    state = readAnalyticsQuizPagerState(readXmlContent(path));
+    const ok =
+      state.current === expectedCurrent &&
+      (expectedTotalPages == null || state.totalPages === expectedTotalPages);
+    if (ok) {
+      log.steps.push({
+        step: 'quiz_pager_page_assert',
+        expectedCurrent,
+        expectedTotalPages,
+        actual: state,
+        ok: true,
+        retry,
+      });
+      return { ok: true, state, xmlPath: path };
+    }
+  }
   log.steps.push({
     step: 'quiz_pager_page_assert',
     expectedCurrent,
     expectedTotalPages,
     actual: state,
-    ok,
+    ok: false,
   });
-  return { ok, state, xmlPath: path };
+  return { ok: false, state, xmlPath: path };
 }
 
 function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint) {
@@ -200,7 +218,9 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint) {
         tap: tapTarget(next),
       });
       tapTarget(next);
-      sleep(2200);
+      sleep(2800);
+      scrollToTop(8);
+      sleep(600);
       const asserted = assertQuizPagerPage(log, nextPage, totalPages, `b-02-after-next-${guard}`);
       if (!asserted.ok) {
         return {
