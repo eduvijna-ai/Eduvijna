@@ -59,6 +59,8 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
   'DocumentQuiz':                'DocumentUploadHomeScreen',
   'DocumentQuizPage':            'DocumentUploadHomeScreen',
   'HandwrittenWorkspace':        'CreateHandwrittenQuizScreen',
+  'Handwritten':                 'CreateHandwrittenQuizScreen',
+  'DocImageExtraction':          'CreateHandwrittenQuizScreen',
   'CreateHandwrittenQuizScreen': 'CreateHandwrittenQuizScreen',
   'CreateImageQuizScreen':       'CreateImageQuizScreen',
   'ImageQuizPage':               'CreateImageQuizScreen',

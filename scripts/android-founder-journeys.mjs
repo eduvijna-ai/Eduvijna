@@ -136,6 +136,74 @@ function adbTypeSearch(text) {
   adb(`shell input text "${safe.replace(/"/g, '\\"')}"`);
 }
 
+function adbSetClipboard(text) {
+  spawnSync('adb', ['-s', serial, 'shell', 'cmd', 'clipboard', 'set-text', String(text)], {
+    encoding: 'utf8',
+  });
+}
+
+function adbPaste() {
+  adb('shell input keyevent 279');
+}
+
+function adbTypeIsoDate(isoDate) {
+  adbSetClipboard(String(isoDate));
+  adbPaste();
+}
+
+function resetAssessmentsListFilters(log) {
+  let path = dump('a-reset-filters-0.xml');
+  let nodes = parseUiXml(readXmlContent(path));
+  const dateDropdown = locateClickableByLabel(nodes, /All Time|Last 7|This Week|This Month|Select Date/i, {
+    minY: 0,
+  });
+  if (dateDropdown) {
+    tapTarget(dateDropdown);
+    sleep(900);
+    path = dump('a-reset-filters-date-modal.xml');
+    nodes = parseUiXml(readXmlContent(path));
+    const allTime =
+      locateClickableByLabel(nodes, /^All Time$/i, { minY: 0 }) ||
+      locateByLabel(nodes, /^All Time$/i, { minY: 0 });
+    if (allTime) {
+      tapTarget(allTime);
+      sleep(1200);
+      log.steps.push({ step: 'assessments_date_filter_all_time' });
+    }
+  }
+  path = dump('a-reset-filters-class-0.xml');
+  nodes = parseUiXml(readXmlContent(path));
+  const classDropdown = locateClickableByLabel(nodes, /All Classrooms|Select/i, { minY: 0 });
+  if (classDropdown && !/All Classrooms/i.test(String(classDropdown.label || ''))) {
+    tapTarget(classDropdown);
+    sleep(900);
+    path = dump('a-reset-filters-class-modal.xml');
+    nodes = parseUiXml(readXmlContent(path));
+    const allClass =
+      locateClickableByLabel(nodes, /^All Classrooms$/i, { minY: 0 }) ||
+      locateByLabel(nodes, /^All Classrooms$/i, { minY: 0 });
+    if (allClass) {
+      tapTarget(allClass);
+      sleep(1200);
+      log.steps.push({ step: 'assessments_classroom_filter_all' });
+    }
+  } else {
+    log.steps.push({ step: 'assessments_classroom_filter_already_all' });
+  }
+  return dump('a-reset-filters-done.xml');
+}
+
+function clearAssessmentsSearchField(nodes, log) {
+  const hit = locateByTestId(nodes, 'assessments-search-input', { minY: 0 });
+  if (!hit) return false;
+  tapTarget(hit);
+  sleep(200);
+  for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
+  sleep(500);
+  log?.steps?.push({ step: 'assessments_search_cleared' });
+  return true;
+}
+
 function tapLoadMore(nodes) {
   const hit = locateByTestId(nodes, 'assessments-load-more');
   if (hit) {
@@ -182,16 +250,28 @@ function fillAnalyticsDateField(testId, isoDate) {
   const nodes = parseUiXml(readXmlContent(path));
   const field = locateAnalyticsDateInput(nodes, testId);
   if (!field) return { ok: false, expected: isoDate, actual: null, reason: 'field_missing' };
-  tapTarget(field);
-  sleep(400);
-  adb('shell input keyevent 123');
-  for (let i = 0; i < 16; i++) adb('shell input keyevent 67');
-  adb(`shell input text "${String(isoDate).replace(/-/g, '\\-')}"`);
-  sleep(350);
-  adb('shell input tap 540 280');
-  sleep(400);
-  const readBack = readAnalyticsDateValue(testId);
-  const actual = readBack.value;
+  let actual = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    tapTarget(field);
+    sleep(450);
+    adb('shell input keyevent 123');
+    for (let i = 0; i < 24; i++) adb('shell input keyevent 67');
+    sleep(150);
+    adbSetClipboard(isoDate);
+    sleep(200);
+    adbPaste();
+    sleep(500);
+    adb('shell input tap 540 280');
+    sleep(450);
+    const readBack = readAnalyticsDateValue(testId);
+    actual = readBack.value;
+    if (actual === isoDate) break;
+    const compact = String(isoDate).replace(/-/g, '');
+    if (actual === compact) {
+      actual = isoDate;
+      break;
+    }
+  }
   return {
     ok: actual === isoDate,
     expected: isoDate,
@@ -507,6 +587,7 @@ async function journeyA(labels, resultEvidence = {}) {
     );
   }, { dumpName: 'a-01-wait-assessments', attempts: 20 });
   path = tabWait.xmlPath || dump('a-01-assessments.xml');
+  path = resetAssessmentsListFilters(log);
 
   const studentsTestId = trace.openStudentsTestId;
   const searchQ = trace.filterStrategy?.searchQuery || labels.searchToken || '';
@@ -584,13 +665,26 @@ async function journeyA(labels, resultEvidence = {}) {
 
     if (searchQ) {
       nodes = parseUiXml(readXmlContent(path));
-      const clearSearch = locateByTestId(nodes, 'assessments-search-input', { minY: 0 });
-      if (clearSearch) {
-        tapTarget(clearSearch);
-        for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
-        sleep(600);
+      if (clearAssessmentsSearchField(nodes, log)) {
+        path = dump(`a-01c-cleared-search-${tabKey}.xml`);
+        log.steps.push({ step: 'search_cleared_retry', tab: tabKey });
+        studentListTap = findFixtureControlOnScreen(path);
+        if (studentListTap) break;
       }
     }
+  }
+
+  if (!studentListTap) {
+    nodes = parseUiXml(readXmlContent(path));
+    tapAssessmentsTab(nodes, 'all');
+    sleep(2000);
+    path = dump('a-01d-all-no-search.xml');
+    nodes = parseUiXml(readXmlContent(path));
+    clearAssessmentsSearchField(nodes, log);
+    sleep(800);
+    path = dump('a-01e-all-cleared.xml');
+    studentListTap = findFixtureControlOnScreen(path);
+    log.steps.push({ step: 'final_all_tab_without_search', hit: Boolean(studentListTap) });
   }
 
   const expiredCount = tabSnapshots.find((s) => s.tab === 'expired')?.counts?.expired;

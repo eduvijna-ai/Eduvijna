@@ -55,6 +55,7 @@ const isPlatformTile = (tile: ResolvedNavItem): boolean => {
 const PLATFORM_EXPANSION_SCREENS = [
   'CreateAIQuizScreen',
   'CreateDocumentQuizScreen',
+  'CreateHandwrittenQuizScreen',
   'CreateImageQuizScreen',
 ];
 
