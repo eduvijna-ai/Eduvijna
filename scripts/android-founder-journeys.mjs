@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { adbUiDump } from './lib/adb-ui-dump.mjs';
 import {
   isEduvijnaAppForeground,
+  collectUiTexts,
   locateByLabel,
   locateClickableByLabel,
   locateByTestId,
@@ -22,6 +23,9 @@ import {
   readXmlContent,
   verifyStudentListDestination,
   verifyWorksheetResultScreen,
+  isMainTabShellVisible,
+  hasExactAnalyticsDrillIdentity,
+  shouldExecuteViewAnalyticsTap,
 } from './lib/android-journey-logic.mjs';
 
 import {
@@ -273,6 +277,15 @@ function readAnalyticsDateStateFromDump(dumpName = 'b-analytics-date-state') {
   return readAnalyticsDateState(readXmlContent(path));
 }
 
+function readAnalyticsDateInputsFromDump(dumpName = 'b-analytics-date-inputs') {
+  const path = dump(`${dumpName}.xml`);
+  const xml = readXmlContent(path);
+  return {
+    from: readTextInputByTestId(xml, 'analytics-date-from-input'),
+    to: readTextInputByTestId(xml, 'analytics-date-to-input'),
+  };
+}
+
 function tapNativeDatePickerConfirm(nodes) {
   return (
     locateClickableByLabel(nodes, /^OK$/i) ||
@@ -344,7 +357,7 @@ function navigateAndroidMaterialDatePicker(targetIso, log, label) {
     const ok = tapNativeDatePickerConfirm(nodes);
     if (ok && daySelected) {
       tapTarget(ok);
-      sleep(700);
+      sleep(1200);
       log?.steps?.push({ step: 'native_date_picker_confirmed', label, targetIso });
       return { ok: true };
     }
@@ -505,31 +518,41 @@ function applyFixtureAnalyticsDateRange(log) {
     const fromResult = setAnalyticsDateViaNativePicker('from', from, log);
     log.steps.push({ step: 'analytics_date_native_from', fromResult });
     if (!fromResult.ok) return fromResult;
-    state = readAnalyticsDateStateFromDump('b-date-state-after-from');
-    if (state.from !== from) {
+    sleep(800);
+    const fromInputs = readAnalyticsDateInputsFromDump('b-date-inputs-after-from');
+    const fromMarker = readAnalyticsDateStateFromDump('b-date-state-after-from');
+    log.steps.push({ step: 'analytics_date_after_from', inputs: fromInputs, marker: fromMarker });
+    const actualFrom = fromInputs.from || fromMarker.from;
+    if (actualFrom !== from) {
       return {
         ok: false,
         label: 'analytics_date_state_mismatch',
         field: 'from',
         expected: from,
-        actual: state.from,
+        actual: actualFrom,
       };
     }
+    state = { ...state, from: actualFrom };
   }
   if (state.to !== to) {
     const toResult = setAnalyticsDateViaNativePicker('to', to, log);
     log.steps.push({ step: 'analytics_date_native_to', toResult });
     if (!toResult.ok) return toResult;
-    state = readAnalyticsDateStateFromDump('b-date-state-after-to');
-    if (state.to !== to) {
+    sleep(800);
+    const toInputs = readAnalyticsDateInputsFromDump('b-date-inputs-after-to');
+    const toMarker = readAnalyticsDateStateFromDump('b-date-state-after-to');
+    log.steps.push({ step: 'analytics_date_after_to', inputs: toInputs, marker: toMarker });
+    const actualTo = toInputs.to || toMarker.to;
+    if (actualTo !== to) {
       return {
         ok: false,
         label: 'analytics_date_state_mismatch',
         field: 'to',
         expected: to,
-        actual: state.to,
+        actual: actualTo,
       };
     }
+    state = { ...state, to: actualTo };
   }
   log.steps.push({ step: 'analytics_date_state_ready', state });
   const path = dump('b-date-before-apply.xml');
@@ -633,41 +656,104 @@ function failJourneyB(log, verify) {
 }
 
 function assertAnalyticsDrillIdentity(log, expectedTestId, dumpName) {
-  const result = waitFor((xml) => {
-    const n = parseUiXml(xml);
-    if (locateByTestId(n, expectedTestId) != null) return true;
-    if (expectedTestId === 'analytics-drill-classes') {
-      return (
-        locateByContentDesc(n, /Open class analytics:/i, { requireClickable: true }) != null ||
-        locateByLabel(n, /Class Overview/i, { minY: 0 }) != null
-      );
-    }
-    if (expectedTestId.startsWith('analytics-drill-class-')) {
-      const classId = expectedTestId.slice('analytics-drill-class-'.length);
-      return (
-        locateByTestId(n, `analytics-class-card-${classId}`) != null ||
-        locateByLabel(n, /View Analytics/i, { minY: 0 }) != null ||
-        locateByLabel(n, /quizzes ·/i, { minY: 0 }) != null ||
-        locateByLabel(n, /Class Performance/i, { minY: 0 }) != null ||
-        locateClickableByLabel(n, /^All Classes$/i, { minY: 0 }) != null
-      );
-    }
-    const quizDrill = expectedTestId.match(/^analytics-drill-quiz-(\d+)-(.+)$/);
-    if (quizDrill) {
-      const quizId = quizDrill[1];
-      const sessionId = quizDrill[2];
-      return (
-        locateByTestId(n, `analytics-summary-row-${quizId}-${sessionId}`) != null ||
-        locateByTestId(n, `analytics-quiz-card-${quizId}-${sessionId}`) != null ||
-        locateByTestId(n, `analytics-quiz-view-${quizId}-${sessionId}-open`) != null ||
-        locateByLabel(n, /attempt for/i, { minY: 0 }) != null ||
-        locateClickableByLabel(n, /^Back to Quizzes$/i, { minY: 0 }) != null
-      );
-    }
-    return false;
-  }, { dumpName, attempts: 16, pauseMs: 1500 });
+  const result = waitFor(
+    (xml) => hasExactAnalyticsDrillIdentity(parseUiXml(xml), expectedTestId),
+    { dumpName, attempts: 16, pauseMs: 1500 },
+  );
   log.steps.push({ step: 'assert_drill_identity', expected: expectedTestId, ok: result.ok });
   return result.ok;
+}
+
+async function returnToMainShell(log, { dumpNamePrefix = 'transition-main-shell' } = {}) {
+  let path = dump(`${dumpNamePrefix}-0.xml`);
+  let nodes = parseUiXml(readXmlContent(path));
+  if (isMainTabShellVisible(nodes)) {
+    log.steps.push({ step: 'return_to_main_shell', ok: true, via: 'already_visible' });
+    return true;
+  }
+  const goDash =
+    locateByContentDesc(nodes, 'Go to main dashboard', { requireClickable: true }) ||
+    locateByLabel(nodes, 'Go to main dashboard', { minY: 0 });
+  if (goDash) {
+    log.steps.push({
+      step: 'return_to_main_shell',
+      via: 'go_to_main_dashboard',
+      tap: tapTarget(goDash),
+    });
+    tapTarget(goDash);
+    sleep(3500);
+    path = dump(`${dumpNamePrefix}-after-dashboard.xml`);
+    nodes = parseUiXml(readXmlContent(path));
+    if (isMainTabShellVisible(nodes)) {
+      log.steps.push({ step: 'return_to_main_shell', ok: true, via: 'after_go_dashboard' });
+      return true;
+    }
+  }
+  const waitResult = waitFor((xml) => isMainTabShellVisible(parseUiXml(xml)), {
+    dumpName: `${dumpNamePrefix}-wait`,
+    attempts: 8,
+    pauseMs: 1500,
+  });
+  if (waitResult.ok) {
+    log.steps.push({ step: 'return_to_main_shell', ok: true, via: 'wait_after_dashboard' });
+    return true;
+  }
+  for (let i = 0; i < 10; i++) {
+    path = dump(`${dumpNamePrefix}-back-${i}.xml`);
+    nodes = parseUiXml(readXmlContent(path));
+    if (isMainTabShellVisible(nodes)) {
+      log.steps.push({ step: 'return_to_main_shell', ok: true, via: 'hardware_back', attempts: i });
+      return true;
+    }
+    log.steps.push({
+      step: 'return_to_main_shell_back',
+      attempt: i,
+      sampleLabels: collectUiTexts(nodes).slice(0, 12),
+    });
+    adb('shell input keyevent 4');
+    sleep(1800);
+  }
+  log.steps.push({ step: 'journey_transition_to_main_shell_failed', ok: false });
+  return false;
+}
+
+async function enterAnalyticsDashboardFromMainShell(log) {
+  await dismissOverlays();
+  ensureInApp();
+  let path = dump('b-00-home.xml');
+  let nodes = parseUiXml(readXmlContent(path));
+  if (!isMainTabShellVisible(nodes)) {
+    const returned = await returnToMainShell(log, { dumpNamePrefix: 'b-00-return-shell' });
+    if (!returned) {
+      return { ok: false, label: 'journey_transition_to_main_shell_failed' };
+    }
+    path = dump('b-00b-home.xml');
+    nodes = parseUiXml(readXmlContent(path));
+  }
+  log.steps.push({ step: 'main_shell_identity', ok: isMainTabShellVisible(nodes) });
+  const analyticsTab =
+    locateByLabel(nodes, 'Analytics', { minY: 1200, pick: 'bottom' }) ||
+    locateByLabel(nodes, 'Analytics', { pick: 'bottom' });
+  if (!analyticsTab) {
+    log.steps.push({ step: 'analytics_tab', tap: null });
+    return { ok: false, label: 'analytics_tab_missing_from_main_shell' };
+  }
+  const analyticsTap = tapTarget(analyticsTab);
+  log.steps.push({ step: 'analytics_tab', tap: analyticsTap });
+  tapTarget(analyticsTab);
+  sleep(4500);
+  const hubWait = waitFor(
+    (xml) => locateByLabel(parseUiXml(xml), /Analytics Dashboard/i, { minY: 0 }) != null,
+    { dumpName: 'b-00-wait-analytics-hub', attempts: 12, pauseMs: 1500 },
+  );
+  if (!hubWait.ok) {
+    return { ok: false, label: 'analytics_dashboard_missing' };
+  }
+  const controls = waitForAnalyticsDateControls(log);
+  if (!controls.ok) {
+    return { ok: false, label: 'analytics_date_controls_missing' };
+  }
+  return { ok: true };
 }
 function screenshot(name) {
   const local = join(evidence, name);
@@ -1009,28 +1095,13 @@ async function journeyA(labels, resultEvidence = {}) {
 async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   const fx = fixtureContext(labels, resultEvidence);
   const log = { journey: 'B_analytics_view_analytics_result', steps: [] };
-  await dismissOverlays();
-  ensureInApp();
-
-  let path = dump('b-00-home.xml');
-  let nodes = parseUiXml(readXmlContent(path));
-  const homeTap = locateByLabel(nodes, 'Home', { minY: 0, pick: 'bottom' });
-  if (homeTap) {
-    log.steps.push({ step: 'home_tab', tap: tapTarget(homeTap) });
-    sleep(1500);
+  const entry = await enterAnalyticsDashboardFromMainShell(log);
+  if (!entry.ok) {
+    return failJourneyB(log, { label: entry.label, pass: false });
   }
-  path = dump('b-00b-home.xml');
-  nodes = parseUiXml(readXmlContent(path));
-  log.steps.push({
-    step: 'analytics_tab',
-    tap: tapTarget(locateByLabel(nodes, 'Analytics', { minY: 0, pick: 'bottom' })),
-  });
-  sleep(4500);
-  waitFor(
-    (xml) => locateByLabel(parseUiXml(xml), /Analytics Dashboard/i, { minY: 0 }) != null,
-    { dumpName: 'b-00-wait-analytics-hub', attempts: 12, pauseMs: 1500 },
-  );
 
+  let path;
+  let nodes;
   const classTestId = `analytics-class-card-${FIXTURE.classroomId}`;
   const classLabel = labels.classLabel || '4A-Mathematics';
   const classOpenDesc = classLabel ? `Open class analytics: ${classLabel}` : null;
@@ -1199,9 +1270,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     if (scrolledSummary.hit) {
       log.steps.push({ step: 'open_quiz_drill', via: 'summary_row_first', tap: tapTarget(scrolledSummary.hit) });
       tapTarget(scrolledSummary.hit);
-      drillOpened = true;
       sleep(3000);
-      break;
+      drillOpened = assertAnalyticsDrillIdentity(log, quizDrillId, 'b-after-summary-row-first');
+      if (drillOpened) break;
     }
     if (!tapAnalyticsPaginationNext(log, 'summary_pagination_first', pageTry, 'summary')) {
       tapAnalyticsPaginationNext(log, 'quiz_pagination_first', pageTry, 'quiz');
@@ -1229,18 +1300,16 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (quizScrolls > 0) {
     log.steps.push({ step: 'quiz_scroll', scrolls: quizScrolls });
   }
-  if (!drillOpened) {
-    drillOpened = Boolean(viewAnalyticsTap);
-  }
-  if (viewAnalyticsTap && !drillOpened) {
+  if (shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap })) {
     log.steps.push({
       step: 'view_analytics',
       tap: tapTarget(viewAnalyticsTap),
       testId: viewAnalyticsId,
+      expectedDrillIdentity: quizDrillId,
     });
     tapTarget(viewAnalyticsTap);
-    drillOpened = true;
     sleep(2500);
+    drillOpened = assertAnalyticsDrillIdentity(log, quizDrillId, 'b-after-view-analytics-tap');
   } else if (!drillOpened) {
     for (let pageTry = 0; pageTry < 10 && !drillOpened; pageTry++) {
       scrollToTop(4);
@@ -1254,9 +1323,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
       if (scrolledSummary.hit) {
         log.steps.push({ step: 'open_quiz_drill', via: 'summary_row', tap: tapTarget(scrolledSummary.hit) });
         tapTarget(scrolledSummary.hit);
-        drillOpened = true;
         sleep(2500);
-        break;
+        drillOpened = assertAnalyticsDrillIdentity(log, quizDrillId, 'b-after-summary-row');
+        if (drillOpened) break;
       }
       if (!tapAnalyticsPaginationNext(log, 'summary_pagination_next', pageTry, 'summary')) break;
     }
@@ -1403,7 +1472,25 @@ async function main() {
     results.a = await journeyA(labels, resultEvidence);
     if (!results.a.pass) failed = true;
   }
-  if (which === 'b' || which === 'all') {
+  if (which === 'all' && results.a?.pass) {
+    const transitionLog = { steps: [] };
+    const shellOk = await returnToMainShell(transitionLog, { dumpNamePrefix: 'ab-transition' });
+    writeFileSync(
+      join(evidence, 'journey-ab-transition.json'),
+      JSON.stringify(transitionLog, null, 2),
+    );
+    if (!shellOk) {
+      results.b = {
+        journey: 'B_analytics_view_analytics_result',
+        steps: transitionLog.steps,
+        pass: false,
+        verify: { label: 'journey_transition_to_main_shell_failed', pass: false, ok: false },
+      };
+      writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(results.b, null, 2));
+      failed = true;
+    }
+  }
+  if ((which === 'b' || which === 'all') && !results.b) {
     const quizPageHint = await loadFixtureAnalyticsQuizPage();
     results.b = await journeyB(labels, resultEvidence, quizPageHint);
     if (!results.b.pass) failed = true;

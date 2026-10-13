@@ -271,6 +271,45 @@ export function classifyJourneyAAssessmentsState(state) {
 /**
  * @param {string} xmlContent
  */
+/**
+ * Main instructor bottom tab shell (Home + Assessments + Analytics).
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ */
+export function isMainTabShellVisible(nodes) {
+  const bottomY = 1200;
+  const home =
+    locateByLabel(nodes, 'Home', { minY: bottomY, pick: 'bottom' }) ||
+    locateByLabel(nodes, 'Home', { pick: 'bottom' });
+  const assessments =
+    locateByLabel(nodes, 'Assessments', { minY: bottomY, pick: 'bottom' }) ||
+    locateByLabel(nodes, 'Assessments', { pick: 'bottom' });
+  const analytics =
+    locateByLabel(nodes, 'Analytics', { minY: bottomY, pick: 'bottom' }) ||
+    locateByLabel(nodes, 'Analytics', { pick: 'bottom' });
+  return Boolean(home && assessments && analytics);
+}
+
+/**
+ * Exact analytics drill marker — testID / resource-id only (no generic drill heuristics).
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ * @param {string} expectedTestId
+ */
+export function hasExactAnalyticsDrillIdentity(nodes, expectedTestId) {
+  if (locateByTestId(nodes, expectedTestId) != null) return true;
+  return nodes.some((n) => {
+    const desc = String(n['content-desc'] || '').trim();
+    if (!desc) return false;
+    if (desc === expectedTestId) return true;
+    if (desc.startsWith(`${expectedTestId} classroom-`)) return true;
+    return false;
+  });
+}
+
+/** View Analytics tap runs only when drill is not already opened. */
+export function shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap }) {
+  return Boolean(viewAnalyticsTap) && !drillOpened;
+}
+
 export function readAnalyticsDateState(xmlContent) {
   const nodes = parseUiXml(xmlContent);
   const node = nodes.find((n) => {

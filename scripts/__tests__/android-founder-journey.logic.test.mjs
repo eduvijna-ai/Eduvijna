@@ -4,10 +4,13 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  hasExactAnalyticsDrillIdentity,
   isEduvijnaAppForeground,
+  isMainTabShellVisible,
   locateByLabel,
   locateByTestId,
   parseUiXml,
+  shouldExecuteViewAnalyticsTap,
   verifyStudentListDestination,
   verifyWorksheetResultScreen,
 } from '../lib/android-journey-logic.mjs';
@@ -61,6 +64,39 @@ test('wrong assignment student list rejected', () => {
   assert.equal(bad.pass, false);
   const good = verifyStudentListDestination(fx('student-list-correct.xml'), FIXTURE);
   assert.equal(good.pass, true);
+});
+
+test('view analytics tap is skipped when drillOpened was pre-set from button presence', () => {
+  const fakeTap = { kind: 'testId', label: 'analytics-quiz-view-479-x-open' };
+  const buggyDrillOpened = Boolean(fakeTap);
+  assert.equal(shouldExecuteViewAnalyticsTap({ drillOpened: buggyDrillOpened, viewAnalyticsTap: fakeTap }), false);
+  assert.equal(shouldExecuteViewAnalyticsTap({ drillOpened: false, viewAnalyticsTap: fakeTap }), true);
+});
+
+test('exact analytics drill identity rejects generic drill UI without marker', () => {
+  const genericOnly = parseUiXml(
+    '<node text="Back to Quizzes" content-desc="" bounds="[0,100][100,200]"/>' +
+      '<node text="View Analytics" content-desc="" bounds="[0,300][100,400]"/>',
+  );
+  assert.equal(hasExactAnalyticsDrillIdentity(genericOnly, 'analytics-drill-class-class_4d82c60e'), false);
+  const exact = parseUiXml(
+    '<node text="" content-desc="analytics-drill-class-class_4d82c60e" bounds="[0,0][1080,120]"/>',
+  );
+  assert.equal(hasExactAnalyticsDrillIdentity(exact, 'analytics-drill-class-class_4d82c60e'), true);
+});
+
+test('main tab shell requires Home Assessments and Analytics tabs', () => {
+  const partial = parseUiXml(
+    '<node text="Home" bounds="[0,1700][200,1900]"/>' +
+      '<node text="Assessments" bounds="[200,1700][400,1900]"/>',
+  );
+  assert.equal(isMainTabShellVisible(partial), false);
+  const full = parseUiXml(
+    '<node text="Home" bounds="[0,1700][200,1900]"/>' +
+      '<node text="Assessments" bounds="[200,1700][400,1900]"/>' +
+      '<node text="Analytics" bounds="[400,1700][600,1900]"/>',
+  );
+  assert.equal(isMainTabShellVisible(full), true);
 });
 
 test('unrelated bare numbers do not pass worksheet metrics', () => {

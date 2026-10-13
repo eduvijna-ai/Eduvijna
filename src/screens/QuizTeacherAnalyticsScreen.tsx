@@ -446,7 +446,13 @@ export default function QuizTeacherAnalyticsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.hero, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View
+        style={[styles.hero, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+        testID={analyticsDrillTestId}
+        accessibilityLabel={analyticsDrillAccessibilityLabel}
+        accessible
+        importantForAccessibility="yes"
+      >
         <View>
           <Text style={[styles.heroTitle, { color: colors.text }]}>Analytics Dashboard</Text>
           <Text style={[styles.heroSub, { color: colors.textSecondary }]}>
@@ -494,13 +500,6 @@ export default function QuizTeacherAnalyticsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          testID={analyticsDrillTestId}
-          accessibilityLabel={analyticsDrillAccessibilityLabel}
-          accessible
-          importantForAccessibility="yes"
-          style={styles.drillIdentityMarker}
-        />
         {drillLevel === 'classes' ? (
           <View style={styles.kpiSection}>
             <AnalyticsKPIGrid tiles={kpiTiles} />
@@ -783,14 +782,6 @@ function KpiLine({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  drillIdentityMarker: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-    left: 0,
-    top: 0,
-  },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontSize: 14 },
   hero: {
