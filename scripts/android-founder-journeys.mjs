@@ -746,9 +746,15 @@ function locateFixtureQuizViewAnalyticsOnPage(
     viewTap = locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect);
     if (viewTap) break;
 
-    if (progress.signature === lastInnerSignature) innerNoProgress += 1;
-    else innerNoProgress = 0;
-    lastInnerSignature = progress.signature;
+    const aligningFixtureCta =
+      progress.fixtureCardVisible && !progress.viewAnalyticsVisible && !progress.seesQuizSummarySection;
+    if (!aligningFixtureCta) {
+      if (progress.signature === lastInnerSignature) innerNoProgress += 1;
+      else innerNoProgress = 0;
+      lastInnerSignature = progress.signature;
+    } else {
+      innerNoProgress = 0;
+    }
     if (innerNoProgress >= 3) {
       log.steps.push({
         step: 'fixture_quiz_inner_search_no_progress',
@@ -758,7 +764,8 @@ function locateFixtureQuizViewAnalyticsOnPage(
       break;
     }
 
-    const direction = directions[innerScrolls % directions.length];
+    const direction =
+      progress.fixtureCardVisible && !progress.viewAnalyticsVisible ? 'down' : directions[innerScrolls % directions.length];
     const swipe = swipeInNestedQuizScroll(scrollRect, direction);
     innerScrolls += 1;
     path = dump(`b-02-fixture-quiz-inner-${direction}-${innerScrolls}.xml`);
@@ -806,6 +813,40 @@ function locateFixtureQuizViewAnalyticsOnPage(
         log.steps.push({ step: 'fixture_quiz_outer_recovery_hit', attempt: i });
         break;
       }
+    }
+  }
+
+  if (!viewTap && scrollRect) {
+    let alignScrolls = 0;
+    while (alignScrolls < 10 && !viewTap) {
+      const progress = buildFixtureViewportProgressSignature(
+        nodes,
+        viewAnalyticsId,
+        quizCardId,
+        scrollRect,
+      );
+      viewTap = locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect);
+      if (viewTap) {
+        log.steps.push({ step: 'fixture_view_analytics_aligned', alignScrolls, ...progress });
+        break;
+      }
+      if (!progress.fixtureCardVisible) break;
+      swipeInNestedQuizScroll(scrollRect, 'down');
+      alignScrolls += 1;
+      path = dump(`b-02-fixture-view-analytics-align-${alignScrolls}.xml`);
+      xml = readXmlContent(path);
+      nodes = parseUiXml(xml);
+      scrollRect = findClassDrillNestedScrollViewport(nodes) || scrollRect;
+      log.steps.push({
+        step: 'fixture_view_analytics_align_swipe',
+        alignScrolls,
+        progress: buildFixtureViewportProgressSignature(
+          nodes,
+          viewAnalyticsId,
+          quizCardId,
+          scrollRect,
+        ),
+      });
     }
   }
 

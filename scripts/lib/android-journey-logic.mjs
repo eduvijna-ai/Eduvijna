@@ -676,11 +676,13 @@ export function deriveBoundedVerticalSwipeInRect(rect, direction = 'up', { margi
   return { x, startY, endY, direction };
 }
 
-/** @param {{ bounds?: { y1: number; y2: number } }} tap */
+/** @param {{ bounds?: { y1: number; y2: number; cy?: number } }} tap */
 export function isTapTargetWithinScrollViewport(tap, scrollRect, { margin = 8 } = {}) {
   if (!tap?.bounds || !scrollRect) return false;
-  const { y1, y2 } = tap.bounds;
-  return y1 >= scrollRect.y1 + margin && y2 <= scrollRect.y2 - margin;
+  const { y1, y2, cy } = tap.bounds;
+  if (y1 >= scrollRect.y1 + margin && y2 <= scrollRect.y2 - margin) return true;
+  const centerY = cy ?? Math.round((y1 + y2) / 2);
+  return centerY >= scrollRect.y1 + margin && centerY <= scrollRect.y2 - margin;
 }
 
 /**
