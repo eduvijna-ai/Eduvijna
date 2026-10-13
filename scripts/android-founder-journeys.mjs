@@ -115,12 +115,34 @@ function locatePaginationNext(nodes, scope = 'quiz') {
 }
 
 function scrollUntilQuizPagerReadable(dumpNamePrefix = 'b-02-pager-visible') {
-  for (let i = 0; i < 14; i++) {
+  scrollToTop(10);
+  sleep(900);
+  for (let i = 0; i < 28; i++) {
     const path = dump(`${dumpNamePrefix}-${i}.xml`);
     const xml = readXmlContent(path);
+    const nodes = parseUiXml(xml);
     const state = readAnalyticsQuizPagerState(xml);
-    if (state.current != null && state.totalPages != null) {
+    const quizPagerControl =
+      locateByTestId(nodes, 'analytics-quiz-pagination-next') ||
+      locateByTestId(nodes, 'analytics-quiz-pagination-info') ||
+      locateByContentDesc(nodes, /Next quiz page/i, { requireClickable: true });
+    if (state.current != null && state.totalPages != null && quizPagerControl) {
       return { path, xml, state };
+    }
+    if (locateByLabel(nodes, /Quizzes in this Class/i, { minY: 0 })) {
+      for (let j = 0; j < 8; j++) {
+        scrollAnalyticsQuizListDown();
+        const innerPath = dump(`${dumpNamePrefix}-quiz-section-${i}-${j}.xml`);
+        const innerXml = readXmlContent(innerPath);
+        const innerNodes = parseUiXml(innerXml);
+        const innerState = readAnalyticsQuizPagerState(innerXml);
+        const innerControl =
+          locateByTestId(innerNodes, 'analytics-quiz-pagination-next') ||
+          locateByTestId(innerNodes, 'analytics-quiz-pagination-info');
+        if (innerState.current != null && innerState.totalPages != null && innerControl) {
+          return { path: innerPath, xml: innerXml, state: innerState };
+        }
+      }
     }
     scrollAnalyticsQuizListDown();
   }

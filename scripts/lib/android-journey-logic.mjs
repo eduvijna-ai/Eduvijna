@@ -316,18 +316,57 @@ export function shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap })
  */
 export function readAnalyticsQuizPagerState(xmlContent) {
   const nodes = parseUiXml(xmlContent);
-  const infoNode =
-    nodes.find((n) => (n['resource-id'] || '').includes('analytics-quiz-pagination-info')) ||
-    nodes.find((n) => /Analytics quiz page \d+ of \d+/i.test(String(n['content-desc'] || '')));
-  const raw = String(infoNode?.['content-desc'] || infoNode?.text || '').trim();
-  const m =
-    raw.match(/Analytics quiz page (\d+) of (\d+)/i) ||
-    raw.match(/Page (\d+) of (\d+)/i) ||
-    collectUiTexts(nodes)
-      .map((t) => t.match(/Analytics quiz page (\d+) of (\d+)/i))
-      .find(Boolean);
-  if (!m) return { current: null, totalPages: null, raw: raw || null };
-  return { current: Number(m[1]), totalPages: Number(m[2]), raw };
+  const infoNode = nodes.find((n) => (n['resource-id'] || '').includes('analytics-quiz-pagination-info'));
+  if (infoNode) {
+    const raw = String(infoNode['content-desc'] || infoNode.text || '').trim();
+    const m =
+      raw.match(/Analytics quiz page (\d+) of (\d+)/i) || raw.match(/Page (\d+) of (\d+)/i);
+    if (m) return { current: Number(m[1]), totalPages: Number(m[2]), raw };
+  }
+  const quizNext = nodes.find((n) => (n['resource-id'] || '').includes('analytics-quiz-pagination-next'));
+  if (quizNext?.boundsRect) {
+    const anchorY = quizNext.boundsRect.cy;
+    const pageNodes = nodes
+      .map((n) => {
+        const text = String(n.text || '').trim();
+        const m = text.match(/^Page (\d+) of (\d+)$/);
+        if (!m || !n.boundsRect) return null;
+        return { current: Number(m[1]), totalPages: Number(m[2]), y: n.boundsRect.cy, text };
+      })
+      .filter(Boolean)
+      .sort((a, b) => Math.abs(a.y - anchorY) - Math.abs(b.y - anchorY));
+    if (pageNodes[0]) {
+      return {
+        current: pageNodes[0].current,
+        totalPages: pageNodes[0].totalPages,
+        raw: pageNodes[0].text,
+      };
+    }
+  }
+  const descHit = nodes.find((n) =>
+    /Analytics quiz page \d+ of \d+/i.test(String(n['content-desc'] || '')),
+  );
+  if (descHit) {
+    const m = String(descHit['content-desc']).match(/Analytics quiz page (\d+) of (\d+)/i);
+    if (m) return { current: Number(m[1]), totalPages: Number(m[2]), raw: descHit['content-desc'] };
+  }
+  const pageOnly = nodes
+    .map((n) => {
+      const text = String(n.text || '').trim();
+      const m = text.match(/^Page (\d+) of (\d+)$/);
+      if (!m || !n.boundsRect) return null;
+      return { current: Number(m[1]), totalPages: Number(m[2]), y: n.boundsRect.y1, text };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.y - b.y);
+  if (pageOnly.length === 1) {
+    return { current: pageOnly[0].current, totalPages: pageOnly[0].totalPages, raw: pageOnly[0].text };
+  }
+  if (pageOnly.length > 1) {
+    const top = pageOnly[0];
+    return { current: top.current, totalPages: top.totalPages, raw: top.text };
+  }
+  return { current: null, totalPages: null, raw: null };
 }
 
 /**
