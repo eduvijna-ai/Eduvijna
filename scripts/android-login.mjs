@@ -94,13 +94,16 @@ function adbInputText(text) {
   }
 }
 
-function blurPasswordFieldSync(fields) {
-  tap(fields.email.x, fields.email.y);
-  sleep(350);
-  tap(fields.pass.x, fields.pass.y);
-  sleep(250);
-  adb('shell input keyevent 111');
-  sleep(200);
+function blurLoginFormWithoutAutofill(fields) {
+  const x = Math.round((fields.email.x + fields.pass.x) / 2);
+  const y = Math.max(120, fields.email.y - 140);
+  tap(x, y);
+  sleep(450);
+}
+
+function readPasswordDiagLength() {
+  const diag = readLoginDiagLogcat().filter((e) => e.type === 'change' && e.field === 'password');
+  return diag[diag.length - 1]?.length ?? null;
 }
 
 function readLoginDiagLogcat() {
@@ -163,14 +166,95 @@ function typePasswordSecure(password) {
   return { method: 'per_char', clipLen: 0 };
 }
 
-function readEmailFieldText(xmlPath) {
+function readLoginFieldText(xmlPath, testId) {
   const s = readFileSync(xmlPath, 'utf8');
   const m =
-    s.match(/resource-id="login-email-input"[^>]*text="([^"]*)"/) ||
-    s.match(/text="([^"]*)"[^>]*resource-id="login-email-input"/);
-  const value = m?.[1] ?? null;
-  if (!value || value === 'Email or Username') return '';
+    s.match(new RegExp(`resource-id="${testId}"[^>]*text="([^"]*)"`)) ||
+    s.match(new RegExp(`text="([^"]*)"[^>]*resource-id="${testId}"`));
+  const value = m?.[1] ?? '';
+  if (value === 'Email or Username' || value === 'Password') return '';
   return value;
+}
+
+function readEmailFieldText(xmlPath) {
+  return readLoginFieldText(xmlPath, 'login-email-input');
+}
+
+function fillLoginField(fields, testId, text, { secure = false, dumpPrefix = 'fill' } = {}) {
+  const target = testId === 'login-email-input' ? fields.email : fields.pass;
+  let method = secure ? 'secure_entry' : 'clipboard_or_per_char';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (secure) {
+      tap(fields.email.x, fields.email.y);
+      sleep(350);
+      adb('shell input keyevent 61');
+      sleep(450);
+      clearField();
+      sleep(200);
+    } else {
+      tap(target.x, target.y);
+      sleep(400);
+      clearField();
+      sleep(200);
+      tap(target.x, target.y);
+      sleep(300);
+    }
+    if (secure) {
+      try {
+        execSync(`adb -s ${serial} logcat -c`, { stdio: 'ignore' });
+      } catch {
+        /* ignore */
+      }
+      const entry = typePasswordSecure(text);
+      method = entry.method;
+      sleep(300);
+      blurLoginFormWithoutAutofill(fields);
+      const diagLen = readPasswordDiagLength();
+      if (diagLen === text.length) {
+        return { ok: true, method, attempt, passwordDiagLength: diagLen };
+      }
+      adbInputText(text);
+      method = 'adb_input_per_char';
+      sleep(300);
+      blurLoginFormWithoutAutofill(fields);
+      const retryLen = readPasswordDiagLength();
+      if (retryLen === text.length) {
+        return { ok: true, method, attempt, passwordDiagLength: retryLen };
+      }
+      method = `${method}_retry`;
+      continue;
+    } else {
+      try {
+        adbSetClipboard(text);
+        const got = adb('shell cmd clipboard get-text').trim();
+        if (got === text) {
+          adbPaste();
+          method = 'clipboard_paste';
+        } else {
+          typeLoginCredential(text);
+          method = 'per_char';
+        }
+      } catch {
+        typeLoginCredential(text);
+        method = 'per_char';
+      }
+    }
+    sleep(500);
+    const path = dumpUi(`${dumpPrefix}-${testId}-${attempt}.xml`);
+    const actual = readLoginFieldText(path, testId);
+    if (actual === text) {
+      return { ok: true, method, attempt };
+    }
+  }
+  if (secure) {
+    return { ok: false, method, attempt: 2, reason: 'password_diag_length_mismatch' };
+  }
+  const path = dumpUi(`${dumpPrefix}-${testId}-final.xml`);
+  return {
+    ok: readLoginFieldText(path, testId) === text,
+    method,
+    attempt: 2,
+  };
 }
 
 function waitFor(predicate, { attempts = 24, pauseMs = 1000, dumpPrefix = 'wait' } = {}) {
@@ -324,20 +408,36 @@ async function runLogin(role) {
   milestones.push({ step: 'fields_located', emailY: fields.email.y, passY: fields.pass.y });
 
   resetLoginFormFields(fields);
-  tap(fields.email.x, fields.email.y);
-  sleep(200);
-  clearField();
-  adbInputText(account.username);
-  sleep(400);
+  const emailFill = fillLoginField(fields, 'login-email-input', account.username, {
+    dumpPrefix: `${role}-email`,
+  });
+  milestones.push({ step: 'email_entry', ...emailFill });
+  if (!emailFill.ok) {
+    return fail('login_fields', { reason: 'email_not_populated' });
+  }
 
-  tap(fields.pass.x, fields.pass.y);
-  sleep(250);
-  clearField();
-  adbInputText(account.password);
-  blurPasswordFieldSync(fields);
-  const passwordEntry = { method: 'adb_input_per_char' };
-  sleep(400);
-  milestones.push({ step: 'password_entry', ...passwordEntry });
+  const passwordFill = fillLoginField(fields, 'login-password-input', account.password, {
+    secure: true,
+    dumpPrefix: `${role}-password`,
+  });
+  milestones.push({ step: 'password_entry', ...passwordFill });
+  if (!passwordFill.ok) {
+    return fail('login_fields', { reason: 'password_not_populated' });
+  }
+  blurLoginFormWithoutAutofill(fields);
+  sleep(200);
+
+  let emailRepair = null;
+  const postPasswordPath = dumpUi(`${role}-after-password.xml`);
+  if (readLoginFieldText(postPasswordPath, 'login-email-input') !== account.username) {
+    emailRepair = fillLoginField(fields, 'login-email-input', account.username, {
+      dumpPrefix: `${role}-email-repair`,
+    });
+    milestones.push({ step: 'email_repair_after_password', ...emailRepair });
+    if (!emailRepair.ok) {
+      return fail('login_fields', { reason: 'email_corrupted_after_password' });
+    }
+  }
 
   const usernameProbe = sha256(account.username);
   const passwordLen = account.password.length;
