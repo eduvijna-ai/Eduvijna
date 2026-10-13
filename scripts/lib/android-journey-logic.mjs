@@ -319,6 +319,42 @@ export function shouldExecuteViewAnalyticsTap({ drillOpened, viewAnalyticsTap })
  * @param {string} xmlContent
  * @param {string} classDrillId e.g. analytics-drill-class-class_4d82c60e
  */
+/**
+ * @param {{ quizId: number; sessionId: string }} fixture
+ * @param {{ quizId: number; sessionId: string }[]} members
+ */
+export function analyticsPageMembersContainFixture(members, fixture) {
+  if (!Array.isArray(members) || !fixture) return false;
+  return members.some(
+    (m) => Number(m.quizId) === Number(fixture.quizId) && String(m.sessionId) === String(fixture.sessionId),
+  );
+}
+
+/**
+ * Parses engineering metadata from analytics-quiz-page-members (visible section title).
+ * @param {string} xmlContent
+ */
+export function readAnalyticsQuizPageMembers(xmlContent) {
+  const nodes = parseUiXml(xmlContent);
+  const node = nodes.find(
+    (n) =>
+      (n['resource-id'] || '').includes('analytics-quiz-page-members') ||
+      String(n['content-desc'] || '').includes('analytics-quiz-page-members'),
+  );
+  const raw = String(node?.['content-desc'] || node?.text || '').trim();
+  const pageM = raw.match(/\bpage-(\d+)\b/i);
+  const members = [];
+  for (const token of raw.split(/\s+/)) {
+    const m = token.match(/^(\d+):([0-9a-f-]+)$/i);
+    if (m) members.push({ quizId: Number(m[1]), sessionId: m[2] });
+  }
+  return {
+    raw: raw || null,
+    page: pageM ? Number(pageM[1]) : null,
+    members,
+  };
+}
+
 export function readAnalyticsClassDrillHeroQuizPageState(xmlContent, classDrillId) {
   const nodes = parseUiXml(xmlContent);
   const hero = nodes.find((n) => {

@@ -11,6 +11,8 @@ import {
   locateByTestId,
   parseUiXml,
   readAnalyticsClassDrillHeroQuizPageState,
+  readAnalyticsQuizPageMembers,
+  analyticsPageMembersContainFixture,
   readAnalyticsQuizPagerState,
   shouldExecuteViewAnalyticsTap,
   verifyStudentListDestination,
@@ -94,6 +96,21 @@ test('class drill hero exposes quiz-page state in accessibility label', () => {
   assert.equal(state.current, 3);
   assert.equal(state.totalPages, 5);
   assert.equal(state.quizCount, 25);
+});
+
+test('quiz page members accessibility exposes paginated quiz identities', () => {
+  const xml =
+    '<node resource-id="analytics-quiz-page-members" content-desc="analytics-quiz-page-members page-3 474:a4f24fe6-3c02-4372-9248-e8c3267c4c05 479:a6882262-5c50-4cf5-a4a8-dc8786862916" bounds="[0,0][10,10]"/>';
+  const state = readAnalyticsQuizPageMembers(xml);
+  assert.equal(state.page, 3);
+  assert.equal(state.members.length, 2);
+  assert.equal(
+    analyticsPageMembersContainFixture(state.members, {
+      quizId: 479,
+      sessionId: 'a6882262-5c50-4cf5-a4a8-dc8786862916',
+    }),
+    true,
+  );
 });
 
 test('quiz pager state reads analytics-quiz-pagination-info label', () => {

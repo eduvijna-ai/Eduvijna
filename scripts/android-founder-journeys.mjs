@@ -28,6 +28,8 @@ import {
   hasExactAnalyticsQuizDrillIdentity,
   readAnalyticsQuizPagerState,
   readAnalyticsClassDrillHeroQuizPageState,
+  readAnalyticsQuizPageMembers,
+  analyticsPageMembersContainFixture,
   listVisibleAnalyticsQuizCardTestIds,
 } from './lib/android-journey-logic.mjs';
 
@@ -189,10 +191,70 @@ function collectPagerDiagnostics(xml) {
   };
 }
 
-function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDrillId) {
-  const totalPages = totalPagesFromHint;
+const FIXTURE_QUIZ_IDENTITY = { quizId: FIXTURE.quizId, sessionId: FIXTURE.sessionId };
+
+function snapshotMobileQuizPageMembership(xml, classDrillId, pageLabel) {
+  const hero = readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId);
+  const pageMembers = readAnalyticsQuizPageMembers(xml);
+  return {
+    page: pageMembers.page ?? hero.current,
+    hero,
+    members: pageMembers.members,
+    membersRaw: pageMembers.raw,
+    pageLabel,
+  };
+}
+
+function tapQuizPagerNextOnce(log, current, classDrillId) {
+  if (!ensureQuizPaginationNextVisible(log, classDrillId)) {
+    const diagPath = dump('b-02-quiz-next-missing.xml');
+    const diagXml = readXmlContent(diagPath);
+    return {
+      ok: false,
+      label: 'analytics_quiz_pagination_next_missing',
+      currentPage: current,
+      ...collectPagerDiagnostics(diagXml),
+    };
+  }
+  const before = readHeroQuizPageFromDump(`b-02-quiz-pager-before-${current}`, classDrillId);
+  let next = locateQuizPaginationNext(parseUiXml(before.xml));
+  if (!next) {
+    next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
+  }
+  if (!next) {
+    return {
+      ok: false,
+      label: 'analytics_quiz_pagination_next_missing',
+      currentPage: current,
+      ...collectPagerDiagnostics(before.xml),
+    };
+  }
+  const expectedPage = current + 1;
+  executeTap(log, 'quiz_pagination_next', next, { from: current, to: expectedPage });
+  sleep(2500);
+  const after = readHeroQuizPageFromDump(`b-02-hero-after-next-${expectedPage}`, classDrillId);
+  log.steps.push({
+    step: 'quiz_hero_page_after_next',
+    expectedPage,
+    hero: after.hero,
+    pagerDiagnostics: collectPagerDiagnostics(after.xml),
+  });
+  if (after.hero.current !== expectedPage) {
+    return {
+      ok: false,
+      label: 'analytics_quiz_page_transition_failed',
+      expectedPage,
+      observedHeroPage: after.hero.current,
+      heroRaw: after.hero.raw,
+      ...collectPagerDiagnostics(after.xml),
+    };
+  }
+  return { ok: true, currentPage: after.hero.current, totalPages: after.hero.totalPages };
+}
+
+function discoverFixturePageOnMobile(log, classDrillId) {
   let { hero } = readHeroQuizPageFromDump('b-02-hero-initial', classDrillId);
-  log.steps.push({ step: 'quiz_hero_page_initial', hero, targetPage, totalPages });
+  log.steps.push({ step: 'quiz_hero_page_initial', hero, discovery: 'ui_derived' });
   if (hero.current == null) {
     const heroWait = waitFor(
       (xml) => readAnalyticsClassDrillHeroQuizPageState(xml, classDrillId).current != null,
@@ -204,112 +266,146 @@ function seekQuizPagerToTargetPage(log, targetPage, totalPagesFromHint, classDri
     }
   }
   if (hero.current == null) {
-    return { ok: false, label: 'analytics_quiz_hero_page_missing', targetPage, totalPages };
+    return { ok: false, label: 'analytics_quiz_hero_page_missing', mobilePageMemberships: [] };
   }
+
+  const mobilePageMemberships = [];
   let current = hero.current;
-  if (current === targetPage) {
-    log.steps.push({ step: 'quiz_hero_page_at_target', hero, targetPage });
-    return { ok: true, currentPage: targetPage, totalPages: hero.totalPages ?? totalPages };
-  }
-  if (current < targetPage && !ensureQuizPaginationNextVisible(log, classDrillId)) {
-    const diagPath = dump('b-02-quiz-next-missing.xml');
-    const diagXml = readXmlContent(diagPath);
-    return {
-      ok: false,
-      label: 'analytics_quiz_pagination_next_missing',
-      currentPage: current,
-      targetPage,
-      totalPages,
-      ...collectPagerDiagnostics(diagXml),
-    };
-  }
-  if (totalPages != null && hero.totalPages != null && hero.totalPages !== totalPages) {
-    log.steps.push({
-      step: 'quiz_hero_total_pages_mismatch',
-      hintTotalPages: totalPages,
-      heroTotalPages: hero.totalPages,
-    });
-  }
-  while (current < targetPage) {
-    const before = readHeroQuizPageFromDump(`b-02-quiz-pager-before-${current}`, classDrillId);
-    let next = locateQuizPaginationNext(parseUiXml(before.xml));
-    if (!next) {
-      next = relocateQuizPaginationNextSmall(log, `to-${current + 1}`);
-    }
-    const beforeXml = before.xml;
-    if (!next) {
+  let totalPages = hero.totalPages ?? 1;
+
+  while (true) {
+    const snap = readHeroQuizPageFromDump(`b-02-mobile-members-p${current}`, classDrillId);
+    const entry = snapshotMobileQuizPageMembership(snap.xml, classDrillId, `page-${current}`);
+    mobilePageMemberships.push(entry);
+    log.steps.push({ step: 'mobile_page_membership', ...entry });
+
+    if (analyticsPageMembersContainFixture(entry.members, FIXTURE_QUIZ_IDENTITY)) {
+      log.steps.push({
+        step: 'mobile_fixture_page_found',
+        mobileFixturePage: entry.page ?? current,
+        hero: entry.hero,
+      });
       return {
-        ok: false,
-        label: 'analytics_quiz_pagination_next_missing',
-        currentPage: current,
-        targetPage,
-        totalPages,
-        ...collectPagerDiagnostics(beforeXml),
+        ok: true,
+        mobileFixturePage: entry.page ?? current,
+        currentPage: entry.hero.current ?? current,
+        totalPages: entry.hero.totalPages ?? totalPages,
+        mobilePageMemberships,
       };
     }
-    const expectedPage = current + 1;
-    executeTap(log, 'quiz_pagination_next', next, { from: current, to: expectedPage });
-    sleep(2500);
-    const after = readHeroQuizPageFromDump(`b-02-hero-after-next-${expectedPage}`, classDrillId);
-    log.steps.push({
-      step: 'quiz_hero_page_after_next',
-      expectedPage,
-      hero: after.hero,
-      pagerDiagnostics: collectPagerDiagnostics(after.xml),
-    });
-    if (after.hero.current !== expectedPage) {
-      return {
-        ok: false,
-        label: 'analytics_quiz_page_transition_failed',
-        expectedPage,
-        observedHeroPage: after.hero.current,
-        targetPage,
-        totalPages: after.hero.totalPages ?? totalPages,
-        heroRaw: after.hero.raw,
-        ...collectPagerDiagnostics(after.xml),
-      };
+
+    totalPages = entry.hero.totalPages ?? totalPages;
+    if (current >= totalPages) break;
+
+    const nextStep = tapQuizPagerNextOnce(log, current, classDrillId);
+    if (!nextStep.ok) {
+      return { ...nextStep, mobilePageMemberships };
     }
-    current = after.hero.current;
+    current = nextStep.currentPage;
   }
-  if (current !== targetPage) {
-    return {
-      ok: false,
-      label: 'analytics_quiz_page_transition_failed',
-      expectedPage: targetPage,
-      observedHeroPage: current,
-      targetPage,
-      totalPages,
-    };
-  }
-  log.steps.push({ step: 'quiz_hero_page_at_target', hero: readAnalyticsClassDrillHeroQuizPageState(
-    readXmlContent(dump('b-02-hero-at-target.xml')),
-    classDrillId,
-  ) });
-  return { ok: true, currentPage: targetPage, totalPages: hero.totalPages ?? totalPages };
+
+  return {
+    ok: false,
+    label: 'analytics_fixture_quiz_missing_from_mobile_class_pages',
+    mobilePageMemberships,
+  };
 }
 
-function locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId, quizPageHint, classDrillId) {
-  const fixtureApiIndex = quizPageHint.index;
-  const targetPage = quizPageHint.page;
-  const indexWithinPage = fixtureApiIndex % ANALYTICS_ITEMS_PER_PAGE;
-  const maxScrolls = Math.min(14, indexWithinPage + 4);
+function logApiMobileOrderCrosscheck(log, quizPageHint, discovery) {
+  const apiHintPage = quizPageHint?.apiHintPage ?? quizPageHint?.page ?? null;
+  const mobileFixturePage = discovery.mobileFixturePage ?? null;
+  const divergence =
+    apiHintPage != null && mobileFixturePage != null && apiHintPage !== mobileFixturePage;
+  log.steps.push({
+    step: 'analytics_api_mobile_order_crosscheck',
+    apiHintPage,
+    apiHintIndex: quizPageHint?.apiHintIndex ?? quizPageHint?.index ?? null,
+    apiPageMembers: quizPageHint?.pageMembers ?? null,
+    indexWindow: quizPageHint?.indexWindow ?? null,
+    fixture: quizPageHint?.fixture ?? null,
+    mobileFixturePage,
+    analytics_api_mobile_order_divergence: divergence,
+    mobilePageMemberships: (discovery.mobilePageMemberships || []).map((m) => ({
+      page: m.page,
+      members: m.members,
+      heroPage: m.hero?.current ?? null,
+    })),
+  });
+  return divergence;
+}
+
+function classifyFixtureDiscoveryOutcome(quizPageHint, discovery, viewportFound) {
+  const mobilePages = discovery.mobilePageMemberships || [];
+  const apiPage = quizPageHint?.apiHintPage ?? quizPageHint?.page ?? null;
+  const mobileFixturePage =
+    discovery.mobileFixturePage ??
+    mobilePages.find((p) => analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY))
+      ?.page ??
+    null;
+  const fixtureOnApiPage =
+    apiPage != null &&
+    quizPageHint?.found === true &&
+    Array.isArray(quizPageHint?.pageMembers) &&
+    analyticsPageMembersContainFixture(quizPageHint.pageMembers, FIXTURE_QUIZ_IDENTITY);
+  const fixtureOnMobileApiPage =
+    apiPage != null &&
+    mobilePages.some(
+      (p) => (p.page ?? p.hero?.current) === apiPage && analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY),
+    );
+  const fixtureOnAnyMobile = mobilePages.some((p) =>
+    analyticsPageMembersContainFixture(p.members, FIXTURE_QUIZ_IDENTITY),
+  );
+
+  if (!viewportFound && fixtureOnAnyMobile && mobileFixturePage != null) {
+    return 'B';
+  }
+  if (
+    quizPageHint?.found === true &&
+    fixtureOnApiPage &&
+    !fixtureOnMobileApiPage &&
+    fixtureOnAnyMobile &&
+    mobileFixturePage != null &&
+    mobileFixturePage !== apiPage
+  ) {
+    return 'A';
+  }
+  if (quizPageHint?.found === true && !fixtureOnAnyMobile) {
+    return 'C';
+  }
+  return null;
+}
+
+function scrollQuizCardSectionTowardTop(log) {
+  for (let i = 0; i < 6; i++) scrollAnalyticsQuizListUp();
+  log.steps.push({ step: 'quiz_card_section_scroll_to_top', swipes: 6 });
+}
+
+function locateFixtureQuizViewAnalyticsOnPage(
+  log,
+  viewAnalyticsId,
+  quizCardId,
+  mobileFixturePage,
+  classDrillId,
+) {
+  scrollQuizCardSectionTowardTop(log);
+  const maxScrolls = 18;
   for (let scroll = 0; scroll <= maxScrolls; scroll++) {
-    const path = dump(`b-02-fixture-quiz-search-up-${scroll}.xml`);
+    const path = dump(`b-02-fixture-quiz-search-down-${scroll}.xml`);
     const xml = readXmlContent(path);
     const nodes = parseUiXml(xml);
     const visibleQuizCardIds = listVisibleAnalyticsQuizCardTestIds(nodes);
     const viewTap = locateByTestId(nodes, viewAnalyticsId);
     const cardTap = locateByTestId(nodes, quizCardId);
+    const pageMembers = readAnalyticsQuizPageMembers(xml);
     log.steps.push({
       step: 'fixture_quiz_search',
-      searchDirection: 'up',
-      fixtureApiIndex,
-      targetPage,
-      indexWithinPage,
+      searchDirection: 'down',
+      mobileFixturePage,
       scrollAttempt: scroll,
       visibleQuizCardIds,
       viewAnalyticsVisible: Boolean(viewTap),
       quizCardVisible: Boolean(cardTap),
+      pageMembers: pageMembers.members,
     });
     if (viewTap) {
       log.steps.push({
@@ -321,7 +417,7 @@ function locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId, quizPa
       });
       return { ok: true, viewTap, xmlPath: path };
     }
-    scrollAnalyticsQuizListUp();
+    scrollAnalyticsClassDrillDown();
   }
   const path = dump('b-02-fixture-quiz-card-missing.xml');
   const nodes = parseUiXml(readXmlContent(path));
@@ -331,9 +427,7 @@ function locateFixtureQuizViewAnalytics(log, viewAnalyticsId, quizCardId, quizPa
     visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes),
     currentPage: hero.current,
     totalPages: hero.totalPages,
-    fixtureApiIndex,
-    targetPage,
-    indexWithinPage,
+    mobileFixturePage,
     xmlPath: path,
   };
 }
@@ -1457,50 +1551,64 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
 
   log.steps.push({
     step: 'fixture_quiz_page_hint',
+    diagnosticOnly: true,
     found: quizPageHint?.found === true,
     index: quizPageHint?.index ?? null,
     page: quizPageHint?.page ?? null,
+    apiHintPage: quizPageHint?.apiHintPage ?? null,
+    apiHintIndex: quizPageHint?.apiHintIndex ?? null,
     total: quizPageHint?.total ?? null,
     totalPages: quizPageHint?.totalPages ?? null,
+    fixture: quizPageHint?.fixture ?? null,
+    pageMembers: quizPageHint?.pageMembers ?? null,
+    indexWindow: quizPageHint?.indexWindow ?? null,
   });
-  if (!quizPageHint || quizPageHint.found !== true) {
+
+  const discovery = discoverFixturePageOnMobile(log, classDrillId);
+  logApiMobileOrderCrosscheck(log, quizPageHint, discovery);
+  if (!discovery.ok) {
+    const classification = classifyFixtureDiscoveryOutcome(quizPageHint, discovery, false);
+    if (classification) {
+      log.steps.push({ step: 'analytics_fixture_page_classification', case: classification });
+    }
     return failJourneyB(log, {
-      label: 'analytics_fixture_missing_from_api_class_rows',
+      label: discovery.label,
       pass: false,
-      quizPageHint,
+      mobilePageMemberships: discovery.mobilePageMemberships,
+      quizId: FIXTURE.quizId,
+      sessionId: FIXTURE.sessionId,
     });
   }
 
-  const targetPage = quizPageHint.page;
-  const seekResult = seekQuizPagerToTargetPage(log, targetPage, quizPageHint.totalPages, classDrillId);
-  if (!seekResult.ok) {
-    return failJourneyB(log, { label: seekResult.label, pass: false, ...seekResult });
-  }
-
-  const fixtureLocate = locateFixtureQuizViewAnalytics(
+  const mobileFixturePage = discovery.mobileFixturePage;
+  const fixtureLocate = locateFixtureQuizViewAnalyticsOnPage(
     log,
     viewAnalyticsId,
     quizCardId,
-    quizPageHint,
+    mobileFixturePage,
     classDrillId,
   );
   if (!fixtureLocate.ok) {
+    const classification = classifyFixtureDiscoveryOutcome(quizPageHint, discovery, false);
     log.steps.push({
-      step: 'fixture_quiz_not_on_page',
-      targetPage,
-      currentPage: fixtureLocate.currentPage ?? seekResult.currentPage,
-      totalPages: fixtureLocate.totalPages ?? seekResult.totalPages,
+      step: 'fixture_quiz_viewport_miss',
+      mobileFixturePage,
+      currentPage: fixtureLocate.currentPage ?? discovery.currentPage,
+      totalPages: fixtureLocate.totalPages ?? discovery.totalPages,
       quizId: FIXTURE.quizId,
       sessionId: FIXTURE.sessionId,
       visibleQuizCardTestIds: fixtureLocate.visibleQuizCardTestIds,
       xmlPath: fixtureLocate.xmlPath,
+      analytics_fixture_page_classification: classification,
     });
     return failJourneyB(log, {
-      label: 'analytics_fixture_quiz_not_rendered_on_expected_page',
+      label: classification === 'B' ? 'analytics_fixture_viewport_locator_defect' : 'analytics_fixture_quiz_card_not_visible',
       pass: false,
-      targetPage,
+      mobileFixturePage,
+      classification,
       quizId: FIXTURE.quizId,
       sessionId: FIXTURE.sessionId,
+      mobilePageMemberships: discovery.mobilePageMemberships,
     });
   }
 

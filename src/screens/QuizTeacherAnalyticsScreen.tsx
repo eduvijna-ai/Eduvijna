@@ -210,6 +210,11 @@ export default function QuizTeacherAnalyticsScreen() {
 
   const paginatedClasses = classOverviews.slice((classPage - 1) * ITEMS_PER_PAGE, classPage * ITEMS_PER_PAGE);
   const paginatedQuizzes = classQuizzes.slice((quizPage - 1) * ITEMS_PER_PAGE, quizPage * ITEMS_PER_PAGE);
+  const analyticsQuizPageMembersAccessibilityLabel = useMemo(() => {
+    if (drillLevel !== 'class') return '';
+    const memberTokens = paginatedQuizzes.map((tile) => `${tile.quiz_id}:${tile.session_id}`);
+    return `analytics-quiz-page-members page-${quizPage} ${memberTokens.join(' ')}`.trim();
+  }, [drillLevel, paginatedQuizzes, quizPage]);
   const paginatedSummary = quizSummaryRows.slice((summaryPage - 1) * ITEMS_PER_PAGE, summaryPage * ITEMS_PER_PAGE);
   const paginatedRows = studentRows.slice((attemptPage - 1) * ITEMS_PER_PAGE, attemptPage * ITEMS_PER_PAGE);
 
@@ -569,7 +574,15 @@ export default function QuizTeacherAnalyticsScreen() {
               </View>
             ) : null}
 
-            <Text style={[styles.subSectionTitle, { color: colors.text }]}>Quizzes in this Class</Text>
+            <Text
+              style={[styles.subSectionTitle, { color: colors.text }]}
+              testID="analytics-quiz-page-members"
+              accessibilityLabel={analyticsQuizPageMembersAccessibilityLabel}
+              accessible
+              importantForAccessibility="yes"
+            >
+              Quizzes in this Class
+            </Text>
             <Text style={[styles.hint, { color: colors.textSecondary }]}>
               {classQuizzes.length} quiz{classQuizzes.length === 1 ? '' : 'zes'} · open a quiz for detailed analytics
             </Text>

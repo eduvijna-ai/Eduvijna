@@ -23,6 +23,15 @@ export const ANALYTICS_FIXTURE_DATE_RANGE = {
 
 export const ANALYTICS_ITEMS_PER_PAGE = 10;
 
+function quizRowMember(row, index) {
+  return {
+    index,
+    quizId: Number(row.quiz_id),
+    sessionId: String(row.session_id),
+    createdAt: row.created_at ?? row.createdAt ?? null,
+  };
+}
+
 /** Quiz list page (1-based) where the fixture assignment appears in class drill. */
 export async function loadFixtureAnalyticsQuizPage() {
   const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
@@ -52,7 +61,36 @@ export async function loadFixtureAnalyticsQuizPage() {
   const total = classRows.length;
   const totalPages = Math.max(1, Math.ceil(total / ANALYTICS_ITEMS_PER_PAGE));
   const page = index >= 0 ? Math.floor(index / ANALYTICS_ITEMS_PER_PAGE) + 1 : 1;
-  return { index, page, total, totalPages, found: index >= 0 };
+  const fixtureRow = index >= 0 ? classRows[index] : null;
+  const pageStart = Math.max(0, (page - 1) * ANALYTICS_ITEMS_PER_PAGE);
+  const pageEnd = pageStart + ANALYTICS_ITEMS_PER_PAGE;
+  const pageMembers = classRows.slice(pageStart, pageEnd).map((row, offset) =>
+    quizRowMember(row, pageStart + offset),
+  );
+  const windowStart = index >= 0 ? Math.max(0, index - 3) : 0;
+  const windowEnd = index >= 0 ? Math.min(classRows.length, index + 4) : 0;
+  const indexWindow =
+    index >= 0 ? classRows.slice(windowStart, windowEnd).map((row, offset) => quizRowMember(row, windowStart + offset)) : [];
+  return {
+    index,
+    page,
+    total,
+    totalPages,
+    found: index >= 0,
+    fixture: fixtureRow
+      ? {
+          quizId: FIXTURE.quizId,
+          sessionId: FIXTURE.sessionId,
+          created_at: fixtureRow.created_at ?? fixtureRow.createdAt ?? null,
+          index,
+          page,
+        }
+      : null,
+    pageMembers,
+    indexWindow,
+    apiHintPage: page,
+    apiHintIndex: index >= 0 ? index : null,
+  };
 }
 
 export async function loadFixtureLabels() {
