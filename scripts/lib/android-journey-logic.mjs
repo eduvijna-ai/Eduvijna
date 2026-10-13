@@ -24,6 +24,32 @@ export {
  * @param {string} xmlContent
  * @param {{ quizId: number; sessionId: string; classroomId: string; quizTitle: string; classLabel?: string|null }} fixture
  */
+export function readTextInputByTestId(xmlContent, testId) {
+  const s = String(xmlContent);
+  const m =
+    s.match(new RegExp(`resource-id="${testId}"[^>]*text="([^"]*)"`)) ||
+    s.match(new RegExp(`text="([^"]*)"[^>]*resource-id="${testId}"`));
+  const value = m?.[1] ?? '';
+  if (value === 'Search assessments' || value === 'YYYY-MM-DD') return '';
+  return value;
+}
+
+/** @param {ReturnType<typeof parseUiXml>} nodes */
+export function parseAssessmentsTabCounts(nodes) {
+  const texts = collectUiTexts(nodes);
+  const pick = (re) => {
+    const hit = texts.find((t) => re.test(t));
+    const m = hit?.match(/\((\d+)\)/);
+    return m ? Number(m[1]) : null;
+  };
+  return {
+    all: pick(/^All\s*\(/i),
+    active: pick(/^Active\s*\(/i),
+    upcoming: pick(/^Upcoming\s*\(/i),
+    expired: pick(/^Expired\s*\(/i),
+  };
+}
+
 export function verifyStudentListDestination(xmlContent, fixture) {
   const nodes = parseUiXml(xmlContent);
   const texts = collectUiTexts(nodes);
@@ -35,12 +61,33 @@ export function verifyStudentListDestination(xmlContent, fixture) {
     ? texts.some((t) => t.includes(fixture.classLabel))
     : true;
   const hasStudentRow = locateByTestId(nodes, `student-row-${fixture.studentId}`) != null;
+  const rowNode = nodes.find((n) => (n['resource-id'] || '').includes(`student-row-${fixture.studentId}`));
+  const sessionNeedle = fixture.sessionId ? `session-${fixture.sessionId}` : null;
+  const sessionOk =
+    !sessionNeedle ||
+    (rowNode != null && String(rowNode['content-desc'] || '').includes(sessionNeedle));
+  const classroomIdOk =
+    !fixture.classroomId ||
+    texts.some((t) => String(t).includes(fixture.classroomId)) ||
+    classOk;
+  const quizIdOk = fixture.quizId == null || titleOk;
   const wrongQuiz = texts.some((t) => /PRO_Assessment_20261007/i.test(t));
   return {
-    pass: Boolean(titleOk && classOk && hasStudentRow && !wrongQuiz),
+    pass: Boolean(
+      titleOk &&
+        classOk &&
+        hasStudentRow &&
+        sessionOk &&
+        classroomIdOk &&
+        quizIdOk &&
+        !wrongQuiz,
+    ),
     titleOk,
     classOk,
     hasStudentRow,
+    sessionOk,
+    classroomIdOk,
+    quizIdOk,
     wrongQuiz,
     sample: texts.slice(0, 30),
   };

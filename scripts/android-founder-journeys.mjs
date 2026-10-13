@@ -13,13 +13,16 @@ import {
   locateByTestId,
   locateByContentDesc,
   locateWithScroll,
+  parseAssessmentsTabCounts,
   parseUiXml,
+  readTextInputByTestId,
   readXmlContent,
   verifyStudentListDestination,
   verifyWorksheetResultScreen,
 } from './lib/android-journey-logic.mjs';
 
 import {
+  ANALYTICS_FIXTURE_DATE_RANGE,
   FIXTURE,
   loadFixtureLabels,
   loadFixtureAnalyticsQuizPage,
@@ -149,18 +152,80 @@ function tapLoadMore(nodes) {
   return false;
 }
 
+function locateAnalyticsDateInput(nodes, testId) {
+  const byId = locateByTestId(nodes, testId);
+  if (byId) return byId;
+  const label =
+    testId === 'analytics-date-from-input'
+      ? 'Analytics date from'
+      : testId === 'analytics-date-to-input'
+        ? 'Analytics date to'
+        : null;
+  return label ? locateByContentDesc(nodes, label, { requireClickable: false }) : null;
+}
+
+function readAnalyticsDateValue(testId) {
+  const path = dump(`b-date-read-${testId}.xml`);
+  const nodes = parseUiXml(readXmlContent(path));
+  const field = locateAnalyticsDateInput(nodes, testId);
+  if (!field) return { ok: false, value: null };
+  const xml = readXmlContent(path);
+  const fromXml = readTextInputByTestId(xml, testId);
+  if (fromXml) return { ok: true, value: fromXml };
+  const node = nodes.find((n) => (n['resource-id'] || '').includes(testId));
+  const text = node?.text;
+  return { ok: Boolean(text), value: text ?? null };
+}
+
 function fillAnalyticsDateField(testId, isoDate) {
-  let path = dump('b-date-field.xml');
-  let nodes = parseUiXml(readXmlContent(path));
-  const field = locateByTestId(nodes, testId);
-  if (!field) return false;
+  const path = dump(`b-date-fill-${testId}.xml`);
+  const nodes = parseUiXml(readXmlContent(path));
+  const field = locateAnalyticsDateInput(nodes, testId);
+  if (!field) return { ok: false, expected: isoDate, actual: null, reason: 'field_missing' };
   tapTarget(field);
   sleep(400);
-  adb('shell input keyevent 123'); // move cursor end
-  for (let i = 0; i < 12; i++) adb('shell input keyevent 67');
+  adb('shell input keyevent 123');
+  for (let i = 0; i < 16; i++) adb('shell input keyevent 67');
   adb(`shell input text "${String(isoDate).replace(/-/g, '\\-')}"`);
-  sleep(300);
-  return true;
+  sleep(350);
+  adb('shell input tap 540 280');
+  sleep(400);
+  const readBack = readAnalyticsDateValue(testId);
+  const actual = readBack.value;
+  return {
+    ok: actual === isoDate,
+    expected: isoDate,
+    actual,
+    reason: actual === isoDate ? null : 'analytics_date_value_mismatch',
+  };
+}
+
+function waitForAnalyticsDateControls(log) {
+  const result = waitFor((xml) => {
+    const n = parseUiXml(xml);
+    const dashboard = locateByLabel(n, /Analytics Dashboard/i, { minY: 0 }) != null;
+    const from = locateAnalyticsDateInput(n, 'analytics-date-from-input') != null;
+    const to = locateAnalyticsDateInput(n, 'analytics-date-to-input') != null;
+    const apply =
+      locateByTestId(n, 'analytics-date-apply') != null ||
+      locateByContentDesc(n, 'Apply analytics date range', { requireClickable: true }) != null;
+    return dashboard && from && to && apply;
+  }, { dumpName: 'b-date-controls', attempts: 16, pauseMs: 1500 });
+  if (!result.ok) {
+    const path = dump('b-date-controls-missing.xml');
+    const nodes = parseUiXml(readXmlContent(path));
+    const sampleIds = nodes
+      .map((n) => n['resource-id'])
+      .filter(Boolean)
+      .slice(0, 40);
+    log.steps.push({
+      step: 'analytics_date_controls_missing',
+      implementationSha: sha,
+      sampleTestIds: sampleIds,
+      xmlPath: path,
+    });
+  }
+  return result;
 }
 
 function ensureAnalyticsClassList(log, classTestId) {
@@ -228,31 +293,100 @@ function ensureAnalyticsClassList(log, classTestId) {
 }
 
 function applyFixtureAnalyticsDateRange(log) {
-  const from = '2026-08-01';
-  const to = '2026-10-13';
-  waitFor(
-    (xml) => locateByTestId(parseUiXml(xml), 'analytics-date-from-input') != null,
-    { dumpName: 'b-date-wait-inputs', attempts: 12, pauseMs: 1500 },
-  );
-  const fromOk = fillAnalyticsDateField('analytics-date-from-input', from);
-  const toOk = fillAnalyticsDateField('analytics-date-to-input', to);
+  const controls = waitForAnalyticsDateControls(log);
+  if (!controls.ok) {
+    return { ok: false, label: 'analytics_date_controls_missing' };
+  }
+  const from = ANALYTICS_FIXTURE_DATE_RANGE.created_from;
+  const to = ANALYTICS_FIXTURE_DATE_RANGE.created_to;
+  const fromResult = fillAnalyticsDateField('analytics-date-from-input', from);
+  const toResult = fillAnalyticsDateField('analytics-date-to-input', to);
+  log.steps.push({ step: 'analytics_date_fill', from: fromResult, to: toResult });
+  if (!fromResult.ok || !toResult.ok) {
+    return { ok: false, label: 'analytics_date_value_mismatch', from: fromResult, to: toResult };
+  }
   const path = dump('b-date-before-apply.xml');
   const nodes = parseUiXml(readXmlContent(path));
   const applyTap =
-    locateByTestId(nodes, 'analytics-date-apply') || locateByLabel(nodes, /^Apply$/i, { minY: 0 });
-  log.steps.push({ step: 'analytics_date_range', from, to, fromOk, toOk, applyTap: Boolean(applyTap) });
-  if (applyTap) tapTarget(applyTap);
+    locateByTestId(nodes, 'analytics-date-apply') ||
+    locateByContentDesc(nodes, 'Apply analytics date range', { requireClickable: true });
+  log.steps.push({ step: 'analytics_date_range', from, to, applyTap: Boolean(applyTap) });
+  if (!applyTap) {
+    return { ok: false, label: 'analytics_date_controls_missing' };
+  }
+  tapTarget(applyTap);
   sleep(2500);
+  return { ok: true };
 }
 
-function tapSearchField(nodes) {
-  const hit =
-    locateByTestId(nodes, 'assessments-search-input') ||
-    locateByLabel(nodes, 'Search assessments', { minY: 0 });
-  if (!hit) return false;
+function enterAssessmentsSearch(nodes, searchQ, log) {
+  const hit = locateByTestId(nodes, 'assessments-search-input', { minY: 0 });
+  if (!hit) {
+    log.steps.push({ step: 'search_input_missing' });
+    return { ok: false, label: 'assessment_search_input_missing' };
+  }
   tapTarget(hit);
-  sleep(200);
-  return true;
+  sleep(250);
+  for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
+  sleep(150);
+  adbTypeSearch(searchQ);
+  sleep(1800);
+  const path = dump('a-search-verify.xml');
+  const actual = readTextInputByTestId(readXmlContent(path), 'assessments-search-input');
+  log.steps.push({ step: 'search_filter', intended: searchQ, actual });
+  if (actual !== searchQ) {
+    return { ok: false, label: 'assessment_search_input_mismatch', intended: searchQ, actual };
+  }
+  return { ok: true, xmlPath: path };
+}
+
+function tapAssessmentsTab(nodes, tabKey) {
+  const patterns =
+    tabKey === 'expired'
+      ? [/^Expired\s*\(\d+\)/i, /^Expired$/i]
+      : tabKey === 'active'
+        ? [/^Active\s*\(\d+\)/i, /^Active$/i]
+        : tabKey === 'available_soon'
+          ? [/^Upcoming\s*\(\d+\)/i, /^Upcoming$/i]
+          : [/^All\s*\(\d+\)/i, /^All$/i];
+  for (const re of patterns) {
+    const hit = locateByLabel(nodes, re, { minY: 0 });
+    if (hit) {
+      tapTarget(hit);
+      return true;
+    }
+  }
+  return false;
+}
+
+function locateStudentsControlExact(xml, studentsTestId) {
+  const n = parseUiXml(xml);
+  return locateByTestId(n, studentsTestId, { pick: 'top' });
+}
+
+function buildFixtureUiReconciliation({
+  apiRow,
+  trace,
+  labels,
+  studentsTestId,
+  tabSnapshots,
+  searchQuery,
+}) {
+  return {
+    quizId: FIXTURE.quizId,
+    sessionId: FIXTURE.sessionId,
+    apiAvailability: apiRow?.availability_status ?? trace.availability,
+    apiClassroomId: apiRow?.classroom_id ?? apiRow?.class_id ?? null,
+    apiQuizTitle: apiRow?.quiz_name ?? apiRow?.title ?? labels.quizTitle,
+    traceSelectedTab: trace.filterStrategy?.selectedTab ?? null,
+    traceSearchQuery: trace.filterStrategy?.searchQuery ?? searchQuery ?? '',
+    diagnosticsOnly: {
+      openStudentsLabel: labels.openStudentsLabel ?? null,
+      quizTitleFragment: String(labels.quizTitle).slice(0, 12),
+    },
+    uiTabSnapshots: tabSnapshots,
+    exactFixtureTestId: studentsTestId,
+  };
 }
 function waitFor(predicate, { attempts = 12, pauseMs = 1200, dumpName = 'wait' } = {}) {
   for (let i = 0; i < attempts; i++) {
@@ -341,7 +475,7 @@ function fixtureContext(labels, evidence = {}) {
 async function journeyA(labels, resultEvidence = {}) {
   const fx = fixtureContext(labels, resultEvidence);
   const log = { journey: 'A_assessments_students_result', steps: [] };
-  const { trace } = await loadFixtureTrace();
+  const { trace, allQuizzes } = await loadFixtureTrace();
   log.fixtureTrace = trace;
   if (trace.boundary !== 'ok') {
     log.pass = false;
@@ -349,6 +483,10 @@ async function journeyA(labels, resultEvidence = {}) {
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
   }
+  const apiRow = allQuizzes.find(
+    (q) =>
+      Number(q.quiz_id) === FIXTURE.quizId && String(q.session_id ?? '') === String(FIXTURE.sessionId),
+  );
   await dismissOverlays();
   ensureInApp();
 
@@ -369,81 +507,131 @@ async function journeyA(labels, resultEvidence = {}) {
     );
   }, { dumpName: 'a-01-wait-assessments', attempts: 20 });
   path = tabWait.xmlPath || dump('a-01-assessments.xml');
-  nodes = parseUiXml(readXmlContent(path));
-  const tabKey = trace.filterStrategy?.selectedTab ?? 'expired';
-  const tabTap =
-    tabKey === 'expired'
-      ? locateByLabel(nodes, /Expired\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, /Expired/i, { minY: 0 })
-      : tabKey === 'active'
-        ? locateByLabel(nodes, /Active\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, /Active/i, { minY: 0 })
-        : locateByLabel(nodes, /All\s*\(\d+\)/i, { minY: 0 }) || locateByLabel(nodes, 'All', { minY: 0 });
-  if (tabTap) {
-    log.steps.push({ step: `tab_${tabKey}`, tap: tapTarget(tabTap) });
-    sleep(2000);
-    path = dump('a-01b-assessments-tab.xml');
-    nodes = parseUiXml(readXmlContent(path));
-  } else {
-    log.steps.push({ step: `tab_${tabKey}_skipped`, reason: 'tab_not_found_use_search' });
-  }
-
-  const searchQ = trace.filterStrategy?.searchQuery || labels.searchToken || '';
-  if (searchQ && tapSearchField(nodes)) {
-    for (let i = 0; i < 48; i++) adb('shell input keyevent 67');
-    adbTypeSearch(searchQ);
-    sleep(1800);
-    log.steps.push({ step: 'search_filter', tokenLength: searchQ.length });
-    path = dump('a-01c-after-search.xml');
-    nodes = parseUiXml(readXmlContent(path));
-  }
 
   const studentsTestId = trace.openStudentsTestId;
-  const openStudentsLabel = labels.openStudentsLabel;
-  const locateStudentsControl = (xml) => {
-    const n = parseUiXml(xml);
-    return (
-      locateByTestId(n, studentsTestId, { pick: 'top' }) ||
-      (openStudentsLabel ? locateByLabel(n, openStudentsLabel, { minY: 0, pick: 'top' }) : null) ||
-      locateByLabel(n, String(labels.quizTitle).slice(0, 12), { minY: 0, pick: 'top' })
-    );
+  const searchQ = trace.filterStrategy?.searchQuery || labels.searchToken || '';
+  const primaryTab = trace.filterStrategy?.selectedTab ?? 'expired';
+  const tabProbeOrder = [primaryTab];
+  if (primaryTab !== 'all') tabProbeOrder.push('all');
+
+  const tabSnapshots = [];
+  let studentListTap = null;
+  let loadMoreTaps = 0;
+
+  const findFixtureControlOnScreen = (xmlPath) => {
+    let hit = locateStudentsControlExact(readXmlContent(xmlPath), studentsTestId);
+    let taps = 0;
+    const maxLoadMore = trace.loadMoreTapsNeeded + 2;
+    while (!hit && taps < maxLoadMore) {
+      const n = parseUiXml(readXmlContent(xmlPath));
+      if (!tapLoadMore(n)) break;
+      taps += 1;
+      loadMoreTaps += 1;
+      xmlPath = dump(`a-loadmore-${loadMoreTaps}.xml`);
+      hit = locateStudentsControlExact(readXmlContent(xmlPath), studentsTestId);
+    }
+    if (!hit) {
+      const scrolled = locateWithScroll({
+        dumpFn: dump,
+        scrollFn: scrollDown,
+        maxScrolls: 12,
+        dumpNamePrefix: 'a-scroll-students',
+        locateFn: (xml) => locateStudentsControlExact(xml, studentsTestId),
+      });
+      hit = scrolled.hit;
+      if (scrolled.scrolls > 0) {
+        log.steps.push({ step: 'scroll_for_students_control', scrolls: scrolled.scrolls, hit: Boolean(hit) });
+      }
+    }
+    return hit;
   };
 
-  let studentListTap = locateStudentsControl(readXmlContent(path));
-  let loadMoreTaps = 0;
-  const maxLoadMore = trace.loadMoreTapsNeeded + 2;
-  while (!studentListTap && loadMoreTaps < maxLoadMore) {
-    path = dump(`a-loadmore-${loadMoreTaps}.xml`);
+  for (const tabKey of tabProbeOrder) {
     nodes = parseUiXml(readXmlContent(path));
-    studentListTap = locateStudentsControl(readXmlContent(path));
+    const tabTapped = tapAssessmentsTab(nodes, tabKey);
+    log.steps.push({ step: `tab_${tabKey}`, tapped: tabTapped });
+    sleep(2000);
+    path = dump(`a-01b-tab-${tabKey}.xml`);
+    nodes = parseUiXml(readXmlContent(path));
+    tabSnapshots.push({
+      tab: tabKey,
+      counts: parseAssessmentsTabCounts(nodes),
+      exactFixtureTestIdPresent: locateStudentsControlExact(readXmlContent(path), studentsTestId) != null,
+    });
+
+    if (searchQ) {
+      const searchResult = enterAssessmentsSearch(nodes, searchQ, log);
+      if (!searchResult.ok) {
+        log.pass = false;
+        log.verify = { pass: false, ...searchResult };
+        log.fixtureUiReconciliation = buildFixtureUiReconciliation({
+          apiRow,
+          trace,
+          labels,
+          studentsTestId,
+          tabSnapshots,
+          searchQuery: searchQ,
+        });
+        writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
+        return log;
+      }
+      path = searchResult.xmlPath || path;
+      nodes = parseUiXml(readXmlContent(path));
+    }
+
+    studentListTap = findFixtureControlOnScreen(path);
     if (studentListTap) break;
-    if (!tapLoadMore(nodes)) break;
-    loadMoreTaps += 1;
+
+    if (searchQ) {
+      nodes = parseUiXml(readXmlContent(path));
+      const clearSearch = locateByTestId(nodes, 'assessments-search-input', { minY: 0 });
+      if (clearSearch) {
+        tapTarget(clearSearch);
+        for (let i = 0; i < 64; i++) adb('shell input keyevent 67');
+        sleep(600);
+      }
+    }
   }
 
-  if (!studentListTap) {
-    const scrolled = locateWithScroll({
-      dumpFn: dump,
-      scrollFn: scrollDown,
-      maxScrolls: 12,
-      dumpNamePrefix: 'a-scroll-students',
-      locateFn: (xml) => locateStudentsControl(xml),
+  const expiredCount = tabSnapshots.find((s) => s.tab === 'expired')?.counts?.expired;
+  const onAllWithFixture =
+    tabSnapshots.some((s) => s.tab === 'all' && s.exactFixtureTestIdPresent) ||
+    (studentListTap != null && tabProbeOrder.includes('all'));
+  if (
+    !studentListTap &&
+    trace.availability === 'expired' &&
+    expiredCount === 0 &&
+    onAllWithFixture
+  ) {
+    log.steps.push({
+      step: 'fixture_filter_count_anomaly',
+      note: 'API expired but Expired tab count 0 while exact testID visible under All',
     });
-    studentListTap = scrolled.hit;
-    log.steps.push({ step: 'scroll_for_students_control', scrolls: scrolled.scrolls, hit: Boolean(scrolled.hit) });
   }
+
   log.steps.push({
     step: 'locate_students_control',
     loadMoreTaps,
-    hit: studentListTap,
+    hit: Boolean(studentListTap),
     testId: studentsTestId,
     renderedInitially: trace.renderedInitially,
   });
 
   if (!studentListTap) {
+    log.fixtureUiReconciliation = buildFixtureUiReconciliation({
+      apiRow,
+      trace,
+      labels,
+      studentsTestId,
+      tabSnapshots,
+      searchQuery: searchQ,
+    });
     log.pass = false;
     log.verify = {
       label: trace.renderedInitially ? 'action_not_accessible' : 'beyond_rendered_page_unresolved',
       pass: false,
       trace,
+      reconciliation: log.fixtureUiReconciliation,
     };
     writeFileSync(join(evidence, 'journey-a.json'), JSON.stringify(log, null, 2));
     return log;
@@ -451,12 +639,10 @@ async function journeyA(labels, resultEvidence = {}) {
 
   adb('shell input keyevent 111');
   sleep(400);
-  const labelTap =
-    openStudentsLabel && locateByLabel(parseUiXml(readXmlContent(path)), openStudentsLabel, { minY: 0, pick: 'top' });
   log.steps.push({
     step: 'open_student_list',
-    tap: tapTarget(labelTap || studentListTap),
-    usedAccessibilityLabel: Boolean(labelTap),
+    testId: studentsTestId,
+    tap: tapTarget(studentListTap),
   });
   sleep(4500);
 
@@ -543,9 +729,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   };
   const classDrillId = `analytics-drill-class-${FIXTURE.classroomId}`;
   const quizDrillId = `analytics-drill-quiz-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
-  const tapOpenClassCard = (classTap) => {
-    tapTarget(classTap);
-    sleep(400);
+  const tapOpenClassCardOnce = (classTap) => {
     tapTarget(classTap);
     sleep(6000);
   };
@@ -560,7 +744,10 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     },
     { dumpName: 'b-00-wait-hub', attempts: 12, pauseMs: 1500 },
   );
-  applyFixtureAnalyticsDateRange(log);
+  const dateApply = applyFixtureAnalyticsDateRange(log);
+  if (!dateApply.ok) {
+    return failJourneyB(log, { label: dateApply.label, pass: false, ...dateApply });
+  }
   if (!assertAnalyticsDrillIdentity(log, 'analytics-drill-classes', 'b-after-date-apply')) {
     return failJourneyB(log, { label: 'analytics_drill_classes_after_date', pass: false });
   }
@@ -617,18 +804,24 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     writeFileSync(join(evidence, 'journey-b.json'), JSON.stringify(log, null, 2));
     return log;
   }
-  log.steps.push({ step: 'open_class', tap: tapTarget(classTap) });
-  tapOpenClassCard(classTap);
+  log.steps.push({ step: 'open_class', tap: classTap });
+  tapOpenClassCardOnce(classTap);
   const viewAnalyticsId = `analytics-quiz-view-${FIXTURE.quizId}-${FIXTURE.sessionId}-open`;
   const quizCardId = `analytics-quiz-card-${FIXTURE.quizId}-${FIXTURE.sessionId}`;
   let classDrillOk = assertAnalyticsDrillIdentity(log, classDrillId, 'b-after-class-open');
   if (!classDrillOk) {
     for (let retry = 0; retry < 3 && !classDrillOk; retry++) {
       const pathRetry = dump(`b-01-reopen-class-${retry}.xml`);
+      const retryNodes = parseUiXml(readXmlContent(pathRetry));
+      const stillOnClassList = locateByTestId(retryNodes, 'analytics-drill-classes') != null;
+      if (!stillOnClassList) {
+        log.steps.push({ step: 'open_class_retry_blocked', retry, reason: 'not_on_class_list' });
+        break;
+      }
       const retryTap = locateClassCard(readXmlContent(pathRetry));
       if (retryTap) {
-        log.steps.push({ step: 'open_class_retry', retry, tap: tapTarget(retryTap) });
-        tapOpenClassCard(retryTap);
+        log.steps.push({ step: 'open_class_retry', retry, tap: retryTap });
+        tapOpenClassCardOnce(retryTap);
         classDrillOk = assertAnalyticsDrillIdentity(log, classDrillId, `b-after-class-retry-${retry}`);
       }
     }
@@ -794,6 +987,14 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (!viewResultTap) {
     return failJourneyB(log, { label: 'analytics_saved_result', pass: false, viewResultId });
   }
+  log.steps.push({
+    step: 'view_result_identity',
+    quizId: FIXTURE.quizId,
+    sessionId: FIXTURE.sessionId,
+    classroomId: FIXTURE.classroomId,
+    studentId: FIXTURE.studentId,
+    attemptId: FIXTURE.attemptId,
+  });
   log.steps.push({ step: 'open_saved_result', tap: tapTarget(viewResultTap), testId: viewResultId });
   sleep(4500);
 
