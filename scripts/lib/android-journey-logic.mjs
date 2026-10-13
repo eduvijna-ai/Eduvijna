@@ -662,6 +662,39 @@ export function locateAnalyticsQuizListSectionAnchor(nodes) {
 /**
  * @param {{ x1: number; y1: number; x2: number; y2: number; cx: number; cy: number }} rect
  */
+/**
+ * Vertical swipe inside the analytics nested list viewport, starting on non-clickable
+ * text or a grid point that does not overlap discovery-excluded controls (e.g. View Analytics).
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ */
+export function findSafeNestedQuizScrollSwipe(nodes, scrollRect, direction = 'down') {
+  if (!scrollRect) return null;
+  const margin = 36;
+  const contentMinY = Math.round(scrollRect.y1 + margin);
+  const contentMaxY = Math.round(scrollRect.y2 - margin);
+  const start = findSafeAnalyticsClassDrillScrollStart(nodes, { contentMinY, contentMaxY });
+  if (!start) return null;
+  const travel = 380;
+  let endY =
+    direction === 'down'
+      ? Math.max(contentMinY, start.y - travel)
+      : Math.min(contentMaxY, start.y + travel);
+  if (Math.abs(endY - start.y) < 120) {
+    endY =
+      direction === 'down'
+        ? Math.max(contentMinY, start.y - 120)
+        : Math.min(contentMaxY, start.y + 120);
+  }
+  return {
+    x: start.x,
+    startY: start.y,
+    endY,
+    direction,
+    safeScrollSource: start.source,
+    safeScrollLabel: start.label ?? null,
+  };
+}
+
 export function deriveBoundedVerticalSwipeInRect(rect, direction = 'up', { margin = 40 } = {}) {
   const x = rect.cx;
   if (direction === 'up') {

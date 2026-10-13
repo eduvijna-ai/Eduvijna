@@ -38,6 +38,7 @@ import {
   readObservedAnalyticsDrillMarkers,
   findClassDrillNestedScrollViewport,
   deriveBoundedVerticalSwipeInRect,
+  findSafeNestedQuizScrollSwipe,
   locateFixtureViewAnalyticsTap,
   locateFixtureSavedResultTap,
   classifySavedResultLocateFailure,
@@ -65,7 +66,12 @@ import {
 import { executeTapWith } from './lib/android-journey-tap.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-journeys');
+const evidence = join(
+  repoRoot,
+  '.dev-api-document-workflow-run',
+  'runtime-evidence',
+  process.env.ANDROID_JOURNEY_EVIDENCE_DIR || 'android-journeys',
+);
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
 const sha = engineeringImplementationSha();
 
@@ -582,11 +588,16 @@ function logApiMobileOrderCrosscheck(log, quizPageHint, discovery) {
   return divergence;
 }
 
-function swipeInNestedQuizScroll(scrollRect, direction) {
-  const swipe = deriveBoundedVerticalSwipeInRect(scrollRect, direction);
+function swipeInNestedQuizScroll(scrollRect, direction, nodes) {
+  const swipe = nodes
+    ? findSafeNestedQuizScrollSwipe(nodes, scrollRect, direction)
+    : null;
+  if (!swipe) {
+    return { ok: false, label: 'analytics_quiz_safe_scroll_point_missing', direction };
+  }
   adb(`shell input swipe ${swipe.x} ${swipe.startY} ${swipe.x} ${swipe.endY} 300`);
   sleep(650);
-  return swipe;
+  return { ok: true, ...swipe };
 }
 
 function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, viewAnalyticsId, quizCardId) {
@@ -665,7 +676,18 @@ function bringQuizListSectionIntoViewport(log, discoveryCtx, mobileFixturePage, 
       scrollAnalyticsQuizListUp();
       swipe = { mode: 'list_up_legacy', direction: 'up' };
     } else {
-      swipe = { ...swipeInNestedQuizScroll(scrollRect, direction), mode: 'nested_bounds' };
+      const nested = swipeInNestedQuizScroll(scrollRect, direction, nodes);
+      if (!nested.ok) {
+        return {
+          ok: false,
+          label: nested.label,
+          attempt,
+          lastProgress: progress,
+          xmlPath: path,
+          scrollViewport: scrollRect,
+        };
+      }
+      swipe = { ...nested, mode: 'nested_bounds_safe' };
     }
     log.steps.push({
       step: 'fixture_quiz_section_reposition_swipe',
@@ -728,7 +750,29 @@ function ensureFixtureQuizCardInViewport(
 
     const direction =
       progress.seesQuizSummarySection || progress.cardCount === 0 ? 'up' : 'down';
-    swipeInNestedQuizScroll(scrollRect, direction);
+    const invBefore = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_card_hunt', {
+      phase: 'before',
+      page: mobileFixturePage,
+      attempt,
+      direction,
+    });
+    if (!invBefore.ok) {
+      return { path, xml, nodes, scrollRect, invariantFailure: invBefore };
+    }
+    const nestedSwipe = swipeInNestedQuizScroll(scrollRect, direction, nodes);
+    if (!nestedSwipe.ok) {
+      return {
+        path,
+        xml,
+        nodes,
+        scrollRect,
+        invariantFailure: {
+          ok: false,
+          label: nestedSwipe.label,
+          actionAttempted: 'fixture_quiz_card_hunt',
+        },
+      };
+    }
     path = dump(`b-02-fixture-card-hunt-${direction}-${attempt + 1}.xml`);
     xml = readXmlContent(path);
     const inv = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_card_hunt', {
@@ -786,28 +830,35 @@ function locateFixtureQuizViewAnalyticsOnPage(
   let xml = reposition.xml || readXmlContent(path);
   let nodes = reposition.nodes || parseUiXml(xml);
   let scrollRect = reposition.scrollRect || findClassDrillNestedScrollViewport(nodes);
-  const cardHunt = ensureFixtureQuizCardInViewport(
-    log,
-    discoveryCtx,
-    quizCardId,
-    viewAnalyticsId,
-    mobileFixturePage,
-    { path, xml, nodes, scrollRect },
-  );
-  ({ path, xml, nodes, scrollRect } = cardHunt);
-  if (cardHunt.invariantFailure) {
-    return {
-      ok: false,
-      label: cardHunt.invariantFailure.label,
-      mobileFixturePage,
-      visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes, 12),
-      xmlPath: path,
-      viewportProgress: null,
-    };
-  }
   let viewTap =
     reposition.viewTap ||
     (scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null);
+  if (!viewTap) {
+    const cardHunt = ensureFixtureQuizCardInViewport(
+      log,
+      discoveryCtx,
+      quizCardId,
+      viewAnalyticsId,
+      mobileFixturePage,
+      { path, xml, nodes, scrollRect },
+    );
+    ({ path, xml, nodes, scrollRect } = cardHunt);
+    if (cardHunt.invariantFailure) {
+      const driftLabel =
+        cardHunt.invariantFailure.label || 'analytics_class_drill_invariant_broken';
+      return {
+        ok: false,
+        label: driftLabel,
+        navigationDrift: driftLabel === 'analytics_navigation_drift_during_quiz_discovery',
+        mobileFixturePage,
+        visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes, 12),
+        xmlPath: path,
+        viewportProgress: null,
+        invariantFailure: cardHunt.invariantFailure,
+      };
+    }
+    viewTap = scrollRect ? locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect) : null;
+  }
 
   discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_search_initial', {
     page: mobileFixturePage,
@@ -848,7 +899,33 @@ function locateFixtureQuizViewAnalyticsOnPage(
 
     const direction =
       progress.fixtureCardVisible && !progress.viewAnalyticsVisible ? 'down' : directions[innerScrolls % directions.length];
-    const swipe = swipeInNestedQuizScroll(scrollRect, direction);
+    const invBefore = discoveryCtx.checkClassDrillInvariant(xml, path, 'fixture_quiz_inner_search', {
+      phase: 'before',
+      page: mobileFixturePage,
+      direction,
+      innerScrolls,
+    });
+    if (!invBefore.ok) {
+      return {
+        ok: false,
+        label: invBefore.label,
+        navigationDrift: invBefore.label === 'analytics_navigation_drift_during_quiz_discovery',
+        mobileFixturePage,
+        visibleQuizCardTestIds: [],
+        xmlPath: path,
+        invariantFailure: invBefore,
+      };
+    }
+    const swipe = swipeInNestedQuizScroll(scrollRect, direction, nodes);
+    if (!swipe.ok) {
+      return {
+        ok: false,
+        label: swipe.label,
+        mobileFixturePage,
+        visibleQuizCardTestIds: listVisibleAnalyticsQuizCardTestIds(nodes, 12),
+        xmlPath: path,
+      };
+    }
     innerScrolls += 1;
     path = dump(`b-02-fixture-quiz-inner-${direction}-${innerScrolls}.xml`);
     xml = readXmlContent(path);
@@ -913,7 +990,8 @@ function locateFixtureQuizViewAnalyticsOnPage(
         break;
       }
       if (!progress.fixtureCardVisible) break;
-      swipeInNestedQuizScroll(scrollRect, 'down');
+      const alignSwipe = swipeInNestedQuizScroll(scrollRect, 'down', nodes);
+      if (!alignSwipe.ok) break;
       alignScrolls += 1;
       path = dump(`b-02-fixture-view-analytics-align-${alignScrolls}.xml`);
       xml = readXmlContent(path);
@@ -2163,6 +2241,26 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     discovery.discoveryCtx,
   );
   if (!fixtureLocate.ok) {
+    if (
+      fixtureLocate.navigationDrift ||
+      fixtureLocate.label === 'analytics_navigation_drift_during_quiz_discovery' ||
+      fixtureLocate.label === 'analytics_class_drill_invariant_broken'
+    ) {
+      log.steps.push({
+        step: 'fixture_quiz_navigation_drift',
+        label: fixtureLocate.label,
+        xmlPath: fixtureLocate.xmlPath,
+        invariantFailure: fixtureLocate.invariantFailure ?? null,
+      });
+      return failJourneyB(log, {
+        label: fixtureLocate.label,
+        pass: false,
+        navigationDrift: true,
+        quizId: FIXTURE.quizId,
+        sessionId: FIXTURE.sessionId,
+        xmlPath: fixtureLocate.xmlPath,
+      });
+    }
     const classification = classifyFixtureDiscoveryOutcome(
       quizPageHint,
       discovery,

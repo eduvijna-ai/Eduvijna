@@ -24,6 +24,7 @@ import {
   findClassDrillNestedScrollViewport,
   locateAnalyticsQuizListSectionAnchor,
   deriveBoundedVerticalSwipeInRect,
+  findSafeNestedQuizScrollSwipe,
   locateFixtureViewAnalyticsTap,
   locateFixtureSavedResultTap,
   classifySavedResultLocateFailure,
@@ -291,6 +292,29 @@ test('fixture view analytics requires visible bounds inside scroll viewport', ()
   assert.ok(swipeUp.startY < swipeUp.endY);
   const swipeDown = deriveBoundedVerticalSwipeInRect(scrollRect, 'down');
   assert.ok(swipeDown.startY > swipeDown.endY);
+});
+
+test('safe nested quiz scroll avoids View Analytics clickable bounds', () => {
+  const scrollRect = { x1: 0, y1: 721, x2: 1080, y2: 1700, cx: 540, cy: 1210 };
+  const xml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    '<node resource-id="analytics-quiz-card-513-66494261-2748-4b72-a714-6547c0cfa561" bounds="[42,721][1038,1454]"/>' +
+    '<node text="Topic title for quiz 513" clickable="false" bounds="[80,800][500,860]"/>' +
+    '<node resource-id="analytics-quiz-view-513-66494261-2748-4b72-a714-6547c0cfa561-open" clickable="true" bounds="[89,1300][999,1414]"/>';
+  const nodes = parseUiXml(xml);
+  const swipe = findSafeNestedQuizScrollSwipe(nodes, scrollRect, 'down');
+  assert.ok(swipe);
+  const viewBtn = nodes.find((n) =>
+    (n['resource-id'] || '').includes('analytics-quiz-view-513'),
+  );
+  assert.ok(viewBtn?.boundsRect);
+  const { x1, y1, x2, y2 } = viewBtn.boundsRect;
+  const overlapsBtn =
+    swipe.startY >= y1 &&
+    swipe.startY <= y2 &&
+    swipe.x >= x1 &&
+    swipe.x <= x2;
+  assert.equal(overlapsBtn, false);
 });
 
 test('saved result locate failure classifies clipped student attempt row', () => {
