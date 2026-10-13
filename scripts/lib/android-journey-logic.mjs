@@ -695,6 +695,41 @@ export function locateFixtureViewAnalyticsTap(nodes, viewAnalyticsId, scrollRect
   return hit;
 }
 
+/** @param {ReturnType<typeof parseUiXml>} nodes */
+export function locateFixtureSavedResultTap(nodes, viewResultId, scrollRect = null) {
+  const hit = locateByTestId(nodes, viewResultId);
+  if (!hit) return null;
+  if (scrollRect && !isTapTargetWithinScrollViewport(hit, scrollRect, { margin: 4 })) return null;
+  return hit;
+}
+
+/**
+ * @param {ReturnType<typeof parseUiXml>} nodes
+ * @param {string} viewResultId
+ * @param {string} studentAttemptId
+ */
+export function classifySavedResultLocateFailure(nodes, viewResultId, studentAttemptId, scrollRect = null) {
+  const view = locateByTestId(nodes, viewResultId);
+  const card = locateByTestId(nodes, studentAttemptId);
+  if (!card) {
+    return { reason: 'fixture_student_attempt_row_missing', viewRendered: Boolean(view) };
+  }
+  const cardHeight =
+    card.bounds && card.bounds.y2 != null && card.bounds.y1 != null
+      ? card.bounds.y2 - card.bounds.y1
+      : null;
+  if (cardHeight != null && cardHeight < 48) {
+    return { reason: 'view_result_row_clipped_in_main_scroll', cardHeight, viewRendered: Boolean(view) };
+  }
+  if (!view) {
+    return { reason: 'view_result_cta_not_rendered', cardHeight, viewRendered: false };
+  }
+  if (scrollRect && !isTapTargetWithinScrollViewport(view, scrollRect, { margin: 4 })) {
+    return { reason: 'view_result_cta_offscreen_in_scroll_viewport', cardHeight, viewRendered: true };
+  }
+  return { reason: 'view_result_testid_not_found', cardHeight, viewRendered: Boolean(view) };
+}
+
 export function buildFixtureViewportProgressSignature(
   nodes,
   viewAnalyticsId,

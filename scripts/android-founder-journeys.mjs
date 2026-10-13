@@ -39,6 +39,8 @@ import {
   findClassDrillNestedScrollViewport,
   deriveBoundedVerticalSwipeInRect,
   locateFixtureViewAnalyticsTap,
+  locateFixtureSavedResultTap,
+  classifySavedResultLocateFailure,
   buildFixtureViewportProgressSignature,
   shouldTerminateFixtureViewportSearch,
   inferQuizListRepositionDirection,
@@ -2225,6 +2227,7 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     return failJourneyB(log, { label: 'analytics_quiz_drill', pass: false, quizDrillId });
   }
   const viewResultId = `analytics-view-result-${FIXTURE.quizId}-${FIXTURE.sessionId}-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
+  const studentAttemptId = `analytics-student-attempt-${FIXTURE.studentId}-${FIXTURE.attemptId}`;
   sleep(1500);
   if (
     !assertAnalyticsQuizDrillIdentity(log, quizDrillId, FIXTURE.classroomId, 'b-before-view-result')
@@ -2232,18 +2235,25 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     return failJourneyB(log, { label: 'analytics_quiz_drill_before_result', pass: false, quizDrillId });
   }
 
-  for (let i = 0; i < 4; i++) scrollUp();
-  const locateStudentResult = (xml) => locateByTestId(parseUiXml(xml), viewResultId);
-  path = dump('b-04-drill.xml');
+  const locateStudentResultTap = (xml) => {
+    const parsed = parseUiXml(xml);
+    const scrollRect = findClassDrillNestedScrollViewport(parsed);
+    return locateFixtureSavedResultTap(parsed, viewResultId, scrollRect);
+  };
+  const waitViewResult = waitFor(
+    (xml) => locateStudentResultTap(xml) != null,
+    { dumpName: 'b-04-wait-view-result', attempts: 10, pauseMs: 1200 },
+  );
+  path = waitViewResult.xmlPath || dump('b-04-drill.xml');
   nodes = parseUiXml(readXmlContent(path));
-  let viewResultTap = locateStudentResult(readXmlContent(path));
+  let viewResultTap = locateStudentResultTap(readXmlContent(path));
   if (!viewResultTap) {
     const scrolledStudent = locateWithScroll({
       dumpFn: dump,
       scrollFn: scrollDown,
-      maxScrolls: 10,
+      maxScrolls: 12,
       dumpNamePrefix: 'b-04-scroll-student',
-      locateFn: locateStudentResult,
+      locateFn: (xml) => locateStudentResultTap(xml),
     });
     viewResultTap = scrolledStudent.hit;
     log.steps.push({ step: 'student_scroll', scrolls: scrolledStudent.scrolls });
@@ -2251,8 +2261,9 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
   if (!viewResultTap) {
     for (let pageTry = 0; pageTry < 4 && !viewResultTap; pageTry++) {
       path = dump(`b-04-attempt-page-${pageTry}.xml`);
-      nodes = parseUiXml(readXmlContent(path));
-      viewResultTap = locateStudentResult(readXmlContent(path));
+      const pageXml = readXmlContent(path);
+      nodes = parseUiXml(pageXml);
+      viewResultTap = locateStudentResultTap(pageXml);
       if (viewResultTap) break;
       const nextTap =
         locateByTestId(nodes, 'analytics-attempt-pagination-next') ||
@@ -2264,7 +2275,25 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
     }
   }
   if (!viewResultTap) {
-    return failJourneyB(log, { label: 'analytics_saved_result', pass: false, viewResultId });
+    path = dump('b-04-view-result-miss.xml');
+    const missXml = readXmlContent(path);
+    nodes = parseUiXml(missXml);
+    const scrollRect = findClassDrillNestedScrollViewport(nodes);
+    const diagnosis = classifySavedResultLocateFailure(
+      nodes,
+      viewResultId,
+      studentAttemptId,
+      scrollRect,
+    );
+    log.steps.push({ step: 'saved_result_locate_failure', viewResultId, studentAttemptId, ...diagnosis });
+    return failJourneyB(log, {
+      label: 'analytics_saved_result',
+      pass: false,
+      viewResultId,
+      studentAttemptId,
+      reason: diagnosis.reason,
+      ...diagnosis,
+    });
   }
   log.steps.push({
     step: 'view_result_identity',

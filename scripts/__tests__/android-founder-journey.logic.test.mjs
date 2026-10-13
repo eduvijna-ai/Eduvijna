@@ -25,6 +25,8 @@ import {
   locateAnalyticsQuizListSectionAnchor,
   deriveBoundedVerticalSwipeInRect,
   locateFixtureViewAnalyticsTap,
+  locateFixtureSavedResultTap,
+  classifySavedResultLocateFailure,
   buildFixtureViewportProgressSignature,
   shouldTerminateFixtureViewportSearch,
   inferQuizListRepositionDirection,
@@ -289,6 +291,42 @@ test('fixture view analytics requires visible bounds inside scroll viewport', ()
   assert.ok(swipeUp.startY < swipeUp.endY);
   const swipeDown = deriveBoundedVerticalSwipeInRect(scrollRect, 'down');
   assert.ok(swipeDown.startY > swipeDown.endY);
+});
+
+test('saved result locate failure classifies clipped student attempt row', () => {
+  const scrollRect = { x1: 0, y1: 721, x2: 1080, y2: 1700, cx: 540, cy: 1210 };
+  const viewResultId =
+    'analytics-view-result-479-a6882262-5c50-4cf5-a4a8-dc8786862916-70-207';
+  const studentAttemptId = 'analytics-student-attempt-70-207';
+  const clippedXml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    `<node resource-id="${studentAttemptId}" bounds="[42,721][1038,735]"/>`;
+  const clipped = classifySavedResultLocateFailure(
+    parseUiXml(clippedXml),
+    viewResultId,
+    studentAttemptId,
+    scrollRect,
+  );
+  assert.equal(clipped.reason, 'view_result_row_clipped_in_main_scroll');
+  const fullXml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    `<node resource-id="${studentAttemptId}" bounds="[42,900][1038,1200]"/>` +
+    `<node resource-id="${viewResultId}" clickable="true" bounds="[89,1100][999,1180]"/>`;
+  const nodes = parseUiXml(fullXml);
+  assert.ok(locateFixtureSavedResultTap(nodes, viewResultId, scrollRect));
+  const offscreenXml =
+    '<node class="android.widget.ScrollView" scrollable="true" bounds="[0,721][1080,1700]"/>' +
+    `<node resource-id="${studentAttemptId}" bounds="[42,900][1038,1200]"/>` +
+    `<node resource-id="${viewResultId}" clickable="true" bounds="[89,1680][999,1750]"/>`;
+  assert.equal(
+    classifySavedResultLocateFailure(
+      parseUiXml(offscreenXml),
+      viewResultId,
+      studentAttemptId,
+      scrollRect,
+    ).reason,
+    'view_result_cta_offscreen_in_scroll_viewport',
+  );
 });
 
 test('unexpected quiz drill still fails class drill invariant during viewport search', () => {

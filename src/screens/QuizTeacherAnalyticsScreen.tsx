@@ -92,6 +92,7 @@ export default function QuizTeacherAnalyticsScreen() {
   const mainScrollRef = useRef<ScrollView>(null);
   const quizListSectionOffsetY = useRef(0);
   const quizListSectionHeight = useRef(0);
+  const studentAttemptsSectionOffsetY = useRef(0);
   /** Matches analytics-class-drill-scroll viewport height on founder Android (≈721–1700). */
   const CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT = 980;
 
@@ -249,6 +250,17 @@ export default function QuizTeacherAnalyticsScreen() {
     }, 80);
     return () => clearTimeout(timer);
   }, [drillLevel, selectedClass, quizPage, totalQuizPages]);
+
+  useEffect(() => {
+    if (drillLevel !== 'quiz' || !selectedAssignment) return;
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(0, studentAttemptsSectionOffsetY.current - 8),
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [drillLevel, selectedAssignment, attemptPage, attemptFilter]);
 
   const resetDrillToClasses = useCallback(() => {
     setDrillLevel('classes');
@@ -743,15 +755,25 @@ export default function QuizTeacherAnalyticsScreen() {
 
             {quizInsights.length > 0 ? <ClassInsightsPanel insights={quizInsights} /> : null}
 
-            <View style={styles.attemptHeader}>
-              <Text style={[styles.subSectionTitle, { color: colors.text, marginBottom: 0 }]}>
-                Student Attempts
-              </Text>
-              <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 0 }]}>
-                Showing {studentRows.length} attempt{studentRows.length === 1 ? '' : 's'}
-                {attemptFilter ? ` · ${attemptFilter.replace('_', ' ')}` : ''}
-              </Text>
-            </View>
+            <View
+              testID="analytics-quiz-student-attempts-section"
+              accessibilityLabel="analytics-quiz-student-attempts-section"
+              accessible
+              importantForAccessibility="yes"
+              collapsable={false}
+              onLayout={(event) => {
+                studentAttemptsSectionOffsetY.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <View style={styles.attemptHeader}>
+                <Text style={[styles.subSectionTitle, { color: colors.text, marginBottom: 0 }]}>
+                  Student Attempts
+                </Text>
+                <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 0 }]}>
+                  Showing {studentRows.length} attempt{studentRows.length === 1 ? '' : 's'}
+                  {attemptFilter ? ` · ${attemptFilter.replace('_', ' ')}` : ''}
+                </Text>
+              </View>
             {paginatedRows.length === 0 ? (
               <View style={styles.emptyAttempts}>
                 <Ionicons name="people-outline" size={32} color={colors.textSecondary} />
@@ -771,6 +793,7 @@ export default function QuizTeacherAnalyticsScreen() {
               onPageChange={setAttemptPage}
               colors={colors}
             />
+            </View>
           </>
         ) : null}
 
