@@ -91,6 +91,9 @@ export default function QuizTeacherAnalyticsScreen() {
   });
   const mainScrollRef = useRef<ScrollView>(null);
   const quizListSectionOffsetY = useRef(0);
+  const quizListSectionHeight = useRef(0);
+  /** Matches analytics-class-drill-scroll viewport height on founder Android (≈721–1700). */
+  const CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT = 980;
 
   const [popup, setPopup] = useState({
     visible: false,
@@ -227,8 +230,18 @@ export default function QuizTeacherAnalyticsScreen() {
   useEffect(() => {
     if (drillLevel !== 'class' || !selectedClass) return;
     const timer = setTimeout(() => {
+      const sectionTop = quizListSectionOffsetY.current;
+      const sectionBottom = sectionTop + quizListSectionHeight.current;
+      const revealPaginationY = Math.max(
+        0,
+        sectionBottom - CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT + 32,
+      );
+      const targetY =
+        quizListSectionHeight.current > 0
+          ? Math.max(sectionTop - 8, revealPaginationY)
+          : Math.max(0, sectionTop - 8);
       mainScrollRef.current?.scrollTo({
-        y: Math.max(0, quizListSectionOffsetY.current - 8),
+        y: targetY,
         animated: false,
       });
     }, 80);
@@ -606,6 +619,7 @@ export default function QuizTeacherAnalyticsScreen() {
               collapsable={false}
               onLayout={(event) => {
                 quizListSectionOffsetY.current = event.nativeEvent.layout.y;
+                quizListSectionHeight.current = event.nativeEvent.layout.height;
               }}
             >
               <Text

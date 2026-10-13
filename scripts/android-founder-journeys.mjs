@@ -307,6 +307,23 @@ function ensureQuizPaginationNextVisible(log, classDrillId, discoveryCtx) {
       return { ok: true };
     }
   }
+  for (let i = 0; i < CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS; i++) {
+    const scrolled = discoveryCtx.safeScrollClassDrillDown(
+      'quiz_pagination_probe_main_down',
+      `b-02-quiz-next-probe-main-down-${i + 1}`,
+      readAnalyticsClassDrillHeroQuizPageState(snap.xml, classDrillId).current,
+    );
+    if (!scrolled.ok) return scrolled;
+    snap = { path: scrolled.path, xml: scrolled.xml, nodes: scrolled.nodes };
+    if (locateQuizPaginationNext(scrolled.nodes)) {
+      log.steps.push({
+        step: 'quiz_pagination_next_visible',
+        scroll: i + 1,
+        direction: 'main_down',
+      });
+      return { ok: true };
+    }
+  }
   log.steps.push({
     step: 'quiz_pagination_next_visible',
     scroll: CLASS_QUIZ_DISCOVERY_MAX_DOWN_SCROLLS,
@@ -347,6 +364,24 @@ function relocateQuizPaginationNextSmall(log, label, classDrillId, discoveryCtx)
       return { tap: next, failure: null };
     }
     scrollAnalyticsQuizListUp();
+  }
+  for (let i = 0; i < CLASS_QUIZ_PAGER_RELOCATE_MAX_SCROLLS; i++) {
+    const scrolled = discoveryCtx.safeScrollClassDrillDown(
+      'quiz_pagination_relocate_main_down',
+      `b-02-relocate-next-${label}-main-down-${i}`,
+      label,
+    );
+    if (!scrolled.ok) return { tap: null, failure: scrolled };
+    const next = locateQuizPaginationNext(scrolled.nodes);
+    if (next) {
+      log.steps.push({
+        step: 'quiz_pagination_next_relocated',
+        label,
+        direction: 'main_down',
+        scroll: i,
+      });
+      return { tap: next, failure: null };
+    }
   }
   return { tap: null, failure: null };
 }

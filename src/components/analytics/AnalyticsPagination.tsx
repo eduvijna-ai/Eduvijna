@@ -23,7 +23,7 @@ export default function AnalyticsPagination({
   if (totalPages <= 1) return null;
 
   return (
-    <View style={styles.row}>
+    <View style={styles.row} collapsable={false} importantForAccessibility="yes">
       <TouchableOpacity
         style={[styles.btn, { borderColor: colors.border, backgroundColor: colors.card }, page === 1 && styles.disabled]}
         onPress={() => onPageChange(Math.max(1, page - 1))}
