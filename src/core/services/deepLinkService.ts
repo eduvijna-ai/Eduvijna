@@ -32,7 +32,7 @@ export function parseDeepLink(url: string): DeepLinkData | null {
     if (openQuizMatch) {
       // Parse query parameters
       const urlObj = new URL(url.replace('eduvijna://', 'https://temp.com/'));
-      const sessionId = urlObj.searchParams.get('session_id') || undefined;
+      const sessionId = (urlObj.searchParams.get('session_id') || '').trim() || undefined;
       const classroomId = urlObj.searchParams.get('classroom_id') || undefined;
       const quizId = urlObj.searchParams.get('quiz_id') || undefined;
       
@@ -60,10 +60,6 @@ export function parseDeepLink(url: string): DeepLinkData | null {
  * This can only be called once per app launch
  */
 let initialUrlPromise: Promise<string | null> | null = null;
-
-export function resetInitialDeepLinkCache(): void {
-  initialUrlPromise = null;
-}
 
 export async function getInitialDeepLink(): Promise<string | null> {
   // Prevent multiple concurrent calls to getInitialURL()

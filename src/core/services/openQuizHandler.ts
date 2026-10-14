@@ -21,10 +21,8 @@ import {
 } from './assignedQuizRecovery.service';
 import {
   executeStudentAssignedQuizViewResults,
-  loadAssignedQuizDataForImmutableRecovery,
   loadAssignedQuizDataForSession,
 } from './assessmentQuizStart.service';
-import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -201,12 +199,17 @@ function normalizeQuizData(quizData: any, sessionId: string): NormalizedQuiz {
  * - Data normalization
  * - Navigation decisions
  */
+export type OpenQuizRequestContext = {
+  quizId?: string;
+};
+
 export async function handleOpenQuiz(
   sessionId: string,
   _source: OpenQuizSource,
   user: User | null,
   navigationAdapter: NavigationAdapter,
-  savePendingSession?: (sessionId: string) => void
+  savePendingSession?: (sessionId: string) => void,
+  requestContext?: OpenQuizRequestContext,
 ): Promise<void> {
   // ==========================================
   // 1. AUTHENTICATION CHECK
@@ -234,11 +237,12 @@ export async function handleOpenQuiz(
     // ==========================================
     console.log('🔍 handleOpenQuiz: Fetching quiz for session:', sessionId);
     
+    const hintedQuizId = Number(requestContext?.quizId);
     const validation = await fetchQuizDetailsBySessionId(
       sessionId,
       user.id,
-      0,
-      user.role as 'instructor' | 'admin' | 'student'
+      Number.isFinite(hintedQuizId) && hintedQuizId > 0 ? hintedQuizId : 0,
+      user.role as 'instructor' | 'admin' | 'student',
     );
     
     console.log('📦 handleOpenQuiz: Received quiz data:', {
@@ -253,6 +257,21 @@ export async function handleOpenQuiz(
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
     if (!validation.exists || !validation.quizData) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'not_found',
+        title: 'No Quiz Available',
+        message: 'No quiz is available for you.',
+        icon: 'alert-circle-outline',
+      });
+      return;
+    }
+
+    const untrustedQuizId = Number(requestContext?.quizId);
+    if (
+      Number.isFinite(untrustedQuizId) &&
+      untrustedQuizId > 0 &&
+      Number(validation.quizData.quiz_id) !== untrustedQuizId
+    ) {
       navigationAdapter.navigate('QuizStatusScreen', {
         status: 'not_found',
         title: 'No Quiz Available',
@@ -279,56 +298,22 @@ export async function handleOpenQuiz(
     const isTeacher = user.role === 'instructor' || user.role === 'admin';
 
     // ==========================================
-    // 6. TEACHER FLOW - Preview (before public/student branch)
-    // ==========================================
-    if (isTeacher) {
-      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
-
-      navigationAdapter.navigate('QuizPreviewScreen', {
-        quiz: normalizedQuiz,
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        quizData: normalizedQuiz,
-      });
-      return;
-    }
-
-    // ==========================================
-    // 7. STUDENT / PUBLIC FLOW - Complete validation chain
+    // 6. STUDENT FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
-      let pendingCheckpoint;
-      try {
-        pendingCheckpoint = await findPendingSubmissionCheckpoint(
-          user.id,
-          quizData.quiz_id,
-          sessionId,
-        );
-      } catch (probeError) {
-        if (isAssignedQuizRecoveryProbeError(probeError)) {
-          navigationAdapter.alert(
-            'Could not open quiz',
-            probeError.message,
-            [
-              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
-              { text: 'Cancel', style: 'cancel' },
-            ],
-          );
-          return;
-        }
-        throw probeError;
-      }
+      const pendingCheckpoint = await findPendingSubmissionCheckpoint(
+        user.id,
+        quizData.quiz_id,
+        sessionId,
+      );
       if (pendingCheckpoint) {
         const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-        const startCtx = {
+        const mergedQuiz = await loadAssignedQuizDataForSession({
           correctQuizId: quizData.quiz_id,
           correctSessionId: sessionId,
           correctClassroomId: quizData.classroom_id || quizData.class_id || '',
           attemptData: validation.quizData,
-        };
-        const mergedQuiz = recovery
-          ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
-          : await loadAssignedQuizDataForSession(startCtx);
+        });
         const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
         const screenParams = {
           quiz: normalizedQuiz,
@@ -434,6 +419,23 @@ export async function handleOpenQuiz(
         classroomId: normalizedQuiz.classroomId,
         quizData: normalizedQuiz,
         is_public: quizData.is_public,
+      });
+      return;
+    }
+
+    // ==========================================
+    // 7. TEACHER FLOW - Preview quiz
+    // ==========================================
+    if (isTeacher) {
+      // Normalize quiz data for teacher preview
+      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
+
+      navigationAdapter.navigate('QuizPreviewScreen', {
+        quiz: normalizedQuiz,
+        // Legacy params for backward compatibility
+        quizId: normalizedQuiz.quizId,
+        sessionId: normalizedQuiz.sessionId,
+        quizData: normalizedQuiz,
       });
       return;
     }

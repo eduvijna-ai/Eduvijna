@@ -11,10 +11,6 @@ import {
   toStudentQuiz,
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
-import {
-  buildTeacherDashboardSummaryCacheKey,
-  invalidateTeacherDashboardCaches,
-} from './teacherDashboardCacheInvalidation';
 import { API_BASE_URL } from '../api/config';
 import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
@@ -26,15 +22,6 @@ import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // } from './mockDashboardData';
 
 const DASHBOARD_API_URL = `${API_BASE_URL}/api/v1`;
-
-export class TeacherDashboardAuthenticationError extends Error {
-  readonly code = 'TEACHER_DASHBOARD_AUTHENTICATION_REQUIRED';
-
-  constructor() {
-    super('Teacher dashboard requires authentication');
-    this.name = 'TeacherDashboardAuthenticationError';
-  }
-}
 // const USE_MOCK_DATA = false; // Set to true to use mock data
 
 // Helper to build query string from filters
@@ -127,11 +114,8 @@ export async function fetchTeacherDashboardSummary(
     ...filters,
   };
 
-  const cacheKey = buildTeacherDashboardSummaryCacheKey(
-    String(defaultFilters.view_type),
-    defaultFilters.limit ?? 1000,
-    defaultFilters.offset ?? 0,
-  );
+  // Generate cache key based on filters
+  const cacheKey = `teacher_dashboard_summary_${defaultFilters.view_type}_${defaultFilters.limit}_${defaultFilters.offset}`;
 
   // Use cached API call wrapper
   return cachedApiCall(
@@ -153,7 +137,7 @@ export async function fetchTeacherDashboardSummary(
             window.location.href = '/login';
           }
           
-          throw new TeacherDashboardAuthenticationError();
+          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
         }
 
         const queryString = buildQueryString(defaultFilters);
@@ -623,7 +607,8 @@ export async function fetchClassroomQuizzesWithAllStatuses(
  * Call this on logout, or when quiz data changes (create, update, delete)
  */
 export async function clearDashboardCache(): Promise<void> {
-  await invalidateTeacherDashboardCaches();
+  // Clear teacher caches
+  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
   await clearCacheEntry('teacher_classrooms_class_wise_students');
   
   // Note: Individual quiz caches will be cleared by clearAllCache()
@@ -640,9 +625,123 @@ export async function clearQuizCache(classroomId?: string, quizId?: number): Pro
   
   // Since we can't wildcard pattern match easily, clear all quiz-related caches
   // This is safer and ensures consistency
-  await invalidateTeacherDashboardCaches();
+  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
   
   console.log('✅ Quiz cache cleared');
+}
+
+function quizIdMatchesUntrustedHint(serverQuizId: unknown, hintedQuizId: number): boolean {
+  if (!hintedQuizId || hintedQuizId <= 0) return true;
+  const serverId = Number(serverQuizId);
+  return Number.isFinite(serverId) && serverId === hintedQuizId;
+}
+
+async function fetchCompletedStudentQuizAttemptForSession(
+  studentId: string,
+  quizId: number,
+  sessionId: string,
+): Promise<Record<string, unknown> | null> {
+  const token = await TokenStorage.getAccessToken();
+  if (!token) return null;
+  const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${studentId}&quiz_id=${quizId}`;
+  const attemptsResponse = await fetch(attemptsUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!attemptsResponse.ok) return null;
+  const attempts = await attemptsResponse.json();
+  if (!Array.isArray(attempts) || attempts.length === 0) return null;
+
+  const completed = attempts.filter(
+    (attempt: { status?: string }) => attempt.status === 'completed',
+  ) as Array<Record<string, unknown> & { session_id?: string; class_id?: string }>;
+  if (completed.length === 0) return null;
+
+  const sessionMatches = completed.filter((attempt) => {
+    const attemptSession = attempt.session_id ?? attempt.class_id;
+    if (!attemptSession) return false;
+    return String(attemptSession) === sessionId;
+  });
+  if (sessionMatches.length === 1) return sessionMatches[0];
+  if (sessionMatches.length > 1) return null;
+
+  if (completed.length === 1 && !completed[0].session_id && !completed[0].class_id) {
+    return completed[0];
+  }
+  return null;
+}
+
+async function buildValidationFromCheckRecord(
+  userId: string,
+  sessionId: string,
+): Promise<{
+  exists: boolean;
+  isExpired: boolean;
+  isScheduled: boolean;
+  isAssigned: boolean;
+  isAttempted: boolean;
+  quizData: any | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  attemptData?: any;
+} | null> {
+  const record = await fetchQuizCheckRecordForSession(String(userId), sessionId);
+  if (!record?.quiz_details) return null;
+
+  if (record.student_id != null && String(record.student_id) !== String(userId)) {
+    console.warn('check-record student_id does not match authenticated user');
+    return null;
+  }
+
+  const details = record.quiz_details;
+  const recordSessionId = (details.session_id || sessionId).trim();
+  if (details.session_id && details.session_id.trim() !== sessionId.trim()) {
+    console.warn('check-record session_id does not match requested session');
+    return null;
+  }
+  const classId = record.classid || '';
+  const quizData = {
+    ...details,
+    quiz_id: details.quiz_id,
+    session_id: details.session_id || sessionId,
+    classroom_id: classId,
+    class_id: classId,
+    topic: details.topic,
+    title: details.topic,
+    has_time_limit: details.has_time_limit,
+    is_public: details.is_public,
+    start_time: details.start_time,
+    end_time: details.end_time,
+  };
+
+  const attemptData =
+    record.status === 'completed' && quizData.quiz_id
+      ? await fetchCompletedStudentQuizAttemptForSession(
+          String(userId),
+          Number(quizData.quiz_id),
+          recordSessionId,
+        )
+      : null;
+  const isAttempted = record.status === 'completed' && attemptData != null;
+
+  const now = new Date();
+  const startTime = quizData.start_time ? new Date(quizData.start_time) : null;
+  const endTime = quizData.end_time ? new Date(quizData.end_time) : null;
+
+  return {
+    exists: true,
+    isExpired: endTime ? now > endTime : false,
+    isScheduled: startTime ? now < startTime : false,
+    isAssigned: true,
+    isAttempted,
+    quizData,
+    startTime,
+    endTime,
+    attemptData,
+  };
 }
 
 /**
@@ -695,6 +794,8 @@ export async function fetchQuizDetailsBySessionId(
       });
     }
 
+    const hintedQuizId = Number.isFinite(Number(quizId)) && Number(quizId) > 0 ? Number(quizId) : 0;
+
     // STEP 1: Fetch quiz data using the same endpoint as OpenQuiz page
     console.log('🔍 Fetching quiz by session_id:', sanitizedSessionId);
     const quizUrl = `${DASHBOARD_API_URL}/quiz?session_id=${sanitizedSessionId}&skip_auth=true`;
@@ -711,6 +812,15 @@ export async function fetchQuizDetailsBySessionId(
       const errorText = await quizResponse.text();
       console.error('Quiz fetch failed:', quizResponse.status, errorText);
       await handleAuthError(quizResponse.status, errorText, 'fetchQuizDetailsBySessionId');
+      if (userRole === 'student') {
+        const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+        if (
+          fromRecord &&
+          quizIdMatchesUntrustedHint(fromRecord.quizData?.quiz_id, hintedQuizId)
+        ) {
+          return fromRecord;
+        }
+      }
       return defaultResult;
     }
 
@@ -719,6 +829,16 @@ export async function fetchQuizDetailsBySessionId(
     console.log('📦 Raw API response:', JSON.stringify(quizDataResponse).substring(0, 200));
     
     if (!quizDataResponse.quiz_data) {
+      if (userRole === 'student') {
+        const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+        if (
+          fromRecord &&
+          quizIdMatchesUntrustedHint(fromRecord.quizData?.quiz_id, hintedQuizId)
+        ) {
+          console.log('✅ Recovered quiz context from check-record for session:', sanitizedSessionId);
+          return fromRecord;
+        }
+      }
       console.log('❌ No quiz found for session:', sessionId);
       return defaultResult;
     }
@@ -728,6 +848,11 @@ export async function fetchQuizDetailsBySessionId(
     // IMPORTANT: API doesn't return session_id in quiz_data, so we use the sanitized sessionId
     if (!quizData.session_id) {
       quizData.session_id = sanitizedSessionId;
+    }
+
+    if (!quizIdMatchesUntrustedHint(quizData.quiz_id, hintedQuizId)) {
+      console.warn('Untrusted quiz_id hint does not match server quiz for session');
+      return defaultResult;
     }
     
     console.log('✅ Quiz data fetched:', {
@@ -758,42 +883,30 @@ export async function fetchQuizDetailsBySessionId(
 
     if (userRole === 'student' && quizData.quiz_id) {
       console.log('🔍 Checking quiz attempts for student:', userId);
-      
       try {
-        // Use quiz-attempts API to check if student already completed
-        const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${userId}&quiz_id=${quizData.quiz_id}&class_id=${sanitizedSessionId}`;
-        
-        const attemptsResponse = await fetch(attemptsUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (attemptsResponse.ok) {
-          const attempts = await attemptsResponse.json();
-          console.log('📋 Quiz attempts found:', attempts?.length || 0);
-          
-          if (attempts && Array.isArray(attempts) && attempts.length > 0) {
-            // Check if any attempt is completed
-            const completedAttempt = attempts.find((attempt: any) => attempt.status === 'completed');
-            
-            if (completedAttempt) {
+        const completedAttempt = await fetchCompletedStudentQuizAttemptForSession(
+          String(userId),
+          Number(quizData.quiz_id),
+          sanitizedSessionId,
+        );
+        if (completedAttempt) {
+          isAttempted = true;
+          attemptData = completedAttempt;
+          console.log('✅ Student already completed this quiz for session:', completedAttempt);
+        }
+        if (!isAttempted) {
+          const recordStatus = await fetchQuizCheckRecordStatus(String(userId), sanitizedSessionId);
+          if (recordStatus) {
+            const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+            if (fromRecord?.isAttempted) {
               isAttempted = true;
-              attemptData = completedAttempt;
-              console.log('✅ Student already completed this quiz:', completedAttempt);
+              attemptData = fromRecord.attemptData ?? attemptData;
             }
-            
-            // If student has any attempt (started or completed), they're assigned
             isAssigned = true;
           }
-        } else {
-          console.log('ℹ️ No attempts found or error checking attempts');
         }
       } catch (attemptsError) {
         console.error('Error checking quiz attempts:', attemptsError);
-        // Don't block - let them proceed even if attempt check fails
       }
     }
 
@@ -860,30 +973,39 @@ export interface CheckRecordResponse {
  *
  * POST /api/v1/quiz/check-record
  */
-export async function fetchQuizCheckRecord(
-  studentId: string,
-  checkType: 'pending' | 'completed' = 'pending',
-  sessionId: string = '',
-): Promise<CheckRecordResponse> {
+async function postQuizCheckRecord(body: {
+  p_student_id: string;
+  p_session_id: string;
+  p_check_type?: string | null;
+}): Promise<CheckRecordResponse> {
   const token = await TokenStorage.getAccessToken();
   if (!token) {
     await TokenStorage.clearAuthData();
     if (authErrorNavigationCallback) authErrorNavigationCallback();
-    return { success: false, result: [], check_type: checkType, message: 'No token' } as CheckRecordResponse;
+    return {
+      success: false,
+      result: [],
+      check_type: body.p_check_type ?? '',
+      message: 'No token',
+    } as CheckRecordResponse;
   }
 
   const url = `${DASHBOARD_API_URL}/quiz/check-record`;
+  const payload: Record<string, string | null> = {
+    p_student_id: body.p_student_id,
+    p_session_id: body.p_session_id,
+  };
+  if (body.p_check_type !== undefined) {
+    payload.p_check_type = body.p_check_type;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      p_check_type: checkType,
-      p_session_id: sessionId,
-      p_student_id: studentId,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -893,6 +1015,48 @@ export async function fetchQuizCheckRecord(
   }
 
   return response.json() as Promise<CheckRecordResponse>;
+}
+
+/** Documented status mode — record exists for session + student. */
+export async function fetchQuizCheckRecordStatus(
+  studentId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const res = await postQuizCheckRecord({
+    p_student_id: studentId,
+    p_session_id: sessionId,
+    p_check_type: 'status',
+  });
+  return res.result === true;
+}
+
+/** Documented record fetch — omit p_check_type. */
+export async function fetchQuizCheckRecordForSession(
+  studentId: string,
+  sessionId: string,
+): Promise<CheckRecordQuiz | null> {
+  const res = await postQuizCheckRecord({
+    p_student_id: studentId,
+    p_session_id: sessionId,
+  });
+  const rows = Array.isArray(res.result) ? res.result : [];
+  return rows[0] ?? null;
+}
+
+/**
+ * Legacy list scopes used by student dashboard loader (dev-api bulk pending/completed).
+ * Per-session access should use fetchQuizCheckRecordStatus / fetchQuizCheckRecordForSession.
+ */
+export async function fetchQuizCheckRecord(
+  studentId: string,
+  checkType: 'pending' | 'completed' = 'pending',
+  sessionId: string = '',
+): Promise<CheckRecordResponse> {
+  return postQuizCheckRecord({
+    p_check_type: checkType,
+    p_session_id: sessionId,
+    p_student_id: studentId,
+  });
 }
 
 /**

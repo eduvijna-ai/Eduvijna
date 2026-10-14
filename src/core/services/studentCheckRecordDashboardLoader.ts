@@ -150,17 +150,16 @@ export function computeCheckRecordDashboardStats(parsed: ParsedQuiz[]): Dashboar
   };
 }
 
-/** Pending + completed scopes merged and deduped (shared by Phase 1 home and Phase 2 parity loader). */
+/**
+ * Student assignment list for dashboard/assessments.
+ * Uses the supported bulk pending scope only; completed rows are classified client-side
+ * from pending-scope data (see checkRecordRowEffectiveStatus). The legacy
+ * `completed` + empty session_id call is not in CHECK_QUIZ_RECORD_API.md and returns
+ * no rows on dev-api for fixture 479 — dropping it preserves UI behavior.
+ */
 export async function fetchStudentCheckRecordRows(studentId: string): Promise<CheckRecordQuiz[]> {
-  const [pendingRes, completedRes] = await Promise.all([
-    fetchQuizCheckRecord(studentId, 'pending'),
-    fetchQuizCheckRecord(studentId, 'completed'),
-  ]);
-  const combined: CheckRecordQuiz[] = [
-    ...(pendingRes.result || []),
-    ...(completedRes.result || []),
-  ];
-  return dedupeCheckRecordQuizzes(combined);
+  const pendingRes = await fetchQuizCheckRecord(studentId, 'pending');
+  return dedupeCheckRecordQuizzes(pendingRes.result || []);
 }
 
 export async function loadStudentCheckRecordDashboard(studentId: string): Promise<{

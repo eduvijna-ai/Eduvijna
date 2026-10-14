@@ -4,7 +4,7 @@
  * Deep linking support for cross-platform assessment access
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -82,7 +82,15 @@ function AppContent() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
-  
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+  const processedNotifications = useRef<Set<string>>(new Set());
+  const initialDeepLinkProcessed = useRef<boolean>(false);
+  const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
+  const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
+  const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
+  const isWeb = Platform.OS === 'web';
+
   // Reset session guards when authentication state changes (never replay cold-launch initial URL)
   useEffect(() => {
     if (!isAuthenticated) {
@@ -90,17 +98,46 @@ function AppContent() {
       setLastProcessedTime(0);
       setPendingSessionId(null);
       webNavStackRef.current = [];
+      pendingOpenQuizRef.current = null;
+      pendingPostLoginQuizIdRef.current = undefined;
+      initialDeepLinkProcessed.current = false;
     }
   }, [isAuthenticated]);
-  const notificationListener = useRef<Notifications.Subscription | null>(null);
-  const responseListener = useRef<Notifications.Subscription | null>(null);
-  const processedNotifications = useRef<Set<string>>(new Set());
-  const initialDeepLinkProcessed = useRef<boolean>(false);
 
-  
-  // Platform detection
-  const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
-  const isWeb = Platform.OS === 'web';
+  const dispatchOpenQuiz = useCallback(
+    async (
+      sessionId: string,
+      source: 'deep_link' | 'post_login' | 'notification',
+      quizId?: string,
+    ) => {
+      if (!user) return;
+      const navigationAdapter = {
+        navigate: (screen: string, params?: any) => {
+          if (navigationRef.current) {
+            (navigationRef.current as any).navigate(screen, params);
+          }
+        },
+        alert: Alert.alert,
+      };
+      if (!navigationRef.current) {
+        pendingOpenQuizRef.current = { sessionId, quizId };
+        return;
+      }
+      await handleOpenQuiz(sessionId, source, user, navigationAdapter, setPendingSessionId, {
+        quizId,
+      });
+    },
+    [user],
+  );
+
+  useEffect(() => {
+    if (!isMobile || !isAuthenticated || !user || !navigationRef.current || !pendingOpenQuizRef.current) {
+      return;
+    }
+    const pending = pendingOpenQuizRef.current;
+    pendingOpenQuizRef.current = null;
+    void dispatchOpenQuiz(pending.sessionId, 'deep_link', pending.quizId);
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz]);
 
   // Notification polling runs in background
 
@@ -186,9 +223,10 @@ function AppContent() {
   }, [isMobile, isAuthenticated, user]); // Include auth state to handle login changes
 
   const resumePendingOpenQuiz = React.useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, quizId?: string) => {
       if (!user) {
         setPendingSessionId(sessionId);
+        pendingPostLoginQuizIdRef.current = quizId;
         return;
       }
 
@@ -217,7 +255,9 @@ function AppContent() {
             setTimeout(waitForNavigation, 100);
             return;
           }
-          await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
+          await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+            quizId,
+          }).catch(
             (error) => {
               console.error('❌ Error in post-login handleOpenQuiz:', error);
             },
@@ -227,7 +267,9 @@ function AppContent() {
         return;
       }
 
-      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
+      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+        quizId,
+      }).catch(
         (error) => {
           console.error('❌ Error in post-login handleOpenQuiz (web):', error);
         },
@@ -241,8 +283,10 @@ function AppContent() {
     if (!isAuthenticated || !pendingSessionId || !user) return;
 
     const sessionId = pendingSessionId;
+    const quizId = pendingPostLoginQuizIdRef.current;
+    pendingPostLoginQuizIdRef.current = undefined;
     setPendingSessionId(null);
-    resumePendingOpenQuiz(sessionId);
+    resumePendingOpenQuiz(sessionId, quizId);
   }, [isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
 
   // Set up auth error navigation callback
@@ -338,6 +382,7 @@ function AppContent() {
             if (!isAuthenticated) {
               console.log('👤 Not authenticated, saving sessionId for post-login:', sessionId);
               setPendingSessionId(sessionId);
+              pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
               return;
             }
 
@@ -360,18 +405,7 @@ function AppContent() {
             setLastProcessedSessionId(sessionId);
             setLastProcessedTime(now);
 
-        // Use unified handler
-        if (navigationRef.current && user) {
-          const navigationAdapter = { 
-            navigate: (screen: string, params?: any) => {
-              if (navigationRef.current) {
-                (navigationRef.current as any).navigate(screen, params);
-              }
-            }, 
-            alert: Alert.alert 
-          };
-          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
-        }
+            await dispatchOpenQuiz(sessionId, 'deep_link', deepLinkData.quizId);
           } else {
             console.log('🔗 Initial deep link parsed but not assessment type:', deepLinkData);
           }
@@ -394,6 +428,7 @@ function AppContent() {
         // If not authenticated, save sessionId and show login
         if (!isAuthenticated) {
           setPendingSessionId(sessionId);
+          pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
           return;
         }
 
@@ -416,19 +451,12 @@ function AppContent() {
         setLastProcessedSessionId(sessionId);
         setLastProcessedTime(now);
 
-        // Use unified handler
-        if (navigationRef.current && user) {
-          const navigationAdapter = { 
-            navigate: (screen: string, params?: any) => (navigationRef.current as any)?.navigate(screen, params), 
-            alert: Alert.alert 
-          };
-          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
-        }
+        await dispatchOpenQuiz(sessionId, 'deep_link', deepLinkData.quizId);
       }
     });
 
     return unsubscribe;
-  }, [isMobile, isAuthenticated, user]); // Include auth to handle state changes
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz]); // Include auth to handle state changes
 
   // Process pending deep link after authentication - REMOVED
   // Now handled directly in deep link handlers above with pendingSessionId
@@ -451,10 +479,12 @@ function AppContent() {
     const sessionId = deepLinkData.sessionId;
     if (!isAuthenticated || !user) {
       setPendingSessionId(sessionId);
+      pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
       return;
     }
 
     setPendingSessionId(sessionId);
+    pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
   }, [isWeb, isAuthenticated, user]);
 
   // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
