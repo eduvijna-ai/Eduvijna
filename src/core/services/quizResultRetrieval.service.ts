@@ -31,9 +31,11 @@ export type QuizResultLoadState =
       completedAt: string | null;
     };
 
-export async function getAttendedQuiz(
-  params: AttendedQuizParams,
-): Promise<AttendedQuizResponse> {
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getAttendedQuizOnce(params: AttendedQuizParams): Promise<AttendedQuizResponse> {
   const queryParams = new URLSearchParams();
   queryParams.append('student_id', params.student_id);
   if (params.classroom_id) queryParams.append('classroom_id', params.classroom_id);
@@ -44,6 +46,25 @@ export async function getAttendedQuiz(
     `/api/v1/dashboard/attended-quiz?${queryParams.toString()}`,
   );
   return response.data;
+}
+
+export async function getAttendedQuiz(
+  params: AttendedQuizParams,
+): Promise<AttendedQuizResponse> {
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await getAttendedQuizOnce(params);
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 429 && attempt < maxAttempts - 1) {
+        await sleepMs(1500 * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('getAttendedQuiz exhausted retries');
 }
 
 /** @deprecated use quizResultNormalization */
@@ -545,14 +566,20 @@ export async function fetchPersistedQuizResult(params: {
     }
 
     try {
+      const safeClassroomId =
+        classroomId &&
+        String(classroomId).trim() !== '' &&
+        String(classroomId) !== String(sessionId)
+          ? String(classroomId)
+          : undefined;
       const attended = await loadStudentAttendedWithWorksheetFallback(
         {
           student_id: studentId,
           session_id: sessionId,
           quiz_id: quizId,
-          classroom_id: classroomId || undefined,
+          classroom_id: safeClassroomId,
         },
-        classroomId,
+        safeClassroomId,
       );
       const normalized = normalizeAttendedQuizResponse(attended);
       if (!normalized) {

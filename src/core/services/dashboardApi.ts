@@ -16,7 +16,10 @@ import {
   invalidateTeacherDashboardCaches,
 } from './teacherDashboardCacheInvalidation';
 import { API_BASE_URL } from '../api/config';
-import { pickCompletedAttemptForScopedList } from './openQuizAttemptResolution';
+import {
+  coerceQuizAttemptsListResponse,
+  pickCompletedAttemptForScopedList,
+} from './openQuizAttemptResolution';
 import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // Uncomment below to use mock data when backend is unavailable
@@ -671,9 +674,7 @@ async function fetchCompletedStudentQuizAttemptForSession(
   });
   if (!attemptsResponse.ok) return null;
   const attempts = await attemptsResponse.json();
-  const picked = pickCompletedAttemptForScopedList(
-    Array.isArray(attempts) ? attempts : [],
-  );
+  const picked = pickCompletedAttemptForScopedList(coerceQuizAttemptsListResponse(attempts));
   if (picked.kind !== 'found') return null;
   return picked.attempt as Record<string, unknown>;
 }

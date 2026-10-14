@@ -15,6 +15,7 @@
  */
 
 import { fetchQuizDetailsBySessionId } from './dashboardApi';
+import { resolveAssignmentClassroomId } from './openQuizAttemptResolution';
 import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
@@ -374,14 +375,19 @@ export async function handleOpenQuiz(
 
       // A. Already attempted — shared recovery-aware View Results resolver
       if (validation.isAttempted) {
-        const classroomId =
-          quizData.classroom_id || quizData.class_id || validation.attemptData?.classroom_id || '';
+        const resolvedSessionId = sessionId || quizData.session_id;
+        const classroomId = resolveAssignmentClassroomId(
+          resolvedSessionId,
+          validation.attemptData?.classroom_id,
+          quizData.classroom_id,
+          quizData.class_id,
+        );
         await executeStudentAssignedQuizViewResults(
           {
             studentId: String(user.id),
             quizId: quizData.quiz_id,
-            sessionId: sessionId || quizData.session_id,
-            classroomId: String(classroomId),
+            sessionId: resolvedSessionId,
+            classroomId: classroomId ?? '',
             attemptData: validation.attemptData ?? quizData,
             quizName: quizData.topic || quizData.title,
           },

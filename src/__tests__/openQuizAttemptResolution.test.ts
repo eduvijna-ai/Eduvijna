@@ -1,4 +1,8 @@
-import { pickCompletedAttemptForScopedList } from '../core/services/openQuizAttemptResolution';
+import {
+  coerceQuizAttemptsListResponse,
+  pickCompletedAttemptForScopedList,
+  resolveAssignmentClassroomId,
+} from '../core/services/openQuizAttemptResolution';
 
 describe('pickCompletedAttemptForScopedList', () => {
   it('returns none when no completed attempts', () => {
@@ -23,5 +27,18 @@ describe('pickCompletedAttemptForScopedList', () => {
 
   it('does not infer session from missing metadata on a lone row', () => {
     expect(pickCompletedAttemptForScopedList([])).toEqual({ kind: 'none' });
+  });
+
+  it('coerces nested quiz-attempts API envelopes', () => {
+    const row = { id: 207, status: 'completed' };
+    expect(coerceQuizAttemptsListResponse([row])).toEqual([row]);
+    expect(coerceQuizAttemptsListResponse({ data: [row] })).toEqual([row]);
+    expect(coerceQuizAttemptsListResponse({ data: { data: [row] } })).toEqual([row]);
+  });
+
+  it('rejects using session_id as classroom_id', () => {
+    const session = 'a6882262-5c50-4cf5-a4a8-dc8786862916';
+    expect(resolveAssignmentClassroomId(session, session, 'class_4d82c60e')).toBe('class_4d82c60e');
+    expect(resolveAssignmentClassroomId(session, session)).toBeUndefined();
   });
 });
