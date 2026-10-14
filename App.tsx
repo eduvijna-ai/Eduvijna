@@ -88,6 +88,7 @@ function AppContent() {
   const initialDeepLinkProcessed = useRef<boolean>(false);
   const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
+  const [mobileNavigationReady, setMobileNavigationReady] = useState(false);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
@@ -101,10 +102,11 @@ function AppContent() {
       pendingOpenQuizRef.current = null;
       pendingPostLoginQuizIdRef.current = undefined;
       initialDeepLinkProcessed.current = false;
+      setMobileNavigationReady(false);
     }
   }, [isAuthenticated]);
 
-  const dispatchOpenQuiz = useCallback(
+  const dispatchOpenQuizInner = useCallback(
     async (
       sessionId: string,
       source: 'deep_link' | 'post_login' | 'notification',
@@ -119,7 +121,7 @@ function AppContent() {
         },
         alert: Alert.alert,
       };
-      if (!navigationRef.current) {
+      if (!navigationRef.isReady()) {
         pendingOpenQuizRef.current = { sessionId, quizId };
         return;
       }
@@ -130,14 +132,23 @@ function AppContent() {
     [user],
   );
 
-  useEffect(() => {
-    if (!isMobile || !isAuthenticated || !user || !navigationRef.current || !pendingOpenQuizRef.current) {
+  const dispatchOpenQuiz = dispatchOpenQuizInner;
+
+  const flushPendingOpenQuiz = useCallback(() => {
+    if (!isMobile || !isAuthenticated || !user || !pendingOpenQuizRef.current) {
+      return;
+    }
+    if (!navigationRef.isReady()) {
       return;
     }
     const pending = pendingOpenQuizRef.current;
     pendingOpenQuizRef.current = null;
-    void dispatchOpenQuiz(pending.sessionId, 'deep_link', pending.quizId);
-  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz]);
+    void dispatchOpenQuizInner(pending.sessionId, 'deep_link', pending.quizId);
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuizInner]);
+
+  useEffect(() => {
+    flushPendingOpenQuiz();
+  }, [flushPendingOpenQuiz, mobileNavigationReady, isAuthenticated, user]);
 
   // Notification polling runs in background
 
@@ -531,7 +542,14 @@ function AppContent() {
     };
 
     return (
-      <NavigationContainer ref={navigationRef} linking={linking}>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={linking}
+        onReady={() => {
+          setMobileNavigationReady(true);
+          flushPendingOpenQuiz();
+        }}
+      >
         {isAuthenticated ? (
           <AppSideNavProvider>
             <MobileNavigation />

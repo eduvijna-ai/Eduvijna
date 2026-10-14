@@ -11,7 +11,12 @@ import {
   toStudentQuiz,
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
+import {
+  buildTeacherDashboardSummaryCacheKey,
+  invalidateTeacherDashboardCaches,
+} from './teacherDashboardCacheInvalidation';
 import { API_BASE_URL } from '../api/config';
+import { pickCompletedAttemptForScopedList } from './openQuizAttemptResolution';
 import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // Uncomment below to use mock data when backend is unavailable
@@ -22,6 +27,15 @@ import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // } from './mockDashboardData';
 
 const DASHBOARD_API_URL = `${API_BASE_URL}/api/v1`;
+
+export class TeacherDashboardAuthenticationError extends Error {
+  readonly code = 'TEACHER_DASHBOARD_AUTHENTICATION_REQUIRED';
+
+  constructor() {
+    super('Teacher dashboard requires authentication');
+    this.name = 'TeacherDashboardAuthenticationError';
+  }
+}
 // const USE_MOCK_DATA = false; // Set to true to use mock data
 
 // Helper to build query string from filters
@@ -44,14 +58,6 @@ export class AuthenticationError extends Error {
   constructor(message: string, public status: number, public endpoint?: string) {
     super(message);
     this.name = 'AuthenticationError';
-  }
-}
-
-/** @deprecated Use AuthenticationError; kept for existing dashboard auth tests. */
-export class TeacherDashboardAuthenticationError extends Error {
-  constructor(message = 'Authentication failed') {
-    super(message);
-    this.name = 'TeacherDashboardAuthenticationError';
   }
 }
 
@@ -122,8 +128,11 @@ export async function fetchTeacherDashboardSummary(
     ...filters,
   };
 
-  // Generate cache key based on filters
-  const cacheKey = `teacher_dashboard_summary_${defaultFilters.view_type}_${defaultFilters.limit}_${defaultFilters.offset}`;
+  const cacheKey = buildTeacherDashboardSummaryCacheKey(
+    String(defaultFilters.view_type),
+    defaultFilters.limit ?? 1000,
+    defaultFilters.offset ?? 0,
+  );
 
   // Use cached API call wrapper
   return cachedApiCall(
@@ -145,7 +154,7 @@ export async function fetchTeacherDashboardSummary(
             window.location.href = '/login';
           }
           
-          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
+          throw new TeacherDashboardAuthenticationError();
         }
 
         const queryString = buildQueryString(defaultFilters);
@@ -615,8 +624,7 @@ export async function fetchClassroomQuizzesWithAllStatuses(
  * Call this on logout, or when quiz data changes (create, update, delete)
  */
 export async function clearDashboardCache(): Promise<void> {
-  // Clear teacher caches
-  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  await invalidateTeacherDashboardCaches();
   await clearCacheEntry('teacher_classrooms_class_wise_students');
   
   // Note: Individual quiz caches will be cleared by clearAllCache()
@@ -633,7 +641,7 @@ export async function clearQuizCache(classroomId?: string, quizId?: number): Pro
   
   // Since we can't wildcard pattern match easily, clear all quiz-related caches
   // This is safer and ensures consistency
-  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  await invalidateTeacherDashboardCaches();
   
   console.log('✅ Quiz cache cleared');
 }
@@ -651,7 +659,9 @@ async function fetchCompletedStudentQuizAttemptForSession(
 ): Promise<Record<string, unknown> | null> {
   const token = await TokenStorage.getAccessToken();
   if (!token) return null;
-  const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${studentId}&quiz_id=${quizId}`;
+  const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${encodeURIComponent(
+    studentId,
+  )}&quiz_id=${encodeURIComponent(String(quizId))}&class_id=${encodeURIComponent(sessionId)}`;
   const attemptsResponse = await fetch(attemptsUrl, {
     method: 'GET',
     headers: {
@@ -661,25 +671,11 @@ async function fetchCompletedStudentQuizAttemptForSession(
   });
   if (!attemptsResponse.ok) return null;
   const attempts = await attemptsResponse.json();
-  if (!Array.isArray(attempts) || attempts.length === 0) return null;
-
-  const completed = attempts.filter(
-    (attempt: { status?: string }) => attempt.status === 'completed',
-  ) as Array<Record<string, unknown> & { session_id?: string; class_id?: string }>;
-  if (completed.length === 0) return null;
-
-  const sessionMatches = completed.filter((attempt) => {
-    const attemptSession = attempt.session_id ?? attempt.class_id;
-    if (!attemptSession) return false;
-    return String(attemptSession) === sessionId;
-  });
-  if (sessionMatches.length === 1) return sessionMatches[0];
-  if (sessionMatches.length > 1) return null;
-
-  if (completed.length === 1 && !completed[0].session_id && !completed[0].class_id) {
-    return completed[0];
-  }
-  return null;
+  const picked = pickCompletedAttemptForScopedList(
+    Array.isArray(attempts) ? attempts : [],
+  );
+  if (picked.kind !== 'found') return null;
+  return picked.attempt as Record<string, unknown>;
 }
 
 async function buildValidationFromCheckRecord(

@@ -52,6 +52,7 @@ describe('fetchQuizDetailsBySessionId open-quiz recovery', () => {
         };
       }
       if (url.includes('/quiz-attempts')) {
+        expect(url).toContain('class_id=sess-a');
         return {
           ok: true,
           json: async () => [{ id: 207, status: 'completed', score: 60 }],
