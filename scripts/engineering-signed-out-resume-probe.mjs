@@ -59,15 +59,45 @@ const maestro = spawnSync(
 );
 steps.push({ step: 'maestro_inplace_login', ok: maestro.status === 0, exit: maestro.status });
 
+function classifyResults(xml) {
+  return {
+    results: /60%/.test(xml) && /6\/10|6 of 10/i.test(xml),
+    rateLimited: /rate-limiting requests/i.test(xml),
+    home: /Hello,/.test(xml) && /content-desc="Home"/i.test(xml),
+  };
+}
+
 let pass = false;
 let xml = '';
+let rateLimited = false;
 for (let i = 0; i < 24; i++) {
   xml = h.dumpUi();
-  if (/60%/.test(xml) && /6\/10|6 of 10/i.test(xml)) {
+  const c = classifyResults(xml);
+  if (c.results) {
     pass = true;
     break;
   }
+  if (c.rateLimited) {
+    rateLimited = true;
+    break;
+  }
   h.sleep(2500);
+}
+
+if (rateLimited && !pass) {
+  steps.push({ step: 'resume_rate_limited_429', ok: true, waitSec: 90 });
+  h.sleep(90_000);
+  xml = h.dumpUi();
+  h.tapContentDesc(xml, 'Retry loading results');
+  h.sleep(8000);
+  for (let i = 0; i < 16; i++) {
+    xml = h.dumpUi();
+    if (classifyResults(xml).results) {
+      pass = true;
+      break;
+    }
+    h.sleep(2500);
+  }
 }
 writeFileSync(join(evidenceDir, 'post-login-ui.xml'), xml);
 
@@ -87,6 +117,8 @@ const out = {
   steps,
   maestroStatus: maestro.status,
   pass,
+  rateLimitedObserved: rateLimited,
+  finalScreen: classifyResults(xml),
   has479: /479/.test(xml),
   has207: /207/.test(xml),
   has70: /\b70\b/.test(xml),
