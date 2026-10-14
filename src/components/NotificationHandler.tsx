@@ -29,7 +29,7 @@ export default function NotificationHandler() {
 
   // Update ref when navigation changes
   useEffect(() => {
-    navigationRef.current = navigation as RootNavigate;
+    navigationRef.current = navigation as unknown as RootNavigate;
   }, [navigation]);
 
   const navigateRoot = (screen: string, params?: unknown) => {
