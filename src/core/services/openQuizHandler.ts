@@ -259,6 +259,19 @@ export async function handleOpenQuiz(
     // ==========================================
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
+    if (validation.fetchFailure?.retryable) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'error',
+        title: 'Could not verify quiz',
+        message:
+          validation.fetchFailure.httpStatus === 429
+            ? 'The server is rate-limiting requests. Please wait a moment and try again.'
+            : 'The server is temporarily unavailable. Please try again.',
+        icon: 'cloud-offline-outline',
+      });
+      return;
+    }
+
     if (!validation.exists || !validation.quizData) {
       navigationAdapter.navigate('QuizStatusScreen', {
         status: 'not_found',

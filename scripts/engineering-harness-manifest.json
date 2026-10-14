@@ -1,0 +1,14 @@
+{
+  "purpose": "Acceptance harness scripts committed with integration branch (separate from APK implementation SHA).",
+  "harnessGitSha": "pending-commit",
+  "scripts": [
+    "engineering-fixture-readiness-probe.mjs",
+    "engineering-installed-sequence-gated.mjs",
+    "engineering-maestro-login-proof.mjs",
+    "engineering-deep-link-smoke.mjs",
+    "engineering-student-fixture-ui.mjs",
+    "engineering-instructor-fixture-ui.mjs",
+    "engineering-notifications-route-smoke.mjs",
+    "verify-embedded-release-bundle-sha.mjs"
+  ]
+}

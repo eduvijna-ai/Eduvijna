@@ -15,7 +15,20 @@ export type QuizAttemptListRow = {
 export type PickCompletedAttemptResult =
   | { kind: 'none' }
   | { kind: 'ambiguous' }
+  | { kind: 'session_mismatch' }
   | { kind: 'found'; attempt: QuizAttemptListRow };
+
+/** When row carries session metadata, it must match the scoped assignment session. */
+export function attemptRowMatchesScopedSession(
+  row: QuizAttemptListRow,
+  scopedSessionId: string,
+): boolean {
+  const sid = row.session_id ?? row.class_id;
+  if (!sid || String(sid).trim() === '') {
+    return true;
+  }
+  return String(sid).trim() === String(scopedSessionId).trim();
+}
 
 /**
  * When attempts are already scoped by server query (student + quiz + class_id=sessionId),
@@ -56,13 +69,23 @@ export function coerceQuizAttemptsListResponse(
 
 export function pickCompletedAttemptForScopedList(
   attempts: QuizAttemptListRow[] | null | undefined,
+  scopedSessionId?: string,
 ): PickCompletedAttemptResult {
   if (!Array.isArray(attempts) || attempts.length === 0) {
     return { kind: 'none' };
   }
-  const completed = attempts.filter((row) => row.status === 'completed');
+  let completed = attempts.filter((row) => row.status === 'completed');
   if (completed.length === 0) {
     return { kind: 'none' };
+  }
+  if (scopedSessionId) {
+    const mismatched = completed.filter((row) => !attemptRowMatchesScopedSession(row, scopedSessionId));
+    if (mismatched.length > 0) {
+      completed = completed.filter((row) => attemptRowMatchesScopedSession(row, scopedSessionId));
+      if (completed.length === 0) {
+        return { kind: 'session_mismatch' };
+      }
+    }
   }
   if (completed.length > 1) {
     return { kind: 'ambiguous' };

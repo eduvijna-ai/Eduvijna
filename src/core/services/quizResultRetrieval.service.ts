@@ -35,30 +35,74 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getAttendedQuizOnce(params: AttendedQuizParams): Promise<AttendedQuizResponse> {
+/** Exported for unit tests. */
+export function attendedQuizRetryDelayMs(
+  error: unknown,
+  attemptIndex: number,
+): number | null {
+  const axiosErr = error as {
+    response?: { status?: number; headers?: Record<string, string | string[] | undefined> };
+    message?: string;
+  };
+  const status = axiosErr?.response?.status;
+  if (status !== 429 && (status == null || status < 500)) {
+    return null;
+  }
+  if (axiosErr?.message === 'Request superseded by account switch') {
+    return null;
+  }
+  const raw = axiosErr?.response?.headers?.['retry-after'];
+  const header = Array.isArray(raw) ? raw[0] : raw;
+  if (header != null && String(header).trim() !== '') {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(seconds * 1000, 60_000);
+    }
+  }
+  const base = status === 429 ? 2000 : 1500;
+  return Math.min(base * (attemptIndex + 1), 30_000);
+}
+
+async function getAttendedQuizOnce(
+  params: AttendedQuizParams,
+  signal?: AbortSignal,
+): Promise<AttendedQuizResponse> {
   const queryParams = new URLSearchParams();
   queryParams.append('student_id', params.student_id);
   if (params.classroom_id) queryParams.append('classroom_id', params.classroom_id);
   if (params.session_id) queryParams.append('session_id', params.session_id);
   queryParams.append('quiz_id', String(params.quiz_id));
 
-  const response = await apiClient.get<AttendedQuizResponse>(
-    `/api/v1/dashboard/attended-quiz?${queryParams.toString()}`,
-  );
+  const url = `/api/v1/dashboard/attended-quiz?${queryParams.toString()}`;
+  const response = signal
+    ? await apiClient.get<AttendedQuizResponse>(url, { signal })
+    : await apiClient.get<AttendedQuizResponse>(url);
   return response.data;
 }
 
+export type GetAttendedQuizOptions = {
+  signal?: AbortSignal;
+  maxAttempts?: number;
+};
+
 export async function getAttendedQuiz(
   params: AttendedQuizParams,
+  options?: GetAttendedQuizOptions,
 ): Promise<AttendedQuizResponse> {
-  const maxAttempts = 5;
+  const maxAttempts = options?.maxAttempts ?? 5;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (options?.signal?.aborted) {
+      throw new Error('Request superseded by account switch');
+    }
     try {
-      return await getAttendedQuizOnce(params);
+      return await getAttendedQuizOnce(params, options?.signal);
     } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 429 && attempt < maxAttempts - 1) {
-        await sleepMs(1500 * (attempt + 1));
+      if (options?.signal?.aborted) {
+        throw new Error('Request superseded by account switch');
+      }
+      const delay = attendedQuizRetryDelayMs(error, attempt);
+      if (delay != null && attempt < maxAttempts - 1) {
+        await sleepMs(delay);
         continue;
       }
       throw error;
@@ -606,10 +650,17 @@ export async function fetchPersistedQuizResult(params: {
       if (status === 404) {
         return { status: 'missing' };
       }
+      const retryable =
+        status === 429 ||
+        (status != null && status >= 500) ||
+        (error as { message?: string })?.message === 'getAttendedQuiz exhausted retries';
       return {
         status: 'error',
-        message: 'Could not load your submitted answers. Please try again.',
-        retryable: true,
+        message:
+          status === 429
+            ? 'The server is rate-limiting requests. Please wait and try again.'
+            : 'Could not load your submitted answers. Please try again.',
+        retryable,
       };
     }
   }

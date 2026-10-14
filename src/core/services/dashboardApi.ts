@@ -674,8 +674,16 @@ async function fetchCompletedStudentQuizAttemptForSession(
   });
   if (!attemptsResponse.ok) return null;
   const attempts = await attemptsResponse.json();
-  const picked = pickCompletedAttemptForScopedList(coerceQuizAttemptsListResponse(attempts));
-  if (picked.kind !== 'found') return null;
+  const picked = pickCompletedAttemptForScopedList(
+    coerceQuizAttemptsListResponse(attempts),
+    sessionId,
+  );
+  if (picked.kind !== 'found') {
+    if (picked.kind === 'session_mismatch') {
+      console.warn('quiz-attempts rows contradict requested session scope');
+    }
+    return null;
+  }
   return picked.attempt as Record<string, unknown>;
 }
 
@@ -769,6 +777,7 @@ export async function fetchQuizDetailsBySessionId(
   startTime: Date | null;
   endTime: Date | null;
   attemptData?: any;
+  fetchFailure?: { httpStatus: number; retryable: boolean };
 }> {
   const defaultResult = {
     exists: false,
@@ -817,7 +826,8 @@ export async function fetchQuizDetailsBySessionId(
       const errorText = await quizResponse.text();
       console.error('Quiz fetch failed:', quizResponse.status, errorText);
       await handleAuthError(quizResponse.status, errorText, 'fetchQuizDetailsBySessionId');
-      if (userRole === 'student') {
+      const transient = quizResponse.status === 429 || quizResponse.status >= 500;
+      if (userRole === 'student' && !transient) {
         const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
         if (
           fromRecord &&
@@ -825,6 +835,12 @@ export async function fetchQuizDetailsBySessionId(
         ) {
           return fromRecord;
         }
+      }
+      if (transient) {
+        return {
+          ...defaultResult,
+          fetchFailure: { httpStatus: quizResponse.status, retryable: true },
+        };
       }
       return defaultResult;
     }
