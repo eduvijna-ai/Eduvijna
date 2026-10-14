@@ -456,8 +456,8 @@ export default function AdminInventoryScreen() {
                         setEditingItem(item);
                         setItemForm({
                           itemName: item.itemName,
-                          category: item.category || 'general',
-                          unit: item.unit || 'piece',
+                          category: (item.category || 'general') as ItemCategory,
+                          unit: (item.unit || 'piece') as ItemUnit,
                           quantity: String(item.quantity ?? 0),
                           minStockLevel: String(item.minStockLevel ?? 5),
                           unitPrice: String(item.unitPrice ?? 0),

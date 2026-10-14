@@ -963,7 +963,7 @@ export default function DocumentCurriculumFromBooksScreen({
     <View style={[styles.root, !embedded && { paddingTop: insets.top }]}>
       {!embedded ? (
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack?.()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>From Books</Text>

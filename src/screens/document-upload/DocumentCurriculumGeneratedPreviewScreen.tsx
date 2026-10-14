@@ -145,8 +145,9 @@ export default function DocumentCurriculumGeneratedPreviewScreen({
         worksheetData: worksheet,
         title: `${meta.title} Worksheet`,
       });
-    } catch (e: any) {
-      Alert.alert('Worksheet failed', e?.message || 'Please try again.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Please try again.';
+      Alert.alert('Worksheet failed', message);
     } finally {
       setWorksheetLoading(false);
     }
@@ -156,7 +157,7 @@ export default function DocumentCurriculumGeneratedPreviewScreen({
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>No generated questions to preview.</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack?.()}>
           <Text style={styles.link}>Go back</Text>
         </TouchableOpacity>
       </View>
@@ -166,7 +167,7 @@ export default function DocumentCurriculumGeneratedPreviewScreen({
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Go back">
+        <TouchableOpacity onPress={() => navigation.goBack?.()} accessibilityLabel="Go back">
           <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title} numberOfLines={2}>{params.curriculumMeta.title}</Text>
