@@ -21,6 +21,8 @@ import {
   resolveRemoteBranchSha,
   prepareWorktreeAtSha,
   requireWorktreeRoot,
+  restoreWorktreeExpoEntryOverrides,
+  STACK_VALIDATOR_REVISION,
 } from './lib/stack-worktree-paths.mjs';
 
 const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -251,21 +253,41 @@ function validateStackBranch(row, options = {}) {
   const skipExports = options.skipExports === true;
   const expectedHead = resolveRemoteBranchSha(monorepoRoot, row.branch);
   assertImmediateBaseIsAncestor(row, expectedHead);
-  const { worktreeRoot, head } = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
+  const headPrep = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
+  const { worktreeRoot, head } = headPrep;
 
   const { baseRef, immediateBaseSha } = resolveImmediateBaseSha(row);
   const mergeBaseSha = git(`merge-base ${head} ${immediateBaseSha}`, monorepoRoot);
   const branchKey = `pr${row.pr}`;
 
-  const headDiag = runDiagnostics(worktreeRoot);
-
   const baseBranchForWorktree = row.base === 'main' ? row.branch : row.base;
   const baseWorktree = requireWorktreeRoot(monorepoRoot, baseBranchForWorktree);
-  prepareWorktreeAtSha(monorepoRoot, baseBranchForWorktree, immediateBaseSha);
-  const immediateBaseDiag = runDiagnostics(baseWorktree);
-  prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
+  let basePrep = null;
+  let headDiag;
+  let immediateBaseDiag;
+  let exports;
+  try {
+    headDiag = runDiagnostics(worktreeRoot);
 
-  const exports = skipExports ? {} : runExports(worktreeRoot, branchKey);
+    basePrep = prepareWorktreeAtSha(monorepoRoot, baseBranchForWorktree, immediateBaseSha);
+    immediateBaseDiag = runDiagnostics(baseWorktree);
+    prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
+
+    exports = skipExports ? {} : runExports(worktreeRoot, branchKey);
+  } finally {
+    restoreWorktreeExpoEntryOverrides(
+      worktreeRoot,
+      monorepoRoot,
+      headPrep.worktreeExpoEntryRepair,
+    );
+    if (basePrep) {
+      restoreWorktreeExpoEntryOverrides(
+        baseWorktree,
+        monorepoRoot,
+        basePrep.worktreeExpoEntryRepair,
+      );
+    }
+  }
   const identityDelta = diffAddedIdentities(headDiag.identities, immediateBaseDiag.identities);
   const filesChangedVsImmediateBase = listFilesChangedBetween(
     monorepoRoot,
@@ -286,6 +308,8 @@ function validateStackBranch(row, options = {}) {
     head,
     headMatchesOrigin: head === expectedHead,
     worktreeRoot,
+    validatorRevision: headPrep.validatorRevision ?? STACK_VALIDATOR_REVISION,
+    repairWorktreeExpoEntry: headPrep.worktreeExpoEntryRepair ?? [],
     baseRef,
     immediateBaseSha,
     mergeBaseSha,
@@ -327,6 +351,7 @@ if (existsSync(reportPath)) {
 const report = {
   validatedAt: new Date().toISOString(),
   monorepoRoot,
+  validatorRevision: STACK_VALIDATOR_REVISION,
   checkoutMode: 'isolated_worktree_detached_at_origin_sha',
   safeguards: {
     assertHeadEqualsOriginSha: true,
