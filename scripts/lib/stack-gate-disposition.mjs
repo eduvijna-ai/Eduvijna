@@ -14,11 +14,16 @@ const report = JSON.parse(readFileSync(reportPath, 'utf8'));
 const rows = [];
 for (const b of report.branches ?? []) {
   const added = b.diagnostics?.identitiesAdded ?? {};
+  const hasGenuineFields =
+    added.tsGenuineAdded !== undefined || added.eslintGenuineAdded !== undefined;
   rows.push({
     pr: b.pr,
     head: b.head,
-    tsGenuine: added.tsGenuineAdded?.length ?? 0,
-    eslintGenuine: added.eslintGenuineAdded?.length ?? 0,
+    reportSliceStale: !hasGenuineFields,
+    tsGenuine: hasGenuineFields ? (added.tsGenuineAdded?.length ?? 0) : null,
+    eslintGenuine: hasGenuineFields ? (added.eslintGenuineAdded?.length ?? 0) : null,
+    rawTsAdded: added.tsAdded?.length ?? 0,
+    rawEslintAdded: added.eslintAdded?.length ?? 0,
     tsAmbiguous: added.tsClassification?.ambiguous?.length ?? 0,
     eslintAmbiguous: added.eslintClassification?.ambiguous?.length ?? 0,
     tsGenuineSamples: (added.tsGenuineAdded ?? []).slice(0, 5),
