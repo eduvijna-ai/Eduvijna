@@ -5,9 +5,11 @@ export function computeStackValidationStatus(branches) {
   const toolFailures = branches.some((b) => b.diagnostics?.toolFailure);
   const diagnosticRegression = branches.some((b) => {
     const added = b.diagnostics?.identitiesAdded;
-    const tsNew = added?.tsAdded?.length ?? 0;
-    const eslintNew = added?.eslintAdded?.length ?? 0;
-    return tsNew > 0 || eslintNew > 0;
+    const tsNew = added?.tsGenuineAdded?.length ?? added?.tsAdded?.length ?? 0;
+    const eslintNew = added?.eslintGenuineAdded?.length ?? added?.eslintAdded?.length ?? 0;
+    const tsAmbiguous = added?.tsClassification?.ambiguous?.length ?? 0;
+    const eslintAmbiguous = added?.eslintClassification?.ambiguous?.length ?? 0;
+    return tsNew > 0 || eslintNew > 0 || tsAmbiguous > 0 || eslintAmbiguous > 0;
   });
   const headMismatch = branches.some((b) => !b.headMatchesOrigin);
 

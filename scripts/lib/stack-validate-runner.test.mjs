@@ -97,6 +97,20 @@ test('computeStackValidationStatus passing vs regression vs export vs tool failu
   };
   assert.equal(computeStackValidationStatus([regression]).status, 'diagnostic_regression');
 
+  const rawOnlyNotGenuine = {
+    ...baseBranch,
+    diagnostics: {
+      ...baseBranch.diagnostics,
+      identitiesAdded: {
+        tsAdded: ['src/foo.ts|TS1234'],
+        eslintAdded: [],
+        tsGenuineAdded: [],
+        eslintGenuineAdded: [],
+      },
+    },
+  };
+  assert.equal(computeStackValidationStatus([rawOnlyNotGenuine]).status, 'passed');
+
   const exportFail = {
     ...baseBranch,
     exports: { web: { exitCode: 1 } },
