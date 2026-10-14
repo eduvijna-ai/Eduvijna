@@ -64,7 +64,7 @@ describe('teacher analytics assignment selection', () => {
           student_fullname: 'Aarya',
           status: 'pending',
           score: null,
-          attempt_id: undefined,
+          attempt_id: 0,
           avatar_url: null,
           started_at: '',
           submission: null,

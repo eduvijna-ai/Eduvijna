@@ -5,6 +5,8 @@
 
 import type { WorkspaceMode } from '@core/store/assessmentWorkspace.store';
 import type { QuizNavItem } from '../api/erp.api';
+// Domain maps screen routing; hook module holds shared constants (no hook usage here).
+// eslint-disable-next-line no-restricted-imports -- constants-only import; refactor tracked post-RC
 import {
   QUIZ_COMPONENT_TO_SCREEN,
   QUIZ_NAV_TO_SCREEN,

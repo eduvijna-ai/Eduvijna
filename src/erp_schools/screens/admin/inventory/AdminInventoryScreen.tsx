@@ -699,14 +699,24 @@ export default function AdminInventoryScreen() {
             <FormField label="Category">
               <SelectField
                 value={itemForm.category}
-                onChange={(v) => setItemForm((f) => ({ ...f, category: v }))}
+                onChange={(v) =>
+                  setItemForm((f) => ({
+                    ...f,
+                    category: v as typeof f.category,
+                  }))
+                }
                 options={itemCategoryFormOpts}
               />
             </FormField>
             <FormField label="Unit">
               <SelectField
                 value={itemForm.unit}
-                onChange={(v) => setItemForm((f) => ({ ...f, unit: v }))}
+                onChange={(v) =>
+                  setItemForm((f) => ({
+                    ...f,
+                    unit: v as typeof f.unit,
+                  }))
+                }
                 options={unitFormOpts}
               />
             </FormField>

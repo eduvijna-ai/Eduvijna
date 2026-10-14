@@ -6,8 +6,6 @@ import {
   storeTokensForSession,
 } from '../core/api/apiRefreshCoordinator';
 import * as TokenStorage from '../core/services/tokenStorage';
-import { useUserStore } from '../core/store/user.store';
-
 jest.mock('../core/services/tokenStorage', () => ({
   storeAuthTokensForEpoch: jest.fn(),
   clearAuthDataForEpoch: jest.fn(),

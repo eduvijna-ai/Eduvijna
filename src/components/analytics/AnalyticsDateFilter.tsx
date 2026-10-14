@@ -49,7 +49,6 @@ export default function AnalyticsDateFilter({
         testID="analytics-date-state"
         accessibilityLabel={analyticsDateStateLabel}
         accessible
-        collapsable={false}
         style={styles.dateStateMarker}
       >
         {' '}
@@ -67,7 +66,7 @@ export default function AnalyticsDateFilter({
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.textSecondary}
               style={[styles.dateInput, { color: colors.text }]}
-              {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+              {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
             />
           </View>
           {Platform.OS !== 'web' ? (
@@ -88,7 +87,7 @@ export default function AnalyticsDateFilter({
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.textSecondary}
               style={[styles.dateInput, { color: colors.text }]}
-              {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+              {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
             />
           </View>
           {Platform.OS !== 'web' ? (

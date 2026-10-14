@@ -49,7 +49,7 @@ describe('teacher quiz assignment student list navigation', () => {
 
   it('selects the clicked assignment when resolving from a list', () => {
     const filtered = [first, second];
-    const resolveAssignment = (quizId: number, assignment: typeof first) => assignment;
+    const resolveAssignment = (_quizId: number, assignment: typeof first) => assignment;
 
     const opened = resolveAssignment(second.quiz_id, second);
     const params = buildQuizAssignmentStudentListParams(opened);

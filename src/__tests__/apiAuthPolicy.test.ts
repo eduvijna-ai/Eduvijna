@@ -8,7 +8,7 @@ function makeError(status?: number, data?: unknown, message = 'err'): AxiosError
     response: status
       ? {
           status,
-          data,
+          data: data as ApiError,
           headers: {},
           statusText: '',
           config: {} as any,

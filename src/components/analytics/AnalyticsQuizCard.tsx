@@ -220,7 +220,6 @@ export default function AnalyticsQuizCard({
           testID={`analytics-quiz-view-${tile.quiz_id}-${tile.session_id}-open`}
           accessibilityRole="button"
           accessibilityLabel={`View analytics for ${tile.quiz_name} in ${classroomName}`}
-          collapsable={false}
         >
           <Text style={styles.viewBtnText}>View Analytics</Text>
           <Ionicons name="chevron-forward" size={16} color="#fff" />

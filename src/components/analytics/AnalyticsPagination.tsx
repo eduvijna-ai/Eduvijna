@@ -36,7 +36,6 @@ export default function AnalyticsPagination({
         testID={infoTestId}
         accessibilityLabel={`Analytics ${scope} page ${page} of ${totalPages}`}
         accessible
-        collapsable={false}
         style={[styles.info, { color: colors.textSecondary }]}
       >
         Page {page} of {totalPages}

@@ -72,6 +72,9 @@ const sampleUser: UserProfile = {
   username: 'a',
   role: 'instructor',
   full_name: 'A',
+  is_active: true,
+  is_verified: true,
+  created_at: '2026-01-01T00:00:00Z',
 };
 
 describe('useAuth lifecycle', () => {

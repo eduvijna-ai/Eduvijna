@@ -154,7 +154,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     attemptData: any;
   } | null>(null);
 
-  const _isWeb = width > 768;
   const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
   const isStudent = user?.role === 'student';
 
@@ -172,7 +171,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // For students, use dashboard store data (already loaded by StudentDashboard)
   const [studentRefreshing, setStudentRefreshing] = useState(false);
   const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
-  const _setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
   const studentRawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
   const bumpStudentClassificationNow = useStudentAssignmentDashboardStore(
     (s) => s.bumpClassificationNow,
@@ -406,7 +404,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       testID="assessments-data-state"
       accessibilityLabel={assessmentsDataStateLabel}
       accessible
-      collapsable={false}
       style={styles.dataStateMarker}
     >
       {' '}
