@@ -44,17 +44,22 @@ function tapAfterNeedle(xml, needle, link) {
 }
 
 mkdirSync(evidenceDir, { recursive: true });
-const maestroBin =
-  process.env.MAESTRO_BIN ||
-  join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
-const maestroLogin = spawnSync(
-  process.execPath,
-  [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'student'],
-  { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
-);
-if (maestroLogin.status !== 0) process.exit(1);
-sleep(3000);
 let xml = dumpUi();
+const skipMaestro =
+  process.env.ENGINEERING_SKIP_MAESTRO_LOGIN === '1' || h.authenticatedMarker(xml);
+if (!skipMaestro) {
+  const maestroBin =
+    process.env.MAESTRO_BIN ||
+    join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
+  const maestroLogin = spawnSync(
+    process.execPath,
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'student'],
+    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
+  );
+  if (maestroLogin.status !== 0) process.exit(1);
+  sleep(3000);
+  xml = dumpUi();
+}
 if (dismissPostLoginInterstitials(xml)) {
   sleep(2000);
   xml = dumpUi();
