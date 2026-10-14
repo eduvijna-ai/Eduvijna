@@ -969,7 +969,7 @@ export interface CheckRecordQuiz {
 
 export interface CheckRecordResponse {
   success: boolean;
-  result: CheckRecordQuiz[] | boolean;
+  result: CheckRecordQuiz[];
   check_type: string;
   message: string;
 }
@@ -1035,7 +1035,8 @@ export async function fetchQuizCheckRecordStatus(
     p_session_id: sessionId,
     p_check_type: 'status',
   });
-  return res.result === true;
+  const statusResult = (res as { result?: unknown }).result;
+  return statusResult === true;
 }
 
 /** Documented record fetch — omit p_check_type. */
