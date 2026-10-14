@@ -47,6 +47,14 @@ export class AuthenticationError extends Error {
   }
 }
 
+/** @deprecated Use AuthenticationError; kept for existing dashboard auth tests. */
+export class TeacherDashboardAuthenticationError extends Error {
+  constructor(message = 'Authentication failed') {
+    super(message);
+    this.name = 'TeacherDashboardAuthenticationError';
+  }
+}
+
 /**
  * Global navigation callback for redirecting to login
  * Set this from your app's navigation context
@@ -955,13 +963,13 @@ export interface CheckRecordQuiz {
     created_at?: string;
     created_by?: string;
     student_level?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
 export interface CheckRecordResponse {
   success: boolean;
-  result: CheckRecordQuiz[];
+  result: CheckRecordQuiz[] | boolean;
   check_type: string;
   message: string;
 }
