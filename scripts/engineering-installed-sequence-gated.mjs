@@ -3,7 +3,7 @@
  * Run installed checks only after fixture-readiness probe passes.
  * Stops at first failing case.
  */
-import { spawnSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +25,11 @@ const probeStatus = run('engineering-fixture-readiness-probe.mjs', 'fixture_read
 if (probeStatus !== 0) {
   console.error('Blocked: fixture/API readiness failed — skipping installed UI sequence.');
   process.exit(probeStatus);
+}
+const cooldownMs = Number(process.env.FIXTURE_UI_COOLDOWN_MS || 0);
+if (cooldownMs > 0) {
+  console.log(`\n=== api_ui_cooldown ${cooldownMs}ms ===`);
+  execSync(`"${process.execPath}" -e "setTimeout(function(){}, ${cooldownMs})"`, { stdio: 'inherit' });
 }
 
 const sequence = [

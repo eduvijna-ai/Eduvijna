@@ -1,7 +1,8 @@
 appId: com.eduvijna.app
 ---
+- stopApp
 - launchApp:
-    clearState: true
+    clearState: false
 - extendedWaitUntil:
     visible:
       id: "login-email-input"

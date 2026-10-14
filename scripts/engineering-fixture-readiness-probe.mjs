@@ -200,9 +200,56 @@ steps.push(
     ),
   ),
 );
+
+async function getStudentTotalDetailsHistory(token) {
+  const path = `/api/v1/dashboard/quizzes?view_type=student_total_details&limit=1000&offset=0`;
+  const base = getDevApiBase();
+  const res = await fetch(`${base}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const retryAfter = res.headers.get('retry-after');
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { _raw: text.slice(0, 200) };
+  }
+  const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
+  const fixtureCompleted = rows.some(
+    (r) =>
+      Number(r?.quiz_id) === FIXTURE.quizId &&
+      String(r?.session_id) === FIXTURE.sessionId &&
+      (r?.student_status === 'completed' || r?.status === 'completed'),
+  );
+  return {
+    path: '/api/v1/dashboard/quizzes?view_type=student_total_details&limit=1000&offset=0',
+    status: res.status,
+    retryAfter,
+    listLength: rows.length,
+    fixtureCompletedInHistory: fixtureCompleted,
+    shape: shape(json?.data ?? json),
+    classification:
+      res.status === 429
+        ? 'rate_limited'
+        : res.status === 401 || res.status === 403
+          ? 'unauthorized'
+          : res.status >= 500
+            ? 'server_error'
+            : 'ok',
+  };
+}
+
 steps.push(
-  await callStep('student_attended_quiz_fixture', () => getAttendedQuizWithBoundedRetries(student.token)),
+  await callStep('student_total_details_completed_history', () =>
+    getStudentTotalDetailsHistory(student.token),
+  ),
 );
+if (process.env.FIXTURE_PROBE_ATTENDED === '1') {
+  steps.push(
+    await callStep('student_attended_quiz_fixture', () => getAttendedQuizWithBoundedRetries(student.token)),
+  );
+}
 
 const filterApplied =
   steps.find((s) => s.name === 'student_attempts_class_id_fixture_session')?.listLength > 0 &&
@@ -210,8 +257,10 @@ const filterApplied =
 
 const sessionScopedFixture =
   steps.find((s) => s.name === 'student_check_record_session')?.fixture479SessionInRows === true;
+const totalDetailsStep = steps.find((s) => s.name === 'student_total_details_completed_history');
+const completedHistoryDiscoverable = totalDetailsStep?.fixtureCompletedInHistory === true;
 const attendedStep = steps.find((s) => s.name === 'student_attended_quiz_fixture');
-const attendedQuizOk = attendedStep?.status === 200;
+const attendedQuizOk = attendedStep ? attendedStep.status === 200 : null;
 const anyRateLimited = steps.some(
   (s) =>
     s.classification === 'rate_limited' ||
@@ -234,11 +283,14 @@ const readiness = {
     fixtureVisibleInPendingBulk: steps[0]?.fixture479SessionInRows === true,
     fixtureVisibleInSessionScopedCheckRecord: sessionScopedFixture,
     completedBulkEmptyDoesNotProveInvisibility: steps[1]?.rowCount === 0 && sessionScopedFixture,
+    completedHistoryViaStudentTotalDetails: completedHistoryDiscoverable,
     classIdSessionFilterApplied: filterApplied,
+    attendedQuizProbeRan: Boolean(attendedStep),
     attendedQuizOk,
     anyRateLimited,
   },
-  readyForInstalledUi: sessionScopedFixture && filterApplied && attendedQuizOk,
+  readyForInstalledUi: sessionScopedFixture && filterApplied && completedHistoryDiscoverable,
+  readyForSavedResultLoad: attendedQuizOk === true,
 };
 
 const evidenceDir = join(

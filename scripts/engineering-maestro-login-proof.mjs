@@ -19,6 +19,7 @@ const outDir = join(
 function resolveMaestroBin() {
   const candidates = [
     process.env.MAESTRO_BIN,
+    join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat'),
     join(process.env.USERPROFILE || '', '.maestro', 'bin', 'maestro.bat'),
     join(process.env.USERPROFILE || '', '.maestro', 'maestro', 'bin', 'maestro.bat'),
     'maestro',
@@ -61,6 +62,14 @@ const env = {
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '120000',
 };
 
+let maestroVersion = 'unknown';
+try {
+  const ver = spawnSync(maestro, ['--version'], { encoding: 'utf8', shell: false });
+  maestroVersion = (ver.stdout || ver.stderr || '').trim();
+} catch {
+  /* optional */
+}
+
 const run = spawnSync(
   maestro,
   [
@@ -76,8 +85,10 @@ const run = spawnSync(
     'junit',
     '--output',
     join(outDir, 'maestro.xml'),
+    '--debug-output',
+    join(outDir, 'maestro-debug'),
   ],
-  { env, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, shell: true },
+  { env, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, shell: false },
 );
 
 const logcat = spawnSync(
@@ -94,6 +105,10 @@ const loginSignals = logLines.filter(
 writeFileSync(join(outDir, 'logcat-login-signals-redacted.txt'), loginSignals.join('\n'), 'utf8');
 
 const result = {
+  harnessGitHead: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim(),
+  maestroBin: maestro,
+  maestroVersion,
+  adbDevice: device,
   role,
   emailLength: String(account.email).length,
   maestroExit: run.status,

@@ -187,6 +187,10 @@ export interface StudentQuizResultsNavigationParams {
   quizName?: string;
   sessionId: string;
   studentId: string;
+  classroomId?: string;
+  attemptId?: number;
+  score?: number;
+  attemptData?: Record<string, unknown>;
   isTeacherView: false;
 }
 
