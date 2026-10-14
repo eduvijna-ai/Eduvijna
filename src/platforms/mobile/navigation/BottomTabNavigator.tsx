@@ -20,6 +20,19 @@ import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
 
+type UserWithSchoolFields = {
+  school_name?: string;
+  schoolName?: string;
+  school?: string | { name?: string; school_name?: string };
+  profile?: {
+    school_name?: string;
+    schoolName?: string;
+    school?: string | { name?: string; school_name?: string };
+  };
+  role_id?: number;
+  role?: string;
+};
+
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
 import { SchoolsTabEntry } from '../../../erp_schools/navigation/SchoolsTabEntry';
@@ -88,16 +101,23 @@ function CustomHeader() {
   const insets = useSafeAreaInsets();
 
   const schoolNameFromProfile = (() => {
+    const profileUser = user as UserWithSchoolFields | null | undefined;
+    const schoolObj =
+      profileUser?.school && typeof profileUser.school === 'object' ? profileUser.school : undefined;
+    const profileSchoolObj =
+      profileUser?.profile?.school && typeof profileUser.profile.school === 'object'
+        ? profileUser.profile.school
+        : undefined;
     const candidates = [
-      (user as any)?.school_name,
-      (user as any)?.schoolName,
-      typeof (user as any)?.school === 'string' ? (user as any)?.school : undefined,
-      (user as any)?.school?.name,
-      (user as any)?.school?.school_name,
-      (user as any)?.profile?.school_name,
-      (user as any)?.profile?.schoolName,
-      (user as any)?.profile?.school?.name,
-      (user as any)?.profile?.school?.school_name,
+      profileUser?.school_name,
+      profileUser?.schoolName,
+      typeof profileUser?.school === 'string' ? profileUser.school : undefined,
+      schoolObj?.name,
+      schoolObj?.school_name,
+      profileUser?.profile?.school_name,
+      profileUser?.profile?.schoolName,
+      profileSchoolObj?.name,
+      profileSchoolObj?.school_name,
     ];
 
     return (

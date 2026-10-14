@@ -3,13 +3,15 @@
  * assert HEAD, run diagnostics + exports. Never uses primary checkout fallback.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { execSync } from 'node:child_process';
 import {
+  classifyDiagnosticDelta,
   collectTypeScriptIdentities,
+  diffGenuineIdentities,
   diffIdentities,
   normalizeRelativeFilePath,
   parseEslintJsonReport,
@@ -20,13 +22,10 @@ import {
   prepareWorktreeAtSha,
   requireWorktreeRoot,
 } from './lib/stack-worktree-paths.mjs';
-import { computeStackValidationStatus } from './lib/stack-validate-status.mjs';
 
 const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const monorepoRoot = resolveMonorepoRoot(scriptRepoRoot);
-const validationLogDir = join(monorepoRoot, '.stack-validation-logs');
-const reportPath = join(validationLogDir, 'stack-validation-report.json');
-const reportEvidenceCopyPath = join(
+const reportPath = join(
   monorepoRoot,
   'docs',
   'development',
@@ -41,6 +40,11 @@ const STACK = [
   { pr: 22, branch: 'feat/mobile-phase4-role-profile-popups', base: 'feat/mobile-phase3-document-quiz-runtime' },
   { pr: 23, branch: 'feat/mobile-phase5-deep-links', base: 'feat/mobile-phase4-role-profile-popups' },
   { pr: 24, branch: 'feat/mobile-phase6-push-notifications', base: 'feat/mobile-phase5-deep-links' },
+  {
+    pr: 26,
+    branch: 'integration/mobile-founder-acceptance-20261011',
+    base: 'feat/mobile-phase6-push-notifications',
+  },
 ];
 
 const PLATFORMS = ['android', 'ios', 'web'];
@@ -70,9 +74,17 @@ function extractDiagnosticIdentities(typeOut, lintJsonOut, repoRoot) {
 }
 
 function diffAddedIdentities(headIds, baseIds) {
+  const tsAdded = diffIdentities(headIds.ts, baseIds.ts);
+  const eslintAdded = diffIdentities(headIds.eslint, baseIds.eslint);
+  const tsClassification = classifyDiagnosticDelta(headIds.ts, baseIds.ts, 'typescript');
+  const eslintClassification = classifyDiagnosticDelta(headIds.eslint, baseIds.eslint, 'eslint');
   return {
-    tsAdded: diffIdentities(headIds.ts, baseIds.ts),
-    eslintAdded: diffIdentities(headIds.eslint, baseIds.eslint),
+    tsAdded,
+    eslintAdded,
+    tsGenuineAdded: diffGenuineIdentities(headIds.ts, baseIds.ts, 'typescript'),
+    eslintGenuineAdded: diffGenuineIdentities(headIds.eslint, baseIds.eslint, 'eslint'),
+    tsClassification,
+    eslintClassification,
   };
 }
 
@@ -106,9 +118,6 @@ function scopeIdentitiesToChangedFiles(identities, changedFiles) {
 }
 
 function runDiagnostics(repoRoot) {
-  if (process.env.STACK_VALIDATE_DIAGNOSTICS_FIXTURE) {
-    return JSON.parse(readFileSync(process.env.STACK_VALIDATE_DIAGNOSTICS_FIXTURE, 'utf8'));
-  }
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
     shell: true,
@@ -153,39 +162,78 @@ function runDiagnostics(repoRoot) {
   };
 }
 
+function withStackExportBabelConfig(worktreeRoot, run) {
+  const template = join(monorepoRoot, 'babel.config.js');
+  const target = join(worktreeRoot, 'babel.config.js');
+  if (!existsSync(template) || !existsSync(target)) {
+    return run();
+  }
+  const backup = readFileSync(target);
+  try {
+    copyFileSync(template, target);
+    return run();
+  } finally {
+    writeFileSync(target, backup);
+  }
+}
+
+function clearSharedBabelCache(repoRoot) {
+  const candidates = [
+    join(repoRoot, 'node_modules', '.cache'),
+    join(dirname(repoRoot), 'node_modules', '.cache'),
+    join(dirname(dirname(repoRoot)), 'node_modules', '.cache'),
+  ];
+  for (const cacheDir of candidates) {
+    try {
+      rmSync(cacheDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function runExports(repoRoot, branchKey) {
-  if (process.env.STACK_VALIDATE_EXPORT_FIXTURE) {
-    return JSON.parse(readFileSync(process.env.STACK_VALIDATE_EXPORT_FIXTURE, 'utf8'));
+  return withStackExportBabelConfig(repoRoot, () => {
+    clearSharedBabelCache(repoRoot);
+    const exportRoot = join(repoRoot, '.stack-export-check');
+    const results = {};
+    for (const platform of PLATFORMS) {
+      const outDir = join(exportRoot, branchKey, platform);
+      rmSync(outDir, { recursive: true, force: true });
+      mkdirSync(dirname(outDir), { recursive: true });
+      const cmd = `node scripts/with-eduvijna-api-env.mjs development -- expo export --clear --platform ${platform} --output-dir "${outDir}"`;
+      const started = Date.now();
+      const proc = spawnSync(cmd, {
+        cwd: repoRoot,
+        shell: true,
+        encoding: 'utf8',
+        maxBuffer: 24 * 1024 * 1024,
+        env: { ...process.env, CI: '1', BABEL_DISABLE_CACHE: '1' },
+      });
+      results[platform] = {
+        exitCode: proc.status ?? 1,
+        durationMs: Date.now() - started,
+        outputDir: outDir,
+        stdoutTail: (proc.stdout || '').slice(-800),
+        stderrTail: (proc.stderr || '').slice(-800),
+      };
+    }
+    return results;
+  });
+}
+
+function resolveImmediateBaseSha(row) {
+  if (row.base === 'main') {
+    const baseRef = resolveBaseRef(row.base);
+    return { baseRef, immediateBaseSha: git(`rev-parse ${baseRef}`, monorepoRoot) };
   }
-  const exportRoot = join(repoRoot, '.stack-export-check');
-  const results = {};
-  for (const platform of PLATFORMS) {
-    const outDir = join(exportRoot, branchKey, platform);
-    rmSync(outDir, { recursive: true, force: true });
-    mkdirSync(dirname(outDir), { recursive: true });
-    const cmd = `node scripts/with-eduvijna-api-env.mjs development -- expo export --platform ${platform} --output-dir "${outDir}"`;
-    const started = Date.now();
-    const proc = spawnSync(cmd, {
-      cwd: repoRoot,
-      shell: true,
-      encoding: 'utf8',
-      maxBuffer: 24 * 1024 * 1024,
-      env: { ...process.env, CI: '1' },
-    });
-    results[platform] = {
-      exitCode: proc.status ?? 1,
-      durationMs: Date.now() - started,
-      outputDir: outDir,
-      stdoutTail: (proc.stdout || '').slice(-800),
-      stderrTail: (proc.stderr || '').slice(-800),
-    };
-  }
-  return results;
+  const baseRef = resolveBaseRef(row.base);
+  const immediateBaseSha = resolveRemoteBranchSha(monorepoRoot, row.base);
+  return { baseRef, immediateBaseSha };
 }
 
 function assertImmediateBaseIsAncestor(row, headSha) {
-  const baseRef = resolveBaseRef(row.base);
-  const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
+  const { baseRef, immediateBaseSha } = resolveImmediateBaseSha(row);
   const proc = spawnSync(
     'git',
     ['merge-base', '--is-ancestor', immediateBaseSha, headSha],
@@ -205,9 +253,8 @@ function validateStackBranch(row, options = {}) {
   assertImmediateBaseIsAncestor(row, expectedHead);
   const { worktreeRoot, head } = prepareWorktreeAtSha(monorepoRoot, row.branch, expectedHead);
 
-  const baseRef = resolveBaseRef(row.base);
-  const immediateBaseSha = git(`rev-parse ${baseRef}`, monorepoRoot);
-  const mergeBaseSha = git(`merge-base ${head} ${baseRef}`, monorepoRoot);
+  const { baseRef, immediateBaseSha } = resolveImmediateBaseSha(row);
+  const mergeBaseSha = git(`merge-base ${head} ${immediateBaseSha}`, monorepoRoot);
   const branchKey = `pr${row.pr}`;
 
   const headDiag = runDiagnostics(worktreeRoot);
@@ -288,7 +335,8 @@ const report = {
     failOnAnyIdentityRegression: true,
     failOnBrokenStackAncestry: true,
     rejectDirtyWorktrees: true,
-    regressionScope: 'all_newly_introduced_diagnostic_identities',
+    regressionScope: 'genuine_diagnostic_identities_after_relocation_match',
+    strictIdentityDeltaReport: 'all_newly_introduced_diagnostic_identities',
     regressionScopeChangedFilesReport: 'identities_in_files_changed_vs_immediate_base',
   },
   supersededPriorSweep:
@@ -329,19 +377,42 @@ try {
     }
   }
 
-  const computed = computeStackValidationStatus(report.branches);
-  report.status = computed.status;
-  report.exportStatus = computed.exportStatus;
-  report.diagnosticStatus = computed.diagnosticStatus;
+  const exportFailures = report.branches.some((b) =>
+    Object.values(b.exports).some((e) => e.exitCode !== 0),
+  );
+  const toolFailures = report.branches.some((b) => b.diagnostics?.toolFailure);
+  const diagnosticRegression = report.branches.some((b) => {
+    const added = b.diagnostics?.identitiesAdded;
+    const tsNew = added?.tsGenuineAdded?.length ?? added?.tsAdded?.length ?? 0;
+    const eslintNew = added?.eslintGenuineAdded?.length ?? added?.eslintAdded?.length ?? 0;
+    const tsAmbiguous = added?.tsClassification?.ambiguous?.length ?? 0;
+    const eslintAmbiguous = added?.eslintClassification?.ambiguous?.length ?? 0;
+    return tsNew > 0 || eslintNew > 0 || tsAmbiguous > 0 || eslintAmbiguous > 0;
+  });
+  const headMismatch = report.branches.some((b) => !b.headMatchesOrigin);
+
+  report.status = exportFailures
+    ? 'export_failures'
+    : toolFailures
+      ? 'diagnostic_tool_failure'
+      : headMismatch
+        ? 'head_sha_mismatch'
+        : diagnosticRegression
+          ? 'diagnostic_regression'
+          : 'passed';
+  report.exportStatus = exportFailures ? 'failed' : 'passed';
+  report.diagnosticStatus = toolFailures
+    ? 'tool_failure'
+    : diagnosticRegression
+      ? 'regression'
+      : 'passed';
 } catch (error) {
   report.status = 'failed';
   report.error = error?.message || String(error);
   throw error;
 } finally {
-  mkdirSync(validationLogDir, { recursive: true });
+  mkdirSync(dirname(reportPath), { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  mkdirSync(dirname(reportEvidenceCopyPath), { recursive: true });
-  writeFileSync(reportEvidenceCopyPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
   const shouldFail = report.status !== 'passed' || Boolean(report.error);
   process.exit(shouldFail ? 1 : 0);

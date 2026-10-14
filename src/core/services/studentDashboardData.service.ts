@@ -16,7 +16,16 @@ import {
 } from './studentCheckRecordDashboardLoader';
 import type { ParsedQuiz } from '../types';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
-import type { DashboardStats } from '../types';
+export interface StudentDashboardAggregateStats {
+  total_quizzes: number;
+  completed_count: number;
+  pending_count: number;
+  missed_count: number;
+  average_score: number;
+  total_time_spent: number;
+  total_questions_attempted: number;
+  total_classes: number;
+}
 import {
   isStudentAssignmentCompleted,
   isStudentAssignmentMissed,
@@ -62,7 +71,7 @@ export function dedupeStudentDashboardQuizzes(
 
 export function computeStudentDashboardStats(
   parsed: StudentDashboardQuizRow[],
-): DashboardStats {
+): StudentDashboardAggregateStats {
   const completed = parsed.filter((q) => isStudentAssignmentCompleted(q));
   const pending = parsed.filter((q) => isStudentAssignmentOngoing(q));
   const missed = parsed.filter((q) => isStudentAssignmentMissed(q));
@@ -163,7 +172,7 @@ function mapStudentDetailsRow(
  */
 export async function loadStudentDashboardQuizzes(
   studentId: string,
-): Promise<{ quizzes: StudentDashboardQuizRow[]; stats: DashboardStats }> {
+): Promise<{ quizzes: StudentDashboardQuizRow[]; stats: StudentDashboardAggregateStats }> {
   const [combined, classroomLookup, studentDetailsResponse] = await Promise.all([
     fetchStudentCheckRecordRows(studentId),
     fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
