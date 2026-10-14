@@ -140,7 +140,7 @@ const maestroBin =
   join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
 const maestroLogin = spawnSync(
   process.execPath,
-  [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'instructor'],
+  [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'instructor'],
   { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
 );
 sessionMeta.maestroInstructor = { status: maestroLogin.status };

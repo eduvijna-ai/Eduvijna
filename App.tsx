@@ -105,6 +105,7 @@ function AppContent() {
   const prevAuthenticatedForNavResetRef = useRef(false);
   const postLoginResumeInFlightRef = useRef<string | null>(null);
   const pendingHydratedRef = useRef(false);
+  const pendingStorageEpochRef = useRef(0);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
@@ -125,6 +126,7 @@ function AppContent() {
 
   const clearPendingOpenQuiz = useCallback((reason: string) => {
     traceOpenQuizPending('pending_cleared', { reason });
+    pendingStorageEpochRef.current += 1;
     setPendingSessionId(null);
     pendingPostLoginQuizIdRef.current = undefined;
     pendingOpenQuizRef.current = null;
@@ -135,7 +137,9 @@ function AppContent() {
   useEffect(() => {
     if (!isMobile || pendingHydratedRef.current) return;
     pendingHydratedRef.current = true;
+    const hydrateEpoch = pendingStorageEpochRef.current;
     void readStoredOpenQuizPending().then((stored) => {
+      if (hydrateEpoch !== pendingStorageEpochRef.current) return;
       if (!stored?.sessionId) return;
       traceOpenQuizPending('pending_hydrated', {
         sessionId: stored.sessionId,
@@ -411,6 +415,7 @@ function AppContent() {
     )
       .then(() => {
         traceOpenQuizPending('pending_consume_done', { sessionId: dest.sessionId });
+        pendingStorageEpochRef.current += 1;
         setPendingSessionId(null);
         pendingPostLoginQuizIdRef.current = undefined;
         void clearStoredOpenQuizPending();
