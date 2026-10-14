@@ -154,6 +154,15 @@ export function assertOwnedStackValidationWorktree(monorepoRoot, worktreeRoot) {
   }
 }
 
+function isTrackedAtHead(worktreeRoot, relativePath) {
+  try {
+    execSync(`git cat-file -e HEAD:${relativePath}`, { cwd: worktreeRoot, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isRunnerGeneratedExpoIndexJs(worktreeRoot, monorepoRoot, indexPath) {
   const templateIndex = join(monorepoRoot, 'index.js');
   if (!existsSync(indexPath) || !existsSync(templateIndex)) {
@@ -198,6 +207,10 @@ function classifyPreCheckoutDirtyState(worktreeRoot, monorepoRoot) {
       repairArtifacts.push('dirty:package.json');
       continue;
     }
+    if (path === 'index.js' && (code.includes('D') || code.includes('M'))) {
+      repairArtifacts.push(`dirty:${path}`);
+      continue;
+    }
     unexpected.push(`dirty:${path}`);
   }
   return { unexpected, repairArtifacts };
@@ -210,13 +223,14 @@ export function restoreWorktreeExpoEntryOverrides(worktreeRoot, monorepoRoot, re
   assertOwnedStackValidationWorktree(monorepoRoot, worktreeRoot);
   const restored = [];
   try {
-    execSync('git checkout -- package.json', { cwd: worktreeRoot, stdio: 'ignore' });
-    restored.push('restored_package_json_from_head');
+    execSync('git checkout -- package.json index.js', { cwd: worktreeRoot, stdio: 'ignore' });
+    restored.push('restored_package_json_and_index_from_head');
   } catch {
-    restored.push('package_json_restore_failed');
+    restored.push('package_json_index_restore_failed');
   }
   const indexPath = join(worktreeRoot, 'index.js');
   if (
+    repairDisclosures.includes('copied_index_js_from_monorepo_root') &&
     existsSync(indexPath) &&
     isRunnerGeneratedExpoIndexJs(worktreeRoot, monorepoRoot, indexPath)
   ) {
@@ -226,13 +240,21 @@ export function restoreWorktreeExpoEntryOverrides(worktreeRoot, monorepoRoot, re
   return { restored: true, disclosures: restored };
 }
 
-export function assertWorktreeClean(worktreeRoot) {
+export function assertWorktreeClean(worktreeRoot, monorepoRoot = null) {
   const status = execSync('git status --porcelain', { cwd: worktreeRoot, encoding: 'utf8' });
   const violations = [];
+  const indexPath = join(worktreeRoot, 'index.js');
   for (const line of status.split('\n')) {
     if (!line.trim()) continue;
     const code = line.slice(0, 2);
     const path = line.slice(3).trim().replace(/\\/g, '/');
+    if (
+      path === 'index.js' &&
+      monorepoRoot &&
+      isRunnerGeneratedExpoIndexJs(worktreeRoot, monorepoRoot, indexPath)
+    ) {
+      continue;
+    }
     if (code === '??') {
       const allowed =
         ALLOWED_UNTRACKED_FILES.has(path) ||
@@ -267,6 +289,7 @@ export function prepareWorktreeAtSha(monorepoRoot, branch, expectedSha) {
     execSync('git reset --hard', { cwd: worktreeRoot, stdio: 'ignore' });
     const repairIndex = join(worktreeRoot, 'index.js');
     if (
+      !isTrackedAtHead(worktreeRoot, 'index.js') &&
       existsSync(repairIndex) &&
       isRunnerGeneratedExpoIndexJs(worktreeRoot, monorepoRoot, repairIndex)
     ) {
@@ -275,7 +298,7 @@ export function prepareWorktreeAtSha(monorepoRoot, branch, expectedSha) {
   }
 
   execSync(`git checkout --detach ${expectedSha}`, { cwd: worktreeRoot, stdio: 'ignore' });
-  assertWorktreeClean(worktreeRoot);
+  assertWorktreeClean(worktreeRoot, monorepoRoot);
 
   const entryRepair = repairWorktreeExpoEntry(worktreeRoot, monorepoRoot);
   ensureWorktreeOwnNodeModules(worktreeRoot, monorepoRoot, expectedSha);

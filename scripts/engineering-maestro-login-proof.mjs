@@ -103,8 +103,6 @@ const run = maestroSpawn([
   'junit',
   '--output',
   join(outDir, 'maestro.xml'),
-  '--debug-output',
-  join(outDir, 'maestro-debug'),
 ]);
 
 const logcat = spawnSync(

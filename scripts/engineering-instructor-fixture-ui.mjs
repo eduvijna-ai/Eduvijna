@@ -198,12 +198,20 @@ shot('04-results-60-6of10.png');
 
 const resultsAssert = assertResultsScreen(xml);
 const ok = resultsAssert.pass;
+const identity = {
+  quiz479: /quiz-479|quiz_id=479|"479"/.test(xml),
+  student70: /student-70|student_id=70/.test(xml),
+  attempt207: /attempt-207|attempt_id=207/.test(xml),
+  score60: /60%/.test(xml),
+  evaluated6of10: /6\/10|6 of 10/i.test(xml),
+};
 const results = {
-  ok,
+  ok: resultsAssert.pass && identity.quiz479 && identity.student70 && identity.attempt207,
   found,
   rowTap,
   studentTap,
   resultsAssert,
+  identity,
   onResultsScreen: resultsAssert.evaluated,
   evidenceDir,
 };
