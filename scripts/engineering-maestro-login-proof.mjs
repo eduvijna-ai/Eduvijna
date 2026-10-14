@@ -5,9 +5,10 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const credFile = join(repoRoot, '.dev-api-credentials.local.json');
+const credFile = resolveDevApiCredentialsPath(repoRoot);
 const outDir = join(
   repoRoot,
   '.stack-validation-logs',

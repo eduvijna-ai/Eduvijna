@@ -2,11 +2,12 @@
  * Throttled dev-api fixture readiness probe (authorized student + instructor).
  * Records redacted params, HTTP status, response shape, Retry-After.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDevApiBase, loginDevApi } from './lib/dev-api-auth.mjs';
 import { FIXTURE } from './lib/founder-fixture.mjs';
+import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const THROTTLE_MS = Number(process.env.FIXTURE_PROBE_THROTTLE_MS || 3500);
@@ -143,18 +144,7 @@ async function getAttendedQuizWithBoundedRetries(token) {
   return { ...last, name: 'student_attended_quiz_fixture', retryAttempts: attempts };
 }
 
-function resolveCredentialsPath() {
-  const candidates = [
-    process.env.DEV_API_CREDENTIALS_FILE,
-    join(repoRoot, '.dev-api-credentials.local.json'),
-    join(repoRoot, '..', 'Eduvijna', '.dev-api-credentials.local.json'),
-  ].filter(Boolean);
-  for (const p of candidates) {
-    if (existsSync(p)) return p;
-  }
-  throw new Error('Missing .dev-api-credentials.local.json (set DEV_API_CREDENTIALS_FILE)');
-}
-const { accounts } = JSON.parse(readFileSync(resolveCredentialsPath(), 'utf8'));
+const { accounts } = JSON.parse(readFileSync(resolveDevApiCredentialsPath(repoRoot), 'utf8'));
 const student = await loginDevApi(accounts.student.username, accounts.student.password);
 const instructor = await loginDevApi(accounts.instructor.username, accounts.instructor.password);
 
