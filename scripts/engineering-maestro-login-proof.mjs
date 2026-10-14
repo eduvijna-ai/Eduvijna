@@ -47,10 +47,16 @@ function pickAccount(role) {
   return { email, password };
 }
 
-const role = process.argv[2] || 'student';
+const cliArgs = process.argv.slice(2);
+const inplace = cliArgs.includes('--inplace');
+const role = cliArgs.find((a) => a !== '--inplace') || 'student';
 const account = pickAccount(role);
 const maestro = resolveMaestroBin();
-const flow = join(repoRoot, '.maestro', 'engineering-release-login.yaml');
+const flow = join(
+  repoRoot,
+  '.maestro',
+  inplace ? 'engineering-release-login-inplace.yaml' : 'engineering-release-login.yaml',
+);
 const device = process.env.ADB_DEVICE || 'emulator-5554';
 
 mkdirSync(outDir, { recursive: true });
@@ -124,6 +130,8 @@ const result = {
   maestroVersion,
   adbDevice: device,
   role,
+  inplace,
+  flow: flow.replace(repoRoot, '.').replace(/\\/g, '/'),
   emailLength: String(account.email).length,
   maestroExit: run.status,
   maestroStdoutTail: (run.stdout || '').slice(-2000),

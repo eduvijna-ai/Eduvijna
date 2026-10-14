@@ -163,7 +163,7 @@ if (signedOutGate.login) {
     join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
   const maestroLogin = spawnSync(
     process.execPath,
-    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'student'],
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'student'],
     { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
   );
   if (maestroLogin.status !== 0) {

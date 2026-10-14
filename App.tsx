@@ -30,6 +30,12 @@ import {
   isDuplicateOpenQuizDispatch,
   shouldClearPendingOnAuthTransition,
 } from './src/core/navigation/mobilePendingOpenQuiz';
+import {
+  clearStoredOpenQuizPending,
+  readStoredOpenQuizPending,
+  writeStoredOpenQuizPending,
+} from './src/core/navigation/mobileOpenQuizPendingStorage';
+import { traceOpenQuizPending } from './src/core/navigation/mobileOpenQuizPendingTrace';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
@@ -98,25 +104,73 @@ function AppContent() {
   const wasAuthenticatedRef = useRef(false);
   const prevAuthenticatedForNavResetRef = useRef(false);
   const postLoginResumeInFlightRef = useRef<string | null>(null);
+  const pendingHydratedRef = useRef(false);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+
+  const queuePendingOpenQuiz = useCallback(
+    (sessionId: string, source: string, quizId?: string) => {
+      traceOpenQuizPending('pending_queued', { sessionId, source, quizId: quizId ?? null });
+      setPendingSessionId(sessionId);
+      pendingPostLoginQuizIdRef.current = quizId;
+      void writeStoredOpenQuizPending({
+        sessionId,
+        quizId,
+        source,
+        queuedAtIso: new Date().toISOString(),
+      });
+    },
+    [],
+  );
+
+  const clearPendingOpenQuiz = useCallback((reason: string) => {
+    traceOpenQuizPending('pending_cleared', { reason });
+    setPendingSessionId(null);
+    pendingPostLoginQuizIdRef.current = undefined;
+    pendingOpenQuizRef.current = null;
+    postLoginResumeInFlightRef.current = null;
+    void clearStoredOpenQuizPending();
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile || pendingHydratedRef.current) return;
+    pendingHydratedRef.current = true;
+    void readStoredOpenQuizPending().then((stored) => {
+      if (!stored?.sessionId) return;
+      traceOpenQuizPending('pending_hydrated', {
+        sessionId: stored.sessionId,
+        source: stored.source,
+        quizId: stored.quizId ?? null,
+      });
+      setPendingSessionId((current) => current ?? stored.sessionId);
+      if (!pendingPostLoginQuizIdRef.current) {
+        pendingPostLoginQuizIdRef.current = stored.quizId;
+      }
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    traceOpenQuizPending('auth_hydrated', {
+      isAuthenticated,
+      userId: user?.id ?? null,
+      role: user?.role ?? null,
+    });
+  }, [isMobile, isAuthenticated, user?.id, user?.role]);
 
   // Clear pending protected navigation only on explicit logout (not signed-out cold start).
   useEffect(() => {
     if (shouldClearPendingOnAuthTransition(wasAuthenticatedRef.current, isAuthenticated)) {
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
-      setPendingSessionId(null);
       webNavStackRef.current = [];
-      pendingOpenQuizRef.current = null;
-      pendingPostLoginQuizIdRef.current = undefined;
       initialDeepLinkProcessed.current = false;
-      postLoginResumeInFlightRef.current = null;
       setMobileNavigationReady(false);
       resetInitialDeepLinkCache();
+      clearPendingOpenQuiz('explicit_logout');
     }
     wasAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated]);
+  }, [isAuthenticated, clearPendingOpenQuiz]);
 
   const dispatchOpenQuizInner = useCallback(
     async (
@@ -161,10 +215,15 @@ function AppContent() {
   const syncMobileNavigationReady = useCallback(() => {
     if (!isMobile || !isAuthenticated) return;
     if (navigationRef.isReady()) {
+      traceOpenQuizPending('auth_nav_ready', { ready: true });
       setMobileNavigationReady(true);
       flushPendingOpenQuiz();
     }
   }, [isMobile, isAuthenticated, flushPendingOpenQuiz]);
+
+  useEffect(() => {
+    syncMobileNavigationReady();
+  }, [syncMobileNavigationReady, isAuthenticated, user, pendingSessionId]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -331,6 +390,7 @@ function AppContent() {
     const quizId = pendingPostLoginQuizIdRef.current;
     postLoginResumeInFlightRef.current = dest.sessionId;
     pendingPostLoginQuizIdRef.current = undefined;
+    traceOpenQuizPending('resume_dispatch', { sessionId: dest.sessionId, quizId: quizId ?? null });
 
     const navigationAdapter = {
       navigate: (screen: string, params?: any) => {
@@ -341,21 +401,29 @@ function AppContent() {
       alert: Alert.alert,
     };
 
-    void handleOpenQuiz(dest.sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
-      quizId,
-    })
+    void handleOpenQuiz(
+      dest.sessionId,
+      'post_login',
+      user,
+      navigationAdapter,
+      (sessionId) => queuePendingOpenQuiz(sessionId, 'handle_open_quiz_unauthenticated', quizId),
+      { quizId },
+    )
       .then(() => {
+        traceOpenQuizPending('pending_consume_done', { sessionId: dest.sessionId });
         setPendingSessionId(null);
+        pendingPostLoginQuizIdRef.current = undefined;
+        void clearStoredOpenQuizPending();
         setLastProcessedSessionId(dest.sessionId);
         setLastProcessedTime(Date.now());
       })
       .catch((error) => {
         console.error('❌ Post-login open quiz resume failed:', error);
+        traceOpenQuizPending('pending_consume_failed', { sessionId: dest.sessionId });
         postLoginResumeInFlightRef.current = null;
-        setPendingSessionId(dest.sessionId);
-        pendingPostLoginQuizIdRef.current = quizId;
+        queuePendingOpenQuiz(dest.sessionId, 'resume_retry', quizId);
       });
-  }, [isMobile, isAuthenticated, pendingSessionId, user, mobileNavigationReady]);
+  }, [isMobile, isAuthenticated, pendingSessionId, user, mobileNavigationReady, queuePendingOpenQuiz]);
 
   // Web post-login resume
   useEffect(() => {
@@ -460,8 +528,8 @@ function AppContent() {
             // If not authenticated, save sessionId and show login
             if (!isAuthenticated) {
               console.log('👤 Not authenticated, saving sessionId for post-login:', sessionId);
-              setPendingSessionId(sessionId);
-              pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
+              traceOpenQuizPending('uri_parsed', { sessionId, path: 'initial_deep_link' });
+              queuePendingOpenQuiz(sessionId, 'initial_deep_link_signed_out', deepLinkData.quizId);
               return;
             }
 
@@ -506,8 +574,8 @@ function AppContent() {
         
         // If not authenticated, save sessionId and show login
         if (!isAuthenticated) {
-          setPendingSessionId(sessionId);
-          pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
+          traceOpenQuizPending('uri_parsed', { sessionId, path: 'runtime_deep_link' });
+          queuePendingOpenQuiz(sessionId, 'runtime_deep_link_signed_out', deepLinkData.quizId);
           return;
         }
 
@@ -533,7 +601,7 @@ function AppContent() {
     });
 
     return unsubscribe;
-  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz]); // Include auth to handle state changes
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz, queuePendingOpenQuiz]);
 
   // Process pending deep link after authentication - REMOVED
   // Now handled directly in deep link handlers above with pendingSessionId

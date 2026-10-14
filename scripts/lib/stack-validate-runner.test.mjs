@@ -31,7 +31,7 @@ test('worktreeFolderForBranch sanitizes branch names', () => {
 
 test('assertWorktreeExpoEntry requires index.js main', () => {
   const root = makeMinimalWorktree({ withIndex: true, main: 'index.js' });
-  assertWorktreeExpoEntry(root);
+  assertWorktreeExpoEntry(root, root);
   rmSync(root, { recursive: true, force: true });
 });
 

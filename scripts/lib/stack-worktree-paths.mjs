@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 
@@ -64,17 +64,34 @@ export function runWorktreeNpmCi(worktreeRoot) {
   execSync(cmd, { cwd: worktreeRoot, stdio: 'inherit' });
 }
 
-export function assertWorktreeExpoEntry(worktreeRoot) {
+/**
+ * Worktrees with shared node_modules need local index.js + package.json main "index.js".
+ * Returns disclosure metadata when a repair was applied (not an untouched-source pass).
+ */
+export function repairWorktreeExpoEntry(worktreeRoot, monorepoRoot) {
+  const disclosures = [];
+  const indexPath = join(worktreeRoot, 'index.js');
+  const templateIndex = join(monorepoRoot, 'index.js');
+  if (!existsSync(indexPath) && existsSync(templateIndex)) {
+    copyFileSync(templateIndex, indexPath);
+    disclosures.push('copied_index_js_from_monorepo_root');
+  }
   const pkgPath = join(worktreeRoot, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  const previousMain = pkg.main;
   if (pkg.main !== 'index.js') {
-    throw new Error(
-      `Worktree ${worktreeRoot} must set package.json main to "index.js" (found ${pkg.main ?? 'unset'})`,
-    );
+    pkg.main = 'index.js';
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+    disclosures.push(`package_json_main_was_${previousMain ?? 'unset'}`);
   }
-  if (!existsSync(join(worktreeRoot, 'index.js'))) {
-    throw new Error(`Worktree ${worktreeRoot} is missing index.js Expo entry`);
+  if (!existsSync(indexPath)) {
+    throw new Error(`Worktree ${worktreeRoot} is missing index.js Expo entry after repair`);
   }
+  return { repaired: disclosures.length > 0, disclosures };
+}
+
+export function assertWorktreeExpoEntry(worktreeRoot, monorepoRoot) {
+  repairWorktreeExpoEntry(worktreeRoot, monorepoRoot);
 }
 
 export function fetchOrigin(monorepoRoot) {
@@ -122,13 +139,18 @@ export function prepareWorktreeAtSha(monorepoRoot, branch, expectedSha) {
   assertWorktreeClean(worktreeRoot);
   fetchOrigin(monorepoRoot);
   execSync(`git checkout --detach ${expectedSha}`, { cwd: worktreeRoot, stdio: 'ignore' });
-  assertWorktreeExpoEntry(worktreeRoot);
+  const entryRepair = repairWorktreeExpoEntry(worktreeRoot, monorepoRoot);
   ensureWorktreeOwnNodeModules(worktreeRoot, monorepoRoot, expectedSha);
+  const postCiRepair = repairWorktreeExpoEntry(worktreeRoot, monorepoRoot);
   const head = execSync('git rev-parse HEAD', { cwd: worktreeRoot, encoding: 'utf8' }).trim();
   if (head !== expectedSha) {
     throw new Error(
       `Worktree HEAD mismatch for ${branch}: expected ${expectedSha}, got ${head} at ${worktreeRoot}`,
     );
   }
-  return { worktreeRoot, head };
+  return {
+    worktreeRoot,
+    head,
+    worktreeExpoEntryRepair: [...entryRepair.disclosures, ...postCiRepair.disclosures],
+  };
 }
