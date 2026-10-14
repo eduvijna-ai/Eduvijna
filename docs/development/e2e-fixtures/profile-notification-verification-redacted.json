@@ -1,0 +1,244 @@
+{
+  "verifiedAt": "2026-10-10T18:37:18.575Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "profiles": [
+    {
+      "accountLabel": "admin",
+      "role": "admin",
+      "roleVerified": true,
+      "steps": [
+        {
+          "check": "profile_read_initial",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_save",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_refetch",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "check": "profile_restore",
+          "httpStatus": 200,
+          "ok": true,
+          "attemptedAfterSaveLost": false
+        },
+        {
+          "check": "profile_final_get",
+          "httpStatus": 200,
+          "ok": true,
+          "valueMatchesOriginal": true
+        }
+      ],
+      "restored": true,
+      "abortedBeforeMutation": false
+    },
+    {
+      "accountLabel": "instructor",
+      "role": "instructor",
+      "roleVerified": true,
+      "steps": [
+        {
+          "check": "profile_read_initial",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_save",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_refetch",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "check": "profile_restore",
+          "httpStatus": 200,
+          "ok": true,
+          "attemptedAfterSaveLost": false
+        },
+        {
+          "check": "profile_final_get",
+          "httpStatus": 200,
+          "ok": true,
+          "valueMatchesOriginal": true
+        }
+      ],
+      "restored": true,
+      "abortedBeforeMutation": false
+    },
+    {
+      "accountLabel": "student",
+      "role": "student",
+      "roleVerified": true,
+      "steps": [
+        {
+          "check": "profile_read_initial",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_save",
+          "httpStatus": 200,
+          "ok": true,
+          "parseError": null
+        },
+        {
+          "check": "profile_refetch",
+          "httpStatus": 200,
+          "ok": true,
+          "markerVisible": true
+        },
+        {
+          "check": "profile_restore",
+          "httpStatus": 200,
+          "ok": true,
+          "attemptedAfterSaveLost": false
+        },
+        {
+          "check": "profile_final_get",
+          "httpStatus": 200,
+          "ok": true,
+          "valueMatchesOriginal": true
+        }
+      ],
+      "restored": true,
+      "abortedBeforeMutation": false
+    }
+  ],
+  "notifications": [
+    {
+      "accountLabel": "admin",
+      "role": "admin",
+      "apiEvidence": [
+        {
+          "check": "notifications_history",
+          "httpStatus": 200,
+          "ok": true,
+          "responseShape": "array_root",
+          "notificationCount": 0,
+          "totalField": 0,
+          "sampleTypes": []
+        },
+        {
+          "check": "notifications_preferences",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "check": "notifications_devices_list",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "clientEvidence": [
+        {
+          "check": "bell_fetch_guard",
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": [],
+      "ok": true
+    },
+    {
+      "accountLabel": "instructor",
+      "role": "instructor",
+      "apiEvidence": [
+        {
+          "check": "notifications_history",
+          "httpStatus": 200,
+          "ok": true,
+          "responseShape": "array_root",
+          "notificationCount": 0,
+          "totalField": 0,
+          "sampleTypes": []
+        },
+        {
+          "check": "notifications_preferences",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "check": "notifications_devices_list",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "clientEvidence": [
+        {
+          "check": "bell_fetch_guard",
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": [],
+      "ok": true
+    },
+    {
+      "accountLabel": "student",
+      "role": "student",
+      "apiEvidence": [
+        {
+          "check": "notifications_history",
+          "httpStatus": 200,
+          "ok": true,
+          "responseShape": "array_root",
+          "notificationCount": 20,
+          "totalField": 20,
+          "sampleTypes": [
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED",
+            "QUIZ_ASSIGNED"
+          ]
+        },
+        {
+          "check": "notifications_preferences",
+          "httpStatus": 200,
+          "ok": true
+        },
+        {
+          "check": "notifications_devices_list",
+          "httpStatus": 200,
+          "ok": true
+        }
+      ],
+      "clientEvidence": [
+        {
+          "check": "bell_fetch_guard",
+          "detail": "useNotifications restores bounded history fetch with dedupe and 429 backoff (Phase 6)."
+        }
+      ],
+      "deviceReceipt": {
+        "status": "not_collected",
+        "reason": "No physical device push receipt in CI matrix"
+      },
+      "limitations": [],
+      "ok": true
+    }
+  ],
+  "erpDeferred": true,
+  "status": "passed"
+}

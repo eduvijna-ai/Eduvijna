@@ -577,30 +577,31 @@ function BottomTabNavigator() {
   const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
+  const pushPromptCheckedUserId = React.useRef<number | null>(null);
 
   /**
    * Check if we should show push notification prompt after login
    */
   useEffect(() => {
     const checkPushPrompt = async () => {
-      if (!user) {
+      if (!user?.id) {
         setShowPushPrompt(false);
+        pushPromptCheckedUserId.current = null;
         return;
       }
 
+      if (pushPromptCheckedUserId.current === user.id) {
+        return;
+      }
+      pushPromptCheckedUserId.current = user.id;
+
       try {
-        // Sync push status after login
         await PushNotificationService.syncStatusAfterLogin();
 
-        // Check if push is enabled
         const status = await PushNotificationService.getPushStatus();
-        
-        // Check if prompt was recently dismissed
         const recentlyDismissed = await PushNotificationService.wasPromptRecentlyDismissed();
 
-        // Show prompt if: push not enabled, supported, and not recently dismissed
         if (!status.isEnabled && status.isSupported && !recentlyDismissed) {
-          // Small delay to let user see the main screen first
           setTimeout(() => {
             setShowPushPrompt(true);
           }, 1500);
@@ -611,7 +612,7 @@ function BottomTabNavigator() {
     };
 
     checkPushPrompt();
-  }, [user]);
+  }, [user?.id]);
 
   /**
    * Handle user clicking "Enable" on push prompt

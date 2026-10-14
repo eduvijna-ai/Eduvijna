@@ -61,6 +61,10 @@ export function parseDeepLink(url: string): DeepLinkData | null {
  */
 let initialUrlPromise: Promise<string | null> | null = null;
 
+export function resetInitialDeepLinkCache(): void {
+  initialUrlPromise = null;
+}
+
 export async function getInitialDeepLink(): Promise<string | null> {
   // Prevent multiple concurrent calls to getInitialURL()
   if (initialUrlPromise) {
