@@ -18,7 +18,6 @@ import {
 } from '../core/services/assignedQuizRecovery.service';
 import {
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
-  readQuizSubmissionCheckpoint,
   writeQuizSubmissionCheckpoint,
   type QuizSubmissionCheckpoint,
 } from '../core/services/quizSubmissionCheckpoint';

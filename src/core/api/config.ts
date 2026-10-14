@@ -4,7 +4,7 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import type { ApiError, AuthTokens } from '../types';
+import type { ApiError } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';

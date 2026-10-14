@@ -4,7 +4,6 @@
  */
 
 import {
-  letterToOptionIndex,
   permuteOptions,
   resolveCorrectOptionIndex,
   resolveSelectedOptionIndex,

@@ -135,7 +135,7 @@ function mapStudentDetailsRow(
   classroomNames: Map<string, string>,
 ): StudentDashboardQuizRow {
   const classroomId = String(quiz.classroom_id || '');
-  const status = String(quiz.student_status || quiz.status || 'pending');
+  const status = String(quiz.student_status || 'pending');
   const studentStatus = String(quiz.student_status || status);
 
   return {

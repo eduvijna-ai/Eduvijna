@@ -11,6 +11,7 @@ jest.mock('../core/store/studentAssignmentDashboard.store', () => ({
   resetStudentAssignmentDashboardStore: jest.fn(),
 }));
 
+import type { UserProfile } from '../core/types';
 import { useAuth, __testResetUseAuthGlobals } from '../core/hooks/useAuth';
 import * as AuthAPI from '../core/api/auth.api';
 import * as TokenStorage from '../core/services/tokenStorage';
@@ -65,11 +66,11 @@ const getAccessToken = TokenStorage.getAccessToken as jest.MockedFunction<typeof
 const isTokenExpired = TokenStorage.isTokenExpired as jest.MockedFunction<typeof TokenStorage.isTokenExpired>;
 const getUserData = TokenStorage.getUserData as jest.MockedFunction<typeof TokenStorage.getUserData>;
 
-const sampleUser = {
+const sampleUser: UserProfile = {
   id: '1',
   email: 'a@test.com',
   username: 'a',
-  role: 'instructor' as const,
+  role: 'instructor',
   full_name: 'A',
 };
 
@@ -116,7 +117,7 @@ describe('useAuth lifecycle', () => {
   });
 
   it('account B login survives account A slow profile fetch', async () => {
-    let resolveA!: (value: typeof sampleUser) => void;
+    let resolveA!: (value: UserProfile) => void;
     mockLogin.mockImplementation(async (_credentials, epoch) => {
       if (epoch >= 3) {
         return {

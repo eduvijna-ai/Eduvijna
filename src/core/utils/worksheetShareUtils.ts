@@ -169,9 +169,7 @@ export function worksheetResponseFromReviewData(
   worksheetData: WorksheetResponseShape['WorksheetData'],
 ): WorksheetResponseShape {
   return {
-    success: true,
     WorksheetData: worksheetData!,
-    message: 'Worksheet review',
   };
 }
 
@@ -204,7 +202,7 @@ export function buildWorksheetParsedLogData(
   timeSpentSeconds = 0,
   attemptId = 0,
 ): ParsedLogData {
-  const ws = worksheet.WorksheetData!.Worksheet;
+  const ws = worksheet.WorksheetData!.Worksheet as WorksheetDataShape['Worksheet'];
   const answerKey = worksheet.WorksheetData!.AnswerKey || {};
   const results = evaluation.results || [];
 

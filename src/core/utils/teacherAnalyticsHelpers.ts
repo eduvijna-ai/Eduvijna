@@ -224,7 +224,7 @@ function getQuizStudentScores(quiz: QuizListItem) {
     const score = typeof attempt.score === 'number' ? attempt.score : parseFloat(attempt.score);
     if (Number.isNaN(score)) return;
     const username = attempt.student_username || attempt.student_fullname || 'Unknown';
-    const entry = studentScores.get(attempt.student_id) || { username, scores: [] };
+    const entry = studentScores.get(attempt.student_id) || { username, scores: [] as number[] };
     entry.scores.push(score);
     studentScores.set(attempt.student_id, entry);
   });
@@ -650,8 +650,8 @@ export function getQuizAttemptsForView(
     return true;
   });
 
-  return filtered.map(({ attempt, derivedStatus }) => {
-    const { log_data, logSource } = extractAttemptLogData(attempt as Record<string, unknown>);
+  return filtered.map(({ attempt, derivedStatus }): QuizAttemptViewRow => {
+    const { log_data, logSource } = extractAttemptLogData(attempt as unknown as Record<string, unknown>);
     const submittedAt =
       (attempt.submission as { submitted_at?: string } | undefined)?.submitted_at ??
       (attempt as { submitted_at?: string }).submitted_at ??
@@ -661,7 +661,7 @@ export function getQuizAttemptsForView(
       student_id: attempt.student_id,
       student_username: attempt.student_username,
       student_fullname: attempt.student_fullname,
-      avatar_url: attempt.avatar_url,
+      avatar_url: attempt.avatar_url ?? undefined,
       status: attempt.status,
       derivedStatus,
       score: attempt.score ?? null,

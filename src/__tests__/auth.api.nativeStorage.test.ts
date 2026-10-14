@@ -91,7 +91,7 @@ describe.each(['android', 'ios'] as const)('auth.api login native storage (%s)',
   it('persists refresh token under environment-scoped SecureStore key', async () => {
     const { authApi } = loadAuthApiOnNative(platformOs);
 
-    await authApi.login({ email: 'student@test.com', password: 'secret' });
+    await authApi.login({ email: 'student@test.com', password: 'secret' }, 1);
 
     expect(secureStore['eduvijna.auth.development.refresh_token']).toBe('refresh-from-api');
     expect(memoryStore['eduvijna.auth.development.access_token']).toBe('access-from-api');
@@ -148,7 +148,7 @@ describe.each(['android', 'ios'] as const)('auth.api login native storage (%s)',
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const authApi = require('../core/api/auth.api') as typeof import('../core/api/auth.api');
 
-    await expect(authApi.login({ email: 'x@y.com', password: 'p' })).rejects.toThrow(
+    await expect(authApi.login({ email: 'x@y.com', password: 'p' }, 1)).rejects.toThrow(
       /Failed to store refresh token/,
     );
   });

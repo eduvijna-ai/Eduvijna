@@ -49,7 +49,6 @@ export default function AnalyticsDateFilter({
         testID="analytics-date-state"
         accessibilityLabel={analyticsDateStateLabel}
         accessible
-        importantForAccessibility="yes"
         collapsable={false}
         style={styles.dateStateMarker}
       >

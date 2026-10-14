@@ -1,7 +1,8 @@
 /**
  * Dev-only login diagnostics (no credential content). Written for engineering verification.
  */
-import * as FileSystem from 'expo-file-system';
+import { Paths, File } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export type LoginDiagnosticEvent =
   | { type: 'focus'; field: 'email' | 'password'; at: string }
@@ -21,7 +22,11 @@ function diagnosticsEnabled(): boolean {
 }
 
 function diagnosticsPath(): string {
-  return `${FileSystem.documentDirectory}login-diagnostics.json`;
+  const legacyDir = (FileSystem as { documentDirectory?: string | null }).documentDirectory;
+  if (legacyDir) {
+    return `${legacyDir}login-diagnostics.json`;
+  }
+  return new File(Paths.document, 'login-diagnostics.json').uri;
 }
 
 function scheduleFlush(): void {

@@ -49,7 +49,7 @@ function enqueueCredentialMutation(
   return result;
 }
 
-function enqueueCredentialClear(credentialEpoch: number, mutate: () => Promise<void>): Promise<void> {
+function enqueueCredentialClear(_credentialEpoch: number, mutate: () => Promise<void>): Promise<void> {
   const task = credentialMutationTail.then(mutate, mutate);
   credentialMutationTail = task.then(
     () => undefined,

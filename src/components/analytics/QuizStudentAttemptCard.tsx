@@ -84,7 +84,6 @@ export default function QuizStudentAttemptCard({
           accessibilityRole="button"
           accessibilityLabel={`View saved result for ${row.student_fullname || row.student_username || 'student'}`}
           collapsable={false}
-          importantForAccessibility="yes"
         >
           <Text style={styles.viewBtnText}>View Details</Text>
           <Ionicons name="chevron-forward" size={14} color="#fff" />

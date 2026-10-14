@@ -142,7 +142,7 @@ export function buildTransientRefreshError(reason: string): Error {
 export function extractResponseData(error: AxiosError<ApiError>): Record<string, unknown> | undefined {
   const data = error.response?.data;
   if (data && typeof data === 'object') {
-    return data as Record<string, unknown>;
+    return data as unknown as Record<string, unknown>;
   }
   return undefined;
 }

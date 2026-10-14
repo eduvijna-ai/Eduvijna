@@ -1,7 +1,8 @@
 import { classifyApiAuthError } from '../core/api/apiAuthPolicy';
 import type { AxiosError } from 'axios';
+import type { ApiError } from '../core/types';
 
-function makeError(status?: number, data?: unknown, message = 'err'): AxiosError {
+function makeError(status?: number, data?: unknown, message = 'err'): AxiosError<ApiError> {
   return {
     message,
     response: status

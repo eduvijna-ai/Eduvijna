@@ -2,7 +2,7 @@
  * Testable auth refresh handling extracted from the Axios response interceptor.
  */
 
-import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import type { AxiosError, AxiosInstance } from 'axios';
 import type { ApiError } from '../types';
 import {
   buildPermissionDeniedError,

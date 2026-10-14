@@ -32,7 +32,7 @@ function makeAxiosError(
     message: 'err',
     response: {
       status,
-      data,
+      data: data as ApiError,
       headers: {},
       statusText: '',
       config,
