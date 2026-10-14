@@ -6,13 +6,14 @@ import QuizTeacherAnalyticsScreen from '../screens/QuizTeacherAnalyticsScreen';
 jest.mock('../components/analytics/AnalyticsDateFilter', () => {
   const React = require('react');
   const { TouchableOpacity, Text } = require('react-native');
-  return ({
+  function MockAnalyticsDateFilter({
     onApply,
     onClear,
   }: {
     onApply: () => void;
     onClear: () => void;
-  }) => (
+  }) {
+    return (
     <>
       <TouchableOpacity testID="mock-analytics-date-apply" onPress={onApply}>
         <Text>Apply</Text>
@@ -21,7 +22,10 @@ jest.mock('../components/analytics/AnalyticsDateFilter', () => {
         <Text>Clear</Text>
       </TouchableOpacity>
     </>
-  );
+    );
+  }
+  MockAnalyticsDateFilter.displayName = 'MockAnalyticsDateFilter';
+  return MockAnalyticsDateFilter;
 });
 jest.mock('@core/services/navigationService', () => ({
   navigate: jest.fn(),

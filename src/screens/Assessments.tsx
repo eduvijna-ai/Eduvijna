@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  useWindowDimensions,
   TextInput,
   StatusBar,
   Modal,
@@ -114,7 +113,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       error:         t.colors.danger,
     },
   };
-  const { width } = useWindowDimensions();
   const { user } = useAuth();
   
   // Map filterStatus from ClassesList to filter tabs

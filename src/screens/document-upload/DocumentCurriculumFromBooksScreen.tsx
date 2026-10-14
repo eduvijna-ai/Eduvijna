@@ -89,7 +89,7 @@ export default function DocumentCurriculumFromBooksScreen({
   navigation,
   embedded,
 }: {
-  navigation: any;
+  navigation: { navigate: (name: string, params?: object) => void; goBack?: () => void };
   embedded?: boolean;
 }) {
   const { theme } = useTheme();
@@ -1314,7 +1314,7 @@ function SelectBlock({
   onChange: (value: string) => void;
   disabled?: boolean;
   styles: ReturnType<typeof makeStyles>;
-  colors: any;
+  colors: Record<string, string>;
 }) {
   const selected = options.find((o) => o.value === value);
   return (
@@ -1372,7 +1372,7 @@ function MultiSelectBlock({
   onCustomChange: (v: string) => void;
   onCustomAdd: () => void;
   styles: ReturnType<typeof makeStyles>;
-  colors: any;
+  colors: Record<string, string>;
 }) {
   return (
     <View style={styles.section} testID={testID}>
@@ -1418,7 +1418,7 @@ function MultiSelectBlock({
   );
 }
 
-function makeStyles(colors: any) {
+function makeStyles(colors: Record<string, string>) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
     header: {

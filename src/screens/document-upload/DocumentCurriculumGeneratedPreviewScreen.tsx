@@ -29,7 +29,13 @@ function assertPreviewParams(params: unknown): CurriculumGeneratedPreviewParams 
   return p;
 }
 
-export default function DocumentCurriculumGeneratedPreviewScreen({ navigation, route }: any) {
+export default function DocumentCurriculumGeneratedPreviewScreen({
+  navigation,
+  route,
+}: {
+  navigation: { navigate: (name: string, params?: object) => void; goBack?: () => void };
+  route: { params?: Record<string, unknown> };
+}) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
@@ -224,7 +230,7 @@ export default function DocumentCurriculumGeneratedPreviewScreen({ navigation, r
   );
 }
 
-function makeStyles(colors: any) {
+function makeStyles(colors: Record<string, string>) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
     header: {

@@ -38,7 +38,7 @@ export async function handleApiAuthResponseError(
 
   if (classified.isPermissionDenied) {
     const permErr = buildPermissionDeniedError(classified);
-    (permErr as any).response = error.response;
+    (permErr as Error & { response?: typeof error.response }).response = error.response;
     throw permErr;
   }
 
@@ -109,7 +109,7 @@ export async function handleApiAuthResponseError(
       (typeof responseData?.error === 'string' && responseData.error) ||
       'Server error. Please try again later.';
     const serverError = new Error(serverMsg);
-    (serverError as any).response = error.response;
+    (serverError as Error & { response?: typeof error.response }).response = error.response;
     throw serverError;
   }
 

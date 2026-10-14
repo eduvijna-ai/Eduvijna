@@ -152,7 +152,19 @@ export default function AdminInventoryScreen() {
 
   const [itemModal, setItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItemRow | null>(null);
-  const [itemForm, setItemForm] = useState({
+  type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+  type ItemUnit = (typeof ITEM_UNITS)[number];
+  const [itemForm, setItemForm] = useState<{
+    itemName: string;
+    category: ItemCategory;
+    unit: ItemUnit;
+    quantity: string;
+    minStockLevel: string;
+    unitPrice: string;
+    location: string;
+    supplier: string;
+    description: string;
+  }>({
     itemName: '',
     category: 'general',
     unit: 'piece',
@@ -702,7 +714,7 @@ export default function AdminInventoryScreen() {
                 onChange={(v) =>
                   setItemForm((f) => ({
                     ...f,
-                    category: v as typeof f.category,
+                    category: v as ItemCategory,
                   }))
                 }
                 options={itemCategoryFormOpts}
@@ -714,7 +726,7 @@ export default function AdminInventoryScreen() {
                 onChange={(v) =>
                   setItemForm((f) => ({
                     ...f,
-                    unit: v as typeof f.unit,
+                    unit: v as ItemUnit,
                   }))
                 }
                 options={unitFormOpts}
