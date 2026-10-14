@@ -89,7 +89,7 @@ export default function Login() {
   const blurFieldsForSubmit = useCallback(async () => {
     emailInputRef.current?.blur();
     passwordInputRef.current?.blur();
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }, []);
 
   const onLogin = async () => {
@@ -152,7 +152,7 @@ export default function Login() {
             placeholderTextColor={colors.textSecondary}
             style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
             key={`login-email-${loginFormKey}`}
-            defaultValue=""
+            value={email}
             onChangeText={applyEmail}
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'email', at: new Date().toISOString() })
@@ -176,7 +176,7 @@ export default function Login() {
             secureTextEntry
             style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
             key={`login-password-${loginFormKey}`}
-            defaultValue=""
+            value={password}
             onChangeText={applyPassword}
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
