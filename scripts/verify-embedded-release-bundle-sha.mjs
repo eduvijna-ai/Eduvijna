@@ -34,11 +34,10 @@ function scanBundleForSha(bundlePath) {
 }
 
 const listing = execSync(`jar tf "${apkPath}"`, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+const entries = listing.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 const bundleEntry =
-  listing
-    .split('\n')
-    .find((l) => /index\.android\.bundle(\.hbc)?$/.test(l)) ||
-  listing.split('\n').find((l) => l.includes('index.android.bundle'));
+  entries.find((l) => /index\.android\.bundle(\.hbc)?$/.test(l)) ||
+  entries.find((l) => l.includes('index.android.bundle'));
 
 if (!bundleEntry) {
   console.error('no_bundle_entry_in_apk');
