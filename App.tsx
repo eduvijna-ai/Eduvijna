@@ -23,7 +23,13 @@ import {
   getInitialDeepLink,
   subscribeToDeepLinks,
   parseDeepLink,
+  resetInitialDeepLinkCache,
 } from './src/core/services/deepLinkService';
+import {
+  canResumePostLoginOpenQuiz,
+  isDuplicateOpenQuizDispatch,
+  shouldClearPendingOnAuthTransition,
+} from './src/core/navigation/mobilePendingOpenQuiz';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
@@ -89,12 +95,15 @@ function AppContent() {
   const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
   const [mobileNavigationReady, setMobileNavigationReady] = useState(false);
+  const wasAuthenticatedRef = useRef(false);
+  const prevAuthenticatedForNavReadyRef = useRef(false);
+  const postLoginResumeInFlightRef = useRef<string | null>(null);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
-  // Reset session guards when authentication state changes (never replay cold-launch initial URL)
+  // Clear pending protected navigation only on explicit logout (not signed-out cold start).
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (shouldClearPendingOnAuthTransition(wasAuthenticatedRef.current, isAuthenticated)) {
       setLastProcessedSessionId(null);
       setLastProcessedTime(0);
       setPendingSessionId(null);
@@ -102,9 +111,21 @@ function AppContent() {
       pendingOpenQuizRef.current = null;
       pendingPostLoginQuizIdRef.current = undefined;
       initialDeepLinkProcessed.current = false;
+      postLoginResumeInFlightRef.current = null;
+      setMobileNavigationReady(false);
+      resetInitialDeepLinkCache();
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  // After login, wait for NavigationContainer onReady on the authenticated stack (not the login screen).
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!prevAuthenticatedForNavReadyRef.current && isAuthenticated) {
       setMobileNavigationReady(false);
     }
-  }, [isAuthenticated]);
+    prevAuthenticatedForNavReadyRef.current = isAuthenticated;
+  }, [isMobile, isAuthenticated]);
 
   const dispatchOpenQuizInner = useCallback(
     async (
@@ -261,20 +282,16 @@ function AppContent() {
           };
 
       if (isMobile) {
-        const waitForNavigation = async () => {
-          if (!navigationRef.current) {
-            setTimeout(waitForNavigation, 100);
-            return;
-          }
-          await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
-            quizId,
-          }).catch(
-            (error) => {
-              console.error('❌ Error in post-login handleOpenQuiz:', error);
-            },
-          );
-        };
-        waitForNavigation();
+        if (!navigationRef.isReady()) {
+          setPendingSessionId(sessionId);
+          pendingPostLoginQuizIdRef.current = quizId;
+          return;
+        }
+        await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+          quizId,
+        }).catch((error) => {
+          console.error('❌ Error in post-login handleOpenQuiz:', error);
+        });
         return;
       }
 
@@ -289,16 +306,60 @@ function AppContent() {
     [isMobile, user],
   );
 
-  // Process pending sessionId after successful login (mobile + web)
+  // Post-login resume: mobile waits for NavigationContainer + stack readiness (no timer polling).
   useEffect(() => {
-    if (!isAuthenticated || !pendingSessionId || !user) return;
+    if (!isMobile || !isAuthenticated || !pendingSessionId || !user) return;
+
+    const dest = canResumePostLoginOpenQuiz({
+      isMobile: true,
+      isAuthenticated,
+      hasUser: true,
+      pendingSessionId,
+      navigationReady: navigationRef.isReady(),
+      navigationContainerReady: mobileNavigationReady,
+      resumeInFlightSessionId: postLoginResumeInFlightRef.current,
+    });
+    if (!dest) return;
+
+    const quizId = pendingPostLoginQuizIdRef.current;
+    postLoginResumeInFlightRef.current = dest.sessionId;
+    pendingPostLoginQuizIdRef.current = undefined;
+
+    const navigationAdapter = {
+      navigate: (screen: string, params?: any) => {
+        if (navigationRef.isReady()) {
+          (navigationRef.current as any).navigate(screen, params);
+        }
+      },
+      alert: Alert.alert,
+    };
+
+    void handleOpenQuiz(dest.sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+      quizId,
+    })
+      .then(() => {
+        setPendingSessionId(null);
+        setLastProcessedSessionId(dest.sessionId);
+        setLastProcessedTime(Date.now());
+      })
+      .catch((error) => {
+        console.error('❌ Post-login open quiz resume failed:', error);
+        postLoginResumeInFlightRef.current = null;
+        setPendingSessionId(dest.sessionId);
+        pendingPostLoginQuizIdRef.current = quizId;
+      });
+  }, [isMobile, isAuthenticated, pendingSessionId, user, mobileNavigationReady]);
+
+  // Web post-login resume
+  useEffect(() => {
+    if (isMobile || !isAuthenticated || !pendingSessionId || !user) return;
 
     const sessionId = pendingSessionId;
     const quizId = pendingPostLoginQuizIdRef.current;
     pendingPostLoginQuizIdRef.current = undefined;
     setPendingSessionId(null);
     resumePendingOpenQuiz(sessionId, quizId);
-  }, [isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
+  }, [isMobile, isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
 
   // Set up auth error navigation callback
   useEffect(() => {
@@ -400,9 +461,9 @@ function AppContent() {
             // Guard: Allow different sessions, only block true duplicates
             const now = Date.now();
             const isDifferentSession = sessionId !== lastProcessedSessionId;
-            const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
-            
-            if (isDuplicateRecent) {
+            if (
+              isDuplicateOpenQuizDispatch(sessionId, lastProcessedSessionId, lastProcessedTime, now, 2000)
+            ) {
               console.log('🚫 Blocking duplicate initial session within 2 seconds:', sessionId);
               return;
             }
@@ -446,9 +507,7 @@ function AppContent() {
         // Guard: Allow different sessions, only block true duplicates
         const now = Date.now();
         const isDifferentSession = sessionId !== lastProcessedSessionId;
-        const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
-        
-        if (isDuplicateRecent) {
+        if (isDuplicateOpenQuizDispatch(sessionId, lastProcessedSessionId, lastProcessedTime, now, 2000)) {
           console.log('🚫 Blocking duplicate session within 2 seconds:', sessionId);
           return;
         }
@@ -513,6 +572,7 @@ function AppContent() {
   if (isMobile) {
     // Mobile: Use React Navigation with authentication check and deep linking
     const linking = {
+      enabled: isAuthenticated,
       prefixes: ['eduvijna://', 'https://ui.eduvijna.com'],
       config: {
         screens: {
@@ -526,7 +586,6 @@ function AppContent() {
               Theme: 'theme',
             },
           },
-          Dashboard: 'openquiz',
           StudentList: 'students',
           ClassesList: 'classes',
           CreateAIQuizScreen: 'create-ai-quiz',
