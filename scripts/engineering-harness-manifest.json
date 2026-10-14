@@ -7,7 +7,7 @@
     "9a714e8 — Windows APK bundle verify",
     "765c498 — shared dev-api credentials path"
   ],
-  "executingHarnessHead": "pending-push",
+  "executingHarnessHead": "ceee499",
   "scripts": [
     "engineering-fixture-readiness-probe.mjs",
     "engineering-targeted-closure-sequence.mjs",
