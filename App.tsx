@@ -96,7 +96,7 @@ function AppContent() {
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
   const [mobileNavigationReady, setMobileNavigationReady] = useState(false);
   const wasAuthenticatedRef = useRef(false);
-  const prevAuthenticatedForNavReadyRef = useRef(false);
+  const prevAuthenticatedForNavResetRef = useRef(false);
   const postLoginResumeInFlightRef = useRef<string | null>(null);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
@@ -117,15 +117,6 @@ function AppContent() {
     }
     wasAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated]);
-
-  // After login, wait for NavigationContainer onReady on the authenticated stack (not the login screen).
-  useEffect(() => {
-    if (!isMobile) return;
-    if (!prevAuthenticatedForNavReadyRef.current && isAuthenticated) {
-      setMobileNavigationReady(false);
-    }
-    prevAuthenticatedForNavReadyRef.current = isAuthenticated;
-  }, [isMobile, isAuthenticated]);
 
   const dispatchOpenQuizInner = useCallback(
     async (
@@ -166,6 +157,22 @@ function AppContent() {
     pendingOpenQuizRef.current = null;
     void dispatchOpenQuizInner(pending.sessionId, 'deep_link', pending.quizId);
   }, [isMobile, isAuthenticated, user, dispatchOpenQuizInner]);
+
+  const syncMobileNavigationReady = useCallback(() => {
+    if (!isMobile || !isAuthenticated) return;
+    if (navigationRef.isReady()) {
+      setMobileNavigationReady(true);
+      flushPendingOpenQuiz();
+    }
+  }, [isMobile, isAuthenticated, flushPendingOpenQuiz]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!prevAuthenticatedForNavResetRef.current && isAuthenticated) {
+      setMobileNavigationReady(false);
+    }
+    prevAuthenticatedForNavResetRef.current = isAuthenticated;
+  }, [isMobile, isAuthenticated]);
 
   useEffect(() => {
     flushPendingOpenQuiz();
@@ -604,10 +611,8 @@ function AppContent() {
       <NavigationContainer
         ref={navigationRef}
         linking={linking}
-        onReady={() => {
-          setMobileNavigationReady(true);
-          flushPendingOpenQuiz();
-        }}
+        onReady={syncMobileNavigationReady}
+        onStateChange={syncMobileNavigationReady}
       >
         {isAuthenticated ? (
           <AppSideNavProvider>
