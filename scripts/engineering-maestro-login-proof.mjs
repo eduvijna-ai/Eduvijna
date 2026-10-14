@@ -62,34 +62,48 @@ const env = {
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '120000',
 };
 
+function maestroSpawn(args) {
+  const lower = maestro.toLowerCase();
+  if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
+    return spawnSync('cmd.exe', ['/c', maestro, ...args], {
+      env,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      windowsHide: true,
+    });
+  }
+  return spawnSync(maestro, args, {
+    env,
+    encoding: 'utf8',
+    maxBuffer: 20 * 1024 * 1024,
+    windowsHide: true,
+  });
+}
+
 let maestroVersion = 'unknown';
 try {
-  const ver = spawnSync(maestro, ['--version'], { encoding: 'utf8', shell: false });
+  const ver = maestroSpawn(['--version']);
   maestroVersion = (ver.stdout || ver.stderr || '').trim();
 } catch {
   /* optional */
 }
 
-const run = spawnSync(
-  maestro,
-  [
-    '--device',
-    device,
-    'test',
-    flow,
-    '-e',
-    `LOGIN_EMAIL=${account.email}`,
-    '-e',
-    `LOGIN_PASSWORD=${account.password}`,
-    '--format',
-    'junit',
-    '--output',
-    join(outDir, 'maestro.xml'),
-    '--debug-output',
-    join(outDir, 'maestro-debug'),
-  ],
-  { env, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, shell: false },
-);
+const run = maestroSpawn([
+  '--device',
+  device,
+  'test',
+  flow,
+  '-e',
+  `LOGIN_EMAIL=${account.email}`,
+  '-e',
+  `LOGIN_PASSWORD=${account.password}`,
+  '--format',
+  'junit',
+  '--output',
+  join(outDir, 'maestro.xml'),
+  '--debug-output',
+  join(outDir, 'maestro-debug'),
+]);
 
 const logcat = spawnSync(
   'adb',
