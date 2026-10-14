@@ -10,6 +10,9 @@ jest.mock('../core/store/dashboard.store', () => ({
 jest.mock('../core/store/studentAssignmentDashboard.store', () => ({
   resetStudentAssignmentDashboardStore: jest.fn(),
 }));
+jest.mock('../core/services/teacherDashboardCacheInvalidation', () => ({
+  invalidateTeacherDashboardCaches: jest.fn().mockResolvedValue(undefined),
+}));
 
 import type { UserProfile } from '../core/types';
 import { useAuth, __testResetUseAuthGlobals } from '../core/hooks/useAuth';
