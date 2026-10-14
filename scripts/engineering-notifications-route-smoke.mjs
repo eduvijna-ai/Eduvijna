@@ -1,8 +1,12 @@
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEmulatorLoginHarness } from './lib/emulator-login-harness.mjs';
+import {
+  tapNotificationsBell,
+  classifyNotificationsRoute,
+} from './lib/header-notifications-tap.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceDir = join(
@@ -12,7 +16,7 @@ const evidenceDir = join(
   `notifications-smoke-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
 );
 const h = createEmulatorLoginHarness();
-const { adb, sleep, dumpUi, tapContentDesc } = h;
+const { adb, sleep, dumpUi, dismissPostLoginInterstitials, tapContentDesc, authenticatedMarker } = h;
 
 function shot(n) {
   execSync(`adb -s ${h.device} exec-out screencap -p > "${join(evidenceDir, n)}"`, { shell: true, stdio: 'inherit' });
@@ -21,49 +25,70 @@ function shot(n) {
 mkdirSync(evidenceDir, { recursive: true });
 adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
 sleep(6000);
-let xmlBoot = dumpUi();
-if (/No Quiz Available/i.test(xmlBoot)) {
-  tapContentDesc(xmlBoot, 'Go Back') || tapText(xmlBoot, 'Go Back');
+let xml = dumpUi();
+
+if (!authenticatedMarker(xml)) {
+  const maestroBin =
+    process.env.MAESTRO_BIN ||
+    join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
+  const maestroLogin = spawnSync(
+    process.execPath,
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'student'],
+    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
+  );
+  if (maestroLogin.status !== 0) process.exit(1);
+  sleep(3500);
+  xml = dumpUi();
+}
+if (dismissPostLoginInterstitials(xml)) {
   sleep(2000);
-  xmlBoot = dumpUi();
+  xml = dumpUi();
 }
-tapContentDesc(xmlBoot, 'Home');
+if (/No Quiz Available/i.test(xml)) {
+  adb('shell input keyevent 4');
+  sleep(1500);
+  xml = dumpUi();
+}
+tapContentDesc(xml, 'Home') || tapContentDesc(xml, 'Go to main dashboard');
 sleep(2500);
-function tapText(xml, text) {
-  const m = new RegExp(`text="${text}"[^>]*bounds="([^"]+)"`, 'i').exec(xml);
-  if (!m) return false;
-  const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(m[1]);
-  adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
-  return true;
+xml = dumpUi();
+writeFileSync(join(evidenceDir, 'home-before-bell.xml'), xml);
+shot('00-home-authenticated.png');
+
+if (!authenticatedMarker(xml)) {
+  const results = {
+    routeOk: false,
+    classification: 'harness_not_on_authenticated_home',
+    evidenceDir,
+  };
+  writeFileSync(join(evidenceDir, 'results.json'), JSON.stringify(results, null, 2));
+  console.log(JSON.stringify(results));
+  process.exit(1);
 }
-function tapBell(xml) {
-  const m = /clickable="true"[^>]*bounds="\[949,91\]\[1049,190\]"/.exec(xml);
-  if (m) {
-    adb('shell input tap 999 140');
-    return true;
-  }
-  const any = /bounds="\[9\d{2},8\d\]\[10\d{2},1\d\d\]"/.exec(xml);
-  if (any) {
-    const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(any[0]);
-    adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
-    return true;
-  }
-  adb('shell input tap 999 140');
-  return false;
-}
-let xml0 = dumpUi();
-tapBell(xml0);
-sleep(3000);
-const xml = dumpUi();
+
+const bellTap = tapNotificationsBell(adb, xml);
+sleep(4000);
+xml = dumpUi();
 writeFileSync(join(evidenceDir, 'notifications-ui.xml'), xml);
-shot('notifications-screen.png');
-const routeOk = /Notifications|No notifications|Mark all read/i.test(xml);
+shot('01-after-bell.png');
+const route = classifyNotificationsRoute(xml);
+
 const delivery = {
   status: 'not_verified',
-  reason:
-    'Emulator lacks FCM/APNs delivery path for release push; only in-app bell route and settings toggle were exercised.',
+  requirement: 'push_delivery_and_tap',
+  environmentLimitation:
+    'Android emulator / release build without Play FCM path: no reliable end-to-end push receipt or notification-tap automation.',
+  supportedTestSurface:
+    'In-app header bell → Notifications screen (pending-quiz list). API history probes are separate (profile-notification script).',
 };
-const results = { routeOk, delivery, evidenceDir };
+
+const results = {
+  routeOk: route.onRoute,
+  route,
+  bellTap,
+  delivery,
+  evidenceDir,
+};
 writeFileSync(join(evidenceDir, 'results.json'), JSON.stringify(results, null, 2));
 console.log(JSON.stringify(results));
-process.exit(routeOk ? 0 : 1);
+process.exit(route.onRoute ? 0 : 1);

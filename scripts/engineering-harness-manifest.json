@@ -10,7 +10,8 @@
     "8390347 — executingHarnessHead manifest field",
     "84fff27 — Maestro via cmd.exe /c on Windows",
     "7777f22 — skip Maestro when verified student UI session",
-    "899c2e2 — Completed load-more traversal, API student-70 gate, Results tap"
+    "899c2e2 — Completed load-more traversal, API student-70 gate, Results tap",
+    "12e0472 — manifest pin executingHarnessHead 899c2e2"
   ],
   "executingHarnessHead": "899c2e2",
   "scripts": [
@@ -19,6 +20,7 @@
     "engineering-installed-sequence-gated.mjs",
     "engineering-maestro-login-proof.mjs",
     "engineering-deep-link-smoke.mjs",
+    "engineering-deep-link-signed-out.mjs",
     "engineering-student-fixture-ui.mjs",
     "engineering-instructor-fixture-ui.mjs",
     "engineering-notifications-route-smoke.mjs",

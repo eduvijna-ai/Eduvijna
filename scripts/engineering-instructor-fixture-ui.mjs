@@ -1,11 +1,33 @@
 /**
  * Instructor fixture UI only — requires instructor session or performs harness login.
  */
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEmulatorLoginHarness } from './lib/emulator-login-harness.mjs';
+import { assertResultsScreen } from './lib/assessments-completed-list-harness.mjs';
+import { performUiLogout } from './lib/ui-logout-harness.mjs';
+import { loginDevApi } from './lib/dev-api-auth.mjs';
+import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
+
+function isStudentHome(xml) {
+  return (
+    /Hello,\s*Aarya|learning overview for today|Generate Assessment|View pending quizzes/i.test(xml) &&
+    !/Weak Students|Recent Assessments|class health/i.test(xml)
+  );
+}
+async function probeInstructorCredentials() {
+  const credPath = resolveDevApiCredentialsPath(repoRoot);
+  const { accounts } = JSON.parse(readFileSync(credPath, 'utf8'));
+  const acct = accounts.instructor;
+  const session = await loginDevApi(acct.username, acct.password);
+  const role = session.role || session.user?.role;
+  if (!['instructor', 'admin', 'teacher'].includes(String(role))) {
+    throw new Error(`instructor_credentials_not_instructor role=${role}`);
+  }
+  return { apiRole: role, instructorUserId: session.userId || session.user?.id };
+}
 
 const QUIZ = 'MAT_Mathematics_maths_20260827_1303';
 const STUDENT = 'Aarya';
@@ -89,6 +111,8 @@ function tapAfterNeedle(xml, needle, link) {
 }
 
 mkdirSync(evidenceDir, { recursive: true });
+const sessionProbe = await probeInstructorCredentials();
+const sessionMeta = { sessionProbe };
 adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
 sleep(5000);
 let xml = dumpUi();
@@ -96,13 +120,42 @@ if (dismissPostLoginInterstitials(xml)) {
   sleep(2000);
   xml = dumpUi();
 }
-if (!h.authenticatedMarker(xml)) {
-  const { accounts } = JSON.parse(readFileSync(join(repoRoot, '.dev-api-credentials.local.json'), 'utf8'));
-  const acct = accounts.instructor;
-  const login = performLogin(acct.username, acct.password, 'instructor');
+const logout = performUiLogout({
+  adb,
+  sleep,
+  dumpUi,
+  dismissPostLoginInterstitials,
+  authenticatedMarker: h.authenticatedMarker,
+});
+sessionMeta.logout = { ok: logout.ok, reason: logout.reason, steps: logout.steps, alreadySignedOut: logout.alreadySignedOut };
+if (!logout.ok) {
+  writeFileSync(
+    join(evidenceDir, 'results.json'),
+    JSON.stringify({ ok: false, boundary: 'instructor_logout_setup', sessionMeta, evidenceDir }, null, 2),
+  );
+  process.exit(1);
+}
+const maestroBin =
+  process.env.MAESTRO_BIN ||
+  join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
+const maestroLogin = spawnSync(
+  process.execPath,
+  [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'instructor'],
+  { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
+);
+sessionMeta.maestroInstructor = { status: maestroLogin.status };
+if (maestroLogin.status !== 0) {
+  const { accounts } = JSON.parse(readFileSync(resolveDevApiCredentialsPath(repoRoot), 'utf8'));
+  const login = performLogin(accounts.instructor.username, accounts.instructor.password, 'instructor');
   if (!login.ok) process.exit(1);
   xml = login.xml;
+} else {
+  sleep(4000);
+  xml = dumpUi();
+  if (dismissPostLoginInterstitials(xml)) sleep(2000);
+  xml = dumpUi();
 }
+writeFileSync(join(evidenceDir, 'session.json'), JSON.stringify(sessionMeta, null, 2));
 
 tapDesc(xml, 'Analytics');
 sleep(4000);
@@ -143,13 +196,15 @@ xml = dumpUi();
 writeFileSync(join(evidenceDir, 'results.xml'), xml);
 shot('04-results-60-6of10.png');
 
-const ok = /60%/.test(xml) && /6\/10|6 of 10/i.test(xml);
+const resultsAssert = assertResultsScreen(xml);
+const ok = resultsAssert.pass;
 const results = {
   ok,
   found,
   rowTap,
   studentTap,
-  onResultsScreen: /6\/10|6 of 10/i.test(xml),
+  resultsAssert,
+  onResultsScreen: resultsAssert.evaluated,
   evidenceDir,
 };
 writeFileSync(join(evidenceDir, 'results.json'), JSON.stringify(results, null, 2));

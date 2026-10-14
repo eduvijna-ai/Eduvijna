@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync, spawnSync } from 'node:child_process';
 import { createEmulatorLoginHarness } from './lib/emulator-login-harness.mjs';
+import { performUiLogout } from './lib/ui-logout-harness.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SESSION = 'a6882262-5c50-4cf5-a4a8-dc8786862916';
@@ -60,20 +61,6 @@ function tapText(xml, text) {
   const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(m[1]);
   h.adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
   return true;
-}
-function logoutIfNeeded() {
-  h.adb('shell input tap 63 140');
-  sleep(2000);
-  let xml = dumpUi();
-  h.tapContentDesc(xml, 'Logout') || tapText(xml, 'Logout');
-  sleep(1000);
-  xml = dumpUi();
-  const btn = /resource-id="android:id\/button1"[^>]*bounds="([^"]+)"/.exec(xml);
-  if (btn) {
-    const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(btn[1]);
-    h.adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
-  }
-  sleep(3000);
 }
 
 mkdirSync(evidenceDir, { recursive: true });
@@ -147,8 +134,21 @@ out.cases.push({
   pass: cold.results || cold.resultsLoose,
 });
 
-// Signed out → login gate then continuation (manual re-login via harness)
-logoutIfNeeded();
+// Signed out → login gate then continuation (see engineering-deep-link-signed-out.mjs for full case)
+const logout = performUiLogout({ adb: h.adb, sleep, dumpUi, dismissPostLoginInterstitials });
+if (!logout.ok) {
+  out.cases.push({
+    case: 'signed_out_then_login',
+    skipped: true,
+    reason: 'logout_setup_failure',
+    logout,
+    pass: false,
+  });
+  out.pass = out.cases.filter((c) => c.case !== 'bad_uri_percent26_encoding' && !c.skipped).every((c) => c.pass);
+  writeFileSync(join(evidenceDir, 'results.json'), JSON.stringify(out, null, 2));
+  console.log(JSON.stringify(out, null, 2));
+  process.exit(1);
+}
 h.adb('shell logcat -c');
 startUri(uri, true);
 sleep(4000);
