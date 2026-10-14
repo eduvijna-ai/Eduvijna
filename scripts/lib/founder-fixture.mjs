@@ -94,7 +94,14 @@ export async function loadFixtureAnalyticsQuizPage() {
 }
 
 export async function loadFixtureLabels() {
-  const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  let credFile = join(repoRoot, '.dev-api-credentials.local.json');
+  if (process.env.DEV_API_CREDENTIALS_FILE && existsSync(process.env.DEV_API_CREDENTIALS_FILE)) {
+    credFile = process.env.DEV_API_CREDENTIALS_FILE;
+  } else if (!existsSync(credFile)) {
+    const fallback = join(repoRoot, '..', 'Eduvijna', '.dev-api-credentials.local.json');
+    if (existsSync(fallback)) credFile = fallback;
+  }
   if (!existsSync(credFile)) throw new Error('missing_credentials');
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const instructor = await loginDevApi(

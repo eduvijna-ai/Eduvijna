@@ -5,9 +5,13 @@
     "0ffab21 — initial harness + open-quiz hardening commit",
     "8b10562 — manifest pointer",
     "9a714e8 — Windows APK bundle verify",
-    "765c498 — shared dev-api credentials path"
+    "765c498 — shared dev-api credentials path",
+    "ceee499 — student results navigation params + targeted sequence",
+    "8390347 — executingHarnessHead manifest field",
+    "84fff27 — Maestro via cmd.exe /c on Windows",
+    "7777f22 — skip Maestro when verified student UI session"
   ],
-  "executingHarnessHead": "ceee499",
+  "executingHarnessHead": "7777f22",
   "scripts": [
     "engineering-fixture-readiness-probe.mjs",
     "engineering-targeted-closure-sequence.mjs",
