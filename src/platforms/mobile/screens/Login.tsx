@@ -154,6 +154,7 @@ export default function Login() {
             key={`login-email-${loginFormKey}`}
             value={email}
             onChangeText={applyEmail}
+            onChange={(e) => applyEmail(e.nativeEvent.text)}
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'email', at: new Date().toISOString() })
             }
@@ -178,6 +179,7 @@ export default function Login() {
             key={`login-password-${loginFormKey}`}
             value={password}
             onChangeText={applyPassword}
+            onChange={(e) => applyPassword(e.nativeEvent.text)}
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
             }
