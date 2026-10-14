@@ -1,6 +1,6 @@
 {
   "purpose": "Acceptance harness scripts committed with integration branch (separate from APK implementation SHA).",
-  "harnessGitSha": "pending-commit",
+  "harnessGitSha": "0ffab21",
   "scripts": [
     "engineering-fixture-readiness-probe.mjs",
     "engineering-installed-sequence-gated.mjs",
