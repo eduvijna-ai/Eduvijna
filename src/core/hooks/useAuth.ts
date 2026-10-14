@@ -270,6 +270,15 @@ export function useAuth(): UseAuthReturn {
     }
   }, [setUser, setAuthenticated, setSchoolId]);
 
+  const resetNotificationGuardBestEffort = async (accountKey: string | null) => {
+    try {
+      const { resetNotificationFetchGuardForAccount } = await import('../api/notificationFetchGuard');
+      resetNotificationFetchGuardForAccount(accountKey);
+    } catch {
+      // Notification guard is phase6-only; logout must still complete if cleanup is unavailable.
+    }
+  };
+
   /**
    * Logout user
    */
@@ -277,6 +286,10 @@ export function useAuth(): UseAuthReturn {
     try {
       setLoading(true);
       setError(null);
+
+      const currentUser = useUserStore.getState().user;
+      const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
+      await resetNotificationGuardBestEffort(accountKey);
 
       // Call logout API (clears tokens automatically)
       await AuthAPI.logout();
@@ -289,8 +302,10 @@ export function useAuth(): UseAuthReturn {
       clearQuizNavCache();
       // Clear store (clears user and tokens)
       logoutStore();
+      await resetNotificationGuardBestEffort(null);
     } catch (err) {
       console.error('Logout API failed:', err);
+      await resetNotificationGuardBestEffort(null);
       // Still clear stores even if API call fails
       useTeacherDashboardStore.getState().reset();
       resetStudentAssignmentDashboardStore(null);

@@ -12,17 +12,26 @@ import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import NotificationBell from '../../../components/NotificationBell';
 import NotificationsDropdown from '../../../components/NotificationsDropdown';
 import useNotifications from '@core/hooks/useNotifications';
+import { handleOpenQuiz } from '@core/services/openQuizHandler';
+import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
+import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
+import { Alert } from 'react-native';
 
+
+import type { WebShellScreen } from '../webShellScreens';
+
+type WebNavScreen = WebShellScreen;
 
 interface WebNavigationProps {
-  activeScreen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP';
-  onNavigate: (screen: 'dashboard' | 'assessments' | 'analytics' | 'profile' | 'notifications' | 'theme' | 'students' | 'classes' | 'ClassesList' | 'StudentList' | 'Assessments' | 'CreateAIQuizScreen' | 'CreateDocumentQuizScreen' | 'CreateImageQuizScreen' | 'CreateYouTubeQuizScreen' | 'CreateWebsiteQuizScreen' | 'CreateHandwrittenQuizScreen' | 'QuizPreviewScreen' | 'QuizResultsScreen' | 'QuizTakingScreen' | 'QuizStatusScreen' | 'QuizLoadingScreen' | 'ERP') => void;
+  activeScreen: WebNavScreen;
+  onNavigate: (screen: WebNavScreen, params?: Record<string, unknown>) => void;
   children: React.ReactNode;
 }
 
 export default function WebNavigation({ activeScreen, onNavigate, children }: WebNavigationProps) {
   const user = useUserStore((state) => state.user);
-  const { logout } = useAuth();
+  const { logout, user: authUser } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const styles = React.useMemo(() => createStyles(theme.colors, isDark), [theme.colors, isDark]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -42,7 +51,11 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     }
   };
 
-  const handleNotificationClick = async (notification: any) => {
+  const handleNotificationClick = async (notification: {
+    id: number | string;
+    type?: string;
+    data?: Record<string, unknown>;
+  }) => {
     // Mark as read
     await markNotificationRead(notification.id);
     
@@ -52,24 +65,96 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
     // Navigate based on notification type and data
     const { type, data } = notification;
     const quizId = data?.quiz_id || data?.quizId;
+    const openQuizUser = authUser ?? user;
+
+    if (type === 'quiz_graded' && openQuizUser) {
+      const gradedParams = buildQuizGradedResultsNavigationParams(
+        (data ?? {}) as Parameters<typeof buildQuizGradedResultsNavigationParams>[0],
+      );
+      let gradedSessionId =
+        typeof gradedParams?.sessionId === 'string' ? gradedParams.sessionId : null;
+      let gradedClassroomId = String(data?.classroom_id ?? data?.classroomId ?? '');
+      const gradedStudentId =
+        typeof gradedParams?.studentId === 'string'
+          ? gradedParams.studentId
+          : openQuizUser.role === 'student'
+            ? String(openQuizUser.id)
+            : undefined;
+
+      if (
+        gradedParams &&
+        !gradedSessionId &&
+        openQuizUser.role === 'student' &&
+        gradedStudentId
+      ) {
+        const resolved = await resolveStudentGradedAssignmentSession(
+          gradedStudentId,
+          gradedParams.quizId as string | number,
+        );
+        if (resolved.kind === 'resolved') {
+          gradedSessionId = resolved.sessionId;
+          gradedClassroomId = resolved.classroomId;
+        } else if (resolved.kind === 'ambiguous') {
+          onNavigate('assessments');
+          return;
+        }
+      }
+
+      if (gradedParams && gradedSessionId && gradedStudentId && openQuizUser.role === 'student') {
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: gradedStudentId,
+            quizId: gradedParams.quizId as string | number,
+            sessionId: gradedSessionId,
+            classroomId: gradedClassroomId,
+            quizName: gradedParams.quizName as string | undefined,
+          },
+          {
+            onNavigate: (screen, params) =>
+              onNavigate(screen as WebNavScreen, params as Record<string, unknown> | undefined),
+          },
+        );
+        return;
+      }
+
+      if (gradedParams && (openQuizUser.role === 'instructor' || openQuizUser.role === 'admin')) {
+        onNavigate('QuizResultsScreen', {
+          ...gradedParams,
+          isTeacherView: true,
+          studentId: gradedStudentId ?? gradedParams.studentId,
+        });
+        return;
+      }
+
+      if (gradedParams && gradedSessionId) {
+        onNavigate('QuizResultsScreen', gradedParams);
+        return;
+      }
+
+      onNavigate('assessments');
+      return;
+    }
+
+    const rawSessionId = data?.session_id ?? data?.sessionId;
+    const sessionId =
+      typeof rawSessionId === 'string'
+        ? rawSessionId
+        : typeof rawSessionId === 'number'
+          ? String(rawSessionId)
+          : null;
+
+    if (sessionId && openQuizUser) {
+      await handleOpenQuiz(sessionId, 'notification', openQuizUser, {
+        navigate: (screen, params) => onNavigate(screen as WebNavScreen, params),
+        alert: Alert.alert,
+      });
+      return;
+    }
 
     switch (type) {
       case 'quiz_assigned':
-        // New quiz assigned - navigate to quiz preview
         if (quizId) {
-          onNavigate('QuizPreviewScreen');
-          // Note: In web, you'd need to pass quizId through state or URL params
-          // For now, navigate to assessments where user can find the quiz
-        } else {
-          onNavigate('assessments');
-        }
-        break;
-
-      case 'quiz_graded':
-        // Quiz graded - navigate to results
-        if (quizId) {
-          onNavigate('QuizResultsScreen');
-          // Note: In web, you'd need to pass quizId and studentId through state
+          onNavigate('QuizPreviewScreen', { quizId });
         } else {
           onNavigate('assessments');
         }
@@ -234,7 +319,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
         onClose={() => setShowCreateModal(false)}
         navigation={{ navigate: (screen: string) => {
           setShowCreateModal(false);
-          onNavigate(screen as any);
+          onNavigate(screen as WebNavScreen);
         }}}
         theme={theme}
         isDark={isDark}
@@ -243,7 +328,24 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
   );
 }
 
-function NavItem({ title, active, onPress, styles }: { title: string; active: boolean; onPress: () => void; styles: any }) {
+type NavItemStyles = {
+  navItem: object;
+  navItemActive: object;
+  navItemText: object;
+  navItemTextActive: object;
+};
+
+function NavItem({
+  title,
+  active,
+  onPress,
+  styles,
+}: {
+  title: string;
+  active: boolean;
+  onPress: () => void;
+  styles: NavItemStyles;
+}) {
   return (
     <TouchableOpacity
       style={[styles.navItem, active && styles.navItemActive]}
@@ -254,7 +356,7 @@ function NavItem({ title, active, onPress, styles }: { title: string; active: bo
   );
 }
 
-const createStyles = (colors: any, isDark: boolean) => StyleSheet.create({
+const createStyles = (colors: Record<string, string>, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',

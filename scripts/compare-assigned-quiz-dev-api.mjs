@@ -51,8 +51,9 @@ async function apiPost(token, path, body) {
   return { status, data, evidence: redactDeep(data) };
 }
 
-function traceStep(_name, result) {
+function traceStep(check, result) {
   return {
+    check,
     status: result.status,
     data: result.evidence,
   };
@@ -80,7 +81,7 @@ async function main() {
   };
 
   const profile = await apiGet(session.token, '/api/v1/auth/profile');
-  traces.steps.push(traceStep('auth_profile', profile));
+  traces.steps.push(traceStep('auth profile', profile));
 
   const studentIdForCheck = session.role === 'student' ? session.userId : session.userId;
   const checkBody = {
@@ -126,13 +127,13 @@ async function main() {
         session.token,
         `/api/v1/dashboard/quiz-attempts?student_id=${studentIdForCheck}&quiz_id=${sample.quiz_id}&class_id=${sample.session_id}`,
       );
-      traces.steps.push({ name: 'quiz-attempts list', operation: 'GET', ...traceStep('quiz-attempts list', attempts) });
+      traces.steps.push({ operation: 'GET', ...traceStep('quiz-attempts list', attempts) });
 
       const attended = await apiGet(
         session.token,
         `/api/v1/dashboard/attended-quiz?student_id=${studentIdForCheck}&session_id=${sample.session_id}&quiz_id=${sample.quiz_id}`,
       );
-      traces.steps.push({ name: 'attended-quiz load', operation: 'GET', ...traceStep('attended-quiz load', attended) });
+      traces.steps.push({ operation: 'GET', ...traceStep('attended-quiz load', attended) });
     }
   }
 

@@ -1,5 +1,5 @@
 import { resolveStudentGradedAssignmentSession } from '../core/services/gradedNotificationRouting.service';
-import { fetchQuizCheckRecord } from '../core/services/dashboardApi';
+import { fetchQuizCheckRecord, type CheckRecordResponse } from '../core/services/dashboardApi';
 
 jest.mock('../core/services/dashboardApi', () => ({
   fetchQuizCheckRecord: jest.fn(),
@@ -9,42 +9,132 @@ const mockFetch = fetchQuizCheckRecord as jest.MockedFunction<typeof fetchQuizCh
 
 describe('resolveStudentGradedAssignmentSession', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    mockFetch.mockReset();
   });
 
   it('resolves a single matching assignment session', async () => {
-    mockFetch.mockImplementation(async (_studentId, type) => ({
+    mockFetch.mockImplementation(async (_studentId, type): Promise<CheckRecordResponse> => ({
+      success: true,
+      check_type: type ?? 'pending',
+      message: '',
       result:
         type === 'completed'
           ? [
               {
+                status: 'completed',
+                classid: 'class-9',
+                student_id: 'student-1',
                 quiz_details: {
-                  quiz_id: 42,
-                  session_id: 'sess-1',
-                  classroom_id: 'room-1',
+                  quiz_id: 9,
+                  session_id: 'sess-9',
+                  classroom_id: 'class-9',
+                  topic: '',
+                  summary: '',
+                  start_time: '',
+                  end_time: '',
+                  duration: 0,
+                  has_time_limit: false,
+                  question_count: 0,
+                  questions: { quizzes: [] },
+                  status: 'completed',
+                  is_active: false,
+                  is_public: false,
                 },
               },
             ]
           : [],
     }));
-
-    await expect(resolveStudentGradedAssignmentSession('student-1', 42)).resolves.toEqual({
-      kind: 'resolved',
-      sessionId: 'sess-1',
-      classroomId: 'room-1',
-    });
+    const result = await resolveStudentGradedAssignmentSession('student-1', 9);
+    expect(result).toEqual({ kind: 'resolved', sessionId: 'sess-9', classroomId: 'class-9' });
   });
 
-  it('returns ambiguous when multiple sessions match the same quiz', async () => {
+  it('returns ambiguous when multiple sessions share the quiz', async () => {
     mockFetch.mockResolvedValue({
+      success: true,
+      check_type: 'completed',
+      message: '',
       result: [
-        { quiz_details: { quiz_id: 42, session_id: 'sess-a' } },
-        { quiz_details: { quiz_id: 42, session_id: 'sess-b' } },
+        {
+          status: 'completed',
+          classid: 'c1',
+          student_id: 'student-1',
+          quiz_details: {
+            quiz_id: 9,
+            session_id: 'a',
+            topic: '',
+            summary: '',
+            start_time: '',
+            end_time: '',
+            duration: 0,
+            has_time_limit: false,
+            question_count: 0,
+            questions: { quizzes: [] },
+            status: 'completed',
+            is_active: false,
+            is_public: false,
+          },
+        },
+        {
+          status: 'completed',
+          classid: 'c2',
+          student_id: 'student-1',
+          quiz_details: {
+            quiz_id: 9,
+            session_id: 'b',
+            topic: '',
+            summary: '',
+            start_time: '',
+            end_time: '',
+            duration: 0,
+            has_time_limit: false,
+            question_count: 0,
+            questions: { quizzes: [] },
+            status: 'completed',
+            is_active: false,
+            is_public: false,
+          },
+        },
       ],
     });
+    const result = await resolveStudentGradedAssignmentSession('student-1', 9);
+    expect(result).toEqual({ kind: 'ambiguous' });
+  });
 
-    await expect(resolveStudentGradedAssignmentSession('student-1', 42)).resolves.toEqual({
-      kind: 'ambiguous',
+  it('uses completed scope when pending lookup fails', async () => {
+    mockFetch.mockImplementation(async (_studentId, type) => {
+      if (type === 'pending') {
+        throw new Error('pending unavailable');
+      }
+      return {
+        success: true,
+        check_type: 'completed',
+        message: '',
+        result: [
+          {
+            status: 'completed',
+            classid: 'class-9',
+            student_id: 'student-1',
+            quiz_details: {
+              quiz_id: 12,
+              session_id: 'sess-12',
+              classroom_id: 'class-9',
+              topic: '',
+              summary: '',
+              start_time: '',
+              end_time: '',
+              duration: 0,
+              has_time_limit: false,
+              question_count: 0,
+              questions: { quizzes: [] },
+              status: 'completed',
+              is_active: false,
+              is_public: false,
+            },
+          },
+        ],
+      };
     });
+    const result = await resolveStudentGradedAssignmentSession('student-1', 12);
+    expect(result).toEqual({ kind: 'resolved', sessionId: 'sess-12', classroomId: 'class-9' });
   });
 });

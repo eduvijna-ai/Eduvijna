@@ -21,8 +21,10 @@ import {
 } from './assignedQuizRecovery.service';
 import {
   executeStudentAssignedQuizViewResults,
+  loadAssignedQuizDataForImmutableRecovery,
   loadAssignedQuizDataForSession,
 } from './assessmentQuizStart.service';
+import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -277,22 +279,56 @@ export async function handleOpenQuiz(
     const isTeacher = user.role === 'instructor' || user.role === 'admin';
 
     // ==========================================
-    // 6. STUDENT FLOW - Complete validation chain
+    // 6. TEACHER FLOW - Preview (before public/student branch)
+    // ==========================================
+    if (isTeacher) {
+      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
+
+      navigationAdapter.navigate('QuizPreviewScreen', {
+        quiz: normalizedQuiz,
+        quizId: normalizedQuiz.quizId,
+        sessionId: normalizedQuiz.sessionId,
+        quizData: normalizedQuiz,
+      });
+      return;
+    }
+
+    // ==========================================
+    // 7. STUDENT / PUBLIC FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
-      const pendingCheckpoint = await findPendingSubmissionCheckpoint(
-        user.id,
-        quizData.quiz_id,
-        sessionId,
-      );
+      let pendingCheckpoint;
+      try {
+        pendingCheckpoint = await findPendingSubmissionCheckpoint(
+          user.id,
+          quizData.quiz_id,
+          sessionId,
+        );
+      } catch (probeError) {
+        if (isAssignedQuizRecoveryProbeError(probeError)) {
+          navigationAdapter.alert(
+            'Could not open quiz',
+            probeError.message,
+            [
+              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+          return;
+        }
+        throw probeError;
+      }
       if (pendingCheckpoint) {
         const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-        const mergedQuiz = await loadAssignedQuizDataForSession({
+        const startCtx = {
           correctQuizId: quizData.quiz_id,
           correctSessionId: sessionId,
           correctClassroomId: quizData.classroom_id || quizData.class_id || '',
           attemptData: validation.quizData,
-        });
+        };
+        const mergedQuiz = recovery
+          ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
+          : await loadAssignedQuizDataForSession(startCtx);
         const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
         const screenParams = {
           quiz: normalizedQuiz,
@@ -398,23 +434,6 @@ export async function handleOpenQuiz(
         classroomId: normalizedQuiz.classroomId,
         quizData: normalizedQuiz,
         is_public: quizData.is_public,
-      });
-      return;
-    }
-
-    // ==========================================
-    // 7. TEACHER FLOW - Preview quiz
-    // ==========================================
-    if (isTeacher) {
-      // Normalize quiz data for teacher preview
-      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
-
-      navigationAdapter.navigate('QuizPreviewScreen', {
-        quiz: normalizedQuiz,
-        // Legacy params for backward compatibility
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        quizData: normalizedQuiz,
       });
       return;
     }

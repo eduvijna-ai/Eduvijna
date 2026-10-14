@@ -3,9 +3,20 @@ import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import WebNavigation from '../platforms/web/navigation/WebNavigation';
 import { handleOpenQuiz } from '../core/services/openQuizHandler';
-
 jest.mock('../core/services/openQuizHandler', () => ({
   handleOpenQuiz: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('@core/services/gradedNotificationRouting.service', () => ({
+  resolveStudentGradedAssignmentSession: jest.fn().mockResolvedValue({
+    kind: 'resolved',
+    sessionId: 'sess-resolved',
+    classroomId: 'class-1',
+  }),
+}));
+
+jest.mock('@core/services/assessmentQuizStart.service', () => ({
+  executeStudentAssignedQuizViewResults: jest.fn().mockResolvedValue({ kind: 'view_results' }),
 }));
 
 jest.mock('@core/hooks/useAuth', () => ({
@@ -94,4 +105,5 @@ describe('WebNavigation notification bell', () => {
     adapter.navigate('QuizTakingScreen', { sessionId: 'sess-abc' });
     expect(onNavigate).toHaveBeenCalledWith('QuizTakingScreen', { sessionId: 'sess-abc' });
   });
+
 });

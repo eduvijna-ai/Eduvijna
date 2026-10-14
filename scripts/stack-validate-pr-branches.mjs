@@ -20,10 +20,13 @@ import {
   prepareWorktreeAtSha,
   requireWorktreeRoot,
 } from './lib/stack-worktree-paths.mjs';
+import { computeStackValidationStatus } from './lib/stack-validate-status.mjs';
 
 const scriptRepoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const monorepoRoot = resolveMonorepoRoot(scriptRepoRoot);
-const reportPath = join(
+const validationLogDir = join(monorepoRoot, '.stack-validation-logs');
+const reportPath = join(validationLogDir, 'stack-validation-report.json');
+const reportEvidenceCopyPath = join(
   monorepoRoot,
   'docs',
   'development',
@@ -103,6 +106,9 @@ function scopeIdentitiesToChangedFiles(identities, changedFiles) {
 }
 
 function runDiagnostics(repoRoot) {
+  if (process.env.STACK_VALIDATE_DIAGNOSTICS_FIXTURE) {
+    return JSON.parse(readFileSync(process.env.STACK_VALIDATE_DIAGNOSTICS_FIXTURE, 'utf8'));
+  }
   const type = spawnSync('npm run type-check', {
     cwd: repoRoot,
     shell: true,
@@ -148,6 +154,9 @@ function runDiagnostics(repoRoot) {
 }
 
 function runExports(repoRoot, branchKey) {
+  if (process.env.STACK_VALIDATE_EXPORT_FIXTURE) {
+    return JSON.parse(readFileSync(process.env.STACK_VALIDATE_EXPORT_FIXTURE, 'utf8'));
+  }
   const exportRoot = join(repoRoot, '.stack-export-check');
   const results = {};
   for (const platform of PLATFORMS) {
@@ -320,40 +329,19 @@ try {
     }
   }
 
-  const exportFailures = report.branches.some((b) =>
-    Object.values(b.exports).some((e) => e.exitCode !== 0),
-  );
-  const toolFailures = report.branches.some((b) => b.diagnostics?.toolFailure);
-  const diagnosticRegression = report.branches.some((b) => {
-    const added = b.diagnostics?.identitiesAdded;
-    const tsNew = added?.tsAdded?.length ?? 0;
-    const eslintNew = added?.eslintAdded?.length ?? 0;
-    return tsNew > 0 || eslintNew > 0;
-  });
-  const headMismatch = report.branches.some((b) => !b.headMatchesOrigin);
-
-  report.status = exportFailures
-    ? 'export_failures'
-    : toolFailures
-      ? 'diagnostic_tool_failure'
-      : headMismatch
-        ? 'head_sha_mismatch'
-        : diagnosticRegression
-          ? 'diagnostic_regression'
-          : 'passed';
-  report.exportStatus = exportFailures ? 'failed' : 'passed';
-  report.diagnosticStatus = toolFailures
-    ? 'tool_failure'
-    : diagnosticRegression
-      ? 'regression'
-      : 'passed';
+  const computed = computeStackValidationStatus(report.branches);
+  report.status = computed.status;
+  report.exportStatus = computed.exportStatus;
+  report.diagnosticStatus = computed.diagnosticStatus;
 } catch (error) {
   report.status = 'failed';
   report.error = error?.message || String(error);
   throw error;
 } finally {
-  mkdirSync(dirname(reportPath), { recursive: true });
+  mkdirSync(validationLogDir, { recursive: true });
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  mkdirSync(dirname(reportEvidenceCopyPath), { recursive: true });
+  writeFileSync(reportEvidenceCopyPath, JSON.stringify(report, null, 2));
   console.log(`\nWrote ${reportPath} (status=${report.status})`);
   const shouldFail = report.status !== 'passed' || Boolean(report.error);
   process.exit(shouldFail ? 1 : 0);

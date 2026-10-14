@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T12:42:21.148Z",
+  "verifiedAt": "2026-10-10T18:37:26.844Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "accounts": [
     {
@@ -24,7 +24,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 169,
+              "total_count": 184,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -41,11 +41,11 @@
                 "question_count": 1
               },
               {
-                "classroom_id": "ref:c6ec6d85",
+                "classroom_id": "ref:be1a55e7",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
                 "has_time_limit": false,
-                "quiz_status": "in_progress",
+                "quiz_status": "not_started",
                 "student_status": "not_started",
                 "question_count": 1
               }
@@ -110,7 +110,7 @@
           "status": 200,
           "data": {
             "meta": {
-              "total_count": 18,
+              "total_count": 33,
               "limit": 5,
               "offset": 0,
               "view_type": "summary"
@@ -127,11 +127,11 @@
                 "question_count": 1
               },
               {
-                "classroom_id": "ref:c6ec6d85",
+                "classroom_id": "ref:be1a55e7",
                 "classroom_name": "[redacted]",
                 "availability_status": "active",
                 "has_time_limit": false,
-                "quiz_status": "in_progress",
+                "quiz_status": "not_started",
                 "student_status": "not_started",
                 "question_count": 1
               }
@@ -197,7 +197,7 @@
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 12,
+            "rowCount": 23,
             "sampleFields": [
               {
                 "status": null,
@@ -215,7 +215,7 @@
               }
             ]
           },
-          "rowCount": 12
+          "rowCount": 23
         },
         {
           "name": "[redacted]",
@@ -264,12 +264,12 @@
         {
           "name": "[redacted]",
           "status": 200,
-          "rowCount": 12,
+          "rowCount": 23,
           "fixtureSessionVisible": true,
           "data": {
             "success": true,
             "check_type": "pending",
-            "rowCount": 12,
+            "rowCount": 23,
             "sampleFields": [
               {
                 "status": null,
@@ -291,8 +291,8 @@
         {
           "name": "[redacted]",
           "data": {
-            "quiz_id": "ref:d2396d88",
-            "session_id": "ref:55a46b8c",
+            "quiz_id": "ref:d2396dcb",
+            "session_id": "ref:422f04f0",
             "source": "run_fixture"
           }
         },
@@ -321,13 +321,14 @@
   ],
   "runFixture": {
     "topic": "[redacted]",
-    "quizId": "ref:d2396d88",
-    "sessionId": "ref:55a46b8c",
+    "quizId": "ref:d2396dcb",
+    "sessionId": "ref:422f04f0",
     "classroomId": "ref:c6ec6d85"
   },
   "fixtureCleanup": {
     "ok": false,
     "skipped": true,
-    "limitation": "No supported dev-api cleanup contract for sharequiz fixtures; disposable rows may remain until TTL."
-  }
+    "limitation": "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
+  },
+  "overallStatus": "passed"
 }

@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-10T12:50:39.137Z",
+  "verifiedAt": "2026-10-10T18:37:35.118Z",
   "apiBase": "https://dev-api.eduvijna.com",
   "clientApiBaseExpected": "https://dev-api.eduvijna.com",
   "status": "passed",
@@ -57,8 +57,8 @@
     "checkpointImmutable": {
       "scorePercent": 100,
       "selectedAnswer": "4",
-      "startedAt": "2026-10-10T12:50:43.284Z",
-      "finalizedAt": "2026-10-10T12:50:43.607Z",
+      "startedAt": "2026-10-10T18:37:40.175Z",
+      "finalizedAt": "2026-10-10T18:37:40.508Z",
       "timeSpentSeconds": 0
     },
     "persisted": {
@@ -67,11 +67,13 @@
       "questionCount": 1
     },
     "identityFromAttended": {
-      "quiz_id": "ref:d2396d8c",
-      "session_id": "ref:ee70efb6",
+      "quiz_id": "ref:d2396dcc",
+      "session_id": "ref:7156011f",
       "student_id": "[redacted]"
     },
     "limitations": []
   },
-  "evaluationFailures": []
+  "evaluationFailures": [],
+  "executionMode": "orchestrator_with_jest_phase1_phase2",
+  "commandLine": "node scripts/dev-api-submission-matrix.mjs"
 }

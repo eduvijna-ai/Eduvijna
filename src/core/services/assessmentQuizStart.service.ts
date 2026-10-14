@@ -4,8 +4,10 @@
 
 import { checkQuizAttempt, getQuizBySessionId } from './sharedApi';
 import {
+  AssignedQuizRecoveryProbeError,
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
+  isAssignedQuizRecoveryProbeError,
   isSubmissionPersistedOnServer,
   type AssignedQuizRecoveryResumeParams,
 } from './assignedQuizRecovery.service';
@@ -105,6 +107,38 @@ export async function loadAssignedQuizDataForSession(
   return quizDataWithQuestions;
 }
 
+function attemptDataHasQuestions(attemptData: Record<string, unknown> | null | undefined): boolean {
+  if (!attemptData) return false;
+  const direct = attemptData.questions;
+  if (Array.isArray(direct) && direct.length > 0) return true;
+  const nested = (attemptData.questions as { quizzes?: unknown[] } | undefined)?.quizzes;
+  return Array.isArray(nested) && nested.length > 0;
+}
+
+/**
+ * Immutable recovery: replay attempt metadata when quiz GET is unavailable.
+ */
+export async function loadAssignedQuizDataForImmutableRecovery(
+  ctx: AssignedQuizStartContext,
+  recovery: AssignedQuizRecoveryResumeParams,
+): Promise<Record<string, unknown>> {
+  try {
+    return await loadAssignedQuizDataForSession(ctx);
+  } catch (fetchErr) {
+    if (recovery.mode !== 'immutable_retry') {
+      throw fetchErr;
+    }
+    if (attemptDataHasQuestions(ctx.attemptData)) {
+      return {
+        ...(ctx.attemptData ?? {}),
+        session_id: ctx.correctSessionId,
+        classroom_id: ctx.correctClassroomId,
+      };
+    }
+    throw fetchErr;
+  }
+}
+
 /**
  * Loads full quiz payload then navigates — used by Assessments start/resume and recovery.
  */
@@ -185,15 +219,25 @@ export async function resolveStudentAssignedQuizStart(args: {
     args.sessionId || undefined,
   );
 
-  const pendingCheckpoint = await findPendingSubmissionCheckpoint(
-    args.studentId,
-    args.quizId,
-    args.sessionId,
-  );
+  let pendingCheckpoint;
+  try {
+    pendingCheckpoint = await findPendingSubmissionCheckpoint(
+      args.studentId,
+      args.quizId,
+      args.sessionId,
+    );
+  } catch (error) {
+    if (isAssignedQuizRecoveryProbeError(error)) {
+      return { kind: 'lookup_failed' };
+    }
+    throw error;
+  }
 
   if (pendingCheckpoint) {
     const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-    const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+    const quizDataWithQuestions = recovery
+      ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
+      : await loadAssignedQuizDataForSession(startCtx);
     return {
       kind: 'navigate',
       params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
@@ -240,15 +284,25 @@ export async function resolveStudentAssignedQuizViewResults(args: {
     attemptData: args.attemptData,
   };
 
-  const pendingCheckpoint = await findPendingSubmissionCheckpoint(
-    args.studentId,
-    args.quizId,
-    args.sessionId,
-  );
+  let pendingCheckpoint;
+  try {
+    pendingCheckpoint = await findPendingSubmissionCheckpoint(
+      args.studentId,
+      args.quizId,
+      args.sessionId,
+    );
+  } catch (error) {
+    if (isAssignedQuizRecoveryProbeError(error)) {
+      return { kind: 'probe_failed' };
+    }
+    throw error;
+  }
 
   if (pendingCheckpoint) {
     const recovery = buildRecoveryResumeParams(pendingCheckpoint);
-    const quizDataWithQuestions = await loadAssignedQuizDataForSession(startCtx);
+    const quizDataWithQuestions = recovery
+      ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
+      : await loadAssignedQuizDataForSession(startCtx);
     return {
       kind: 'recovery_retry',
       params: buildQuizTakingNavigationParams(startCtx, quizDataWithQuestions, recovery),
@@ -319,6 +373,12 @@ export async function executeStudentAssignedQuizViewResults(
   if (viewResult.kind === 'recovery_retry') {
     navigateStudentToQuizTaking(adapters.navigation, adapters.onNavigate, viewResult.params);
     return viewResult;
+  }
+
+  if (viewResult.kind === 'probe_failed') {
+    throw new AssignedQuizRecoveryProbeError(
+      'Could not verify whether this assignment was already submitted. Please try again.',
+    );
   }
 
   if (viewResult.kind === 'view_results') {
