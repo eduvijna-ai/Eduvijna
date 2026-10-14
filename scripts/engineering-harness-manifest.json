@@ -11,9 +11,10 @@
     "84fff27 — Maestro via cmd.exe /c on Windows",
     "7777f22 — skip Maestro when verified student UI session",
     "899c2e2 — Completed load-more traversal, API student-70 gate, Results tap",
-    "12e0472 — manifest pin executingHarnessHead 899c2e2"
+    "12e0472 — manifest pin executingHarnessHead 899c2e2",
+    "763df8f — signed-out deeplink, notifications route, UI logout harness"
   ],
-  "executingHarnessHead": "899c2e2",
+  "executingHarnessHead": "763df8f",
   "scripts": [
     "engineering-fixture-readiness-probe.mjs",
     "engineering-targeted-closure-sequence.mjs",
