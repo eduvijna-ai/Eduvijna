@@ -79,7 +79,11 @@ const report = {
   },
 };
 
-const outPath = join(monorepoRoot, '.stack-validation-logs', 'final-candidate-diagnostics-cda254a.json');
+const outPath = join(
+  monorepoRoot,
+  '.stack-validation-logs',
+  `final-candidate-diagnostics-${headSha.slice(0, 7)}.json`,
+);
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, JSON.stringify(report, null, 2));
 console.log(`Wrote ${outPath}`);
