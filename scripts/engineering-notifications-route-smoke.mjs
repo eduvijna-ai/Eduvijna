@@ -7,6 +7,7 @@ import {
   tapNotificationsBell,
   classifyNotificationsRoute,
 } from './lib/header-notifications-tap.mjs';
+import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceDir = join(
@@ -31,10 +32,15 @@ if (!authenticatedMarker(xml)) {
   const maestroBin =
     process.env.MAESTRO_BIN ||
     join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
+  const javaHome = resolveMaestroJavaHome();
   const maestroLogin = spawnSync(
     process.execPath,
-    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'student'],
-    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'instructor'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: { ...process.env, MAESTRO_BIN: maestroBin, ...(javaHome ? { JAVA_HOME: javaHome } : {}) },
+    },
   );
   if (maestroLogin.status !== 0) process.exit(1);
   sleep(3500);

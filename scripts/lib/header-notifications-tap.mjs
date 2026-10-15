@@ -25,7 +25,9 @@ export function tapNotificationsBell(adb, xml) {
 
 export function classifyNotificationsRoute(xml) {
   const onRoute =
-    /Pending quizzes|No pending quizzes|No new submissions|Loading notifications/i.test(xml);
+    /Pending quizzes|No pending quizzes|No new submissions|New submissions|Loading notifications/i.test(
+      xml,
+    );
   return {
     onRoute,
     markers: {
@@ -33,6 +35,7 @@ export function classifyNotificationsRoute(xml) {
       emptyStudent: /No pending quizzes/i.test(xml),
       loading: /Loading notifications/i.test(xml),
       teacherEmpty: /No new submissions/i.test(xml),
+      teacherSubmissions: /New submissions/i.test(xml),
     },
   };
 }

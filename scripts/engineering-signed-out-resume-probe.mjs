@@ -12,6 +12,7 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
+import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const h = await import('./lib/emulator-login-harness.mjs').then((m) => m.createEmulatorLoginHarness());
@@ -52,10 +53,15 @@ writeFileSync(join(evidenceDir, 'signed-out-gate-ui.xml'), gateXml);
 const loginGate = /login-email-input|content-desc="Sign in"/.test(gateXml);
 steps.push({ step: 'login_gate', ok: loginGate });
 
+const javaHome = resolveMaestroJavaHome();
 const maestro = spawnSync(
   process.execPath,
   [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'student'],
-  { cwd: repoRoot, encoding: 'utf8', env: process.env },
+  {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ...(javaHome ? { JAVA_HOME: javaHome } : {}) },
+  },
 );
 steps.push({ step: 'maestro_inplace_login', ok: maestro.status === 0, exit: maestro.status });
 

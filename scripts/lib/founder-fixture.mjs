@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDevApiBase, loginDevApi } from './dev-api-auth.mjs';
+import { resolveDevApiCredentialsPath } from './resolve-dev-api-credentials-path.mjs';
 
 export const FIXTURE = {
   quizId: 479,
@@ -15,10 +16,20 @@ export const FIXTURE = {
   expectedCorrect: 6,
 };
 
-/** Matches Journey B / trace script analytics date filter. */
+/**
+ * Matches Journey B / trace script analytics date filter.
+ * Override with ANALYTICS_FIXTURE_CREATED_FROM / ANALYTICS_FIXTURE_CREATED_TO (ISO dates).
+ * Default `created_to` is max(fixture floor, UTC today) so runs after the floor date do not
+ * silently drop newer fixture attempts.
+ */
+const FIXTURE_ANALYTICS_CREATED_TO_FLOOR = '2026-10-15';
+function defaultAnalyticsCreatedTo() {
+  const today = new Date().toISOString().slice(0, 10);
+  return today > FIXTURE_ANALYTICS_CREATED_TO_FLOOR ? today : FIXTURE_ANALYTICS_CREATED_TO_FLOOR;
+}
 export const ANALYTICS_FIXTURE_DATE_RANGE = {
-  created_from: '2026-08-01',
-  created_to: '2026-10-13',
+  created_from: process.env.ANALYTICS_FIXTURE_CREATED_FROM || '2026-08-01',
+  created_to: process.env.ANALYTICS_FIXTURE_CREATED_TO || defaultAnalyticsCreatedTo(),
 };
 
 export const ANALYTICS_ITEMS_PER_PAGE = 10;
@@ -33,8 +44,13 @@ function quizRowMember(row, index) {
 }
 
 /** Quiz list page (1-based) where the fixture assignment appears in class drill. */
+function fixtureCredentialsPath() {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  return resolveDevApiCredentialsPath(repoRoot);
+}
+
 export async function loadFixtureAnalyticsQuizPage() {
-  const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
+  const credFile = fixtureCredentialsPath();
   if (!existsSync(credFile)) throw new Error('missing_credentials');
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const instructor = await loginDevApi(
@@ -167,7 +183,7 @@ export async function loadFixtureResultEvidence(instructorToken) {
 }
 
 export async function loadFixtureResultEvidenceFromCredentials() {
-  const credFile = join(dirname(fileURLToPath(import.meta.url)), '../../.dev-api-credentials.local.json');
+  const credFile = fixtureCredentialsPath();
   if (!existsSync(credFile)) throw new Error('missing_credentials');
   const cfg = JSON.parse(readFileSync(credFile, 'utf8'));
   const instructor = await loginDevApi(

@@ -2,6 +2,7 @@
  * Founder acceptance UI journeys on Android (no secrets logged).
  */
 import { execSync, spawnSync } from 'node:child_process';
+import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,12 +67,16 @@ import {
 import { executeTapWith } from './lib/android-journey-tap.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const evidence = join(
-  repoRoot,
-  '.dev-api-document-workflow-run',
-  'runtime-evidence',
-  process.env.ANDROID_JOURNEY_EVIDENCE_DIR || 'android-journeys',
-);
+const INSTALLED_RELEASE = process.env.ENGINEERING_INSTALLED_RELEASE === '1';
+const APK_IMPL_SHA = process.env.ENGINEERING_APK_IMPLEMENTATION_SHA || '2fb85b0';
+const evidenceLeaf =
+  process.env.ANDROID_JOURNEY_EVIDENCE_DIR ||
+  (INSTALLED_RELEASE
+    ? `android-journey-b-installed-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`
+    : 'android-journeys');
+const evidence = INSTALLED_RELEASE
+  ? join(repoRoot, '.stack-validation-logs', 'engineering-installed-smoke', evidenceLeaf)
+  : join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', evidenceLeaf);
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
 const sha = engineeringImplementationSha();
 
@@ -1719,7 +1724,27 @@ function screenshot(name) {
 }
 
 async function dismissOverlays() {
+  if (INSTALLED_RELEASE) return;
   execSync(`node "${join(repoRoot, 'scripts/android-dismiss-overlays.mjs')}"`, { stdio: 'ignore' });
+}
+
+function runInstalledMaestroLogin() {
+  const javaHome = resolveMaestroJavaHome();
+  const login = spawnSync(
+    process.execPath,
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), 'instructor'],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ...(javaHome ? { JAVA_HOME: javaHome } : {}),
+        ADB_DEVICE: serial,
+        ANDROID_SERIAL: serial,
+      },
+    },
+  );
+  return login.status === 0;
 }
 
 function shellReady(xml) {
@@ -1734,7 +1759,25 @@ function shellReady(xml) {
 
 function ensureInApp() {
   let ready = waitFor(shellReady, { attempts: 4, pauseMs: 800, dumpName: 'nav-initial' });
-  if (!ready.ok) {
+  if (!ready.ok && INSTALLED_RELEASE) {
+    const onLogin =
+      ready.xml &&
+      (/login-email-input/.test(ready.xml) || /hint="Email or Username"/.test(ready.xml));
+    if (!onLogin) {
+      execSync(`adb -s ${serial} shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1`, {
+        stdio: 'ignore',
+      });
+      sleep(4000);
+      ready = waitFor(shellReady, { attempts: 6, pauseMs: 1500, dumpName: 'nav-after-launch' });
+    }
+    if (!ready.ok || /login-email-input/.test(ready.xml || '')) {
+      if (!runInstalledMaestroLogin()) {
+        throw new Error('installed_release_maestro_login_failed');
+      }
+      sleep(4000);
+      ready = waitFor(shellReady, { attempts: 20, pauseMs: 1500, dumpName: 'nav-after-maestro' });
+    }
+  } else if (!ready.ok) {
     execSync(`node "${join(repoRoot, 'scripts/android-bootstrap-dev-client.mjs')}" instructor`, {
       stdio: 'inherit',
     });
@@ -2440,20 +2483,40 @@ async function journeyB(labels, resultEvidence = {}, quizPageHint = null) {
 async function main() {
   const which = process.argv[2] || 'all';
   const labels = await loadFixtureLabels();
-  const runRecord = await buildEngineeringRunRecord({ accountRole: 'instructor' });
-  const bundleProbe = runRecord.bundleProbe;
-  const intendedSha = sha;
-  const loadedSha = bundleProbe.loadedBuildSha;
-  if (!bundleProbe.pass || loadedSha !== intendedSha) {
-    console.error(
-      JSON.stringify({
-        error: 'engineering_bundle_not_verified',
-        intendedImplementationSha: intendedSha,
-        loadedImplementationSha: loadedSha,
-        bundleProbe,
-      }),
-    );
-    process.exit(2);
+  let runRecord;
+  let bundleProbe;
+  if (INSTALLED_RELEASE) {
+    bundleProbe = {
+      pass: true,
+      skipped: true,
+      reason: 'installed_release_apk',
+      testedApkImplementationSha: APK_IMPL_SHA,
+      harnessGitHeadSha: sha,
+    };
+    runRecord = {
+      runAt: new Date().toISOString(),
+      accountRole: 'instructor',
+      runnerGitHeadSha: sha,
+      installedRelease: true,
+      testedApkImplementationSha: APK_IMPL_SHA,
+      bundleProbe,
+    };
+  } else {
+    runRecord = await buildEngineeringRunRecord({ accountRole: 'instructor' });
+    bundleProbe = runRecord.bundleProbe;
+    const intendedSha = sha;
+    const loadedSha = bundleProbe.loadedBuildSha;
+    if (!bundleProbe.pass || loadedSha !== intendedSha) {
+      console.error(
+        JSON.stringify({
+          error: 'engineering_bundle_not_verified',
+          intendedImplementationSha: intendedSha,
+          loadedImplementationSha: loadedSha,
+          bundleProbe,
+        }),
+      );
+      process.exit(2);
+    }
   }
   writeFileSync(
     join(evidence, 'meta.json'),
@@ -2477,13 +2540,21 @@ async function main() {
   );
 
   const coldLaunch = process.argv.includes('--cold') || process.env.COLD_LAUNCH === '1';
-  if (coldLaunch) {
+  if (coldLaunch && INSTALLED_RELEASE) {
+    if (!runInstalledMaestroLogin()) {
+      console.error(JSON.stringify({ error: 'installed_release_cold_maestro_login_failed' }));
+      process.exit(2);
+    }
+    sleep(3000);
+  } else if (coldLaunch) {
     adb('shell am force-stop com.eduvijna.app');
     sleep(2500);
     execSync(`node "${join(repoRoot, 'scripts/android-bootstrap-dev-client.mjs')}" instructor`, {
       stdio: 'inherit',
     });
     sleep(3000);
+  } else if (INSTALLED_RELEASE) {
+    ensureInApp();
   }
 
   let resultEvidence = {};

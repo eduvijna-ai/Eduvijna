@@ -6,6 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
 import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
+import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const credFile = resolveDevApiCredentialsPath(repoRoot);
@@ -17,20 +18,7 @@ const outDir = join(
 );
 
 function resolveJavaHome() {
-  if (process.env.JAVA_HOME) {
-    return process.env.JAVA_HOME;
-  }
-  try {
-    const javaPath = execSync('where java', { encoding: 'utf8', shell: true })
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .find(Boolean);
-    if (!javaPath) return null;
-    const normalized = javaPath.replace(/\\bin\\java\.exe$/i, '').replace(/\\bin\\java$/i, '');
-    return normalized || null;
-  } catch {
-    return null;
-  }
+  return resolveMaestroJavaHome();
 }
 
 function resolveMaestroBin() {

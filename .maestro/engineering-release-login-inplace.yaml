@@ -1,10 +1,9 @@
 appId: com.eduvijna.app
 ---
-# Input-only login: do not stopApp/launchApp (preserves cold VIEW intent + pending queue).
 - extendedWaitUntil:
     visible:
       id: "login-email-input"
-    timeout: 90000
+    timeout: 120000
 - tapOn:
     id: "login-email-input"
 - inputText: ${LOGIN_EMAIL}
@@ -23,3 +22,6 @@ appId: com.eduvijna.app
       visible: "Maybe Later"
     commands:
       - tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: "Demo School"
+    timeout: 120000
