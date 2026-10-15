@@ -166,9 +166,6 @@ export default function Login() {
             onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
             }}
-            onBlur={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
-              syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
-            }}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
@@ -196,9 +193,6 @@ export default function Login() {
               recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
             }
             onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
-              syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
-            }}
-            onBlur={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
             }}
             autoCapitalize="none"
