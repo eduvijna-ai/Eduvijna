@@ -15,7 +15,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  type NativeSyntheticEvent,
   type TextInput as TextInputType,
+  type TextInputChangeEventData,
+  type TextInputEndEditingEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@core/hooks/useAuth';
@@ -154,14 +157,16 @@ export default function Login() {
             key={`login-email-${loginFormKey}`}
             value={email}
             onChangeText={applyEmail}
-            onChange={(e) => applyEmail(e.nativeEvent.text)}
+            onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
+              applyEmail(e.nativeEvent.text)
+            }
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'email', at: new Date().toISOString() })
             }
-            onEndEditing={(e) => {
+            onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
             }}
-            onBlur={(e) => {
+            onBlur={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
             }}
             autoCapitalize="none"
@@ -184,14 +189,16 @@ export default function Login() {
               ? { defaultValue: '' }
               : { value: password })}
             onChangeText={applyPassword}
-            onChange={(e) => applyPassword(e.nativeEvent.text)}
+            onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
+              applyPassword(e.nativeEvent.text)
+            }
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
             }
-            onEndEditing={(e) => {
+            onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
             }}
-            onBlur={(e) => {
+            onBlur={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
               syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
             }}
             autoCapitalize="none"
