@@ -30,6 +30,7 @@ const child = spawnSync(
     env: {
       ...process.env,
       ENGINEERING_INSTALLED_RELEASE: '1',
+      ENGINEERING_PHYSICAL_DEVICE: process.env.ENGINEERING_PHYSICAL_DEVICE || '1',
       ENGINEERING_APK_IMPLEMENTATION_SHA: apkSha,
     },
   },

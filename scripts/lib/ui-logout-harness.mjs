@@ -45,27 +45,68 @@ function confirmLogoutAlert(adb, xml) {
 
 /** Tap header profile control (rightmost header icon cluster). */
 export function tapHeaderProfile(adb, xml) {
-  const re = /clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/gi;
   const cands = [];
+  const re = /<node[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*>/gi;
   let m;
   while ((m = re.exec(xml))) {
     const x1 = Number(m[1]);
     const y1 = Number(m[2]);
     const x2 = Number(m[3]);
     const y2 = Number(m[4]);
-    if (y1 < 70 || y2 > 220 || x1 < 950) continue;
-    cands.push({ x1, y1, x2, y2, midX: (x1 + x2) / 2 });
+    if (y1 < 90 || y2 > 290 || x1 < 600) continue;
+    cands.push({
+      x1,
+      y1,
+      x2,
+      y2,
+      midX: ((x1 + x2) / 2) | 0,
+      midY: ((y1 + y2) / 2) | 0,
+    });
   }
   cands.sort((a, b) => b.midX - a.midX);
   const profile = cands[0];
   if (profile) {
-    adb(
-      `shell input tap ${((profile.x1 + profile.x2) / 2) | 0} ${((profile.y1 + profile.y2) / 2) | 0}`,
-    );
+    adb(`shell input tap ${profile.midX} ${profile.midY}`);
     return true;
   }
-  adb('shell input tap 1020 140');
+  adb('shell input tap 987 185');
   return true;
+}
+
+function profileScreenVisible(xml) {
+  return /text="Logout"/.test(xml) || (/text="Edit"/.test(xml) && /Profile|full_name|@/i.test(xml));
+}
+
+/** Open Profile from main shell (create / notifications / avatar — avatar is rightmost). */
+export function openProfileFromShell(h) {
+  let xml = h.dumpUi();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (profileScreenVisible(xml)) return { ok: true, xml };
+    const cands = [];
+    const re = /<node[^>]*clickable="true"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"[^>]*>/gi;
+    let m;
+    while ((m = re.exec(xml))) {
+      const x1 = Number(m[1]);
+      const y1 = Number(m[2]);
+      const x2 = Number(m[3]);
+      const y2 = Number(m[4]);
+      if (y1 < 90 || y2 > 290 || x1 < 600) continue;
+      cands.push({ midX: ((x1 + x2) / 2) | 0, midY: ((y1 + y2) / 2) | 0, x1 });
+    }
+    cands.sort((a, b) => b.x1 - a.x1);
+    const tryOrder = cands.slice(0, 3);
+    for (const tap of tryOrder) {
+      h.adb(`shell input tap ${tap.midX} ${tap.midY}`);
+      h.sleep(3500);
+      xml = h.dumpUi();
+      if (profileScreenVisible(xml)) return { ok: true, xml };
+    }
+    tapHeaderProfile(h.adb, xml);
+    h.sleep(3500);
+    xml = h.dumpUi();
+    if (profileScreenVisible(xml)) return { ok: true, xml };
+  }
+  return { ok: false, xml };
 }
 
 function escapeTransientRoutes(h) {
@@ -137,12 +178,15 @@ export function performUiLogout(h) {
   xml = h.dumpUi();
   steps.push({ step: 'home_tab' });
 
-  tapHeaderProfile(h.adb, xml);
-  h.sleep(3500);
-  xml = h.dumpUi();
-  steps.push({ step: 'profile_screen', hasLogout: /text="Logout"/.test(xml) });
+  const profileNav = openProfileFromShell(h);
+  xml = profileNav.xml;
+  steps.push({
+    step: 'profile_screen',
+    profileNavOk: profileNav.ok,
+    hasLogout: /text="Logout"/.test(xml),
+  });
 
-  if (!/text="Logout"/.test(xml)) {
+  if (!profileNav.ok || !/text="Logout"/.test(xml)) {
     return { ok: false, reason: 'logout_control_not_found', steps, xml };
   }
   tapText(h.adb, xml, 'Logout');

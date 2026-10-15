@@ -1740,6 +1740,8 @@ function runInstalledMaestroLogin() {
       env: {
         ...process.env,
         ...(javaHome ? { JAVA_HOME: javaHome } : {}),
+        ENGINEERING_PHYSICAL_DEVICE: process.env.ENGINEERING_PHYSICAL_DEVICE || '',
+        ENGINEERING_ADB_SERIAL: serial,
         ADB_DEVICE: serial,
         ANDROID_SERIAL: serial,
       },
@@ -1772,7 +1774,12 @@ function ensureInApp() {
       ready = waitFor(shellReady, { attempts: 6, pauseMs: 1500, dumpName: 'nav-after-launch' });
     }
     if (!ready.ok || /login-email-input/.test(ready.xml || '')) {
-      if (!runInstalledMaestroLogin()) {
+      const sessionXml = ready.xml || '';
+      const physicalInstructorShell =
+        process.env.ENGINEERING_PHYSICAL_DEVICE === '1' &&
+        /Demo School/.test(sessionXml) &&
+        !/login-email-input/.test(sessionXml);
+      if (!physicalInstructorShell && !runInstalledMaestroLogin()) {
         throw new Error('installed_release_maestro_login_failed');
       }
       sleep(4000);

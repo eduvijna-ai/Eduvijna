@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $repoRoot '.engineering-physical-device.local.json'
 if (-not (Test-Path $configPath)) {
-  throw "Missing $configPath — create {\"serial\":\"YOUR_ADB_SERIAL\"}"
+  throw "Missing $configPath - create {`"serial`":`"YOUR_ADB_SERIAL`"}"
 }
 $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
 $serial = $cfg.serial

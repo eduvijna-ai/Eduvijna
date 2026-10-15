@@ -10,12 +10,13 @@ export function tapNotificationsBell(adb, xml) {
     const y1 = Number(m[2]);
     const x2 = Number(m[3]);
     const y2 = Number(m[4]);
-    if (y1 < 70 || y2 > 220 || x1 < 700) continue;
+    if (y1 < 70 || y2 > 300 || x1 < 600) continue;
     const midX = (x1 + x2) / 2;
     cands.push({ x1, y1, x2, y2, midX, area: (x2 - x1) * (y2 - y1) });
   }
-  cands.sort((a, b) => a.midX - b.midX);
-  const bell = cands.find((c) => c.midX > 880 && c.midX < 1010) || cands[cands.length - 2];
+  cands.sort((a, b) => b.midX - a.midX);
+  // Header order (mobile): create (+), notifications bell, profile avatar (rightmost).
+  const bell = cands[1] || cands.find((c) => c.midX > 780 && c.midX < 920) || cands[0];
   if (!bell) return { tapped: false, reason: 'no_header_clickable' };
   const x = ((bell.x1 + bell.x2) / 2) | 0;
   const y = ((bell.y1 + bell.y2) / 2) | 0;
