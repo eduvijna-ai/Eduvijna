@@ -1,5 +1,5 @@
 {
-  "validatedAt": "2026-10-15T02:02:03.373Z",
+  "validatedAt": "2026-10-15T05:56:37.935Z",
   "monorepoRoot": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure",
   "validatorRevision": "20261015-worktree-guard-v2c",
   "checkoutMode": "isolated_worktree_detached_at_origin_sha",
@@ -72524,7 +72524,7 @@
     {
       "pr": 26,
       "branch": "integration/mobile-founder-acceptance-20261011",
-      "head": "90e5a4dbc6308742aa19e1022cf4deac965b0400",
+      "head": "0f75610aeaa3c3cc2ab6f8113d6f40e5e17a4ab3",
       "headMatchesOrigin": true,
       "worktreeRoot": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011",
       "validatorRevision": "20261015-worktree-guard-v2c",
@@ -72539,7 +72539,7 @@
           "tsErrorCount": 214,
           "eslintErrorCount": 1608,
           "tsOutputBytes": 45381,
-          "eslintOutputBytes": 4980549,
+          "eslintOutputBytes": 4981018,
           "identities": {
             "ts": [
               "App.tsx|TS6133|'CreateDocumentQuizScreen' is declared but its value is never read.",
@@ -82754,6 +82754,8 @@
         "filesChangedVsImmediateBase": [
           ".maestro/engineering-release-login-inplace.yaml",
           ".maestro/engineering-release-login.yaml",
+          ".stack-validation-logs/ENGINEERING_HANDOFF_PR26_20261015.md",
+          ".stack-validation-logs/stack-validation-report-guard-v2-six-rows-preserved-20261015.json",
           "App.tsx",
           "__tests__/AnalyticsDateFilter.stateMarker.test.tsx",
           "__tests__/DocumentCurriculumFromBooksScreen.integration.test.tsx",
@@ -82869,6 +82871,7 @@
           "core/utils/teacherAnalyticsHelpers.ts",
           "core/utils/worksheetShareUtils.ts",
           "docs/development/STUDENT_ANALYTICS_STARTUP_FIX_20261011.md",
+          "docs/development/e2e-fixtures/stack-validation-report.json",
           "docs/evidence/analytics-fixture-trace/fixture-479-70-207.json",
           "docs/evidence/analytics-parity/instructor-analytics-totals.json",
           "docs/evidence/analytics-pending-investigation.md",
@@ -82935,6 +82938,7 @@
           "scripts/capture-check-record-callers-probe.mjs",
           "scripts/compare-from-books-saved-books.mjs",
           "scripts/cred-shape.mjs",
+          "scripts/engineering-android-journey-b-installed.mjs",
           "scripts/engineering-closure-installed-run.mjs",
           "scripts/engineering-deep-link-signed-out.mjs",
           "scripts/engineering-deep-link-smoke.mjs",
@@ -82945,6 +82949,7 @@
           "scripts/engineering-installed-smoke-complete.mjs",
           "scripts/engineering-instructor-api-check.mjs",
           "scripts/engineering-instructor-fixture-ui.mjs",
+          "scripts/engineering-logout-session-smoke.mjs",
           "scripts/engineering-maestro-login-proof.mjs",
           "scripts/engineering-notifications-route-smoke.mjs",
           "scripts/engineering-pending-logout-isolation.mjs",
@@ -82973,6 +82978,7 @@
           "scripts/lib/founder-fixture.mjs",
           "scripts/lib/header-notifications-tap.mjs",
           "scripts/lib/resolve-dev-api-credentials-path.mjs",
+          "scripts/lib/resolve-maestro-java-home.mjs",
           "scripts/lib/stack-gate-disposition.mjs",
           "scripts/lib/stack-validate-runner.test.mjs",
           "scripts/lib/stack-validate-status.mjs",
@@ -84971,23 +84977,23 @@
       "exports": {
         "android": {
           "exitCode": 0,
-          "durationMs": 52914,
+          "durationMs": 46582,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\android",
-          "stdoutTail": "r-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/index-4fa6aaea7e4333ac6cc3697e47d89c01.hbc (8.85 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\android\n",
+          "stdoutTail": "r-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 148 B)\n\n› android bundles (1):\n_expo/static/js/android/index-114d35d2f55062569173736e86401628.hbc (8.85 MB)\n\n› Files (1):\nmetadata.json (3.16 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\android\n",
           "stderrTail": ""
         },
         "ios": {
           "exitCode": 0,
-          "durationMs": 54584,
+          "durationMs": 45096,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\ios",
-          "stdoutTail": "native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/index-8daef35ebabaa15754409f377f4d9fc5.hbc (8.83 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\ios\n",
+          "stdoutTail": "native-vector-icons\\Fonts\\MaterialIcons.ttf (357 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Octicons.ttf (69.4 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\SimpleLineIcons.ttf (54.1 kB)\nnode_modules\\@expo\\vector-icons\\build\\vendor\\react-native-vector-icons\\Fonts\\Zocial.ttf (25.8 kB)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon-mask.png (913 B)\nnode_modules\\@react-navigation\\elements\\src\\assets\\back-icon.png (5 variations | 528 B)\n\n› ios bundles (1):\n_expo/static/js/ios/index-abb5cb4dc206908db96dc76f0629e3c2.hbc (8.83 MB)\n\n› Files (1):\nmetadata.json (3.15 kB)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\ios\n",
           "stderrTail": ""
         },
         "web": {
           "exitCode": 0,
-          "durationMs": 49119,
+          "durationMs": 41584,
           "outputDir": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\web",
-          "stdoutTail": "1faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (5):\n_expo/static/js/web/appPushNotificationResponse-29a6083d56c7cb29effc86af5db22c85.js (2.17 kB)\n_expo/static/js/web/index-cf64fb223aad93881f5a2e99e976ab55.js (5.09 MB)\n_expo/static/js/web/studentAttendancePdf-770ada5ad01d5fbe2fa88372a995db0f.js (2.79 kB)\n_expo/static/js/web/studentExamSchedulePdf-1d57a0914ffe1f927f4031b3042f844d.js (3 kB)\n_expo/static/js/web/studentTimetablePdf-197274930e793edff50528e6e9eb76f5.js (3.68 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.21 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\web\n",
+          "stdoutTail": "1faf78.png (913 B)\nnode_modules\\@react-navigation\\elements\\lib\\module\\assets\\back-icon.35ba0eaec5a4f5ed12ca16fabeae451d.png (207 B)\n\n› web bundles (5):\n_expo/static/js/web/appPushNotificationResponse-29a6083d56c7cb29effc86af5db22c85.js (2.17 kB)\n_expo/static/js/web/index-9bc1706d506a0e52a1c90d0c0b9e6f1f.js (5.09 MB)\n_expo/static/js/web/studentAttendancePdf-770ada5ad01d5fbe2fa88372a995db0f.js (2.79 kB)\n_expo/static/js/web/studentExamSchedulePdf-1d57a0914ffe1f927f4031b3042f844d.js (3 kB)\n_expo/static/js/web/studentTimetablePdf-197274930e793edff50528e6e9eb76f5.js (3.68 kB)\n\n› Files (3):\nfavicon.ico (14.5 kB)\nindex.html (1.21 kB)\nmetadata.json (49 B)\n\nExported: C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-worktrees\\integration_mobile-founder-acceptance-20261011\\.stack-export-check\\pr26\\web\n",
           "stderrTail": ""
         }
       }
@@ -85003,8 +85009,8 @@
       23,
       24
     ],
-    "carriedFromValidatedAt": "2026-10-14T18:56:29.330Z",
-    "priorValidatorRevision": "20261014-worktree-guard-v2"
+    "carriedFromValidatedAt": "2026-10-15T05:46:51.304Z",
+    "priorValidatorRevision": "20261015-worktree-guard-v2c"
   },
   "status": "diagnostic_regression",
   "error": null,

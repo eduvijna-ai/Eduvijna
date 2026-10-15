@@ -6,7 +6,6 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import {
-  View,
   Text,
   TextInput,
   TouchableOpacity,
