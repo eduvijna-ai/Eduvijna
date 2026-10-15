@@ -69,20 +69,13 @@ const env = {
 };
 
 function maestroSpawn(args) {
-  const lower = maestro.toLowerCase();
-  if (lower.endsWith('.bat') || lower.endsWith('.cmd')) {
-    return spawnSync('cmd.exe', ['/c', maestro, ...args], {
-      env,
-      encoding: 'utf8',
-      maxBuffer: 20 * 1024 * 1024,
-      windowsHide: true,
-    });
-  }
+  // Avoid cmd.exe /c so `-e LOGIN_PASSWORD=...` is not re-parsed (special chars break instructor login).
   return spawnSync(maestro, args, {
     env,
     encoding: 'utf8',
     maxBuffer: 20 * 1024 * 1024,
     windowsHide: true,
+    shell: /\.(bat|cmd)$/i.test(maestro),
   });
 }
 
@@ -94,11 +87,16 @@ try {
   /* optional */
 }
 
+// Maestro ${VAR} in flows requires `test -e VAR=value` (parent process env is not enough).
 const run = maestroSpawn([
   '--device',
   device,
   'test',
   flow,
+  '-e',
+  `LOGIN_EMAIL=${account.email}`,
+  '-e',
+  `LOGIN_PASSWORD=${account.password}`,
   '--format',
   'junit',
   '--output',

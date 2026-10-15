@@ -15,17 +15,22 @@ export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'e
   }
 
   function dumpUi() {
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      sleep(attempt === 0 ? 250 : 700 + attempt * 200);
       try {
-        adb('shell uiautomator dump /sdcard/eng-login-ui.xml');
+        const dumpOut = adb('shell uiautomator dump /sdcard/eng-login-ui.xml');
+        if (/ERROR:|null root node|could not get idle/i.test(dumpOut)) {
+          adb('shell input keyevent 3');
+          sleep(400);
+          continue;
+        }
       } catch (e) {
         const detail = `${e.stdout || ''}${e.stderr || ''}${e.message || ''}`;
-        if (!/dumped|137/.test(detail)) throw e;
+        if (!/dumped|137|null root|idle state/i.test(detail)) throw e;
       }
-      sleep(attempt === 0 ? 200 : 600);
       try {
         const xml = adb('shell cat /sdcard/eng-login-ui.xml');
-        if (xml && xml.includes('<hierarchy')) return xml;
+        if (xml && xml.includes('<hierarchy') && xml.includes('<node ')) return xml;
       } catch {
         /* retry */
       }

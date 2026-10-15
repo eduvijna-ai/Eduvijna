@@ -113,14 +113,21 @@ function tapAfterNeedle(xml, needle, link) {
 mkdirSync(evidenceDir, { recursive: true });
 const sessionProbe = await probeInstructorCredentials();
 const sessionMeta = { sessionProbe };
-adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
-sleep(5000);
+if (process.env.ENGINEERING_SKIP_LOGOUT_SETUP === '1') {
+  adb('shell pm clear com.eduvijna.app');
+  sleep(2500);
+} else {
+  adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
+  sleep(5000);
+}
 let xml = dumpUi();
 if (dismissPostLoginInterstitials(xml)) {
   sleep(2000);
   xml = dumpUi();
 }
-const logout = performUiLogout({
+const logout = process.env.ENGINEERING_SKIP_LOGOUT_SETUP === '1'
+  ? { ok: true, alreadySignedOut: true, steps: [{ step: 'pm_clear_signed_out' }] }
+  : performUiLogout({
   adb,
   sleep,
   dumpUi,

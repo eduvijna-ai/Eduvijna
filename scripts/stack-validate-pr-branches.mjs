@@ -339,6 +339,36 @@ function parseCli() {
   return { smoke, prFilter };
 }
 
+function carryForwardPriorReportBranches(priorReport, prFilter) {
+  const carried = (priorReport.branches ?? []).filter((b) => b.pr !== prFilter);
+  if (carried.length === 0) {
+    throw new Error(
+      `Partial revalidation pr${prFilter} requires prior matrix rows to carry forward (found 0)`,
+    );
+  }
+  for (const entry of carried) {
+    const row = STACK.find((r) => r.pr === entry.pr);
+    if (!row) {
+      throw new Error(`Carried PR #${entry.pr} is not in STACK configuration`);
+    }
+    const expectedHead = resolveRemoteBranchSha(monorepoRoot, row.branch);
+    if (entry.head !== expectedHead) {
+      throw new Error(
+        `Carried PR #${entry.pr} row is stale (recorded ${entry.head}, origin ${expectedHead}); rerun that matrix row`,
+      );
+    }
+    if (entry.headMatchesOrigin === false) {
+      throw new Error(`Carried PR #${entry.pr} row has headMatchesOrigin=false; cannot reuse`);
+    }
+  }
+  return carried;
+}
+
+function sortBranchesByStackOrder(branches) {
+  const prOrder = new Map(STACK.map((row, index) => [row.pr, index]));
+  return [...branches].sort((a, b) => (prOrder.get(a.pr) ?? 0) - (prOrder.get(b.pr) ?? 0));
+}
+
 let priorReport = null;
 if (existsSync(reportPath)) {
   try {
@@ -378,14 +408,24 @@ const report = {
     diagnostics: 'npm run type-check && npx eslint . --ext .ts,.tsx --format json',
   },
   branches: [],
+  partialRevalidation: null,
   status: 'running',
   error: null,
 };
 
 const cliOpts = parseCli();
+const { smoke, prFilter } = cliOpts;
+if (prFilter && priorReport?.branches?.length) {
+  report.branches = carryForwardPriorReportBranches(priorReport, prFilter);
+  report.partialRevalidation = {
+    prFilter,
+    carriedPrs: report.branches.map((b) => b.pr),
+    carriedFromValidatedAt: priorReport.validatedAt ?? null,
+    priorValidatorRevision: priorReport.validatorRevision ?? null,
+  };
+}
 
 try {
-  const { smoke, prFilter } = cliOpts;
   const rows = STACK.filter((row) => (prFilter ? row.pr === prFilter : true));
   if (smoke && rows.length === 0) {
     throw new Error('Smoke mode requires a valid --smoke pr24 (or numeric PR id)');
@@ -401,6 +441,8 @@ try {
       break;
     }
   }
+
+  report.branches = sortBranchesByStackOrder(report.branches);
 
   const exportFailures = report.branches.some((b) =>
     Object.values(b.exports).some((e) => e.exitCode !== 0),
