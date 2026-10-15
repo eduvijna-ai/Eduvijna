@@ -106,6 +106,7 @@ try {
   /* optional */
 }
 
+// Maestro launchApp(clearState: true) owns cold-start; avoid pm clear + pre-launch racing stopApp/launchApp.
 // Maestro ${VAR} in flows requires `test -e VAR=value` (parent process env is not enough).
 const run = maestroSpawn([
   '--device',

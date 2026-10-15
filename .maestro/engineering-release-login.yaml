@@ -1,12 +1,11 @@
 appId: com.eduvijna.app
 ---
-- stopApp
 - launchApp:
     clearState: true
 - extendedWaitUntil:
     visible:
       id: "login-email-input"
-    timeout: 90000
+    timeout: 120000
 - tapOn:
     id: "login-email-input"
 - inputText: ${LOGIN_EMAIL}
@@ -27,4 +26,4 @@ appId: com.eduvijna.app
       - tapOn: "Maybe Later"
 - extendedWaitUntil:
     visible: "Demo School"
-    timeout: 90000
+    timeout: 120000

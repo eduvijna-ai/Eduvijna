@@ -40,7 +40,7 @@ const evidenceDir = join(
   `instructor-fixture-ui-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
 );
 const h = createEmulatorLoginHarness();
-const { adb, sleep, dumpUi, performLogin, dismissPostLoginInterstitials } = h;
+const { adb, sleep, dumpUi, dismissPostLoginInterstitials } = h;
 
 function shot(n) {
   execSync(`adb -s ${h.device} exec-out screencap -p > "${join(evidenceDir, n)}"`, { shell: true, stdio: 'inherit' });
@@ -116,6 +116,8 @@ const sessionMeta = { sessionProbe };
 if (process.env.ENGINEERING_SKIP_LOGOUT_SETUP === '1') {
   adb('shell pm clear com.eduvijna.app');
   sleep(2500);
+  adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
+  sleep(5000);
 } else {
   adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
   sleep(5000);
@@ -145,27 +147,48 @@ if (!logout.ok) {
 const maestroBin =
   process.env.MAESTRO_BIN ||
   join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
+function runMaestroInstructorLogin(inplace) {
+  const args = [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs')];
+  if (inplace) args.push('--inplace');
+  args.push('instructor');
+  return spawnSync(process.execPath, args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, MAESTRO_BIN: maestroBin, ADB_DEVICE: h.device },
+  });
+}
+
+const loginFormVisible = /login-email-input/.test(xml);
 let maestroLogin = { status: 0 };
 if (process.env.ENGINEERING_SKIP_MAESTRO !== '1') {
-  maestroLogin = spawnSync(
-    process.execPath,
-    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'instructor'],
-    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
-  );
-}
-sessionMeta.maestroInstructor = { status: maestroLogin.status, skipped: process.env.ENGINEERING_SKIP_MAESTRO === '1' };
-if (maestroLogin.status !== 0 || process.env.ENGINEERING_SKIP_MAESTRO === '1') {
-  const { accounts } = JSON.parse(readFileSync(resolveDevApiCredentialsPath(repoRoot), 'utf8'));
-  const login = performLogin(accounts.instructor.username, accounts.instructor.password, 'instructor');
-  sessionMeta.harnessLogin = { ok: login.ok, diagnostics: login.diagnostics };
-  if (!login.ok) {
-    writeFileSync(
-      join(evidenceDir, 'results.json'),
-      JSON.stringify({ ok: false, boundary: 'instructor_harness_login', sessionMeta, evidenceDir }, null, 2),
-    );
-    process.exit(1);
+  maestroLogin = loginFormVisible
+    ? runMaestroInstructorLogin(true)
+    : runMaestroInstructorLogin(false);
+  if (maestroLogin.status !== 0 && loginFormVisible) {
+    maestroLogin = runMaestroInstructorLogin(false);
   }
-  xml = login.xml;
+}
+sessionMeta.maestroInstructor = {
+  status: maestroLogin.status,
+  skipped: process.env.ENGINEERING_SKIP_MAESTRO === '1',
+  loginFormVisibleBeforeMaestro: loginFormVisible,
+};
+if (maestroLogin.status !== 0 || process.env.ENGINEERING_SKIP_MAESTRO === '1') {
+  writeFileSync(
+    join(evidenceDir, 'results.json'),
+    JSON.stringify(
+      {
+        ok: false,
+        boundary: 'instructor_maestro_login',
+        sessionMeta,
+        evidenceDir,
+        note: 'Release APK login is Maestro-driven; ADB password injection is not a supported acceptance path.',
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(1);
 } else {
   sleep(4000);
   xml = dumpUi();
