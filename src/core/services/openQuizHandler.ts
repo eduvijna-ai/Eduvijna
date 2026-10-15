@@ -15,6 +15,7 @@
  */
 
 import { fetchQuizDetailsBySessionId } from './dashboardApi';
+import { resolveAssignmentClassroomId } from './openQuizAttemptResolution';
 import {
   buildRecoveryResumeParams,
   findPendingSubmissionCheckpoint,
@@ -201,12 +202,17 @@ function normalizeQuizData(quizData: any, sessionId: string): NormalizedQuiz {
  * - Data normalization
  * - Navigation decisions
  */
+export type OpenQuizRequestContext = {
+  quizId?: string;
+};
+
 export async function handleOpenQuiz(
   sessionId: string,
   _source: OpenQuizSource,
   user: User | null,
   navigationAdapter: NavigationAdapter,
-  savePendingSession?: (sessionId: string) => void
+  savePendingSession?: (sessionId: string) => void,
+  requestContext?: OpenQuizRequestContext,
 ): Promise<void> {
   // ==========================================
   // 1. AUTHENTICATION CHECK
@@ -234,11 +240,12 @@ export async function handleOpenQuiz(
     // ==========================================
     console.log('🔍 handleOpenQuiz: Fetching quiz for session:', sessionId);
     
+    const hintedQuizId = Number(requestContext?.quizId);
     const validation = await fetchQuizDetailsBySessionId(
       sessionId,
       user.id,
-      0,
-      user.role as 'instructor' | 'admin' | 'student'
+      Number.isFinite(hintedQuizId) && hintedQuizId > 0 ? hintedQuizId : 0,
+      user.role as 'instructor' | 'admin' | 'student',
     );
     
     console.log('📦 handleOpenQuiz: Received quiz data:', {
@@ -252,7 +259,35 @@ export async function handleOpenQuiz(
     // ==========================================
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
+    if (validation.fetchFailure?.retryable) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'error',
+        title: 'Could not verify quiz',
+        message:
+          validation.fetchFailure.httpStatus === 429
+            ? 'The server is rate-limiting requests. Please wait a moment and try again.'
+            : 'The server is temporarily unavailable. Please try again.',
+        icon: 'cloud-offline-outline',
+      });
+      return;
+    }
+
     if (!validation.exists || !validation.quizData) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'not_found',
+        title: 'No Quiz Available',
+        message: 'No quiz is available for you.',
+        icon: 'alert-circle-outline',
+      });
+      return;
+    }
+
+    const untrustedQuizId = Number(requestContext?.quizId);
+    if (
+      Number.isFinite(untrustedQuizId) &&
+      untrustedQuizId > 0 &&
+      Number(validation.quizData.quiz_id) !== untrustedQuizId
+    ) {
       navigationAdapter.navigate('QuizStatusScreen', {
         status: 'not_found',
         title: 'No Quiz Available',
@@ -353,14 +388,19 @@ export async function handleOpenQuiz(
 
       // A. Already attempted — shared recovery-aware View Results resolver
       if (validation.isAttempted) {
-        const classroomId =
-          quizData.classroom_id || quizData.class_id || validation.attemptData?.classroom_id || '';
+        const resolvedSessionId = sessionId || quizData.session_id;
+        const classroomId = resolveAssignmentClassroomId(
+          resolvedSessionId,
+          validation.attemptData?.classroom_id,
+          quizData.classroom_id,
+          quizData.class_id,
+        );
         await executeStudentAssignedQuizViewResults(
           {
             studentId: String(user.id),
             quizId: quizData.quiz_id,
-            sessionId: sessionId || quizData.session_id,
-            classroomId: String(classroomId),
+            sessionId: resolvedSessionId,
+            classroomId: classroomId ?? '',
             attemptData: validation.attemptData ?? quizData,
             quizName: quizData.topic || quizData.title,
           },

@@ -130,9 +130,9 @@ describe.each(['android', 'ios'] as const)('tokenStorage on %s', (platformOs) =>
     const prodAccess = tokenStorage.__testScopedKey('access_token', 'production');
     const devRefresh = tokenStorage.__testScopedKey('refresh_token', 'development');
 
-    expect(devAccess).toBe('eduvijna.auth.development.access_token');
-    expect(prodAccess).toBe('eduvijna.auth.production.access_token');
-    expect(devRefresh).toBe('eduvijna.auth.development.refresh_token');
+    expect(devAccess).toBe('eduvijna.auth.development.e0.access_token');
+    expect(prodAccess).toBe('eduvijna.auth.production.e0.access_token');
+    expect(devRefresh).toBe('eduvijna.auth.development.e0.refresh_token');
     expect(SECURE_STORE_KEY_PATTERN.test(devRefresh)).toBe(true);
   });
 
@@ -165,6 +165,6 @@ describe('tokenStorage API environment isolation', () => {
   it('stores refresh token in SecureStore with scoped key on native', async () => {
     const tokenStorage = loadTokenStorageModule('development');
     await tokenStorage.storeAuthTokens('a', 'refresh-scoped', 60);
-    expect(secureStore['eduvijna.auth.development.refresh_token']).toBe('refresh-scoped');
+    expect(secureStore['eduvijna.auth.development.e0.refresh_token']).toBe('refresh-scoped');
   });
 });

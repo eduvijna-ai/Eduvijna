@@ -1,7 +1,15 @@
 /**
  * Quiz answer mapping — mirrors Quiz-React answerMappingUtils.
- * Maps between letters (A–D) and option text with normalized comparison.
+ * Grading uses stable display indices; text normalization is only for legacy letter resolution.
  */
+
+import {
+  permuteOptions,
+  resolveCorrectOptionIndex,
+  resolveSelectedOptionIndex,
+  shuffleOptionOrder,
+  type OptionPermutation,
+} from './optionIdentity';
 
 export type LetterOption = 'A' | 'B' | 'C' | 'D';
 
@@ -70,21 +78,25 @@ export const getCorrectOptionFromLetter = (
 export const shuffleQuizOptions = (
   options: string[],
   correctAnswerLetter: string,
-): { shuffledOptions: string[]; newCorrectAnswer: LetterOption } => {
-  const correctAnswerText = getCorrectOptionFromLetter(correctAnswerLetter, options);
-  const shuffledOptions = [...options];
-  for (let i = shuffledOptions.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledOptions[i], shuffledOptions[j]] = [shuffledOptions[j], shuffledOptions[i]];
+  random: () => number = Math.random,
+): {
+  shuffledOptions: string[];
+  newCorrectAnswer: LetterOption;
+  optionOrder: OptionPermutation;
+  correctOptionIndex: number;
+} => {
+  const correctOriginalIndex = resolveCorrectOptionIndex(correctAnswerLetter, options);
+  if (correctOriginalIndex == null) {
+    throw new Error('CORRECT_OPTION_NOT_FOUND_AFTER_SHUFFLE');
   }
-  const normCorrect = normalizeComparableOptionValue(correctAnswerText);
-  const newCorrectIndex = shuffledOptions.findIndex(
-    (opt) => normalizeComparableOptionValue(opt) === normCorrect,
-  );
-  const safeIndex = newCorrectIndex === -1 ? 0 : newCorrectIndex;
+  const optionOrder = shuffleOptionOrder(options.length, correctOriginalIndex, random);
+  const shuffledOptions = permuteOptions(options, optionOrder);
+  const correctOptionIndex = optionOrder.indexOf(correctOriginalIndex);
   return {
     shuffledOptions,
-    newCorrectAnswer: indexToLetter(safeIndex),
+    newCorrectAnswer: indexToLetter(correctOptionIndex),
+    optionOrder,
+    correctOptionIndex,
   };
 };
 
@@ -95,16 +107,9 @@ export const stripOptionLabel = (opt: string): string =>
 export const resolveCorrectAnswerLetter = (
   rawCorrect: string,
   options: string[],
-): LetterOption => {
-  const trimmed = rawCorrect.trim();
-  if (/^[A-D]$/i.test(trimmed)) {
-    return trimmed.toUpperCase() as LetterOption;
-  }
-  return (
-    optionStringToLetter(trimmed, options) ||
-    optionStringToLetter(stripOptionLabel(trimmed), options) ||
-    'A'
-  );
+): LetterOption | null => {
+  const idx = resolveCorrectOptionIndex(rawCorrect, options);
+  return idx == null ? null : indexToLetter(idx);
 };
 
 export const getQuestionCorrectOptionText = (question: {
@@ -118,15 +123,24 @@ export const getQuestionCorrectOptionText = (question: {
 
 export const isQuizAnswerCorrect = (
   selectedAnswer: string | undefined,
-  question: { options: string[]; correctAnswer?: string; answer?: string },
+  question: {
+    options: string[];
+    correctAnswer?: string;
+    answer?: string;
+    correctOptionIndex?: number;
+  },
 ): boolean => {
   if (!selectedAnswer) return false;
-  const selectedText = normalizeSelectedAnswer(selectedAnswer, question.options);
-  const correctText = getQuestionCorrectOptionText(question);
-  return (
-    normalizeComparableOptionValue(selectedText) ===
-    normalizeComparableOptionValue(correctText)
-  );
+  if (typeof question.correctOptionIndex === 'number') {
+    const selectedIdx = resolveSelectedOptionIndex(selectedAnswer, question.options);
+    if (selectedIdx == null) return false;
+    return selectedIdx === question.correctOptionIndex;
+  }
+  const rawCorrect = String(question.correctAnswer ?? question.answer ?? '').trim();
+  const correctIdx = resolveCorrectOptionIndex(rawCorrect, question.options);
+  const selectedIdx = resolveSelectedOptionIndex(selectedAnswer, question.options);
+  if (correctIdx == null || selectedIdx == null) return false;
+  return selectedIdx === correctIdx;
 };
 
 export const isOptionTheCorrectAnswer = (
@@ -154,8 +168,16 @@ export type PlayableQuizQuestion = {
   answer?: string;
   explanation?: string | null;
   optionsNormalized?: boolean;
+  /** Display-order index used for grading after normalization/shuffle. */
+  correctOptionIndex?: number;
+  /** Maps display index → original API option index (for submit). */
+  optionOrder?: OptionPermutation;
+  /** Original API option texts before shuffle (when optionOrder is set). */
+  originalOptions?: string[];
   /** Authoritative correctness from attended-quiz when answer key is absent. */
   attendedIsCorrect?: boolean | null;
+  /** When true, explanation reconciliation must not change grading. */
+  gradingFrozen?: boolean;
 };
 
 export function hasAuthoritativeCorrectAnswer(question: {
@@ -194,36 +216,49 @@ export const normalizeDocumentQuizQuestions = (
   shuffleAnswerOptions = true,
 ): PlayableQuizQuestion[] =>
   (questions || []).map((q, idx) => {
+    if (q.optionsNormalized && typeof q.correctOptionIndex === 'number' && (q.options?.length ?? 0) > 0) {
+      return { ...q, id: q.id || `q-${idx}` };
+    }
     const baseOptions = (q.options || []).map((opt) => stripOptionLabel(String(opt ?? '')));
     const rawCorrect = String(q.correctAnswer ?? q.answer ?? '').trim();
-    const inferred = (
-      /^[A-D]$/i.test(rawCorrect)
-        ? rawCorrect.toUpperCase()
-        : optionStringToLetter(rawCorrect, baseOptions) || 'A'
-    ) as LetterOption;
+    const correctOptionIndex = resolveCorrectOptionIndex(rawCorrect, baseOptions);
+    if (correctOptionIndex == null) {
+      return {
+        ...q,
+        id: q.id || `q-${idx}`,
+        options: baseOptions,
+        correctAnswer: '',
+        answer: '',
+        optionsNormalized: false,
+      };
+    }
 
     if (!shuffleAnswerOptions) {
-      const correctOptionText = baseOptions[inferred.charCodeAt(0) - 65] || rawCorrect;
+      const correctOptionText = baseOptions[correctOptionIndex] || rawCorrect;
       return {
         ...q,
         id: q.id || `q-${idx}`,
         options: baseOptions,
         correctAnswer: correctOptionText,
         answer: correctOptionText,
+        correctOptionIndex,
         optionsNormalized: true,
       };
     }
 
-    const { shuffledOptions, newCorrectAnswer } = shuffleQuizOptions(baseOptions, inferred);
-    const correctOptionText =
-      shuffledOptions[newCorrectAnswer.charCodeAt(0) - 65] || rawCorrect;
+    const { shuffledOptions, correctOptionIndex: displayCorrectIndex, optionOrder } =
+      shuffleQuizOptions(baseOptions, rawCorrect);
+    const correctOptionText = shuffledOptions[displayCorrectIndex] || rawCorrect;
 
     return {
       ...q,
       id: q.id || `q-${idx}`,
       options: shuffledOptions,
+      originalOptions: baseOptions,
+      optionOrder,
       correctAnswer: correctOptionText,
       answer: correctOptionText,
+      correctOptionIndex: displayCorrectIndex,
       optionsNormalized: true,
     };
   });
@@ -289,6 +324,12 @@ export const reconcileResultsWithExplanations = async (
       const selectedAnswer = selectedAnswers[index];
       if (!selectedAnswer) {
         questionResults[index] = false;
+        return;
+      }
+
+      if (question.gradingFrozen || typeof question.attendedIsCorrect === 'boolean') {
+        const persisted = evaluatePersistedAnswerCorrectness(selectedAnswer, question);
+        questionResults[index] = persisted === true;
         return;
       }
 

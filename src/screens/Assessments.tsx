@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  useWindowDimensions,
   TextInput,
   StatusBar,
   Modal,
@@ -39,6 +38,13 @@ import {
 } from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
 import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import {
+  buildOpenStudentsAccessibilityLabel,
+  buildQuizAssignmentStudentListParams,
+  type QuizAssignmentListSource,
+} from '@core/types/studentListNavigation.types';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
+import { formatAssessmentsDataStateAccessibility } from '@core/utils/assessmentsDataState';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -54,6 +60,20 @@ interface Props {
       classroomName?: string;
     };
   };
+}
+
+/** Root stack screens (StudentList, modals) are siblings of Main tabs — tab `navigation` cannot reach them. */
+function navigateFromAssessments(
+  _navigation: Props['navigation'],
+  onNavigate: Props['onNavigate'],
+  screen: string,
+  params?: Record<string, unknown>,
+) {
+  if (onNavigate) {
+    onNavigate(screen, params);
+    return;
+  }
+  navigateRootStack(screen, params);
 }
 
 // Status badge color mapping — ERP Schools semantic colors
@@ -93,7 +113,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       error:         t.colors.danger,
     },
   };
-  const { width } = useWindowDimensions();
   const { user } = useAuth();
   
   // Map filterStatus from ClassesList to filter tabs
@@ -133,13 +152,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     attemptData: any;
   } | null>(null);
 
-  const isWeb = width > 768;
   const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
   const isStudent = user?.role === 'student';
 
   // Fetch data based on role
   const teacherData = useTeacherDashboard();
-  const { quizzes: storedQuizzes, setQuizzes } = useDashboardStore();
+  const { setQuizzes } = useDashboardStore();
 
   const {
     quizzes: teacherQuizzes = [],
@@ -151,7 +169,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // For students, use dashboard store data (already loaded by StudentDashboard)
   const [studentRefreshing, setStudentRefreshing] = useState(false);
   const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
-  const setRawQuizzes = useStudentAssignmentDashboardStore((s) => s.setRawQuizzes);
   const studentRawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
   const bumpStudentClassificationNow = useStudentAssignmentDashboardStore(
     (s) => s.bumpClassificationNow,
@@ -357,6 +374,40 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     });
   }, [baseFilteredQuizzes, selectedTab, isTeacher]);
 
+  const assessmentsDataStateLabel = React.useMemo(
+    () =>
+      formatAssessmentsDataStateAccessibility({
+        teacherSourceCount: isTeacher ? allQuizzes.length : 0,
+        baseFilteredCount: baseFilteredQuizzes.length,
+        filteredCount: filteredQuizzes.length,
+        selectedTab,
+        selectedClassroom,
+        selectedDateFilter,
+        loading: Boolean(loading),
+      }),
+    [
+      allQuizzes.length,
+      baseFilteredQuizzes.length,
+      filteredQuizzes.length,
+      isTeacher,
+      loading,
+      selectedClassroom,
+      selectedDateFilter,
+      selectedTab,
+    ],
+  );
+
+  const assessmentsDataStateMarker = (
+    <Text
+      testID="assessments-data-state"
+      accessibilityLabel={assessmentsDataStateLabel}
+      accessible
+      style={styles.dataStateMarker}
+    >
+      {' '}
+    </Text>
+  );
+
   // const handleCreateAssessment = () => {
   //   console.log('Create new assessment');
   //   // TODO: Navigate to create assessment screen
@@ -366,29 +417,34 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     // Find the quiz data
     const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
     
-    if (navigation) {
-      // Navigate to QuizPreviewScreen to see quiz details/questions
-      navigation.navigate('QuizPreviewScreen', {
-        quizId,
-        quizData: quiz,
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizPreviewScreen', { quizId, quizData: quiz });
-    }
+    navigateFromAssessments(navigation, onNavigate, 'QuizPreviewScreen', {
+      quizId,
+      quizData: quiz,
+    });
   };
 
-  const handleAction = async (action: string, quizId: number, attemptData?: any) => {
+  const handleAction = async (
+    action: string,
+    quizId: number,
+    attemptData?: QuizAssignmentListSource | any,
+  ) => {
     // View quiz students (Teacher)
     if (isTeacher && action === 'view') {
-      const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
-      if (navigation) {
-        navigation.navigate('StudentList', {
-          quizId,
-          quizName: quiz?.quiz_name || 'Quiz',
-        });
-      } else if (onNavigate) {
-        onNavigate('students', { quizId, quizName: quiz?.quiz_name });
+      const assignment: QuizAssignmentListSource | undefined =
+        attemptData?.quiz_id != null
+          ? attemptData
+          : filteredQuizzes.find((q: any) => {
+              if (Number(q.quiz_id) !== Number(quizId)) return false;
+              if (attemptData?.session_id != null) {
+                return String(q.session_id) === String(attemptData.session_id);
+              }
+              return true;
+            });
+      if (!assignment) {
+        return;
       }
+      const params = buildQuizAssignmentStudentListParams(assignment);
+      navigateFromAssessments(navigation, onNavigate, 'StudentList', params);
       return;
     }
     
@@ -507,6 +563,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (teacherLoading && filteredQuizzes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.loadingContainer}>
           <LoadingSpinner size={60} />
         </View>
@@ -517,6 +574,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={64} color={theme.colors.error} />
           <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
@@ -579,19 +637,19 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           ) : null;
         })()}
 
-        {/* Search Bar (Web only) */}
-        {isWeb && (
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
-            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        )}
+        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
+          <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+          <TextInput
+            testID="assessments-search-input"
+            accessibilityLabel="Search assessments"
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder="Search"
+            placeholderTextColor={theme.colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {assessmentsDataStateMarker}
+        </View>
 
         {/* Filters Section */}
         <FilterSection defaultCollapsed={false}>
@@ -660,7 +718,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           >
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
-              onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'DocumentUploadHomeScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
@@ -668,7 +726,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
-              onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'RecentAssessmentsScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
@@ -676,7 +734,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
-              onPress={() => navigation.navigate('WorksheetScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'WorksheetScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="document-text-outline" size={16} color="#059669" />
@@ -755,9 +813,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                 return null;
               };
               
+              const assignmentKey = `${quiz.quiz_id}-${quiz.session_id ?? 'na'}-${quiz.classroom_id ?? quiz.class_id ?? 'na'}`;
+              const openStudentsTestId = `assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`;
+
               return (
                 <View
-                  key={quiz.quiz_id}
+                  key={assignmentKey}
                   style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                 >
                   {/* Card Header */}
@@ -848,11 +909,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                             </Text>
                           </View>
                         </View>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.cardRow}
+                          testID={openStudentsTestId}
+                          accessibilityRole="button"
+                          accessibilityLabel={buildOpenStudentsAccessibilityLabel(quiz)}
+                          accessible
                           onPress={(e) => {
                             e.stopPropagation();
-                            handleAction('view', quiz.quiz_id);
+                            handleAction('view', quiz.quiz_id, quiz);
                           }}
                         >
                           <Ionicons name="people-outline" size={16} color={theme.colors.primary} />
@@ -972,6 +1037,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         {displayCount < filteredQuizzes.length && (
           <View style={styles.loadMoreContainer}>
             <TouchableOpacity
+              testID="assessments-load-more"
+              accessibilityLabel="Load more assessments"
               style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => setDisplayCount(prev => prev + 10)}
             >
@@ -1164,6 +1231,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  dataStateMarker: {
+    width: 1,
+    height: 1,
+    fontSize: 1,
+    lineHeight: 1,
+    color: 'transparent',
+    opacity: 0.01,
+    margin: 0,
+    padding: 0,
   },
   loadingContainer: {
     flex: 1,

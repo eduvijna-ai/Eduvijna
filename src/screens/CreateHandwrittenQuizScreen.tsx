@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
 import { MAX_IMAGE_UPLOADS } from '../core/services/documentUploadApi';
@@ -163,6 +164,7 @@ export function buildStrictQuizContent(params: {
 }
 
 export default function CreateHandwrittenQuizScreen({ navigation, route }: any) {
+  useQuizNavAccessRedirect('CreateHandwrittenQuizScreen', navigation);
   const { theme } = useTheme();
   const { colors } = theme;
   const { refreshAfterQuizGenerated } = useNotifications();

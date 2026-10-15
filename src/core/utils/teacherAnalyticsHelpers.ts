@@ -20,6 +20,8 @@ export interface ClassInsight {
 
 export interface QuizSummaryRow {
   quiz_id: number;
+  session_id: string;
+  classroom_id: string;
   quiz_name: string;
   topic: string | null;
   total_students: number;
@@ -222,7 +224,7 @@ function getQuizStudentScores(quiz: QuizListItem) {
     const score = typeof attempt.score === 'number' ? attempt.score : parseFloat(attempt.score);
     if (Number.isNaN(score)) return;
     const username = attempt.student_username || attempt.student_fullname || 'Unknown';
-    const entry = studentScores.get(attempt.student_id) || { username, scores: [] };
+    const entry = studentScores.get(attempt.student_id) || { username, scores: [] as number[] };
     entry.scores.push(score);
     studentScores.set(attempt.student_id, entry);
   });
@@ -257,12 +259,19 @@ export function buildQuizSummaryRows(
   classQuizzes: QuizListItem[],
 ): QuizSummaryRow[] {
   return quizTiles.map((tile) => {
-    const originalQuiz = classQuizzes.find((q) => q.quiz_id === tile.quiz_id);
+    const originalQuiz = classQuizzes.find(
+      (q) =>
+        q.quiz_id === tile.quiz_id &&
+        q.session_id === tile.session_id &&
+        q.classroom_id === tile.classroom_id,
+    );
     const categories = originalQuiz ? getQuizPerformanceCategories(originalQuiz) : [];
     const getDist = (label: string) => categories.find((c) => c.label === label)?.count ?? 0;
 
     return {
       quiz_id: tile.quiz_id,
+      session_id: tile.session_id,
+      classroom_id: tile.classroom_id,
       quiz_name: tile.quiz_name,
       topic: tile.topic,
       total_students: tile.total_students,
@@ -497,6 +506,8 @@ export function buildQuizCardData(
   };
 }
 
+export type AttemptLogSource = 'submission' | 'attempt' | 'none';
+
 export interface QuizAttemptViewRow {
   student_id: string;
   student_username?: string;
@@ -508,8 +519,17 @@ export interface QuizAttemptViewRow {
   time_spent_seconds?: number | null;
   submitted_at: string | null;
   log_data: string | null;
+  logSource: AttemptLogSource;
   attempt_id?: string;
+  /** Completed attempt with id — detail may be loaded from attended-quiz API. */
+  canViewSavedResult: boolean;
 }
+
+export type QuizAssignmentKey = {
+  quizId: number;
+  classroomId: string;
+  sessionId: string;
+};
 
 export type QuizAttemptFilterKey =
   | 'total_students'
@@ -520,16 +540,70 @@ export type QuizAttemptFilterKey =
   | 'expired'
   | null;
 
+export function resolveQuizAssignment(
+  rawData: QuizListItem[],
+  key: QuizAssignmentKey,
+): QuizListItem | null {
+  return (
+    rawData.find(
+      (q) =>
+        q.quiz_id === key.quizId &&
+        q.classroom_id === key.classroomId &&
+        q.session_id === key.sessionId,
+    ) ?? null
+  );
+}
+
+/** Strict assignment lookup — no cross-classroom or first-match fallbacks. */
 export function resolveQuizInClass(
   rawData: QuizListItem[],
   quizId: number,
   classroomId: string | null,
+  sessionId?: string | null,
 ): QuizListItem | null {
-  if (classroomId) {
-    const inClass = rawData.find((q) => q.quiz_id === quizId && q.classroom_id === classroomId);
-    if (inClass) return inClass;
+  if (!classroomId) return null;
+  if (sessionId) {
+    return resolveQuizAssignment(rawData, { quizId, classroomId, sessionId });
   }
-  return rawData.find((q) => q.quiz_id === quizId) ?? null;
+  const inClass = rawData.filter((q) => q.quiz_id === quizId && q.classroom_id === classroomId);
+  if (inClass.length === 1) return inClass[0];
+  return null;
+}
+
+function stringifyLogData(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return value.trim() ? value : null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+export function extractAttemptLogData(attempt: Record<string, unknown>): {
+  log_data: string | null;
+  logSource: AttemptLogSource;
+} {
+  const submission = attempt.submission as Record<string, unknown> | null | undefined;
+  if (submission?.log_data != null) {
+    const log = stringifyLogData(submission.log_data);
+    if (log) return { log_data: log, logSource: 'submission' };
+  }
+  if (attempt.log_data != null) {
+    const log = stringifyLogData(attempt.log_data);
+    if (log) return { log_data: log, logSource: 'attempt' };
+  }
+  if (submission?.log_data === '' || submission?.log_data === null) {
+    return { log_data: null, logSource: 'none' };
+  }
+  return { log_data: null, logSource: 'none' };
+}
+
+export function canOpenSavedAttemptResult(attempt: {
+  status?: string;
+  attempt_id?: string | number | null;
+}): boolean {
+  return attempt.status === 'completed' && attempt.attempt_id != null && attempt.attempt_id !== '';
 }
 
 function parseQuizAttempts(quiz: QuizListItem) {
@@ -576,23 +650,29 @@ export function getQuizAttemptsForView(
     return true;
   });
 
-  return filtered.map(({ attempt, derivedStatus }) => ({
-    student_id: attempt.student_id,
-    student_username: attempt.student_username,
-    student_fullname: attempt.student_fullname,
-    avatar_url: attempt.avatar_url,
-    status: attempt.status,
-    derivedStatus,
-    score: attempt.score ?? null,
-    time_spent_seconds: attempt.time_spent_seconds ?? null,
-    submitted_at: attempt.submission?.submitted_at || null,
-    log_data: attempt.submission?.log_data
-      ? typeof attempt.submission.log_data === 'string'
-        ? attempt.submission.log_data
-        : JSON.stringify(attempt.submission.log_data)
-      : null,
-    attempt_id: attempt.attempt_id,
-  }));
+  return filtered.map(({ attempt, derivedStatus }): QuizAttemptViewRow => {
+    const { log_data, logSource } = extractAttemptLogData(attempt as unknown as Record<string, unknown>);
+    const submittedAt =
+      (attempt.submission as { submitted_at?: string } | undefined)?.submitted_at ??
+      (attempt as { submitted_at?: string }).submitted_at ??
+      (attempt as { completed_at?: string }).completed_at ??
+      null;
+    return {
+      student_id: attempt.student_id,
+      student_username: attempt.student_username,
+      student_fullname: attempt.student_fullname,
+      avatar_url: attempt.avatar_url ?? undefined,
+      status: attempt.status,
+      derivedStatus,
+      score: attempt.score ?? null,
+      time_spent_seconds: attempt.time_spent_seconds ?? null,
+      submitted_at: submittedAt,
+      log_data,
+      logSource,
+      attempt_id: attempt.attempt_id != null ? String(attempt.attempt_id) : undefined,
+      canViewSavedResult: canOpenSavedAttemptResult(attempt),
+    };
+  });
 }
 
 export function getAttemptSummaryText(row: QuizAttemptViewRow, isCompleted: boolean): string {

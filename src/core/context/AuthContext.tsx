@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as TokenStorage from '../services/tokenStorage';
 import { login as apiLogin } from '../api/auth.api';
+import { getAuthSessionEpoch } from '../api/apiRefreshCoordinator';
 
 type User = { 
   id: string; 
@@ -55,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const login = async (email: string, password: string) => {
     try {
-      const result = await apiLogin({ email, password });
+      const result = await apiLogin({ email, password }, getAuthSessionEpoch());
       
       // Set user and token in state
       setUser(result.user);

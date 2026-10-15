@@ -25,7 +25,10 @@ interface WebsiteSummary {
   url?: string;
 }
 
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
+
 export default function CreateWebsiteQuizScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateWebsiteQuizScreen', navigation);
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const insets = useSafeAreaInsets();

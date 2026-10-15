@@ -20,6 +20,19 @@ import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
 
+type UserWithSchoolFields = {
+  school_name?: string;
+  schoolName?: string;
+  school?: string | { name?: string; school_name?: string };
+  profile?: {
+    school_name?: string;
+    schoolName?: string;
+    school?: string | { name?: string; school_name?: string };
+  };
+  role_id?: number;
+  role?: string;
+};
+
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
 import { SchoolsTabEntry } from '../../../erp_schools/navigation/SchoolsTabEntry';
@@ -40,9 +53,11 @@ import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
 import AssessmentWorkspaceScreen from '@screens/AssessmentWorkspaceScreen';
 import DocumentUploadHomeScreen from '@screens/document-upload/DocumentUploadHomeScreen';
 import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentCurriculumGeneratedPreviewScreen from '@screens/document-upload/DocumentCurriculumGeneratedPreviewScreen';
 import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from '@screens/document-upload/DocumentLibraryScreen';
+import DocumentCurriculumFromBooksScreen from '@screens/document-upload/DocumentCurriculumFromBooksScreen';
 import BookPageViewerScreen from '@screens/document-upload/BookPageViewerScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
@@ -86,16 +101,23 @@ function CustomHeader() {
   const insets = useSafeAreaInsets();
 
   const schoolNameFromProfile = (() => {
+    const profileUser = user as UserWithSchoolFields | null | undefined;
+    const schoolObj =
+      profileUser?.school && typeof profileUser.school === 'object' ? profileUser.school : undefined;
+    const profileSchoolObj =
+      profileUser?.profile?.school && typeof profileUser.profile.school === 'object'
+        ? profileUser.profile.school
+        : undefined;
     const candidates = [
-      (user as any)?.school_name,
-      (user as any)?.schoolName,
-      typeof (user as any)?.school === 'string' ? (user as any)?.school : undefined,
-      (user as any)?.school?.name,
-      (user as any)?.school?.school_name,
-      (user as any)?.profile?.school_name,
-      (user as any)?.profile?.schoolName,
-      (user as any)?.profile?.school?.name,
-      (user as any)?.profile?.school?.school_name,
+      profileUser?.school_name,
+      profileUser?.schoolName,
+      typeof profileUser?.school === 'string' ? profileUser.school : undefined,
+      schoolObj?.name,
+      schoolObj?.school_name,
+      profileUser?.profile?.school_name,
+      profileUser?.profile?.schoolName,
+      profileSchoolObj?.name,
+      profileSchoolObj?.school_name,
     ];
 
     return (
@@ -534,6 +556,15 @@ export default function MobileNavigation() {
         }}
       />
       <Stack.Screen
+        name="DocumentCurriculumGeneratedPreviewScreen"
+        component={DocumentCurriculumGeneratedPreviewScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Generated preview',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
         name="DocumentUploadHistoryScreen"
         component={DocumentUploadHistoryScreen as any}
         options={{
@@ -557,6 +588,11 @@ export default function MobileNavigation() {
           title: 'Document Library',
           headerBackTitle: 'Back',
         }}
+      />
+      <Stack.Screen
+        name="DocumentCurriculumFromBooksScreen"
+        component={DocumentCurriculumFromBooksScreen as any}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="BookPageViewerScreen"

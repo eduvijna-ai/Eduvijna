@@ -21,7 +21,6 @@ import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   ParsedQuiz,
-  DashboardStats,
   getDisplayName,
 } from '@core/types';
 import { isStudentQuizActive, isStudentQuizUpcoming } from '../utils/quizFilters';
@@ -80,9 +79,11 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
 
-  const classifiedQuizzes = useStudentAssignmentDashboardStore((s) =>
-    s.getClassifiedQuizzes(),
-  ) as ParsedQuiz[];
+  // Subscribe to stable fields; the derived getter returns a new array each time.
+  const classifiedQuizzes = useMemo(
+    () => useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes() as unknown as ParsedQuiz[],
+    [rawQuizzes, classificationNow],
+  );
 
   useEffect(() => {
     const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
@@ -140,13 +141,10 @@ export default function StudentDashboard({ navigation, route }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, selectedClassroom, refreshing]);
+  }, [isAuthenticated, user, selectedClassroom, refreshing]);
 
-  // Fetch on mount. On mobile, tab/stack screens also refetch via NativeFocusRefetch below.
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      fetchDashboardData();
-    }
+    fetchDashboardData();
   }, [fetchDashboardData]);
 
   // Refresh handler
@@ -253,7 +251,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
   }
 
   // Loading state
-  if (loading && allQuizzes.length === 0) {
+  if (loading && classifiedQuizzes.length === 0) {
     return (
       <>
         {focusRefetch}

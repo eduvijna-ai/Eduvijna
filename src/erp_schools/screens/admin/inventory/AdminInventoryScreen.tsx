@@ -152,7 +152,19 @@ export default function AdminInventoryScreen() {
 
   const [itemModal, setItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItemRow | null>(null);
-  const [itemForm, setItemForm] = useState({
+  type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+  type ItemUnit = (typeof ITEM_UNITS)[number];
+  const [itemForm, setItemForm] = useState<{
+    itemName: string;
+    category: ItemCategory;
+    unit: ItemUnit;
+    quantity: string;
+    minStockLevel: string;
+    unitPrice: string;
+    location: string;
+    supplier: string;
+    description: string;
+  }>({
     itemName: '',
     category: 'general',
     unit: 'piece',
@@ -444,8 +456,8 @@ export default function AdminInventoryScreen() {
                         setEditingItem(item);
                         setItemForm({
                           itemName: item.itemName,
-                          category: item.category || 'general',
-                          unit: item.unit || 'piece',
+                          category: (item.category || 'general') as ItemCategory,
+                          unit: (item.unit || 'piece') as ItemUnit,
                           quantity: String(item.quantity ?? 0),
                           minStockLevel: String(item.minStockLevel ?? 5),
                           unitPrice: String(item.unitPrice ?? 0),
@@ -699,14 +711,24 @@ export default function AdminInventoryScreen() {
             <FormField label="Category">
               <SelectField
                 value={itemForm.category}
-                onChange={(v) => setItemForm((f) => ({ ...f, category: v }))}
+                onChange={(v) =>
+                  setItemForm((f) => ({
+                    ...f,
+                    category: v as ItemCategory,
+                  }))
+                }
                 options={itemCategoryFormOpts}
               />
             </FormField>
             <FormField label="Unit">
               <SelectField
                 value={itemForm.unit}
-                onChange={(v) => setItemForm((f) => ({ ...f, unit: v }))}
+                onChange={(v) =>
+                  setItemForm((f) => ({
+                    ...f,
+                    unit: v as ItemUnit,
+                  }))
+                }
                 options={unitFormOpts}
               />
             </FormField>

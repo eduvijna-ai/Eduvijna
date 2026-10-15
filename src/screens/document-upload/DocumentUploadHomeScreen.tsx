@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import {
   DocumentUploadBook,
   fetchBookPageImage,
@@ -47,10 +48,11 @@ import {
 } from '@core/services/documentUploadStorage';
 import { resolvePickerAssetBlob } from '@core/utils/documentUploadPickerAsset';
 import { rememberDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
+import DocumentCurriculumFromBooksScreen from './DocumentCurriculumFromBooksScreen';
 
 const FALLBACK_THUMB = 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800';
 
-type ActiveTab = 'upload' | 'search';
+type ActiveTab = 'upload' | 'fromBooks';
 
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
@@ -76,6 +78,7 @@ const normalizeErrorMessage = (err: any, fallback: string): string => {
 };
 
 export default function DocumentUploadHomeScreen({ navigation, route }: any) {
+  useQuizNavAccessRedirect('DocumentUploadHomeScreen', navigation);
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
@@ -89,6 +92,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   selectedBookRef.current = selectedBook;
   const [bookName, setBookName] = useState('');
   const [search, setSearch] = useState('');
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [loadingBooks, setLoadingBooks] = useState(true);
@@ -159,7 +163,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     } else if (autoAction === 'gallery') {
       void handleGalleryTilePress();
     } else if (autoAction === 'search') {
-      setActiveTab('search');
+      setActiveTab('upload');
+      setLibraryPickerOpen(true);
     }
 
     // Clear one-time action so it won't rerun on focus re-entry.
@@ -490,6 +495,10 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
           <Text style={styles.emptyTitle}>No uploaded books yet</Text>
           <Text style={styles.emptyText}>Upload a document to start the new Document Upload flow.</Text>
+          <TouchableOpacity style={styles.changeBtn} onPress={() => setLibraryPickerOpen(true)}>
+            <Ionicons name="folder-open-outline" size={16} color={colors.primary} />
+            <Text style={styles.changeBtnText}>Browse uploaded library</Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -515,7 +524,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
               <Ionicons name="documents-outline" size={13} color={colors.primary} />
               <Text style={styles.pageBadgeText}>{selectedBook.totalPages || 1} pages</Text>
             </View>
-            <TouchableOpacity style={styles.changeBtn} onPress={() => setActiveTab('search')}>
+            <TouchableOpacity style={styles.changeBtn} onPress={() => setLibraryPickerOpen(true)}>
               <Ionicons name="refresh-circle-outline" size={16} color={colors.primary} />
               <Text style={styles.changeBtnText}>Change book</Text>
             </TouchableOpacity>
@@ -531,8 +540,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <View style={styles.tabRow}>
         {([
-          { key: 'upload', label: 'Upload' },
-          { key: 'search', label: 'On device' },
+          { key: 'upload', label: 'From Upload' },
+          { key: 'fromBooks', label: 'From Books' },
         ] as const).map((tab) => {
           const active = activeTab === tab.key;
           return (
@@ -547,31 +556,27 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         })}
       </View>
 
+      {activeTab === 'fromBooks' ? (
+        <DocumentCurriculumFromBooksScreen navigation={navigation} embedded />
+      ) : (
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
-        <TouchableOpacity
-          style={styles.libraryBanner}
-          onPress={() => navigation.navigate('DocumentLibraryScreen')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.libraryBannerIcon}>
-            <Ionicons name="library-outline" size={20} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.libraryBannerTitle}>From Books</Text>
-            <Text style={styles.libraryBannerSub}>
-              Server library — select pages, generate, save, and share to classrooms
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-
         {loadingBooks ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="small" color={colors.primary} />
             <Text style={styles.loadingText}>Loading books...</Text>
           </View>
-        ) : activeTab === 'search' ? (
+        ) : (
+          renderBookPreview()
+        )}
+
+        {libraryPickerOpen && (
           <View style={styles.searchCard}>
+            <View style={styles.bookCardHeader}>
+              <Text style={styles.bookCardTitle}>Uploaded library</Text>
+              <TouchableOpacity onPress={() => setLibraryPickerOpen(false)}>
+                <Text style={styles.linkText}>Close</Text>
+              </TouchableOpacity>
+            </View>
             <TextInput
               value={search}
               onChangeText={setSearch}
@@ -579,7 +584,6 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
             />
-
             {filteredBooks.length === 0 ? (
               <View style={styles.emptySmall}>
                 <Text style={styles.emptyText}>No matching books found.</Text>
@@ -592,7 +596,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
                   onPress={() => {
                     setSelectedBook(book);
                     setBookName(book.title || book.originalName);
-                    setActiveTab('upload');
+                    setLibraryPickerOpen(false);
                   }}
                 >
                   <Ionicons name="book-outline" size={18} color={colors.primary} />
@@ -604,8 +608,6 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
               ))
             )}
           </View>
-        ) : (
-          renderBookPreview()
         )}
 
         {!!selectedBook && (
@@ -702,6 +704,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

@@ -221,7 +221,7 @@ export default function WebNavigation({ activeScreen, onNavigate, children }: We
             title="Analytics"
             active={activeScreen === 'analytics'}
             styles={styles}
-            onPress={() => onNavigate('ClassesList')}
+            onPress={() => onNavigate('analytics')}
           />
           {/* <NavItem
             title="Theme"
@@ -346,8 +346,12 @@ function NavItem({
   onPress: () => void;
   styles: NavItemStyles;
 }) {
+  const testID = `nav-${title.toLowerCase().replace(/\s+/g, '-')}`;
   return (
     <TouchableOpacity
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={title}
       style={[styles.navItem, active && styles.navItemActive]}
       onPress={onPress}
     >

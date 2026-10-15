@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { resolveActiveApiEnvironment } from '../config/activeApiEnvironment';
 import type { ApiEnvironment } from '../config/apiEnvironment';
+import { getCredentialEpoch, setCredentialEpoch } from './authCredentialEpoch';
 
 const LEGACY_KEYS = {
   ACCESS_TOKEN: 'auth_access_token',
@@ -23,9 +24,42 @@ const KEY_SUFFIX = {
   USER_DATA: 'user_data',
 } as const;
 
+const SESSION_EPOCH_SUFFIX = 'session_epoch';
+
 /** SecureStore allows only [A-Za-z0-9._-] — use dot-separated segments, not colons. */
-function scopedStorageKey(suffix: string, environment: ApiEnvironment): string {
-  return `eduvijna.auth.${environment}.${suffix}`;
+function scopedStorageKey(
+  suffix: string,
+  environment: ApiEnvironment,
+  credentialEpoch = getCredentialEpoch(),
+): string {
+  return `eduvijna.auth.${environment}.e${credentialEpoch}.${suffix}`;
+}
+
+function sessionEpochMarkerKey(environment: ApiEnvironment): string {
+  return `eduvijna.auth.${environment}.${SESSION_EPOCH_SUFFIX}`;
+}
+
+export async function hydrateCredentialEpochFromStorage(): Promise<number> {
+  const environment = resolveActiveApiEnvironment();
+  const raw = await readScopedString(sessionEpochMarkerKey(environment));
+  const parsed = raw != null ? Number.parseInt(raw, 10) : 0;
+  const epoch = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  setCredentialEpoch(epoch);
+  return epoch;
+}
+
+/** @internal test helper — list credential key suffixes present in memory store */
+export async function __testHasCredentialArtifactsForEpoch(epoch: number): Promise<boolean> {
+  const access = await getAccessTokenForEpoch(epoch);
+  const refresh = await getRefreshTokenForEpoch(epoch);
+  const user = await getUserDataForEpoch(epoch);
+  return Boolean(access || refresh || user);
+}
+
+export async function persistCredentialEpoch(epoch: number): Promise<void> {
+  const environment = resolveActiveApiEnvironment();
+  setCredentialEpoch(epoch);
+  await writeScopedString(sessionEpochMarkerKey(environment), String(epoch));
 }
 
 function legacyKeysPresent(): boolean {
@@ -106,24 +140,41 @@ export async function hasLegacyUnscopedAuthCredentials(): Promise<boolean> {
 /**
  * Store access token for the active API environment.
  */
-export async function storeAccessToken(token: string): Promise<void> {
+export async function storeAccessTokenForEpoch(epoch: number, token: string): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
-    await writeScopedString(scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment), token);
+    await writeScopedString(scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment, epoch), token);
   } catch (error) {
     console.error('Failed to store access token:', error);
     throw new Error('Failed to store access token');
   }
 }
 
+export async function storeAccessToken(token: string): Promise<void> {
+  return storeAccessTokenForEpoch(getCredentialEpoch(), token);
+}
+
 /**
  * Access token for the active API environment only (never legacy / other env).
  */
+export async function getAccessTokenForEpoch(epoch: number): Promise<string | null> {
+  try {
+    const environment = resolveActiveApiEnvironment();
+    const scoped = await readScopedString(
+      scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment, epoch),
+    );
+    return scoped;
+  } catch (error) {
+    console.error('Failed to get access token:', error);
+    return null;
+  }
+}
+
 export async function getAccessToken(): Promise<string | null> {
   try {
     const environment = resolveActiveApiEnvironment();
     const scoped = await readScopedString(
-      scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment),
+      scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment, getCredentialEpoch()),
     );
     if (scoped) {
       return scoped;
@@ -138,10 +189,10 @@ export async function getAccessToken(): Promise<string | null> {
   }
 }
 
-export async function storeRefreshToken(token: string): Promise<void> {
+export async function storeRefreshTokenForEpoch(epoch: number, token: string): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
-    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment, epoch);
     if (isWeb) {
       await writeScopedString(key, token);
     } else {
@@ -153,10 +204,31 @@ export async function storeRefreshToken(token: string): Promise<void> {
   }
 }
 
+export async function storeRefreshToken(token: string): Promise<void> {
+  return storeRefreshTokenForEpoch(getCredentialEpoch(), token);
+}
+
+export async function getRefreshTokenForEpoch(epoch: number): Promise<string | null> {
+  try {
+    const environment = resolveActiveApiEnvironment();
+    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment, epoch);
+    let scoped: string | null = null;
+    if (isWeb) {
+      scoped = await readScopedString(key);
+    } else {
+      scoped = await SecureStore.getItemAsync(key);
+    }
+    return scoped;
+  } catch (error) {
+    console.error('Failed to get refresh token:', error);
+    return null;
+  }
+}
+
 export async function getRefreshToken(): Promise<string | null> {
   try {
     const environment = resolveActiveApiEnvironment();
-    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+    const key = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment, getCredentialEpoch());
     let scoped: string | null = null;
     if (isWeb) {
       scoped = await readScopedString(key);
@@ -176,12 +248,12 @@ export async function getRefreshToken(): Promise<string | null> {
   }
 }
 
-export async function storeTokenExpiry(expiresIn: number): Promise<void> {
+export async function storeTokenExpiryForEpoch(epoch: number, expiresIn: number): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
     const expiryTime = Date.now() + expiresIn * 1000;
     await writeScopedString(
-      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment),
+      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment, epoch),
       expiryTime.toString(),
     );
   } catch (error) {
@@ -189,11 +261,15 @@ export async function storeTokenExpiry(expiresIn: number): Promise<void> {
   }
 }
 
+export async function storeTokenExpiry(expiresIn: number): Promise<void> {
+  return storeTokenExpiryForEpoch(getCredentialEpoch(), expiresIn);
+}
+
 export async function getTokenExpiry(): Promise<number | null> {
   try {
     const environment = resolveActiveApiEnvironment();
     const expiryString = await readScopedString(
-      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment),
+      scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment, getCredentialEpoch()),
     );
     return expiryString ? parseInt(expiryString, 10) : null;
   } catch (error) {
@@ -216,19 +292,36 @@ export async function isTokenExpired(): Promise<boolean> {
   }
 }
 
-export async function storeUserData(userData: string): Promise<void> {
+export async function storeUserDataForEpoch(epoch: number, userData: string): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
-    await writeScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment), userData);
+    await writeScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment, epoch), userData);
   } catch (error) {
     console.error('Failed to store user data:', error);
+  }
+}
+
+export async function storeUserData(userData: string): Promise<void> {
+  return storeUserDataForEpoch(getCredentialEpoch(), userData);
+}
+
+export async function getUserDataForEpoch(epoch: number): Promise<string | null> {
+  try {
+    const environment = resolveActiveApiEnvironment();
+    const scoped = await readScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment, epoch));
+    return scoped;
+  } catch (error) {
+    console.error('Failed to get user data:', error);
+    return null;
   }
 }
 
 export async function getUserData(): Promise<string | null> {
   try {
     const environment = resolveActiveApiEnvironment();
-    const scoped = await readScopedString(scopedStorageKey(KEY_SUFFIX.USER_DATA, environment));
+    const scoped = await readScopedString(
+      scopedStorageKey(KEY_SUFFIX.USER_DATA, environment, getCredentialEpoch()),
+    );
     if (scoped) {
       return scoped;
     }
@@ -264,11 +357,14 @@ async function clearLegacyAuthData(): Promise<void> {
   }
 }
 
-async function clearScopedEnvironment(environment: ApiEnvironment): Promise<void> {
-  const accessKey = scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment);
-  const expiryKey = scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment);
-  const userKey = scopedStorageKey(KEY_SUFFIX.USER_DATA, environment);
-  const refreshKey = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment);
+async function clearScopedEnvironmentForEpoch(
+  environment: ApiEnvironment,
+  credentialEpoch: number,
+): Promise<void> {
+  const accessKey = scopedStorageKey(KEY_SUFFIX.ACCESS_TOKEN, environment, credentialEpoch);
+  const expiryKey = scopedStorageKey(KEY_SUFFIX.TOKEN_EXPIRY, environment, credentialEpoch);
+  const userKey = scopedStorageKey(KEY_SUFFIX.USER_DATA, environment, credentialEpoch);
+  const refreshKey = scopedStorageKey(KEY_SUFFIX.REFRESH_TOKEN, environment, credentialEpoch);
 
   await removeScopedString(accessKey);
   await removeScopedString(expiryKey);
@@ -285,15 +381,34 @@ async function clearScopedEnvironment(environment: ApiEnvironment): Promise<void
   }
 }
 
-export async function clearAuthData(): Promise<void> {
+export async function clearAuthDataForEpoch(credentialEpoch: number): Promise<void> {
   try {
     const environment = resolveActiveApiEnvironment();
-    await clearScopedEnvironment(environment);
-    await clearLegacyAuthData();
+    await clearScopedEnvironmentForEpoch(environment, credentialEpoch);
+    if (credentialEpoch === getCredentialEpoch()) {
+      await clearLegacyAuthData();
+    }
   } catch (error) {
     console.error('Failed to clear auth data:', error);
     throw new Error('Failed to clear authentication data');
   }
+}
+
+export async function clearAuthData(): Promise<void> {
+  return clearAuthDataForEpoch(getCredentialEpoch());
+}
+
+export async function storeAuthTokensForEpoch(
+  epoch: number,
+  accessToken: string,
+  refreshToken: string,
+  expiresIn: number,
+): Promise<void> {
+  await Promise.all([
+    storeAccessTokenForEpoch(epoch, accessToken),
+    storeRefreshTokenForEpoch(epoch, refreshToken),
+    storeTokenExpiryForEpoch(epoch, expiresIn),
+  ]);
 }
 
 export async function storeAuthTokens(
@@ -301,11 +416,7 @@ export async function storeAuthTokens(
   refreshToken: string,
   expiresIn: number,
 ): Promise<void> {
-  await Promise.all([
-    storeAccessToken(accessToken),
-    storeRefreshToken(refreshToken),
-    storeTokenExpiry(expiresIn),
-  ]);
+  return storeAuthTokensForEpoch(getCredentialEpoch(), accessToken, refreshToken, expiresIn);
 }
 
 /** @internal test helper */

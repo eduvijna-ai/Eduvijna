@@ -17,6 +17,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -24,6 +25,7 @@ import {
   SCREEN_DEFAULTS,
   type ResolvedNavItem,
 } from '@core/hooks/useQuizNavItems';
+import { useQuizNavScreenAccess } from '@core/hooks/useQuizNavScreenAccess';
 import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
 
 /** Hard-coded fallback order – shown when the API returns no items */
@@ -53,10 +55,10 @@ const isPlatformTile = (tile: ResolvedNavItem): boolean => {
 const PLATFORM_EXPANSION_SCREENS = [
   'CreateAIQuizScreen',
   'CreateDocumentQuizScreen',
+  'CreateHandwrittenQuizScreen',
   'CreateImageQuizScreen',
 ];
 
-/** Tiles hidden from the home Generate Assessment grid (still reachable via header menu). */
 const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
   // The platform itself is never shown as a tile; it is expanded into its parts.
   return isPlatformTile(tile);
@@ -79,14 +81,16 @@ export default function QuizGenerationGrid({
   showTitle = true,
   onQuizTypePress,
 }: QuizGenerationGridProps) {
-  const { items: navItems, loading } = useQuizNavItems();
+  const { items: navItems, loading, fetchStatus } = useQuizNavItems();
+  const { canAccessScreen } = useQuizNavScreenAccess();
 
   /** Tiles to render — API items when available, defaults otherwise */
   const tiles: ResolvedNavItem[] = useMemo(() => {
     const source =
-      navItems.length > 0
+      fetchStatus === 'ready'
         ? navItems
-        : FALLBACK_SCREENS.map((screen, i) => {
+        : fetchStatus === 'error'
+        ? FALLBACK_SCREENS.map((screen, i) => {
             const d = SCREEN_DEFAULTS[screen]!;
             return {
               screen,
@@ -97,7 +101,8 @@ export default function QuizGenerationGrid({
               bgColor: d.bg,
               display_order: i,
             };
-          });
+          })
+        : [];
 
     // Whether the user is granted the AI Assessment Platform (its workspace
     // includes AI Assessment / Document & Handwritten / Image on web).
@@ -131,9 +136,22 @@ export default function QuizGenerationGrid({
     return [...visible, ...expanded].sort(
       (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
     );
-  }, [navItems]);
+  }, [navItems, fetchStatus]);
 
   const handlePress = (screen: string) => {
+    const workspaceMode =
+      screen === 'CreateHandwrittenQuizScreen'
+        ? 'handwritten'
+        : screen === 'CreateDocumentQuizScreen'
+          ? 'document'
+          : undefined;
+    if (!canAccessScreen(screen, workspaceMode ? { workspaceMode } : undefined)) {
+      Alert.alert(
+        'Not available',
+        'This assessment type is not enabled for your account. Contact your school administrator.',
+      );
+      return;
+    }
     // Tab-level destinations — use the root nav ref to switch tabs reliably
     if (screen === 'ERPSchools') {
       navigateToAppMainTab(APP_MAIN_TABS.ERP_SCHOOLS);

@@ -9,7 +9,10 @@ import { getAttendedQuiz } from '../core/services/quizResultRetrieval.service';
 import {
   resolveStudentAssignedQuizViewResults,
 } from '../core/services/assessmentQuizStart.service';
-import { isAssignedQuizRecoveryProbeError } from '../core/services/assignedQuizRecovery.service';
+import {
+  AssignedQuizRecoveryProbeError,
+  findPendingSubmissionCheckpoint,
+} from '../core/services/assignedQuizRecovery.service';
 import {
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
   writeQuizSubmissionCheckpoint,
@@ -24,6 +27,18 @@ jest.mock('../core/services/quizResultRetrieval.service', () => ({
   getAttendedQuiz: jest.fn(),
   fetchPersistedQuizResult: jest.fn(),
 }));
+
+jest.mock('../core/services/assignedQuizRecovery.service', () => {
+  const actual = jest.requireActual('../core/services/assignedQuizRecovery.service');
+  return {
+    ...actual,
+    findPendingSubmissionCheckpoint: jest.fn(),
+  };
+});
+
+const mockFindPending = findPendingSubmissionCheckpoint as jest.MockedFunction<
+  typeof findPendingSubmissionCheckpoint
+>;
 
 const mockGetQuiz = getQuizBySessionId as jest.MockedFunction<typeof getQuizBySessionId>;
 const mockGetAttended = getAttendedQuiz as jest.MockedFunction<typeof getAttendedQuiz>;
@@ -54,6 +69,7 @@ describe('resolveStudentAssignedQuizViewResults', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFindPending.mockResolvedValue(null);
     for (const key of Object.keys(asyncStore)) delete asyncStore[key];
     (AsyncStorage.getItem as jest.Mock).mockImplementation(
       async (key: string) => asyncStore[key] ?? null,
@@ -69,6 +85,7 @@ describe('resolveStudentAssignedQuizViewResults', () => {
 
   it('routes to immutable recovery retry when checkpoint pending on completed card', async () => {
     await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+    mockFindPending.mockResolvedValue(pendingCheckpoint);
     mockGetAttended.mockRejectedValue({ response: { status: 404 } });
     mockGetQuiz.mockResolvedValue({
       success: true,
@@ -101,6 +118,7 @@ describe('resolveStudentAssignedQuizViewResults', () => {
 
   it('opens results when server already has submission', async () => {
     await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+    mockFindPending.mockResolvedValue(null);
     mockGetAttended.mockResolvedValue({
       submitted_at: '2026-01-02T00:00:00.000Z',
       log_data: { answers: [{ questionNumber: 1 }] },
@@ -124,23 +142,19 @@ describe('resolveStudentAssignedQuizViewResults', () => {
     expect(AsyncStorage.removeItem).toHaveBeenCalled();
   });
 
-  it('surfaces probe failure for Assessments retry alert', async () => {
-    await writeQuizSubmissionCheckpoint(pendingCheckpoint);
-    mockGetAttended.mockRejectedValue({ response: { status: 500 } });
+  it('returns probe_failed when checkpoint probe fails', async () => {
+    mockFindPending.mockRejectedValue(
+      new AssignedQuizRecoveryProbeError('Could not verify submission state.'),
+    );
 
-    let caught: unknown;
-    try {
-      await resolveStudentAssignedQuizViewResults({
-        studentId: 'student-1',
-        quizId: 10,
-        sessionId: 'sess-10',
-        classroomId: 'class-1',
-        attemptData: { quiz_id: 10 },
-      });
-    } catch (error) {
-      caught = error;
-    }
+    const result = await resolveStudentAssignedQuizViewResults({
+      studentId: 'student-1',
+      quizId: 10,
+      sessionId: 'sess-10',
+      classroomId: 'class-1',
+      attemptData: { quiz_id: 10 },
+    });
 
-    expect(isAssignedQuizRecoveryProbeError(caught)).toBe(true);
+    expect(result.kind).toBe('probe_failed');
   });
 });

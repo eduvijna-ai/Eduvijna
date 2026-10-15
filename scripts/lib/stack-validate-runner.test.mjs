@@ -31,7 +31,7 @@ test('worktreeFolderForBranch sanitizes branch names', () => {
 
 test('assertWorktreeExpoEntry requires index.js main', () => {
   const root = makeMinimalWorktree({ withIndex: true, main: 'index.js' });
-  assertWorktreeExpoEntry(root);
+  assertWorktreeExpoEntry(root, root);
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -96,6 +96,20 @@ test('computeStackValidationStatus passing vs regression vs export vs tool failu
     },
   };
   assert.equal(computeStackValidationStatus([regression]).status, 'diagnostic_regression');
+
+  const rawOnlyNotGenuine = {
+    ...baseBranch,
+    diagnostics: {
+      ...baseBranch.diagnostics,
+      identitiesAdded: {
+        tsAdded: ['src/foo.ts|TS1234'],
+        eslintAdded: [],
+        tsGenuineAdded: [],
+        eslintGenuineAdded: [],
+      },
+    },
+  };
+  assert.equal(computeStackValidationStatus([rawOnlyNotGenuine]).status, 'passed');
 
   const exportFail = {
     ...baseBranch,

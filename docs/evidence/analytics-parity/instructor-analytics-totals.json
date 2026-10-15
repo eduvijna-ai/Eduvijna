@@ -1,0 +1,68 @@
+{
+  "at": "2026-10-12T02:23:50.049Z",
+  "account": "instructor",
+  "classLabel": "4A-Mathematics",
+  "timezoneNote": "Date boundaries use UTC ISO YYYY-MM-DD slices (Quiz-React AnalyticsPage parity).",
+  "totals": {
+    "default": {
+      "created_from": "2026-09-12",
+      "created_to": "2026-10-13",
+      "rowCount": 31,
+      "classCount": 3,
+      "classes": [
+        {
+          "classroom_id": "class_38c28982",
+          "classroom_name": "10A-Mathematics-Sam",
+          "quizRows": 1
+        },
+        {
+          "classroom_id": "class_4d82c60e",
+          "classroom_name": "4A-Mathematics",
+          "quizRows": 23
+        },
+        {
+          "classroom_id": "class_b3261be7",
+          "classroom_name": "4A-Telugu",
+          "quizRows": 7
+        }
+      ],
+      "fixtureRowCount": 0,
+      "fixtureInClass": null
+    },
+    "fixture": {
+      "created_from": "2026-08-01",
+      "created_to": "2026-10-13",
+      "rowCount": 36,
+      "classCount": 3,
+      "classes": [
+        {
+          "classroom_id": "class_38c28982",
+          "classroom_name": "10A-Mathematics-Sam",
+          "quizRows": 1
+        },
+        {
+          "classroom_id": "class_4d82c60e",
+          "classroom_name": "4A-Mathematics",
+          "quizRows": 27
+        },
+        {
+          "classroom_id": "class_b3261be7",
+          "classroom_name": "4A-Telugu",
+          "quizRows": 8
+        }
+      ],
+      "fixtureRowCount": 1,
+      "fixtureInClass": "class_4d82c60e"
+    }
+  },
+  "parity": {
+    "defaultVsFixture": {
+      "rowDelta": 5,
+      "classDelta": 0
+    },
+    "fixture479": {
+      "inDefaultRange": false,
+      "inFixtureRange": true
+    }
+  }
+}

@@ -31,6 +31,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import useNotifications from '@core/hooks/useNotifications';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import MathRenderer from '../components/MathRenderer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModalDropdownField from '../components/ModalDropdownField';
@@ -130,6 +131,7 @@ const toOptionLetter = (raw: string, options: string[]): 'A' | 'B' | 'C' | 'D' =
 };
 
 export default function ImageAssessmentScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateImageQuizScreen', navigation);
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();

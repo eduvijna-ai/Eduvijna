@@ -15,6 +15,7 @@ web-build/
 .env
 .env.local
 .dev-api-credentials.local.json
+.engineering-physical-device.local.json
 .dev-api-submission-matrix-run/
 
 # macOS

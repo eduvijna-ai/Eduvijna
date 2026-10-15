@@ -77,9 +77,23 @@ function loadAuthApiOnNative(platformOs: 'android' | 'ios') {
     get: jest.fn(),
   }));
 
+  jest.doMock('../core/store/user.store', () => ({
+    useUserStore: {
+      getState: () => ({ setTokens: jest.fn() }),
+    },
+  }));
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { restoreAuthSessionEpoch } = require('../core/api/apiRefreshCoordinator') as typeof import('../core/api/apiRefreshCoordinator');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { setCredentialEpoch } = require('../core/services/authCredentialEpoch') as typeof import('../core/services/authCredentialEpoch');
+  const sessionEpoch = 1;
+  restoreAuthSessionEpoch(sessionEpoch);
+  setCredentialEpoch(sessionEpoch);
+
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const authApi = require('../core/api/auth.api') as typeof import('../core/api/auth.api');
-  return { authApi, post };
+  return { authApi, post, sessionEpoch };
 }
 
 describe.each(['android', 'ios'] as const)('auth.api login native storage (%s)', (platformOs) => {
@@ -89,12 +103,16 @@ describe.each(['android', 'ios'] as const)('auth.api login native storage (%s)',
   });
 
   it('persists refresh token under environment-scoped SecureStore key', async () => {
-    const { authApi } = loadAuthApiOnNative(platformOs);
+    const { authApi, sessionEpoch } = loadAuthApiOnNative(platformOs);
 
-    await authApi.login({ email: 'student@test.com', password: 'secret' });
+    await authApi.login({ email: 'student@test.com', password: 'secret' }, sessionEpoch);
 
-    expect(secureStore['eduvijna.auth.development.refresh_token']).toBe('refresh-from-api');
-    expect(memoryStore['eduvijna.auth.development.access_token']).toBe('access-from-api');
+    expect(secureStore[`eduvijna.auth.development.e${sessionEpoch}.refresh_token`]).toBe(
+      'refresh-from-api',
+    );
+    expect(memoryStore[`eduvijna.auth.development.e${sessionEpoch}.access_token`]).toBe(
+      'access-from-api',
+    );
   });
 
   it('surfaces SecureStore key failures during login', async () => {
@@ -145,10 +163,24 @@ describe.each(['android', 'ios'] as const)('auth.api login native storage (%s)',
       get: jest.fn(),
     }));
 
+    jest.doMock('../core/store/user.store', () => ({
+      useUserStore: {
+        getState: () => ({ setTokens: jest.fn() }),
+      },
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { restoreAuthSessionEpoch } = require('../core/api/apiRefreshCoordinator') as typeof import('../core/api/apiRefreshCoordinator');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { setCredentialEpoch } = require('../core/services/authCredentialEpoch') as typeof import('../core/services/authCredentialEpoch');
+    const sessionEpoch = 1;
+    restoreAuthSessionEpoch(sessionEpoch);
+    setCredentialEpoch(sessionEpoch);
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const authApi = require('../core/api/auth.api') as typeof import('../core/api/auth.api');
 
-    await expect(authApi.login({ email: 'x@y.com', password: 'p' })).rejects.toThrow(
+    await expect(authApi.login({ email: 'x@y.com', password: 'p' }, sessionEpoch)).rejects.toThrow(
       /Failed to store refresh token/,
     );
   });

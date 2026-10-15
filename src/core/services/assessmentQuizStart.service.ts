@@ -187,6 +187,10 @@ export interface StudentQuizResultsNavigationParams {
   quizName?: string;
   sessionId: string;
   studentId: string;
+  classroomId?: string;
+  attemptId?: number;
+  score?: number;
+  attemptData?: Record<string, unknown>;
   isTeacherView: false;
 }
 
@@ -322,6 +326,13 @@ export async function resolveStudentAssignedQuizViewResults(args: {
     );
   }
 
+  const attemptIdRaw = args.attemptData?.id ?? args.attemptData?.attempt_id;
+  const attemptId =
+    attemptIdRaw != null && Number.isFinite(Number(attemptIdRaw)) ? Number(attemptIdRaw) : undefined;
+  const scoreRaw = args.attemptData?.score;
+  const score =
+    scoreRaw != null && Number.isFinite(Number(scoreRaw)) ? Number(scoreRaw) : undefined;
+
   return {
     kind: 'view_results',
     resultParams: {
@@ -329,6 +340,10 @@ export async function resolveStudentAssignedQuizViewResults(args: {
       quizName: args.quizName ?? String(args.attemptData?.quiz_name ?? 'Assessment'),
       sessionId: args.sessionId,
       studentId: args.studentId,
+      classroomId: args.classroomId || undefined,
+      attemptId,
+      score,
+      attemptData: args.attemptData ?? undefined,
       isTeacherView: false,
     },
   };

@@ -132,6 +132,9 @@ describe('fetchPersistedQuizResult', () => {
       mockFetchTeacherQuizzes.mockResolvedValue({
         data: [
           {
+            quiz_id: 99,
+            session_id: 'session-a',
+            classroom_id: 'class-room-a',
             attempts: JSON.stringify([
               {
                 attempt_id: 1,
@@ -183,6 +186,188 @@ describe('fetchPersistedQuizResult', () => {
       if (result.status === 'error') {
         expect(result.message).toContain('session');
       }
+    });
+
+    it('loads by attemptId when attempts omit session_id but parent assignment has session_id', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-parent',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                status: 'completed',
+                score: 60,
+                log_data: logPayload,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-parent',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+    });
+
+    it('loads worksheet-marked attempts via attended-quiz items when worksheet_data is absent', async () => {
+      const worksheetLog = {
+        assessment_type: 'worksheet',
+        worksheet_answers: { Section_A_MCQ: [{ id: 1, answer: 'B' }] },
+      };
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-ws',
+            classroom_id: 'class_4d82c60e',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                session_id: 'sess-ws',
+                status: 'completed',
+                score: 60,
+                log_data: worksheetLog,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      mockGet.mockResolvedValue({
+        data: {
+          student_id: '70',
+          classroom_id: 'class_4d82c60e',
+          quiz_id: 479,
+          session_id: 'sess-ws',
+          score: 60,
+          submitted_at: '2026-08-27T07:34:24.463000+00:00',
+          time_spent_seconds: 0,
+          duration: 30,
+          counts: { total_questions: 10, questions_answered: 10, questions_skipped: 0 },
+          items: Array.from({ length: 10 }, (_, i) => ({
+            question_id: i + 1,
+            question: `Section item ${i + 1}`,
+            options: [],
+            student_answer: 'A',
+            answer_key: null,
+            is_correct: i < 6,
+          })),
+        },
+      });
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-ws',
+        classroomId: 'class_4d82c60e',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+      if (result.status === 'ready') {
+        expect(result.score).toBe(60);
+        expect(result.quizData.questions).toHaveLength(10);
+      }
+      expect(mockGet.mock.calls[0][0]).toContain('classroom_id=class_4d82c60e');
+      expect(mockGet.mock.calls[0][0]).not.toContain('classroom_id=sess-ws');
+    });
+
+    it('rejects API rows when requested quiz_id is absent from dashboard response', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 100,
+            session_id: 'other-session',
+            attempts: JSON.stringify([]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('requested quiz');
+      }
+    });
+
+    it('rejects when route classroom_id is the session uuid (session must not be classroom)', async () => {
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        sessionId: 'session-a',
+        classroomId: 'session-a',
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.message).toContain('session');
+      }
+    });
+
+    it('loads parent assignment classroom when attempt row omits class_id', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          {
+            quiz_id: 479,
+            session_id: 'sess-parent',
+            classroom_id: 'class_4d82c60e',
+            attempts: JSON.stringify([
+              {
+                attempt_id: 207,
+                student_id: '70',
+                status: 'completed',
+                score: 60,
+                log_data: logPayload,
+              },
+            ]),
+          },
+        ],
+        pagination: { total: 1, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 479,
+        sessionId: 'sess-parent',
+        classroomId: 'class_4d82c60e',
+        studentId: '70',
+        attemptId: 207,
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('ready');
+    });
+
+    it('errors when multiple assignments share quiz_id without session', async () => {
+      mockFetchTeacherQuizzes.mockResolvedValue({
+        data: [
+          { quiz_id: 99, session_id: 'session-a', attempts: '[]' },
+          { quiz_id: 99, session_id: 'session-b', attempts: '[]' },
+        ],
+        pagination: { total: 2, limit: 10, offset: 0, hasMore: false },
+      } as unknown as Awaited<ReturnType<typeof fetchTeacherQuizzes>>);
+
+      const result = await fetchPersistedQuizResult({
+        quizId: 99,
+        studentId: 'student-a',
+        isTeacherView: true,
+      });
+      expect(result.status).toBe('error');
     });
 
     it('errors when attemptId does not match session-scoped rows', async () => {

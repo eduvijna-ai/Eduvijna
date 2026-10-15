@@ -4,7 +4,7 @@
  * Deep linking support for cross-platform assessment access
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,23 +16,39 @@ import { AppSideNavProvider } from './src/context/AppSideNavContext';
 import { DropdownProvider } from './src/context/DropdownContext';
 import { AuthProvider } from './src/core/context/AuthContext';
 import ImageCropModal from './src/core/components/ImageCropModal';
-import { navigationRef } from './src/core/services/navigationService';
+import { navigationRef, setWebNavigateHandler } from './src/core/services/navigationService';
 import { setAuthErrorNavigationCallback } from './src/core/services/dashboardApi';
 import { initializeCache } from './src/core/services/cacheService';
 import {
   getInitialDeepLink,
   subscribeToDeepLinks,
   parseDeepLink,
+  resetInitialDeepLinkCache,
 } from './src/core/services/deepLinkService';
+import {
+  canResumePostLoginOpenQuiz,
+  isDuplicateOpenQuizDispatch,
+  shouldClearPendingOnAuthTransition,
+} from './src/core/navigation/mobilePendingOpenQuiz';
+import {
+  clearStoredOpenQuizPending,
+  readStoredOpenQuizPending,
+  writeStoredOpenQuizPending,
+} from './src/core/navigation/mobileOpenQuizPendingStorage';
+import { traceOpenQuizPending } from './src/core/navigation/mobileOpenQuizPendingTrace';
 import { PushNotificationService } from './src/core/services/PushNotificationService';
 import { handleOpenQuiz } from './src/core/services/openQuizHandler';
 import { resolveWebShellScreen } from './src/core/utils/webShellRouteAdapter';
+import {
+  IMPLEMENTATION_SHA,
+  logMobileBuildIdentification,
+} from './src/core/utils/buildIdentification';
 
 // Platform-specific imports
 import MobileNavigation from './src/platforms/mobile/navigation/BottomTabNavigator';
 import WebNavigation from './src/platforms/web/navigation/WebNavigation';
 import AssessmentsScreen from './src/screens/Assessments';
-import AnalyticsScreen from './src/platforms/web/screens/Analytics';
+import AnalyticsHubScreen from './src/screens/AnalyticsHubScreen';
 import ProfileScreen from './src/platforms/web/screens/Profile';
 import NotificationsScreen from './src/screens/Notifications';
 import ThemeSettingsScreen from './src/platforms/web/screens/ThemeSettings';
@@ -44,6 +60,7 @@ import CreateAIQuizScreen from './src/screens/CreateAIQuizScreen';
 import CreateDocumentQuizScreen from './src/screens/CreateDocumentQuizScreen';
 import DocumentUploadHomeScreen from './src/screens/document-upload/DocumentUploadHomeScreen';
 import DocumentUploadPreviewScreen from './src/screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentCurriculumGeneratedPreviewScreen from './src/screens/document-upload/DocumentCurriculumGeneratedPreviewScreen';
 import DocumentUploadHistoryScreen from './src/screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from './src/screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from './src/screens/document-upload/DocumentLibraryScreen';
@@ -77,27 +94,162 @@ function AppContent() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
-  
-  // Reset session guards when authentication state changes (never replay cold-launch initial URL)
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setLastProcessedSessionId(null);
-      setLastProcessedTime(0);
-      setPendingSessionId(null);
-      webNavStackRef.current = [];
-    }
-  }, [isAuthenticated]);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const processedNotifications = useRef<Set<string>>(new Set());
   const initialDeepLinkProcessed = useRef<boolean>(false);
-
-  
-  // Platform detection
+  const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
+  const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
+  const [mobileNavigationReady, setMobileNavigationReady] = useState(false);
+  const wasAuthenticatedRef = useRef(false);
+  const prevAuthenticatedForNavResetRef = useRef(false);
+  const postLoginResumeInFlightRef = useRef<string | null>(null);
+  const pendingHydratedRef = useRef(false);
+  const pendingStorageEpochRef = useRef(0);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
 
+  const queuePendingOpenQuiz = useCallback(
+    (sessionId: string, source: string, quizId?: string) => {
+      traceOpenQuizPending('pending_queued', { sessionId, source, quizId: quizId ?? null });
+      setPendingSessionId(sessionId);
+      pendingPostLoginQuizIdRef.current = quizId;
+      void writeStoredOpenQuizPending({
+        sessionId,
+        quizId,
+        source,
+        queuedAtIso: new Date().toISOString(),
+      });
+    },
+    [],
+  );
+
+  const clearPendingOpenQuiz = useCallback((reason: string) => {
+    traceOpenQuizPending('pending_cleared', { reason });
+    pendingStorageEpochRef.current += 1;
+    setPendingSessionId(null);
+    pendingPostLoginQuizIdRef.current = undefined;
+    pendingOpenQuizRef.current = null;
+    postLoginResumeInFlightRef.current = null;
+    void clearStoredOpenQuizPending();
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile || pendingHydratedRef.current) return;
+    pendingHydratedRef.current = true;
+    const hydrateEpoch = pendingStorageEpochRef.current;
+    void readStoredOpenQuizPending().then((stored) => {
+      if (hydrateEpoch !== pendingStorageEpochRef.current) return;
+      if (!stored?.sessionId) return;
+      traceOpenQuizPending('pending_hydrated', {
+        sessionId: stored.sessionId,
+        source: stored.source,
+        quizId: stored.quizId ?? null,
+      });
+      setPendingSessionId((current) => current ?? stored.sessionId);
+      if (!pendingPostLoginQuizIdRef.current) {
+        pendingPostLoginQuizIdRef.current = stored.quizId;
+      }
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    traceOpenQuizPending('auth_hydrated', {
+      isAuthenticated,
+      userId: user?.id ?? null,
+      role: user?.role ?? null,
+    });
+  }, [isMobile, isAuthenticated, user?.id, user?.role]);
+
+  // Clear pending protected navigation only on explicit logout (not signed-out cold start).
+  useEffect(() => {
+    if (shouldClearPendingOnAuthTransition(wasAuthenticatedRef.current, isAuthenticated)) {
+      setLastProcessedSessionId(null);
+      setLastProcessedTime(0);
+      webNavStackRef.current = [];
+      initialDeepLinkProcessed.current = false;
+      setMobileNavigationReady(false);
+      resetInitialDeepLinkCache();
+      clearPendingOpenQuiz('explicit_logout');
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated, clearPendingOpenQuiz]);
+
+  const dispatchOpenQuizInner = useCallback(
+    async (
+      sessionId: string,
+      source: 'deep_link' | 'post_login' | 'notification',
+      quizId?: string,
+    ) => {
+      if (!user) return;
+      const navigationAdapter = {
+        navigate: (screen: string, params?: any) => {
+          if (navigationRef.current) {
+            (navigationRef.current as any).navigate(screen, params);
+          }
+        },
+        alert: Alert.alert,
+      };
+      if (!navigationRef.isReady()) {
+        pendingOpenQuizRef.current = { sessionId, quizId };
+        return;
+      }
+      await handleOpenQuiz(sessionId, source, user, navigationAdapter, setPendingSessionId, {
+        quizId,
+      });
+    },
+    [user],
+  );
+
+  const dispatchOpenQuiz = dispatchOpenQuizInner;
+
+  const flushPendingOpenQuiz = useCallback(() => {
+    if (!isMobile || !isAuthenticated || !user || !pendingOpenQuizRef.current) {
+      return;
+    }
+    if (!navigationRef.isReady()) {
+      return;
+    }
+    const pending = pendingOpenQuizRef.current;
+    pendingOpenQuizRef.current = null;
+    void dispatchOpenQuizInner(pending.sessionId, 'deep_link', pending.quizId);
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuizInner]);
+
+  const syncMobileNavigationReady = useCallback(() => {
+    if (!isMobile || !isAuthenticated) return;
+    if (navigationRef.isReady()) {
+      traceOpenQuizPending('auth_nav_ready', { ready: true });
+      setMobileNavigationReady(true);
+      flushPendingOpenQuiz();
+    }
+  }, [isMobile, isAuthenticated, flushPendingOpenQuiz]);
+
+  useEffect(() => {
+    syncMobileNavigationReady();
+  }, [syncMobileNavigationReady, isAuthenticated, user, pendingSessionId]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    if (!prevAuthenticatedForNavResetRef.current && isAuthenticated) {
+      setMobileNavigationReady(false);
+    }
+    prevAuthenticatedForNavResetRef.current = isAuthenticated;
+  }, [isMobile, isAuthenticated]);
+
+  useEffect(() => {
+    flushPendingOpenQuiz();
+  }, [flushPendingOpenQuiz, mobileNavigationReady, isAuthenticated, user]);
+
   // Notification polling runs in background
+
+  useEffect(() => {
+    if (__DEV__) {
+      (globalThis as typeof globalThis & { __EDUVIJNA_IMPLEMENTATION_SHA__?: string }).__EDUVIJNA_IMPLEMENTATION_SHA__ =
+        IMPLEMENTATION_SHA;
+    }
+    logMobileBuildIdentification();
+  }, []);
 
   // Initialize cache on app startup
   useEffect(() => {
@@ -173,9 +325,10 @@ function AppContent() {
   }, [isMobile, isAuthenticated, user]); // Include auth state to handle login changes
 
   const resumePendingOpenQuiz = React.useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, quizId?: string) => {
       if (!user) {
         setPendingSessionId(sessionId);
+        pendingPostLoginQuizIdRef.current = quizId;
         return;
       }
 
@@ -199,22 +352,22 @@ function AppContent() {
           };
 
       if (isMobile) {
-        const waitForNavigation = async () => {
-          if (!navigationRef.current) {
-            setTimeout(waitForNavigation, 100);
-            return;
-          }
-          await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
-            (error) => {
-              console.error('❌ Error in post-login handleOpenQuiz:', error);
-            },
-          );
-        };
-        waitForNavigation();
+        if (!navigationRef.isReady()) {
+          setPendingSessionId(sessionId);
+          pendingPostLoginQuizIdRef.current = quizId;
+          return;
+        }
+        await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+          quizId,
+        }).catch((error) => {
+          console.error('❌ Error in post-login handleOpenQuiz:', error);
+        });
         return;
       }
 
-      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId).catch(
+      await handleOpenQuiz(sessionId, 'post_login', user, navigationAdapter, setPendingSessionId, {
+        quizId,
+      }).catch(
         (error) => {
           console.error('❌ Error in post-login handleOpenQuiz (web):', error);
         },
@@ -223,14 +376,70 @@ function AppContent() {
     [isMobile, user],
   );
 
-  // Process pending sessionId after successful login (mobile + web)
+  // Post-login resume: mobile waits for NavigationContainer + stack readiness (no timer polling).
   useEffect(() => {
-    if (!isAuthenticated || !pendingSessionId || !user) return;
+    if (!isMobile || !isAuthenticated || !pendingSessionId || !user) return;
+
+    const dest = canResumePostLoginOpenQuiz({
+      isMobile: true,
+      isAuthenticated,
+      hasUser: true,
+      pendingSessionId,
+      navigationReady: navigationRef.isReady(),
+      navigationContainerReady: mobileNavigationReady,
+      resumeInFlightSessionId: postLoginResumeInFlightRef.current,
+    });
+    if (!dest) return;
+
+    const quizId = pendingPostLoginQuizIdRef.current;
+    postLoginResumeInFlightRef.current = dest.sessionId;
+    pendingPostLoginQuizIdRef.current = undefined;
+    traceOpenQuizPending('resume_dispatch', { sessionId: dest.sessionId, quizId: quizId ?? null });
+
+    const navigationAdapter = {
+      navigate: (screen: string, params?: any) => {
+        if (navigationRef.isReady()) {
+          (navigationRef.current as any).navigate(screen, params);
+        }
+      },
+      alert: Alert.alert,
+    };
+
+    void handleOpenQuiz(
+      dest.sessionId,
+      'post_login',
+      user,
+      navigationAdapter,
+      (sessionId) => queuePendingOpenQuiz(sessionId, 'handle_open_quiz_unauthenticated', quizId),
+      { quizId },
+    )
+      .then(() => {
+        traceOpenQuizPending('pending_consume_done', { sessionId: dest.sessionId });
+        pendingStorageEpochRef.current += 1;
+        setPendingSessionId(null);
+        pendingPostLoginQuizIdRef.current = undefined;
+        void clearStoredOpenQuizPending();
+        setLastProcessedSessionId(dest.sessionId);
+        setLastProcessedTime(Date.now());
+      })
+      .catch((error) => {
+        console.error('❌ Post-login open quiz resume failed:', error);
+        traceOpenQuizPending('pending_consume_failed', { sessionId: dest.sessionId });
+        postLoginResumeInFlightRef.current = null;
+        queuePendingOpenQuiz(dest.sessionId, 'resume_retry', quizId);
+      });
+  }, [isMobile, isAuthenticated, pendingSessionId, user, mobileNavigationReady, queuePendingOpenQuiz]);
+
+  // Web post-login resume
+  useEffect(() => {
+    if (isMobile || !isAuthenticated || !pendingSessionId || !user) return;
 
     const sessionId = pendingSessionId;
+    const quizId = pendingPostLoginQuizIdRef.current;
+    pendingPostLoginQuizIdRef.current = undefined;
     setPendingSessionId(null);
-    resumePendingOpenQuiz(sessionId);
-  }, [isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
+    resumePendingOpenQuiz(sessionId, quizId);
+  }, [isMobile, isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
 
   // Set up auth error navigation callback
   useEffect(() => {
@@ -256,6 +465,17 @@ function AppContent() {
     setActiveScreen(resolved as WebShellScreen);
     setNavigationParams(params || {});
   };
+
+  const handleNavigateRef = useRef(handleNavigate);
+  handleNavigateRef.current = handleNavigate;
+  useEffect(() => {
+    if (!isWeb) {
+      setWebNavigateHandler(null);
+      return;
+    }
+    setWebNavigateHandler((screen, params) => handleNavigateRef.current(screen, params));
+    return () => setWebNavigateHandler(null);
+  }, [isWeb]);
 
   // Web screens are rendered outside React Navigation stack, so provide
   // a compatibility navigation object used by screen components that call
@@ -313,16 +533,17 @@ function AppContent() {
             // If not authenticated, save sessionId and show login
             if (!isAuthenticated) {
               console.log('👤 Not authenticated, saving sessionId for post-login:', sessionId);
-              setPendingSessionId(sessionId);
+              traceOpenQuizPending('uri_parsed', { sessionId, path: 'initial_deep_link' });
+              queuePendingOpenQuiz(sessionId, 'initial_deep_link_signed_out', deepLinkData.quizId);
               return;
             }
 
             // Guard: Allow different sessions, only block true duplicates
             const now = Date.now();
             const isDifferentSession = sessionId !== lastProcessedSessionId;
-            const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
-            
-            if (isDuplicateRecent) {
+            if (
+              isDuplicateOpenQuizDispatch(sessionId, lastProcessedSessionId, lastProcessedTime, now, 2000)
+            ) {
               console.log('🚫 Blocking duplicate initial session within 2 seconds:', sessionId);
               return;
             }
@@ -336,18 +557,7 @@ function AppContent() {
             setLastProcessedSessionId(sessionId);
             setLastProcessedTime(now);
 
-        // Use unified handler
-        if (navigationRef.current && user) {
-          const navigationAdapter = { 
-            navigate: (screen: string, params?: any) => {
-              if (navigationRef.current) {
-                (navigationRef.current as any).navigate(screen, params);
-              }
-            }, 
-            alert: Alert.alert 
-          };
-          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
-        }
+            await dispatchOpenQuiz(sessionId, 'deep_link', deepLinkData.quizId);
           } else {
             console.log('🔗 Initial deep link parsed but not assessment type:', deepLinkData);
           }
@@ -369,16 +579,15 @@ function AppContent() {
         
         // If not authenticated, save sessionId and show login
         if (!isAuthenticated) {
-          setPendingSessionId(sessionId);
+          traceOpenQuizPending('uri_parsed', { sessionId, path: 'runtime_deep_link' });
+          queuePendingOpenQuiz(sessionId, 'runtime_deep_link_signed_out', deepLinkData.quizId);
           return;
         }
 
         // Guard: Allow different sessions, only block true duplicates
         const now = Date.now();
         const isDifferentSession = sessionId !== lastProcessedSessionId;
-        const isDuplicateRecent = sessionId === lastProcessedSessionId && now - lastProcessedTime < 2000;
-        
-        if (isDuplicateRecent) {
+        if (isDuplicateOpenQuizDispatch(sessionId, lastProcessedSessionId, lastProcessedTime, now, 2000)) {
           console.log('🚫 Blocking duplicate session within 2 seconds:', sessionId);
           return;
         }
@@ -392,19 +601,12 @@ function AppContent() {
         setLastProcessedSessionId(sessionId);
         setLastProcessedTime(now);
 
-        // Use unified handler
-        if (navigationRef.current && user) {
-          const navigationAdapter = { 
-            navigate: (screen: string, params?: any) => (navigationRef.current as any)?.navigate(screen, params), 
-            alert: Alert.alert 
-          };
-          await handleOpenQuiz(sessionId, 'deep_link', user, navigationAdapter, setPendingSessionId);
-        }
+        await dispatchOpenQuiz(sessionId, 'deep_link', deepLinkData.quizId);
       }
     });
 
     return unsubscribe;
-  }, [isMobile, isAuthenticated, user]); // Include auth to handle state changes
+  }, [isMobile, isAuthenticated, user, dispatchOpenQuiz, queuePendingOpenQuiz]);
 
   // Process pending deep link after authentication - REMOVED
   // Now handled directly in deep link handlers above with pendingSessionId
@@ -427,10 +629,12 @@ function AppContent() {
     const sessionId = deepLinkData.sessionId;
     if (!isAuthenticated || !user) {
       setPendingSessionId(sessionId);
+      pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
       return;
     }
 
     setPendingSessionId(sessionId);
+    pendingPostLoginQuizIdRef.current = deepLinkData.quizId;
   }, [isWeb, isAuthenticated, user]);
 
   // Note: Notification listeners are set up in the earlier useEffect (lines 101-161)
@@ -448,6 +652,7 @@ function AppContent() {
   if (isMobile) {
     // Mobile: Use React Navigation with authentication check and deep linking
     const linking = {
+      enabled: isAuthenticated,
       prefixes: ['eduvijna://', 'https://ui.eduvijna.com'],
       config: {
         screens: {
@@ -461,7 +666,6 @@ function AppContent() {
               Theme: 'theme',
             },
           },
-          Dashboard: 'openquiz',
           StudentList: 'students',
           ClassesList: 'classes',
           CreateAIQuizScreen: 'create-ai-quiz',
@@ -477,7 +681,12 @@ function AppContent() {
     };
 
     return (
-      <NavigationContainer ref={navigationRef} linking={linking}>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={linking}
+        onReady={syncMobileNavigationReady}
+        onStateChange={syncMobileNavigationReady}
+      >
         {isAuthenticated ? (
           <AppSideNavProvider>
             <MobileNavigation />
@@ -512,7 +721,7 @@ function AppContent() {
             route={{ params: navigationParams }}
           />;
         case 'analytics':
-          return <AnalyticsScreen />;
+          return <AnalyticsHubScreen />;
         case 'profile':
           return <ProfileScreen />;
         case 'notifications':
@@ -538,6 +747,13 @@ function AppContent() {
         case 'DocumentUploadPreviewScreen':
           return (
             <DocumentUploadPreviewScreen
+              navigation={createWebNavigation('DocumentUploadHomeScreen')}
+              route={{ params: navigationParams }}
+            />
+          );
+        case 'DocumentCurriculumGeneratedPreviewScreen':
+          return (
+            <DocumentCurriculumGeneratedPreviewScreen
               navigation={createWebNavigation('DocumentUploadHomeScreen')}
               route={{ params: navigationParams }}
             />

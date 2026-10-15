@@ -111,6 +111,9 @@ export function generateStudentKPITiles(data: QuizListItem[] | null | undefined)
   ];
 }
 
+/**
+ * Default teacher analytics window — matches Quiz-React `AnalyticsPage` (last calendar month → tomorrow, UTC date slice).
+ */
 export function getDefaultDateRange() {
   const today = new Date();
   const lastMonth = new Date();
@@ -121,6 +124,11 @@ export function getDefaultDateRange() {
     from: lastMonth.toISOString().split('T')[0],
     to: tomorrow.toISOString().split('T')[0],
   };
+}
+
+/** Founder acceptance fixture (Aug 2026 assignment) — use via date filter UI, not product default. */
+export function getFounderFixtureAnalyticsDateRange() {
+  return { from: '2026-08-01', to: '2026-10-13' };
 }
 
 export function formatDuration(seconds: number | null | undefined): string {

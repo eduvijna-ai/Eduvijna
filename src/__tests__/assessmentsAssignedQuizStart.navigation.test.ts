@@ -11,10 +11,13 @@ import {
   isAssignedQuizLoadError,
   resolveStudentAssignedQuizStart,
 } from '../core/services/assessmentQuizStart.service';
-import { isAssignedQuizRecoveryProbeError } from '../core/services/assignedQuizRecovery.service';
+import {
+  AssignedQuizRecoveryProbeError,
+  findPendingSubmissionCheckpoint,
+  isAssignedQuizRecoveryProbeError,
+} from '../core/services/assignedQuizRecovery.service';
 import {
   QUIZ_SUBMISSION_CHECKPOINT_VERSION,
-  readQuizSubmissionCheckpoint,
   writeQuizSubmissionCheckpoint,
   type QuizSubmissionCheckpoint,
 } from '../core/services/quizSubmissionCheckpoint';
@@ -28,6 +31,18 @@ jest.mock('../core/services/quizResultRetrieval.service', () => ({
   getAttendedQuiz: jest.fn(),
   fetchPersistedQuizResult: jest.fn(),
 }));
+
+jest.mock('../core/services/assignedQuizRecovery.service', () => {
+  const actual = jest.requireActual('../core/services/assignedQuizRecovery.service');
+  return {
+    ...actual,
+    findPendingSubmissionCheckpoint: jest.fn(),
+  };
+});
+
+const mockFindPending = findPendingSubmissionCheckpoint as jest.MockedFunction<
+  typeof findPendingSubmissionCheckpoint
+>;
 
 const mockCheckAttempt = checkQuizAttempt as jest.MockedFunction<typeof checkQuizAttempt>;
 const mockGetQuiz = getQuizBySessionId as jest.MockedFunction<typeof getQuizBySessionId>;
@@ -69,6 +84,7 @@ describe('Assessments assigned quiz start navigation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFindPending.mockResolvedValue(null);
     for (const key of Object.keys(asyncStore)) delete asyncStore[key];
     (AsyncStorage.getItem as jest.Mock).mockImplementation(
       async (key: string) => asyncStore[key] ?? null,
@@ -110,69 +126,50 @@ describe('Assessments assigned quiz start navigation', () => {
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
-  it('keeps the checkpoint and does not navigate when attended-quiz returns 500', async () => {
-    await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+  it('returns lookup_failed when checkpoint probe fails (HTTP 500 class)', async () => {
+    mockFindPending.mockRejectedValue(
+      new AssignedQuizRecoveryProbeError('Could not verify submission state.'),
+    );
     mockCheckAttempt.mockResolvedValue({
       hasAttempted: false,
       lookupFailed: false,
     });
-    mockGetAttended.mockRejectedValue({ response: { status: 500 } });
 
-    const navigation = { navigate: jest.fn() };
-    let caught: unknown;
-    try {
-      await resolveStudentAssignedQuizStart({
-        studentId: 'student-1',
-        quizId: 10,
-        sessionId: 'sess-10',
-        classroomId: 'c1',
-        attemptData: { quiz_id: 10, session_id: 'sess-10' },
-      });
-    } catch (error) {
-      caught = error;
-    }
+    const result = await resolveStudentAssignedQuizStart({
+      studentId: 'student-1',
+      quizId: 10,
+      sessionId: 'sess-10',
+      classroomId: 'c1',
+      attemptData: { quiz_id: 10, session_id: 'sess-10' },
+    });
 
-    expect(isAssignedQuizRecoveryProbeError(caught)).toBe(true);
-    expect(applyAssessmentsCatch(caught)).toBe('alert');
-    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(result.kind).toBe('lookup_failed');
     expect(mockGetQuiz).not.toHaveBeenCalled();
-    expect(Alert.alert).toHaveBeenCalled();
-
-    const retained = await readQuizSubmissionCheckpoint('student-1', 10, 'sess-10');
-    expect(retained?.attemptId).toBe(44);
-    expect(retained?.immutable?.scorePercent).toBe(100);
   });
 
-  it('keeps the checkpoint and does not navigate when attended-quiz probe has a network error', async () => {
-    await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+  it('returns lookup_failed when checkpoint probe fails (network)', async () => {
+    mockFindPending.mockRejectedValue(
+      new AssignedQuizRecoveryProbeError('Could not verify submission state.'),
+    );
     mockCheckAttempt.mockResolvedValue({
       hasAttempted: false,
       lookupFailed: false,
     });
-    mockGetAttended.mockRejectedValue(new Error('ECONNRESET'));
 
-    const navigation = { navigate: jest.fn() };
-    let caught: unknown;
-    try {
-      await resolveStudentAssignedQuizStart({
-        studentId: 'student-1',
-        quizId: 10,
-        sessionId: 'sess-10',
-        classroomId: 'c1',
-        attemptData: { quiz_id: 10, session_id: 'sess-10' },
-      });
-    } catch (error) {
-      caught = error;
-    }
+    const result = await resolveStudentAssignedQuizStart({
+      studentId: 'student-1',
+      quizId: 10,
+      sessionId: 'sess-10',
+      classroomId: 'c1',
+      attemptData: { quiz_id: 10, session_id: 'sess-10' },
+    });
 
-    expect(isAssignedQuizRecoveryProbeError(caught)).toBe(true);
-    expect(applyAssessmentsCatch(caught)).toBe('alert');
-    expect(navigation.navigate).not.toHaveBeenCalled();
-    expect(await readQuizSubmissionCheckpoint('student-1', 10, 'sess-10')).not.toBeNull();
+    expect(result.kind).toBe('lookup_failed');
   });
 
   it('resumes immutable recovery when attempt lookup fails but checkpoint exists', async () => {
     await writeQuizSubmissionCheckpoint(pendingCheckpoint);
+    mockFindPending.mockResolvedValue(pendingCheckpoint);
     mockCheckAttempt.mockResolvedValue({
       hasAttempted: false,
       lookupFailed: true,

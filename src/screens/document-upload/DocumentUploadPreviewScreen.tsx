@@ -626,7 +626,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         level: difficulty,
         lesson: resolvedLesson,
         assessment_type: 'web-quiz',
-        source: assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document',
+        source:
+          assessmentSource === 'Handwritten' ? 'Handwritten' : 'Doc-File-Assessment',
         school_id: schoolId,
         questions: questions.map((q) => ({
           quiz: {
@@ -740,7 +741,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           level: wsData.Metadata?.Difficulty || difficulty,
           lesson: wsData.Metadata?.Lesson || bookState?.title,
           assessment_type: 'worksheet',
-          source: 'Doc-Worksheet',
+          source: 'Doc-File-Worksheet',
           school_id: schoolId,
           questions: [
             {

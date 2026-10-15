@@ -11,13 +11,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
-import {
-  AssessmentListItem,
-  getUserAssessmentById,
-  listUserAssessments,
-} from '@core/services/sharedApi';
+import { AssessmentListItem, getUserAssessmentById } from '@core/services/sharedApi';
 import { DocumentUploadBook } from '@core/services/documentUploadApi';
 import { getDocumentUploadBooks } from '@core/services/documentUploadStorage';
+import { loadDocumentAssessmentHistory } from '@core/services/documentAssessmentHistory.service';
 
 type FilterTab = 'all' | 'books' | 'worksheets' | 'quizzes';
 
@@ -61,29 +58,13 @@ export default function DocumentUploadHistoryScreen({ navigation }: any) {
   const load = useCallback(async () => {
     try {
       setError('');
-      // Web parity taxonomy: document quizzes are saved as web-quiz/Document and
-      // document worksheets as worksheet/Doc-Worksheet (HandwrittenWorkspace).
-      const [booksRaw, quizRaw, quizLegacyRaw, worksheetRaw] = await Promise.all([
+      const [booksRaw, history] = await Promise.all([
         getDocumentUploadBooks(),
-        listUserAssessments('web-quiz', 'Document'),
-        listUserAssessments('quiz', 'DocumentUpload'),
-        listUserAssessments('worksheet', 'Doc-Worksheet'),
+        loadDocumentAssessmentHistory(),
       ]);
       setBooks(booksRaw);
-      // Merge new + legacy quizzes, de-duped by id, so older saved items still show.
-      const mergedQuizzes = [
-        ...(Array.isArray(quizRaw) ? quizRaw : []),
-        ...(Array.isArray(quizLegacyRaw) ? quizLegacyRaw : []),
-      ];
-      const seen = new Set<string | number>();
-      setQuizzes(
-        mergedQuizzes.filter((q) => {
-          if (seen.has(q.id)) return false;
-          seen.add(q.id);
-          return true;
-        }),
-      );
-      setWorksheets(Array.isArray(worksheetRaw) ? worksheetRaw : []);
+      setQuizzes(history.quizzes);
+      setWorksheets(history.worksheets);
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to load history'));
     }

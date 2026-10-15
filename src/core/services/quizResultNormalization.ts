@@ -3,6 +3,11 @@
  */
 
 import type { AttendedQuizQuestion, AttendedQuizResponse } from '../types/attendedQuiz.types';
+import { tryNormalizeWorksheetAttended } from './worksheetPersistedResult';
+import {
+  resolvePersistedScore,
+  resolvePersistedTimeSpentSeconds,
+} from './persistedResultMetadata';
 import {
   letterToOptionString,
   type LetterOption,
@@ -152,14 +157,6 @@ function mergeUserAnswersOntoQuestions(
   });
 }
 
-function scoreFromUnknown(value: unknown): number | null {
-  if (value == null || value === '') {
-    return null;
-  }
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
 export function normalizeQuestionsAndAnswersFromLogData(
   logData: Record<string, unknown> | null | undefined,
 ): NormalizedPersistedQuizResult | null {
@@ -188,7 +185,7 @@ export function normalizeQuestionsAndAnswersFromLogData(
   return {
     questions,
     userAnswers,
-    score: scoreFromUnknown(logData?.score),
+    score: resolvePersistedScore(undefined, logData),
     logData: logData ?? null,
     timeSpentSeconds:
       typeof logData?.time_spent_seconds === 'number' ? logData.time_spent_seconds : null,
@@ -196,32 +193,7 @@ export function normalizeQuestionsAndAnswersFromLogData(
   };
 }
 
-export function resolvePersistedScore(
-  attendedScore: number | null | undefined,
-  logData: Record<string, unknown> | null | undefined,
-): number | null {
-  if (attendedScore != null) {
-    return Number(attendedScore);
-  }
-  return scoreFromUnknown(logData?.score);
-}
-
-/** Prefer attended time; fall back to log time_spent_seconds or log duration (seconds). */
-export function resolvePersistedTimeSpentSeconds(
-  attendedSeconds: number | null | undefined,
-  logData: Record<string, unknown> | null | undefined,
-): number | null {
-  if (typeof attendedSeconds === 'number' && Number.isFinite(attendedSeconds)) {
-    return attendedSeconds;
-  }
-  if (typeof logData?.time_spent_seconds === 'number' && Number.isFinite(logData.time_spent_seconds)) {
-    return logData.time_spent_seconds;
-  }
-  if (typeof logData?.duration === 'number' && Number.isFinite(logData.duration)) {
-    return logData.duration;
-  }
-  return null;
-}
+export { resolvePersistedScore, resolvePersistedTimeSpentSeconds } from './persistedResultMetadata';
 
 export function userAnswersFromLogDataEntries(
   logData: Record<string, unknown> | null | undefined,
@@ -234,6 +206,11 @@ export function userAnswersFromLogDataEntries(
 export function normalizeAttendedQuizResponse(
   attended: AttendedQuizResponse,
 ): NormalizedPersistedQuizResult | null {
+  const worksheetNormalized = tryNormalizeWorksheetAttended(attended);
+  if (worksheetNormalized) {
+    return worksheetNormalized;
+  }
+
   const logData = (attended.log_data as Record<string, unknown> | null) ?? null;
   const entries = readLogAnswerEntries(logData);
   const meta = {

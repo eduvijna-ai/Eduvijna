@@ -1,0 +1,21 @@
+{
+  "note": "Sanitised summary. Full UI dumps under .dev-api-document-workflow-run/ (local only).",
+  "runAt": "2026-10-12T04:13:00.000Z",
+  "runnerGitHeadSha": "ceacfff11c03aa0f84f7e98223b37c917d9e5db4",
+  "loadedImplementationSha": "ceacfff11c03aa0f84f7e98223b37c917d9e5db4",
+  "exactBundleMatch": true,
+  "accountRole": "instructor",
+  "fixture": {
+    "quizId": 479,
+    "sessionId": "a6882262-5c50-4cf5-a4a8-dc8786862916",
+    "classroomId": "class_4d82c60e",
+    "studentId": "70",
+    "attemptId": 207
+  },
+  "analyticsFixtureQuizListPage": 3,
+  "analyticsFixtureQuizListIndex": 23,
+  "pass": false,
+  "blocker": "Automation: class quiz list pagination (fixture on page 3 of 3). API trace confirms completed/60%/6/10; Pending UI was wrong assignment on page 1 (e.g. MATH_Quiz), not API disagreement.",
+  "traceEvidence": "docs/evidence/analytics-fixture-trace/fixture-479-70-207.json",
+  "buildIdentityEvidence": "docs/evidence/loaded-build-identity.json"
+}

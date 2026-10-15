@@ -4,7 +4,7 @@
  */
 
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import type { ApiError, AuthTokens } from '../types';
+import type { ApiError } from '../types';
 import * as TokenStorage from '../services/tokenStorage';
 import { useUserStore } from '../store/user.store';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
@@ -12,6 +12,13 @@ import { useDashboardStore } from '../store/dashboard.store';
 import { initializeCache, closeCache } from '../services/cacheService';
 import Constants from 'expo-constants';
 import { ApiEnvironmentConfigError, normalizeApiOrigin } from '../config/apiEnvironment';
+import { handleApiAuthResponseError } from './apiClientAuthInterceptor';
+import {
+  clearAuthForSession,
+  getAuthSessionEpoch,
+  isStaleSession,
+  stampRequestSession,
+} from './apiRefreshCoordinator';
 
 // Initialize cache service
 initializeCache().catch(error => {
@@ -54,6 +61,8 @@ const refreshClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    const retryable = config as InternalAxiosRequestConfig & { _authSessionEpoch?: number };
+    stampRequestSession(retryable);
     // Skip auth token for login/register endpoints
     const isAuthEndpoint =
       config.url?.includes('/auth/login') ||
@@ -61,8 +70,14 @@ apiClient.interceptors.request.use(
       config.url?.includes('/auth/refresh');
     
     if (!isAuthEndpoint) {
+      if (isStaleSession(retryable)) {
+        return Promise.reject(new Error('Request superseded by account switch'));
+      }
       // Get token from secure storage
       const token = await TokenStorage.getAccessToken();
+      if (isStaleSession(retryable)) {
+        return Promise.reject(new Error('Request superseded by account switch'));
+      }
       
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -76,19 +91,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Track if we've already logged out to prevent duplicate messages
 let isLoggingOut = false;
-let isRefreshing = false;
-let refreshQueue: Array<(token: string | null) => void> = [];
-
-function enqueueRefreshSubscriber(callback: (token: string | null) => void) {
-  refreshQueue.push(callback);
-}
-
-function notifyRefreshSubscribers(token: string | null) {
-  refreshQueue.forEach((callback) => callback(token));
-  refreshQueue = [];
-}
 
 /**
  * Response interceptor for error handling and token refresh
@@ -98,131 +101,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<ApiError>) => {
-    const status = error.response?.status;
-    const responseData = error.response?.data as any;
-
-    // Check if it's an authentication error by status code OR by error message.
-    // `detail` can be a string (FastAPI error) or an array (422 validation errors) —
-    // guard with typeof to prevent a crash when it is not a string.
-    const detailStr = typeof responseData?.detail === 'string' ? responseData.detail : '';
-    const isAuthError = 
-      status === 401 || 
-      status === 403 ||
-      (detailStr && (
-        detailStr.toLowerCase().includes('authentication failed') ||
-        detailStr.toLowerCase().includes('invalid or missing jwt token') ||
-        detailStr.toLowerCase().includes('user id not available')
-      ));
-
-    // Handle authentication errors with refresh token flow
-    if (isAuthError && !isLoggingOut) {
-      const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-      const isAuthRequest =
-        originalRequest?.url?.includes('/auth/login') ||
-        originalRequest?.url?.includes('/auth/register') ||
-        originalRequest?.url?.includes('/auth/refresh');
-
-      if (!originalRequest) {
-        return Promise.reject(handleApiError(error));
-      }
-
-      if (isAuthRequest) {
-        return Promise.reject(handleApiError(error));
-      }
-
-      if (originalRequest._retry) {
-        console.error('🔒 Authentication retry failed - logging out');
-        isLoggingOut = true;
-        try {
-          await handleAuthenticationFailure();
-        } catch (e) {
-          console.error('Error during authentication failure handler:', e);
-        } finally {
-          setTimeout(() => { isLoggingOut = false; }, 1000);
-        }
-        return Promise.reject(new Error('Session expired'));
-      }
-
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          enqueueRefreshSubscriber((token) => {
-            if (!token) {
-              reject(new Error('Session expired'));
-              return;
-            }
-            if (originalRequest.headers) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-            }
-            resolve(apiClient(originalRequest));
-          });
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = await TokenStorage.getRefreshToken();
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
-        }
-
-        const refreshResponse = await refreshClient.post<{ access_token: string; refresh_token: string }>(
-          '/api/v1/auth/refresh',
-          { refresh_token: refreshToken }
-        );
-
-        const tokens: AuthTokens = {
-          accessToken: refreshResponse.data.access_token,
-          refreshToken: refreshResponse.data.refresh_token,
-          expiresIn: 3600,
-        };
-
-        await TokenStorage.storeAuthTokens(tokens.accessToken, tokens.refreshToken, tokens.expiresIn);
-        useUserStore.getState().setTokens(tokens);
-
-        notifyRefreshSubscribers(tokens.accessToken);
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`;
-        }
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        console.error('❌ Refresh token failed:', refreshError);
-        notifyRefreshSubscribers(null);
-        isLoggingOut = true;
-        try {
-          await handleAuthenticationFailure();
-        } catch (e) {
-          console.error('Error during authentication failure handler:', e);
-        } finally {
-          setTimeout(() => { isLoggingOut = false; }, 1000);
-        }
-        return Promise.reject(new Error('Session expired'));
-      } finally {
-        isRefreshing = false;
-      }
+    try {
+      return await handleApiAuthResponseError(error, {
+        refreshClient,
+        apiClient,
+        isLoggingOut: () => isLoggingOut,
+        setLoggingOut: (value) => {
+          isLoggingOut = value;
+        },
+        handleAuthenticationFailure,
+        handleApiError,
+      });
+    } catch (handled) {
+      return Promise.reject(handled);
     }
-    
-    // Handle network errors
-    if (error.message === 'Network Error' || !error.response) {
-      return Promise.reject(new Error('Network connection failed'));
-    }
-    
-    // Handle 500 errors — preserve the server's actual message so screens
-    // can show a meaningful error instead of a generic string.
-    if (status && status >= 500) {
-      const serverMsg =
-        (typeof responseData?.detail === 'string' && responseData.detail) ||
-        (typeof responseData?.message === 'string' && responseData.message) ||
-        (typeof responseData?.error === 'string' && responseData.error) ||
-        'Server error. Please try again later.';
-      const serverError = new Error(serverMsg);
-      (serverError as any).response = error.response; // keep response for callers
-      return Promise.reject(serverError);
-    }
-
-    // Handle other errors
-    return Promise.reject(handleApiError(error));
   }
 );
 
@@ -231,20 +123,21 @@ apiClient.interceptors.response.use(
  * Clears auth data and triggers logout in the store
  * This will cause App.tsx to show the login screen
  */
-async function handleAuthenticationFailure(): Promise<void> {
+async function handleAuthenticationFailure(expectedSessionEpoch: number): Promise<void> {
+  if (expectedSessionEpoch !== getAuthSessionEpoch()) {
+    return;
+  }
   console.error('🔒 Authentication failed - clearing tokens and logging out');
-  
-  // Clear all stored auth data
-  await TokenStorage.clearAuthData();
-  
-  // Trigger logout in the store
-  // This will cause App.tsx to switch to login screen automatically
+
+  const cleared = await clearAuthForSession(expectedSessionEpoch);
+  if (!cleared || expectedSessionEpoch !== getAuthSessionEpoch()) {
+    return;
+  }
+
   const { logout } = useUserStore.getState();
   logout();
   resetStudentAssignmentDashboardStore(null);
   useDashboardStore.getState().clearData();
-
-  console.log('Logged out - login screen will be displayed');
 }
 
 /**

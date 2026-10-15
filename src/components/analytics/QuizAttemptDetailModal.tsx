@@ -1,8 +1,27 @@
-import React from 'react';
-import { Modal, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { parseLogData } from '../../core/services/quizAnalyticsApi';
 import { formatDate, formatDuration } from '../../core/utils/analyticsUiUtils';
+import { usePersistedQuizReview } from '../../core/hooks/usePersistedQuizReview';
+import { evaluatePersistedAnswerCorrectness } from '../../core/utils/answerMappingUtils';
+
+interface ReviewContext {
+  studentId: string;
+  quizId: number | string;
+  sessionId?: string | null;
+  classroomId?: string | null;
+  attemptId?: number;
+  isTeacherView?: boolean;
+}
 
 interface Props {
   visible: boolean;
@@ -13,7 +32,15 @@ interface Props {
   timeSpent: number | null;
   logData: string | null;
   submittedAt: string | null;
-  colors: { card: string; background: string; text: string; textSecondary: string; border: string; primary: string };
+  reviewContext?: ReviewContext | null;
+  colors: {
+    card: string;
+    background: string;
+    text: string;
+    textSecondary: string;
+    border: string;
+    primary: string;
+  };
 }
 
 export default function QuizAttemptDetailModal({
@@ -25,10 +52,45 @@ export default function QuizAttemptDetailModal({
   timeSpent,
   logData,
   submittedAt,
+  reviewContext,
   colors,
 }: Props) {
+  const persisted = usePersistedQuizReview({
+    enabled: visible && !!reviewContext?.studentId && !!reviewContext?.quizId,
+    quizId: reviewContext?.quizId,
+    studentId: reviewContext?.studentId,
+    sessionId: reviewContext?.sessionId,
+    classroomId: reviewContext?.classroomId,
+    attemptId: reviewContext?.attemptId,
+    isTeacherView: reviewContext?.isTeacherView ?? true,
+  });
+
   const parsed = parseLogData(logData);
-  const answers = parsed?.answers ?? [];
+  const legacyAnswers = parsed?.answers ?? [];
+
+  const reviewRows = useMemo(() => {
+    if (persisted.questions.length > 0) {
+      return persisted.questions.map((question, index) => ({
+        questionNumber: index + 1,
+        question: question.question,
+        userAnswer: persisted.userAnswers[index] ?? '',
+        correctAnswer: question.correctAnswer || question.answer || '',
+        isCorrect: evaluatePersistedAnswerCorrectness(persisted.userAnswers[index], question),
+        options: question.options ?? [],
+      }));
+    }
+    return legacyAnswers.map((a) => ({
+      questionNumber: a.questionNumber,
+      question: a.question,
+      userAnswer: a.userAnswer ?? '',
+      correctAnswer: a.correctAnswer,
+      isCorrect: a.isCorrect,
+      options: a.options ?? [],
+    }));
+  }, [legacyAnswers, persisted.questions, persisted.userAnswers]);
+
+  const displayScore =
+    persisted.score != null ? persisted.score : score;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -47,7 +109,9 @@ export default function QuizAttemptDetailModal({
           <View style={[styles.statsRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.stat}>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Score</Text>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{score !== null ? `${score}%` : '—'}</Text>
+              <Text style={[styles.statValue, { color: colors.primary }]}>
+                {displayScore !== null ? `${displayScore}%` : '—'}
+              </Text>
             </View>
             <View style={styles.stat}>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Time</Text>
@@ -59,32 +123,61 @@ export default function QuizAttemptDetailModal({
             </View>
           </View>
 
-          {answers.length > 0 ? (
-            answers.map((a, i) => (
+          {persisted.loading ? (
+            <View style={styles.empty}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Loading answers…</Text>
+            </View>
+          ) : null}
+
+          {!persisted.loading && persisted.error ? (
+            <View style={styles.empty}>
+              <Ionicons name="alert-circle-outline" size={40} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{persisted.error}</Text>
+            </View>
+          ) : null}
+
+          {!persisted.loading && !persisted.error && reviewRows.length > 0 ? (
+            reviewRows.map((a, i) => (
               <View key={i} style={[styles.qCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.qHeader}>
                   <Text style={[styles.qNum, { color: colors.textSecondary }]}>Q{a.questionNumber}</Text>
                   <Ionicons
-                    name={a.isCorrect ? 'checkmark-circle' : 'close-circle'}
+                    name={a.isCorrect === true ? 'checkmark-circle' : a.isCorrect === false ? 'close-circle' : 'help-circle'}
                     size={18}
-                    color={a.isCorrect ? '#059669' : '#dc2626'}
+                    color={a.isCorrect === true ? '#059669' : a.isCorrect === false ? '#dc2626' : '#94a3b8'}
                   />
                 </View>
                 <Text style={[styles.qText, { color: colors.text }]}>{a.question}</Text>
-                <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
-                  Your answer: <Text style={{ color: colors.text, fontWeight: '600' }}>{a.userAnswer ?? '—'}</Text>
-                </Text>
-                <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
-                  Correct: <Text style={{ color: '#059669', fontWeight: '600' }}>{a.correctAnswer}</Text>
-                </Text>
+                {a.options.length === 0 ? (
+                  <>
+                    <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
+                      Your answer: <Text style={{ color: colors.text, fontWeight: '600' }}>{a.userAnswer || '—'}</Text>
+                    </Text>
+                    {a.correctAnswer ? (
+                      <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
+                        Expected: <Text style={{ color: '#059669', fontWeight: '600' }}>{a.correctAnswer}</Text>
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
+                      Your answer: <Text style={{ color: colors.text, fontWeight: '600' }}>{a.userAnswer ?? '—'}</Text>
+                    </Text>
+                    <Text style={[styles.answerLine, { color: colors.textSecondary }]}>
+                      Correct: <Text style={{ color: '#059669', fontWeight: '600' }}>{a.correctAnswer}</Text>
+                    </Text>
+                  </>
+                )}
               </View>
             ))
-          ) : (
+          ) : !persisted.loading && !persisted.error ? (
             <View style={styles.empty}>
               <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No detailed answer data available</Text>
             </View>
-          )}
+          ) : null}
         </ScrollView>
       </View>
     </Modal>
@@ -102,22 +195,22 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '700' },
   sub: { fontSize: 13, marginTop: 2 },
   closeBtn: { padding: 4 },
-  body: { padding: 16, paddingBottom: 32 },
+  body: { padding: 16, gap: 12 },
   statsRow: {
     flexDirection: 'row',
-    borderRadius: 12,
     borderWidth: 1,
-    marginBottom: 16,
-    overflow: 'hidden',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 4,
   },
-  stat: { flex: 1, padding: 14, alignItems: 'center' },
-  statLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
-  statValue: { fontSize: 16, fontWeight: '800' },
-  qCard: { borderRadius: 10, borderWidth: 1, padding: 12, marginBottom: 10 },
-  qHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  qNum: { fontSize: 12, fontWeight: '700' },
+  stat: { flex: 1, alignItems: 'center' },
+  statLabel: { fontSize: 11, marginBottom: 4 },
+  statValue: { fontSize: 16, fontWeight: '700' },
+  qCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
+  qHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  qNum: { fontSize: 12, fontWeight: '600' },
   qText: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
-  answerLine: { fontSize: 12, marginTop: 2 },
-  empty: { alignItems: 'center', paddingVertical: 40, gap: 10 },
-  emptyText: { fontSize: 14 },
+  answerLine: { fontSize: 13, lineHeight: 18 },
+  empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  emptyText: { fontSize: 14, textAlign: 'center' },
 });

@@ -2,7 +2,7 @@
  * Teacher Analytics Screen — mirrors Quiz-React AnalyticsPage (/analytics)
  * API: GET /api/v1/dashboard/quizzes?view_type=all
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import QuizStudentAttemptCard from '../components/analytics/QuizStudentAttemptCa
 import QuizPerformanceSummaryCard from '../components/analytics/QuizPerformanceSummaryCard';
 import ClassStudentsModal from '../components/analytics/ClassStudentsModal';
 import QuizAttemptDetailModal from '../components/analytics/QuizAttemptDetailModal';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
 import {
   getQuizAnalytics,
   aggregateClassOverview,
@@ -50,6 +51,7 @@ import {
   computeQuizInsights,
   getQuizAttemptsForView,
   resolveQuizInClass,
+  type QuizAssignmentKey,
 } from '../core/utils/teacherAnalyticsHelpers';
 import type { QuizAttemptFilterKey } from '../core/utils/teacherAnalyticsHelpers';
 
@@ -74,7 +76,7 @@ export default function QuizTeacherAnalyticsScreen() {
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('classes');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState('');
-  const [selectedQuiz, setSelectedQuiz] = useState<number | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<QuizAssignmentKey | null>(null);
   const [selectedQuizName, setSelectedQuizName] = useState('');
   const [attemptFilter, setAttemptFilter] = useState<QuizAttemptFilterKey>(null);
   const [showKPIs, setShowKPIs] = useState(false);
@@ -87,10 +89,22 @@ export default function QuizTeacherAnalyticsScreen() {
     loading: false,
     students: [] as any[],
   });
+  const mainScrollRef = useRef<ScrollView>(null);
+  const quizListSectionOffsetY = useRef(0);
+  const quizListSectionHeight = useRef(0);
+  const studentAttemptsSectionOffsetY = useRef(0);
+  /** Matches analytics-class-drill-scroll viewport height on founder Android (≈721–1700). */
+  const CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT = 980;
+
   const [popup, setPopup] = useState({
     visible: false,
     quizName: '',
     studentName: '',
+    studentId: '',
+    quizId: null as number | null,
+    sessionId: null as string | null,
+    classroomId: null as string | null,
+    attemptId: undefined as number | undefined,
     score: null as number | null,
     timeSpent: null as number | null,
     logData: null as string | null,
@@ -104,7 +118,7 @@ export default function QuizTeacherAnalyticsScreen() {
     try {
       const res = await getQuizAnalytics({
         view_type: 'all',
-        limit: 100,
+        limit: 500,
         offset: 0,
         created_from: appliedStart,
         created_to: appliedEnd,
@@ -137,6 +151,16 @@ export default function QuizTeacherAnalyticsScreen() {
     return aggregateQuizTiles(rawData, selectedClass);
   }, [rawData, selectedClass]);
 
+  const selectedQuizItem = useMemo(() => {
+    if (!selectedAssignment) return null;
+    return resolveQuizInClass(
+      rawData,
+      selectedAssignment.quizId,
+      selectedAssignment.classroomId,
+      selectedAssignment.sessionId,
+    );
+  }, [rawData, selectedAssignment]);
+
   const classStats = useMemo(
     () => (selectedClass ? computeClassStats(classQuizzesRaw) : null),
     [selectedClass, classQuizzesRaw],
@@ -157,15 +181,19 @@ export default function QuizTeacherAnalyticsScreen() {
     [classQuizzes, classQuizzesRaw],
   );
 
-  const selectedQuizMeta = useMemo(() => {
-    if (!selectedQuiz) return null;
-    return resolveQuizInClass(rawData, selectedQuiz, selectedClass);
-  }, [rawData, selectedQuiz, selectedClass]);
+  const selectedQuizMeta = selectedQuizItem;
 
   const selectedQuizTile = useMemo(() => {
-    if (!selectedQuiz) return null;
-    return classQuizzes.find((q) => q.quiz_id === selectedQuiz) ?? null;
-  }, [classQuizzes, selectedQuiz]);
+    if (!selectedAssignment) return null;
+    return (
+      classQuizzes.find(
+        (q) =>
+          q.quiz_id === selectedAssignment.quizId &&
+          q.session_id === selectedAssignment.sessionId &&
+          q.classroom_id === selectedAssignment.classroomId,
+      ) ?? null
+    );
+  }, [classQuizzes, selectedAssignment]);
 
   const quizAttemptStats = useMemo(
     () => (selectedQuizMeta ? computeQuizAttemptStats(selectedQuizMeta) : null),
@@ -189,29 +217,113 @@ export default function QuizTeacherAnalyticsScreen() {
 
   const paginatedClasses = classOverviews.slice((classPage - 1) * ITEMS_PER_PAGE, classPage * ITEMS_PER_PAGE);
   const paginatedQuizzes = classQuizzes.slice((quizPage - 1) * ITEMS_PER_PAGE, quizPage * ITEMS_PER_PAGE);
+  const classQuizPageMemberTokens = useMemo(
+    () => paginatedQuizzes.map((tile) => `${tile.quiz_id}:${tile.session_id}`),
+    [paginatedQuizzes],
+  );
+  const analyticsQuizPageMembersAccessibilityLabel = useMemo(() => {
+    if (drillLevel !== 'class') return '';
+    return `analytics-quiz-page-members page-${quizPage} ${classQuizPageMemberTokens.join(' ')}`.trim();
+  }, [drillLevel, quizPage, classQuizPageMemberTokens]);
   const paginatedSummary = quizSummaryRows.slice((summaryPage - 1) * ITEMS_PER_PAGE, summaryPage * ITEMS_PER_PAGE);
   const paginatedRows = studentRows.slice((attemptPage - 1) * ITEMS_PER_PAGE, attemptPage * ITEMS_PER_PAGE);
 
-  const handleApplyDates = () => {
-    setAppliedStart(startDate);
-    setAppliedEnd(endDate);
+  useEffect(() => {
+    if (drillLevel !== 'class' || !selectedClass) return;
+    const timer = setTimeout(() => {
+      const sectionTop = quizListSectionOffsetY.current;
+      const sectionBottom = sectionTop + quizListSectionHeight.current;
+      const sectionTopY = Math.max(0, sectionTop - 8);
+      const revealPaginationY = Math.max(
+        0,
+        sectionBottom - CLASS_DRILL_SCROLL_VIEWPORT_HEIGHT + 32,
+      );
+      const onLastQuizPage = quizPage >= totalQuizPages;
+      const targetY =
+        !onLastQuizPage && quizListSectionHeight.current > 0
+          ? Math.max(sectionTopY, revealPaginationY)
+          : sectionTopY;
+      mainScrollRef.current?.scrollTo({
+        y: targetY,
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [drillLevel, selectedClass, quizPage, totalQuizPages]);
+
+  useEffect(() => {
+    if (drillLevel !== 'quiz' || !selectedAssignment) return;
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(0, studentAttemptsSectionOffsetY.current - 8),
+        animated: false,
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [drillLevel, selectedAssignment, attemptPage, attemptFilter]);
+
+  const resetDrillToClasses = useCallback(() => {
+    setDrillLevel('classes');
+    setSelectedClass(null);
+    setSelectedClassName('');
+    setSelectedAssignment(null);
+    setSelectedQuizName('');
+    setAttemptFilter(null);
     setClassPage(1);
     setQuizPage(1);
     setSummaryPage(1);
     setAttemptPage(1);
+    setStudentsModal((s) => (s.visible ? { ...s, visible: false } : s));
+    setPopup((p) => (p.visible ? { ...p, visible: false } : p));
+  }, []);
+
+  const handleApplyDates = () => {
+    resetDrillToClasses();
+    setAppliedStart(startDate);
+    setAppliedEnd(endDate);
   };
 
   const handleClearDates = () => {
     const d = getDefaultDateRange();
+    resetDrillToClasses();
     setStartDate(d.from);
     setEndDate(d.to);
     setAppliedStart(d.from);
     setAppliedEnd(d.to);
-    setClassPage(1);
-    setQuizPage(1);
-    setSummaryPage(1);
-    setAttemptPage(1);
   };
+
+  const analyticsDrillTestId = useMemo(() => {
+    if (drillLevel === 'classes') return 'analytics-drill-classes';
+    if (drillLevel === 'class' && selectedClass) {
+      return `analytics-drill-class-${selectedClass}`;
+    }
+    if (drillLevel === 'quiz' && selectedAssignment) {
+      return `analytics-drill-quiz-${selectedAssignment.quizId}-${selectedAssignment.sessionId}`;
+    }
+    return 'analytics-drill-unknown';
+  }, [drillLevel, selectedClass, selectedAssignment]);
+
+  const analyticsDrillAccessibilityLabel = useMemo(() => {
+    if (drillLevel === 'quiz' && selectedAssignment) {
+      return `${analyticsDrillTestId} classroom-${selectedAssignment.classroomId}`;
+    }
+    if (drillLevel === 'class' && selectedClass) {
+      const membersSuffix = classQuizPageMemberTokens.length
+        ? ` quiz-members-${classQuizPageMemberTokens.join(';')}`
+        : '';
+      return `${analyticsDrillTestId} quiz-page-${quizPage}-of-${totalQuizPages} quiz-count-${classQuizzes.length}${membersSuffix}`;
+    }
+    return analyticsDrillTestId;
+  }, [
+    analyticsDrillTestId,
+    drillLevel,
+    selectedAssignment,
+    selectedClass,
+    quizPage,
+    totalQuizPages,
+    classQuizzes.length,
+    classQuizPageMemberTokens,
+  ]);
 
   const handleClassPress = (cls: ClassOverview) => {
     setSelectedClass(cls.classroom_id);
@@ -221,18 +333,39 @@ export default function QuizTeacherAnalyticsScreen() {
     setSummaryPage(1);
   };
 
-  const handleQuizPress = (quiz: QuizTile | { quiz_id: number; quiz_name: string }) => {
-    setSelectedQuiz(quiz.quiz_id);
-    setSelectedQuizName(quiz.quiz_name);
+  const handleQuizPress = (tile: QuizTile) => {
+    setSelectedAssignment({
+      quizId: tile.quiz_id,
+      sessionId: tile.session_id,
+      classroomId: tile.classroom_id,
+    });
+    setSelectedQuizName(tile.quiz_name);
     setDrillLevel('quiz');
     setAttemptPage(1);
     setAttemptFilter(null);
   };
 
+  const openSavedQuizResult = (
+    row: ReturnType<typeof getQuizAttemptsForView>[0],
+  ) => {
+    if (!selectedAssignment || !row.attempt_id || !row.canViewSavedResult) return;
+    navigateRootStack('QuizResultsScreen', {
+      quizId: selectedAssignment.quizId,
+      attemptId: Number(row.attempt_id),
+      studentId: row.student_id,
+      studentName: row.student_fullname || row.student_username || 'Student',
+      score: row.score,
+      quizName: selectedQuizName,
+      sessionId: selectedAssignment.sessionId,
+      classroomId: selectedAssignment.classroomId,
+      isTeacherView: true,
+    });
+  };
+
   const handleBack = useCallback(() => {
     if (drillLevel === 'quiz') {
       setDrillLevel('class');
-      setSelectedQuiz(null);
+      setSelectedAssignment(null);
       setSelectedQuizName('');
       setAttemptPage(1);
       setAttemptFilter(null);
@@ -301,6 +434,9 @@ export default function QuizTeacherAnalyticsScreen() {
   const renderClassCard = (cls: ClassOverview) => (
     <TouchableOpacity
       key={cls.classroom_id}
+      testID={`analytics-class-card-${cls.classroom_id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Open class analytics: ${cls.classroom_name}`}
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={() => handleClassPress(cls)}
       activeOpacity={0.8}
@@ -327,17 +463,22 @@ export default function QuizTeacherAnalyticsScreen() {
   );
 
   const renderQuizCard = (quiz: QuizTile) => {
-    const originalQuiz = classQuizzesRaw.find((q) => q.quiz_id === quiz.quiz_id);
+    const originalQuiz = classQuizzesRaw.find(
+      (q) =>
+        q.quiz_id === quiz.quiz_id &&
+        q.session_id === quiz.session_id &&
+        q.classroom_id === quiz.classroom_id,
+    );
     const cardData = buildQuizCardData(quiz, originalQuiz, selectedClassName);
     return (
       <AnalyticsQuizCard
-        key={quiz.quiz_id}
+        key={`${quiz.quiz_id}-${quiz.session_id}`}
         tile={cardData.tile}
         originalQuiz={cardData.originalQuiz}
         classroomName={cardData.classroomName}
         performanceSummary={cardData.performanceSummary}
         urgency={cardData.urgency}
-        onViewAnalytics={handleQuizPress}
+        onViewAnalytics={() => handleQuizPress(quiz)}
         colors={colors}
       />
     );
@@ -349,18 +490,10 @@ export default function QuizTeacherAnalyticsScreen() {
       row={row}
       quizName={selectedQuizName}
       colors={colors}
-      onView={
-        row.status === 'completed' && row.log_data
-          ? () =>
-              setPopup({
-                visible: true,
-                quizName: selectedQuizName,
-                studentName: row.student_fullname || row.student_username || 'Student',
-                score: row.score,
-                timeSpent: row.time_spent_seconds ?? null,
-                logData: row.log_data,
-                submittedAt: row.submitted_at,
-              })
+      onView={row.canViewSavedResult ? () => openSavedQuizResult(row) : undefined}
+      viewResultTestId={
+        selectedAssignment && row.attempt_id
+          ? `analytics-view-result-${selectedAssignment.quizId}-${selectedAssignment.sessionId}-${row.student_id}-${row.attempt_id}`
           : undefined
       }
     />
@@ -377,7 +510,13 @@ export default function QuizTeacherAnalyticsScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.hero, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      <View
+        style={[styles.hero, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+        testID={analyticsDrillTestId}
+        accessibilityLabel={analyticsDrillAccessibilityLabel}
+        accessible
+        importantForAccessibility="yes"
+      >
         <View>
           <Text style={[styles.heroTitle, { color: colors.text }]}>Analytics Dashboard</Text>
           <Text style={[styles.heroSub, { color: colors.textSecondary }]}>
@@ -415,6 +554,9 @@ export default function QuizTeacherAnalyticsScreen() {
       ) : null}
 
       <ScrollView
+        ref={mainScrollRef}
+        testID="analytics-class-drill-scroll"
+        accessibilityLabel="analytics-class-drill-scroll"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -432,7 +574,12 @@ export default function QuizTeacherAnalyticsScreen() {
         ) : null}
 
         {drillLevel !== 'classes' ? (
-          <TouchableOpacity style={styles.backRow} onPress={handleBack}>
+          <TouchableOpacity
+            testID="analytics-drill-back"
+            accessibilityLabel={drillLevel === 'quiz' ? 'Back to Quizzes' : 'All Classes'}
+            style={styles.backRow}
+            onPress={handleBack}
+          >
             <Ionicons name="arrow-back" size={18} color={colors.primary} />
             <Text style={[styles.backText, { color: colors.primary }]}>
               {drillLevel === 'quiz' ? 'Back to Quizzes' : 'All Classes'}
@@ -445,6 +592,7 @@ export default function QuizTeacherAnalyticsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Class Overview</Text>
             {paginatedClasses.map(renderClassCard)}
             <AnalyticsPagination
+              scope="class"
               page={classPage}
               totalPages={totalClassPages}
               onPageChange={setClassPage}
@@ -477,17 +625,45 @@ export default function QuizTeacherAnalyticsScreen() {
               </View>
             ) : null}
 
-            <Text style={[styles.subSectionTitle, { color: colors.text }]}>Quizzes in this Class</Text>
-            <Text style={[styles.hint, { color: colors.textSecondary }]}>
-              {classQuizzes.length} quiz{classQuizzes.length === 1 ? '' : 'zes'} · open a quiz for detailed analytics
-            </Text>
-            {paginatedQuizzes.map(renderQuizCard)}
-            <AnalyticsPagination
-              page={quizPage}
-              totalPages={totalQuizPages}
-              onPageChange={setQuizPage}
-              colors={colors}
-            />
+            <View
+              testID="analytics-class-quiz-list-section"
+              accessibilityLabel="analytics-class-quiz-list-section"
+              accessible
+              importantForAccessibility="yes"
+              collapsable={false}
+              onLayout={(event) => {
+                quizListSectionOffsetY.current = event.nativeEvent.layout.y;
+                quizListSectionHeight.current = event.nativeEvent.layout.height;
+              }}
+            >
+              <Text
+                style={[styles.subSectionTitle, { color: colors.text }]}
+                testID="analytics-quiz-page-members"
+                accessibilityLabel={analyticsQuizPageMembersAccessibilityLabel}
+                accessible
+                importantForAccessibility="yes"
+              >
+                Quizzes in this Class
+              </Text>
+              <Text
+                style={[styles.hint, { color: colors.textSecondary }]}
+                testID="analytics-quiz-list-hint"
+                accessibilityLabel="analytics-quiz-list-hint"
+                accessible
+                importantForAccessibility="yes"
+              >
+                {classQuizzes.length} quiz{classQuizzes.length === 1 ? '' : 'zes'} · open a quiz for
+                detailed analytics
+              </Text>
+              {paginatedQuizzes.map(renderQuizCard)}
+              <AnalyticsPagination
+                scope="quiz"
+                page={quizPage}
+                totalPages={totalQuizPages}
+                onPageChange={setQuizPage}
+                colors={colors}
+              />
+            </View>
 
             <Text style={[styles.subSectionTitle, { color: colors.text, marginTop: 8 }]}>
               Quiz Performance Summary
@@ -497,13 +673,36 @@ export default function QuizTeacherAnalyticsScreen() {
             </Text>
             {paginatedSummary.map((row) => (
               <QuizPerformanceSummaryCard
-                key={row.quiz_id}
+                key={`${row.quiz_id}-${row.session_id}`}
                 row={row}
-                onPress={() => handleQuizPress(row)}
+                onPress={() =>
+                  handleQuizPress({
+                    quiz_id: row.quiz_id,
+                    session_id: row.session_id,
+                    classroom_id: row.classroom_id,
+                    quiz_name: row.quiz_name,
+                    topic: row.topic,
+                    subject: null,
+                    total_students: row.total_students,
+                    completed_count: row.completed,
+                    pending_count: row.pending,
+                    in_progress_count: 0,
+                    missed_count: row.not_completed,
+                    expired_count: 0,
+                    avg_score: row.avg_score,
+                    highest_score: row.highest_score,
+                    lowest_score: row.lowest_score,
+                    at_risk_count: row.at_risk,
+                    completion_rate: row.completion_rate,
+                    created_at: '',
+                    due_date: null,
+                  })
+                }
                 colors={colors}
               />
             ))}
             <AnalyticsPagination
+              scope="summary"
               page={summaryPage}
               totalPages={totalSummaryPages}
               onPageChange={setSummaryPage}
@@ -556,15 +755,25 @@ export default function QuizTeacherAnalyticsScreen() {
 
             {quizInsights.length > 0 ? <ClassInsightsPanel insights={quizInsights} /> : null}
 
-            <View style={styles.attemptHeader}>
-              <Text style={[styles.subSectionTitle, { color: colors.text, marginBottom: 0 }]}>
-                Student Attempts
-              </Text>
-              <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 0 }]}>
-                Showing {studentRows.length} attempt{studentRows.length === 1 ? '' : 's'}
-                {attemptFilter ? ` · ${attemptFilter.replace('_', ' ')}` : ''}
-              </Text>
-            </View>
+            <View
+              testID="analytics-quiz-student-attempts-section"
+              accessibilityLabel="analytics-quiz-student-attempts-section"
+              accessible
+              importantForAccessibility="yes"
+              collapsable={false}
+              onLayout={(event) => {
+                studentAttemptsSectionOffsetY.current = event.nativeEvent.layout.y;
+              }}
+            >
+              <View style={styles.attemptHeader}>
+                <Text style={[styles.subSectionTitle, { color: colors.text, marginBottom: 0 }]}>
+                  Student Attempts
+                </Text>
+                <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 0 }]}>
+                  Showing {studentRows.length} attempt{studentRows.length === 1 ? '' : 's'}
+                  {attemptFilter ? ` · ${attemptFilter.replace('_', ' ')}` : ''}
+                </Text>
+              </View>
             {paginatedRows.length === 0 ? (
               <View style={styles.emptyAttempts}>
                 <Ionicons name="people-outline" size={32} color={colors.textSecondary} />
@@ -578,11 +787,13 @@ export default function QuizTeacherAnalyticsScreen() {
               paginatedRows.map(renderAttemptRow)
             )}
             <AnalyticsPagination
+              scope="attempt"
               page={attemptPage}
               totalPages={totalAttemptPages}
               onPageChange={setAttemptPage}
               colors={colors}
             />
+            </View>
           </>
         ) : null}
 
@@ -630,6 +841,18 @@ export default function QuizTeacherAnalyticsScreen() {
         timeSpent={popup.timeSpent}
         logData={popup.logData}
         submittedAt={popup.submittedAt}
+        reviewContext={
+          popup.studentId && popup.quizId
+            ? {
+                studentId: popup.studentId,
+                quizId: popup.quizId,
+                sessionId: popup.sessionId,
+                classroomId: popup.classroomId,
+                attemptId: popup.attemptId,
+                isTeacherView: true,
+              }
+            : null
+        }
         colors={colors}
       />
     </View>

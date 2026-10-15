@@ -22,8 +22,10 @@ import { useDropdowns } from '../context/DropdownContext';
 import { apiClient } from '../core/api/config';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 
 export default function CreateYouTubeQuizScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateYouTubeQuizScreen', navigation);
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const insets = useSafeAreaInsets();

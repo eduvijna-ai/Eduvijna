@@ -3,6 +3,7 @@
 export const DOCUMENT_UPLOAD_WEB_SCREENS = [
   'DocumentUploadHomeScreen',
   'DocumentUploadPreviewScreen',
+  'DocumentCurriculumGeneratedPreviewScreen',
   'DocumentUploadHistoryScreen',
   'DocumentUploadQuizScreen',
   'DocumentLibraryScreen',
