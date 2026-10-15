@@ -145,16 +145,26 @@ if (!logout.ok) {
 const maestroBin =
   process.env.MAESTRO_BIN ||
   join(process.env.USERPROFILE || '', '.maestro-cli', 'maestro', 'bin', 'maestro.bat');
-const maestroLogin = spawnSync(
-  process.execPath,
-  [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'instructor'],
-  { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
-);
-sessionMeta.maestroInstructor = { status: maestroLogin.status };
-if (maestroLogin.status !== 0) {
+let maestroLogin = { status: 0 };
+if (process.env.ENGINEERING_SKIP_MAESTRO !== '1') {
+  maestroLogin = spawnSync(
+    process.execPath,
+    [join(repoRoot, 'scripts', 'engineering-maestro-login-proof.mjs'), '--inplace', 'instructor'],
+    { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, MAESTRO_BIN: maestroBin } },
+  );
+}
+sessionMeta.maestroInstructor = { status: maestroLogin.status, skipped: process.env.ENGINEERING_SKIP_MAESTRO === '1' };
+if (maestroLogin.status !== 0 || process.env.ENGINEERING_SKIP_MAESTRO === '1') {
   const { accounts } = JSON.parse(readFileSync(resolveDevApiCredentialsPath(repoRoot), 'utf8'));
   const login = performLogin(accounts.instructor.username, accounts.instructor.password, 'instructor');
-  if (!login.ok) process.exit(1);
+  sessionMeta.harnessLogin = { ok: login.ok, diagnostics: login.diagnostics };
+  if (!login.ok) {
+    writeFileSync(
+      join(evidenceDir, 'results.json'),
+      JSON.stringify({ ok: false, boundary: 'instructor_harness_login', sessionMeta, evidenceDir }, null, 2),
+    );
+    process.exit(1);
+  }
   xml = login.xml;
 } else {
   sleep(4000);

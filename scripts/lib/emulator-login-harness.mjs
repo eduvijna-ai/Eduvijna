@@ -165,11 +165,32 @@ export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'e
     adb(`shell input text ${text.replace(/ /g, '%s').replace(/%/g, '%%')}`);
   }
 
-  function typePasswordField(password) {
-    return spawnSync('adb', ['-s', device, 'shell', 'input', 'text', password], {
+  function adbSetClipboard(text) {
+    spawnSync('adb', ['-s', device, 'shell', 'cmd', 'clipboard', 'set-text', String(text)], {
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
     });
+  }
+
+  function adbPaste() {
+    adb('shell input keyevent 279');
+  }
+
+  function typePasswordField(password) {
+    const encoded = password
+      .split('')
+      .map((ch) => {
+        if (ch === '@') return '%40';
+        if (ch === ' ') return '%s';
+        if (/[a-zA-Z0-9._-]/.test(ch)) return ch;
+        return encodeURIComponent(ch);
+      })
+      .join('');
+    const proc = spawnSync('adb', ['-s', device, 'shell', 'input', 'text', encoded], {
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    });
+    return { ...proc, method: 'encoded_input_text' };
   }
 
   function onLoginScreen(xml) {
@@ -199,6 +220,7 @@ export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'e
   }
 
   function authenticatedMarker(xml) {
+    if (!/package="com\.eduvijna\.app"/.test(xml)) return false;
     if (onLoginScreen(xml) || /Invalid credentials/i.test(xml)) return false;
     return (
       /Demo School|Assessments|Overview|classroom overview|Analytics|Total:|Teacher/i.test(xml) ||
@@ -255,6 +277,7 @@ export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'e
       maskLen: passLen,
       expectedLen: password.length,
       spawnOk: passSpawn?.status === 0,
+      method: passSpawn?.method ?? 'input_text',
       ok: passLen > 0 || passSpawn?.status === 0,
     });
 

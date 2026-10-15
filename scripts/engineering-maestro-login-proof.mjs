@@ -4,7 +4,7 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,6 +15,23 @@ const outDir = join(
   'engineering-installed-smoke',
   `maestro-login-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
 );
+
+function resolveJavaHome() {
+  if (process.env.JAVA_HOME) {
+    return process.env.JAVA_HOME;
+  }
+  try {
+    const javaPath = execSync('where java', { encoding: 'utf8', shell: true })
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find(Boolean);
+    if (!javaPath) return null;
+    const normalized = javaPath.replace(/\\bin\\java\.exe$/i, '').replace(/\\bin\\java$/i, '');
+    return normalized || null;
+  } catch {
+    return null;
+  }
+}
 
 function resolveMaestroBin() {
   const candidates = [
@@ -61,8 +78,10 @@ const device = process.env.ADB_DEVICE || 'emulator-5554';
 
 mkdirSync(outDir, { recursive: true });
 
+const javaHome = resolveJavaHome();
 const env = {
   ...process.env,
+  ...(javaHome ? { JAVA_HOME: javaHome } : {}),
   LOGIN_EMAIL: account.email,
   LOGIN_PASSWORD: account.password,
   MAESTRO_DRIVER_STARTUP_TIMEOUT: '120000',
