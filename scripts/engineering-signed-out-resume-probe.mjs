@@ -13,8 +13,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
 import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
+import { performUiLogout } from './lib/ui-logout-harness.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const physical = process.env.ENGINEERING_PHYSICAL_DEVICE === '1';
 const h = await import('./lib/emulator-login-harness.mjs').then((m) => m.createEmulatorLoginHarness());
 const pkg = 'com.eduvijna.app';
 const uri =
@@ -39,9 +41,32 @@ function startUriCold() {
   });
 }
 
-steps.push({ step: 'pm_clear', ok: true });
-h.adb(`shell pm clear ${pkg}`);
-h.sleep(2500);
+if (physical) {
+  h.adb('shell am force-stop com.eduvijna.app');
+  h.sleep(1500);
+  h.adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
+  h.sleep(5000);
+  let xml0 = h.dumpUi();
+  if (h.authenticatedMarker(xml0)) {
+    const logout = performUiLogout({
+      adb: h.adb,
+      sleep: h.sleep,
+      dumpUi: h.dumpUi,
+      dismissPostLoginInterstitials: h.dismissPostLoginInterstitials,
+      authenticatedMarker: h.authenticatedMarker,
+    });
+    steps.push({ step: 'physical_ui_logout_before_deeplink', ok: logout.ok, reason: logout.reason });
+  } else {
+    steps.push({ step: 'physical_ui_logout_before_deeplink', ok: true, skipped: 'already_signed_out' });
+  }
+  h.adb('shell am force-stop com.eduvijna.app');
+  h.sleep(2000);
+  steps.push({ step: 'pm_clear', ok: true, skipped: 'physical_release_no_pm_clear' });
+} else {
+  steps.push({ step: 'pm_clear', ok: true });
+  h.adb(`shell pm clear ${pkg}`);
+  h.sleep(2500);
+}
 
 execSync(`adb -s ${h.device} logcat -c`, { stdio: 'ignore' });
 const startOut = startUriCold();
@@ -60,7 +85,11 @@ const maestro = spawnSync(
   {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: { ...process.env, ...(javaHome ? { JAVA_HOME: javaHome } : {}) },
+    env: {
+      ...process.env,
+      ...(javaHome ? { JAVA_HOME: javaHome } : {}),
+      ...(physical ? { ENGINEERING_PHYSICAL_DEVICE: '1' } : {}),
+    },
   },
 );
 steps.push({ step: 'maestro_inplace_login', ok: maestro.status === 0, exit: maestro.status });

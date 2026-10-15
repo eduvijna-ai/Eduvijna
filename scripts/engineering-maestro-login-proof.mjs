@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
 import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
 import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
+import { getEngineeringAdbSerial } from './lib/resolve-engineering-adb-device.mjs';
+import { createEmulatorLoginHarness } from './lib/emulator-login-harness.mjs';
+import { performUiLogout } from './lib/ui-logout-harness.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const credFile = resolveDevApiCredentialsPath(repoRoot);
@@ -57,14 +60,43 @@ const inplace = cliArgs.includes('--inplace');
 const role = cliArgs.find((a) => a !== '--inplace') || 'student';
 const account = pickAccount(role);
 const maestro = resolveMaestroBin();
+const physical = process.env.ENGINEERING_PHYSICAL_DEVICE === '1';
 const flow = join(
   repoRoot,
   '.maestro',
-  inplace ? 'engineering-release-login-inplace.yaml' : 'engineering-release-login.yaml',
+  inplace
+    ? physical
+      ? 'engineering-release-login-inplace-physical.yaml'
+      : 'engineering-release-login-inplace.yaml'
+    : physical
+      ? 'engineering-release-login-physical.yaml'
+      : 'engineering-release-login.yaml',
 );
-const device = process.env.ADB_DEVICE || 'emulator-5554';
+const device = getEngineeringAdbSerial();
 
 mkdirSync(outDir, { recursive: true });
+
+if (physical && !inplace) {
+  const h = createEmulatorLoginHarness(device);
+  h.adb('shell monkey -p com.eduvijna.app -c android.intent.category.LAUNCHER 1');
+  h.sleep(5000);
+  let xml = h.dumpUi();
+  if (h.authenticatedMarker(xml)) {
+    const logout = performUiLogout({
+      adb: h.adb,
+      sleep: h.sleep,
+      dumpUi: h.dumpUi,
+      dismissPostLoginInterstitials: h.dismissPostLoginInterstitials,
+      authenticatedMarker: h.authenticatedMarker,
+    });
+    writeFileSync(
+      join(outDir, 'physical-preflight-logout.json'),
+      JSON.stringify({ ok: logout.ok, reason: logout.reason }, null, 2),
+    );
+    h.adb('shell am force-stop com.eduvijna.app');
+    h.sleep(2000);
+  }
+}
 
 const javaHome = resolveJavaHome();
 const env = {

@@ -3,6 +3,7 @@
  */
 import { execSync, spawnSync } from 'node:child_process';
 import { resolveMaestroJavaHome } from './lib/resolve-maestro-java-home.mjs';
+import { getEngineeringAdbSerial } from './lib/resolve-engineering-adb-device.mjs';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,7 +78,7 @@ const evidenceLeaf =
 const evidence = INSTALLED_RELEASE
   ? join(repoRoot, '.stack-validation-logs', 'engineering-installed-smoke', evidenceLeaf)
   : join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', evidenceLeaf);
-const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
+const serial = getEngineeringAdbSerial();
 const sha = engineeringImplementationSha();
 
 mkdirSync(evidence, { recursive: true });

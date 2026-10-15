@@ -4,8 +4,9 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getEngineeringAdbSerial } from './resolve-engineering-adb-device.mjs';
 
-export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'emulator-5554') {
+export function createEmulatorLoginHarness(device = getEngineeringAdbSerial()) {
   function adb(cmd) {
     return execSync(`adb -s ${device} ${cmd}`, { encoding: 'utf8', maxBuffer: 12 * 1024 * 1024 }).trim();
   }

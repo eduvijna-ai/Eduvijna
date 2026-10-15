@@ -1,0 +1,22 @@
+appId: com.eduvijna.app
+---
+- extendedWaitUntil:
+    visible: "Email or Username"
+    timeout: 120000
+- tapOn: "Email or Username"
+- inputText: ${LOGIN_EMAIL}
+- tapOn: "Password"
+- inputText: ${LOGIN_PASSWORD}
+- hideKeyboard
+- tapOn: "Sign in"
+- extendedWaitUntil:
+    notVisible: "Email or Username"
+    timeout: 120000
+- runFlow:
+    when:
+      visible: "Maybe Later"
+    commands:
+      - tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: "Demo School"
+    timeout: 120000
