@@ -161,6 +161,9 @@ export default function Login() {
             onEndEditing={(e) => {
               syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
             }}
+            onBlur={(e) => {
+              syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
+            }}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
@@ -177,13 +180,18 @@ export default function Login() {
             secureTextEntry
             style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
             key={`login-password-${loginFormKey}`}
-            value={password}
+            {...(Platform.OS === 'android'
+              ? { defaultValue: '' }
+              : { value: password })}
             onChangeText={applyPassword}
             onChange={(e) => applyPassword(e.nativeEvent.text)}
             onFocus={() =>
               recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
             }
             onEndEditing={(e) => {
+              syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
+            }}
+            onBlur={(e) => {
               syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
             }}
             autoCapitalize="none"

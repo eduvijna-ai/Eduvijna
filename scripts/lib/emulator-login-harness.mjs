@@ -272,13 +272,18 @@ export function createEmulatorLoginHarness(device = process.env.ADB_DEVICE || 'e
     sleep(700);
     xml = dumpUi();
     const passLen = passwordMaskLength(xml);
+    const passwordOk =
+      passLen > 0 ||
+      passSpawn?.status === 0 ||
+      (passLen === 0 && password.length > 0 && passSpawn?.status === 0);
     diagnostics.steps.push({
       step: 'password',
       maskLen: passLen,
       expectedLen: password.length,
       spawnOk: passSpawn?.status === 0,
       method: passSpawn?.method ?? 'input_text',
-      ok: passLen > 0 || passSpawn?.status === 0,
+      secureFieldMaskHidden: passLen === 0 && password.length > 0,
+      ok: passwordOk,
     });
 
     tapEmailField(xml);

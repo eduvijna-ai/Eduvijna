@@ -17,12 +17,13 @@ import {
 import { classifyAndroidRuntimeScreen } from './lib/android-runtime-screen.mjs';
 import { prepareAndroidEngineeringRuntime } from './lib/android-engineering-runtime-prep.mjs';
 import { adbUiDump } from './lib/adb-ui-dump.mjs';
+import { resolveDevApiCredentialsPath } from './lib/resolve-dev-api-credentials-path.mjs';
 const APP_PACKAGE = 'com.eduvijna.app';
 const METRO_URL = process.env.ENGINEERING_METRO_URL || 'http://127.0.0.1:8082';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const evidence = join(repoRoot, '.dev-api-document-workflow-run', 'runtime-evidence', 'android-login');
-const credFile = join(repoRoot, '.dev-api-credentials.local.json');
+const credFile = resolveDevApiCredentialsPath(repoRoot);
 const serial = process.env.ANDROID_SERIAL || 'emulator-5554';
 
 mkdirSync(evidence, { recursive: true });
@@ -185,12 +186,12 @@ function fillLoginField(fields, testId, text, { secure = false, dumpPrefix = 'fi
   let method = secure ? 'secure_entry' : 'clipboard_or_per_char';
   for (let attempt = 0; attempt < 3; attempt++) {
     if (secure) {
-      tap(fields.email.x, fields.email.y);
-      sleep(350);
-      adb('shell input keyevent 61');
-      sleep(450);
+      tap(target.x, target.y);
+      sleep(400);
       clearField();
-      sleep(200);
+      sleep(250);
+      tap(target.x, target.y);
+      sleep(350);
     } else {
       tap(target.x, target.y);
       sleep(400);
@@ -205,9 +206,11 @@ function fillLoginField(fields, testId, text, { secure = false, dumpPrefix = 'fi
       } catch {
         /* ignore */
       }
-      const entry = typePasswordSecure(text);
-      method = entry.method;
-      sleep(300);
+      typeLoginCredential(text);
+      method = 'per_char_secure';
+      sleep(400);
+      tap(fields.email.x, fields.email.y);
+      sleep(450);
       blurLoginFormWithoutAutofill(fields);
       const diagLen = readPasswordDiagLength();
       if (diagLen === text.length) {
@@ -220,6 +223,16 @@ function fillLoginField(fields, testId, text, { secure = false, dumpPrefix = 'fi
       const retryLen = readPasswordDiagLength();
       if (retryLen === text.length) {
         return { ok: true, method, attempt, passwordDiagLength: retryLen };
+      }
+      if (diagLen === null && retryLen === null) {
+        return {
+          ok: true,
+          method,
+          attempt,
+          passwordDiagLength: null,
+          passwordDiagUnavailable: true,
+          note: 'release_build_no_LOGIN_DIAG; post_submit_validates',
+        };
       }
       method = `${method}_retry`;
       continue;
@@ -339,6 +352,14 @@ async function runLogin(role) {
   } else {
     adb('reverse tcp:8082 tcp:8082');
     adb('reverse tcp:8081 tcp:8082');
+    if (freshLogin) {
+      adb(`shell am force-stop ${APP_PACKAGE}`);
+      sleep(1200);
+      adb(`shell pm clear ${APP_PACKAGE}`);
+      sleep(2500);
+    }
+    adb(`shell monkey -p ${APP_PACKAGE} -c android.intent.category.LAUNCHER 1`);
+    sleep(5000);
   }
   dismissStartupOverlays();
   const milestones = [];
