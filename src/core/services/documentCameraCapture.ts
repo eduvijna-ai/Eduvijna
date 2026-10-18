@@ -7,15 +7,16 @@
  */
 
 import * as ImagePicker from 'expo-image-picker';
-import { compressCameraImage } from './documentImageUtils';
+import { compressCameraImage, type NormalizedDocumentImage } from './documentImageUtils';
 import { openImageCropper } from './imageCropSession';
+import { inferMimeFromNameOrUri } from '../utils/documentImageGeometry';
 
 export type CapturedDocumentImage = {
   uri: string;
   name: string;
   mimeType: string;
   fileSize?: number;
-  /** Pre-compress source when available (same as uri after normalize). */
+  convertedToJpeg: boolean;
   sourceUri?: string;
 };
 
@@ -28,7 +29,6 @@ async function launchCameraOrFallback(): Promise<ImagePicker.ImagePickerResult> 
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
     });
   } catch {
-    // Web / environments without a camera API: fall back to library picker.
     return ImagePicker.launchImageLibraryAsync({
       allowsEditing: false,
       quality: 1,
@@ -37,10 +37,24 @@ async function launchCameraOrFallback(): Promise<ImagePicker.ImagePickerResult> 
   }
 }
 
+function toCaptured(
+  normalized: NormalizedDocumentImage,
+  fallbackName: string,
+  fileSize?: number,
+): CapturedDocumentImage {
+  return {
+    uri: normalized.uri,
+    sourceUri: normalized.uri,
+    name: normalized.fileName || fallbackName,
+    mimeType: normalized.mimeType,
+    convertedToJpeg: normalized.convertedToJpeg,
+    fileSize,
+  };
+}
+
 /**
- * Opens the camera and saves the complete frame (EXIF-normalized + compressed).
- * Does not open the crop UI — crop only when the user opts in via openImageCropper.
- * Returns null if the user cancels the camera.
+ * Opens the camera and saves the complete frame (EXIF-normalized + compressed when possible).
+ * MIME/filename always match actual bytes (never claim JPEG if conversion failed).
  */
 export async function captureDocumentImage(): Promise<CapturedDocumentImage | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -54,21 +68,16 @@ export async function captureDocumentImage(): Promise<CapturedDocumentImage | nu
   }
 
   const captured = cameraResult.assets[0];
-  const compressedUri = await compressCameraImage(captured.uri);
-  return {
-    uri: compressedUri,
-    sourceUri: compressedUri,
-    name: captured.fileName || `camera-${Date.now()}.jpg`,
-    mimeType: 'image/jpeg',
-    fileSize: captured.fileSize,
-  };
+  const sourceMime =
+    captured.mimeType ||
+    inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+  const normalized = await compressCameraImage(captured.uri, {
+    originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+    sourceMimeType: sourceMime,
+  });
+  return toCaptured(normalized, captured.fileName || `camera-${Date.now()}.jpg`, captured.fileSize);
 }
 
-/**
- * Captures a full frame (no mandatory crop). Kept for call-site compatibility.
- * Optional crop: pass `opts.offerCrop: true` to open the cropper after capture;
- * "Use full image" in the crop UI keeps the complete frame.
- */
 export async function captureAndCropDocumentImage(opts?: {
   offerCrop?: boolean;
 }): Promise<CapturedDocumentImage | null> {
@@ -97,14 +106,13 @@ export async function captureAndCropDocumentImage(opts?: {
       continue;
     }
 
-    // cropResult.uri is either cropped or original ("Use full image").
-    const compressedUri = await compressCameraImage(cropResult.uri);
-    return {
-      uri: compressedUri,
-      sourceUri: compressedUri,
-      name: captured.fileName || `camera-${Date.now()}.jpg`,
-      mimeType: 'image/jpeg',
-      fileSize: captured.fileSize,
-    };
+    const sourceMime =
+      captured.mimeType ||
+      inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+    const normalized = await compressCameraImage(cropResult.uri, {
+      originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+      sourceMimeType: sourceMime,
+    });
+    return toCaptured(normalized, captured.fileName || `camera-${Date.now()}.jpg`, captured.fileSize);
   }
 }

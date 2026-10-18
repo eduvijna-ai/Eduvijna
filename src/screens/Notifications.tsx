@@ -20,12 +20,14 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
 import { isStudentQuizActive } from '../utils/quizFilters';
 import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
-import {
-  fetchQuizCheckRecord,
-  checkRecordToQuiz,
-  fetchStudentClassroomNameLookup,
-} from '@core/services/dashboardApi';
+import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
 import { resolveClassroomDisplayName } from '../utils/classroomDisplayName';
+import {
+  classroomLookupScopeKey,
+  effectiveClassroomNameMap,
+  loadScopedStudentClassroomNameLookup,
+} from '@core/services/studentClassroomLookup';
+import { useUserStore } from '@core/store/user.store';
 
 interface Props {
   navigation?: any;
@@ -37,6 +39,7 @@ export default function Notifications({ navigation, onNavigate }: Props) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const { user } = useAuth();
+  const schoolId = useUserStore((s) => s.schoolId);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   
   const isTeacher = user?.role === 'instructor' || user?.role === 'admin';
@@ -48,6 +51,8 @@ export default function Notifications({ navigation, onNavigate }: Props) {
   const [studentQuizzes, setStudentQuizzes] = useState<ParsedQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [classroomLookupWarning, setClassroomLookupWarning] = useState('');
+  const loadGenerationRef = React.useRef(0);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
@@ -58,17 +63,37 @@ export default function Notifications({ navigation, onNavigate }: Props) {
 
   // Fetch student pending quizzes via check-record endpoint
   // status: null → pending (shown here)   |   status: "completed" → not shown
-  // Classroom names: same school-scoped lookup as Home/Assessments (not session_id).
+  // Classroom names: account/school-scoped lookup with failure ≠ empty map.
   const fetchStudentQuizzes = useCallback(async () => {
     if (!user || isTeacher) return;
-    
+    const generation = ++loadGenerationRef.current;
+    const scopeKey = classroomLookupScopeKey({ userId: String(user.id), schoolId });
+
     try {
       setLoading(true);
+      setClassroomLookupWarning('');
 
-      const [response, classroomLookup] = await Promise.all([
+      const [response, lookupResult] = await Promise.all([
         fetchQuizCheckRecord(user.id, 'pending'),
-        fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
+        loadScopedStudentClassroomNameLookup({
+          userId: String(user.id),
+          schoolId,
+        }),
       ]);
+
+      // Drop stale responses after logout / account / school change.
+      if (generation !== loadGenerationRef.current) return;
+      if (classroomLookupScopeKey({ userId: String(user.id), schoolId }) !== scopeKey) return;
+
+      if (lookupResult.status === 'failed') {
+        setClassroomLookupWarning(
+          lookupResult.priorMap?.size
+            ? 'Classroom names may be outdated. Pull to refresh.'
+            : 'Classroom names could not be loaded. Pull to refresh.',
+        );
+      }
+
+      const classroomLookup = effectiveClassroomNameMap(lookupResult);
       const mapped = (response.result || [])
         .map((row) => {
           const quiz = checkRecordToQuiz(row, { classroomNameLookup: classroomLookup });
@@ -81,25 +106,26 @@ export default function Notifications({ navigation, onNavigate }: Props) {
             }),
           };
         })
-        // Only show quizzes whose status came back as null (pending) and are still within the time window
         .filter(isStudentQuizActive);
 
-      // Sort by assigned/created date, newest first
       mapped.sort((a: any, b: any) => {
         const dateA = new Date(a.assigned_at || a.created_at).getTime();
         const dateB = new Date(b.assigned_at || b.created_at).getTime();
         return dateB - dateA;
       });
 
+      if (generation !== loadGenerationRef.current) return;
       setStudentQuizzes(mapped);
     } catch (error) {
       console.error('Failed to load student quizzes:', error);
       Alert.alert('Error', 'Failed to load notifications');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [user, isTeacher, refreshing]);
+  }, [user, isTeacher, schoolId, refreshing]);
 
   // Load data on mount
   useEffect(() => {
@@ -278,6 +304,13 @@ export default function Notifications({ navigation, onNavigate }: Props) {
           </View>
         </View>
       </View>
+
+      {!isTeacher && !!classroomLookupWarning ? (
+        <View style={styles.lookupWarning}>
+          <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+          <Text style={styles.lookupWarningText}>{classroomLookupWarning}</Text>
+        </View>
+      ) : null}
 
       {/* Notifications List */}
       {notifications.length === 0 ? (
@@ -590,5 +623,21 @@ const styles = StyleSheet.create({
   pendingText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  lookupWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFBEB',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#FCD34D',
+  },
+  lookupWarningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#92400E',
   },
 });

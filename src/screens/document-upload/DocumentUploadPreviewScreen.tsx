@@ -411,13 +411,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       const pages = [];
       for (let i = 0; i < galleryResult.assets.length; i += 1) {
         const asset = galleryResult.assets[i];
-        const compressedUri = await compressCameraImage(asset.uri);
+        const normalized = await compressCameraImage(asset.uri, {
+          originalName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
+          sourceMimeType: asset.mimeType,
+        });
         pages.push({
           pageNumber: existingCount + i + 1,
-          fileUri: compressedUri,
-          fileName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
-          mimeType: asset.mimeType || 'image/jpeg',
-          thumbnailUri: compressedUri,
+          fileUri: normalized.uri,
+          fileName: normalized.fileName,
+          mimeType: normalized.mimeType,
+          thumbnailUri: normalized.uri,
         });
       }
 
@@ -880,13 +883,23 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
         <ScrollView
           style={styles.previewWrap}
-          contentContainerStyle={styles.previewScrollContent}
-          maximumZoomScale={3}
-          minimumZoomScale={1}
-          centerContent
-          bouncesZoom
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.previewScrollContent,
+            previewUri
+              ? {
+                  // Enlarge layout bounds (not transform-only) so zoomed content stays scrollable.
+                  width: Math.max(
+                    Dimensions.get('window').width - 48,
+                    (Dimensions.get('window').width - 48) * (zoom / 100),
+                  ),
+                  height: Math.max(300, 300 * (zoom / 100)),
+                }
+              : null,
+          ]}
+          horizontal={zoom > 100}
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={zoom > 100}
+          showsVerticalScrollIndicator={zoom > 100}
         >
           {previewUri ? (
             <TouchableOpacity
@@ -897,10 +910,10 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             >
               <Image
                 source={{ uri: previewUri }}
-                style={[
-                  styles.previewImage,
-                  { transform: [{ scale: zoom / 100 }] },
-                ]}
+                style={{
+                  width: (Dimensions.get('window').width - 48) * (zoom / 100),
+                  height: 300 * (zoom / 100),
+                }}
                 resizeMode="contain"
               />
             </TouchableOpacity>
@@ -1205,10 +1218,6 @@ const makeStyles = (colors: any) =>
       minHeight: 318,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    previewImage: {
-      width: Dimensions.get('window').width - 48,
-      height: 300,
     },
     previewPlaceholder: {
       flex: 1,

@@ -26,6 +26,24 @@ import type {
  * Map class_wise_students rows to Classroom entries using stable classroom_id.
  * Same source/scope as ClassesList drill-down (not unique-from-summary-quizzes).
  */
+/**
+ * Use pagination/meta total only when it matches unique classroom identities
+ * (same unit as ClassesList rows). Never treat assignment-row totals as class count.
+ */
+export function resolveAuthoritativeClassroomCount(params: {
+  uniqueClassrooms: number;
+  reportedTotal?: number | null;
+  hasMore?: boolean;
+}): number {
+  const unique = Math.max(0, params.uniqueClassrooms);
+  if (params.hasMore) return unique;
+  const reported = Number(params.reportedTotal);
+  if (Number.isFinite(reported) && reported === unique) {
+    return unique;
+  }
+  return unique;
+}
+
 export function mapClassWiseStudentsToClassrooms(rows: any[]): Classroom[] {
   const map = new Map<string, Classroom>();
   for (const row of rows || []) {
@@ -86,6 +104,8 @@ interface TeacherDashboardState {
   // State
   loading: boolean;
   error: string | null;
+  /** True when class_wise_students failed; prior classrooms/count preserved when available. */
+  classroomsUnavailable: boolean;
   lastFetched: number | null;
   isInitialized: boolean;
   
@@ -318,6 +338,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
   uniqueStudents: [],
   loading: false,
   error: null,
+  classroomsUnavailable: false,
   lastFetched: null,
   isInitialized: false,
   studentListsCache: {},
@@ -356,27 +377,36 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
     set({ loading: true, error: null });
 
     try {
-      // Quizzes (summary) + classrooms (class_wise_students) — same classroom source as ClassesList.
-      const [response, classroomsResponse] = await Promise.all([
-        fetchTeacherDashboardSummary({
-          view_type: 'summary',
-          limit: 1000,
-          offset: 0,
-        }),
-        fetchTeacherClassrooms().catch(() => ({ data: [] as any[] })),
-      ]);
+      const response = await fetchTeacherDashboardSummary({
+        view_type: 'summary',
+        limit: 1000,
+        offset: 0,
+      });
 
-      const classroomsList = mapClassWiseStudentsToClassrooms(classroomsResponse.data || []);
-      // Prefer authoritative pagination total when present and covers all pages.
-      const reportedTotal = Number(
-        (classroomsResponse as any)?.pagination?.total ??
-          (classroomsResponse as any)?.meta?.total_count ??
-          NaN,
-      );
-      const classroomCount =
-        Number.isFinite(reportedTotal) && reportedTotal >= classroomsList.length
-          ? reportedTotal
-          : classroomsList.length;
+      // Same classroom source as ClassesList — never substitute empty on failure.
+      let classroomsList = state.classrooms;
+      let classroomCount = state.stats.total_classes;
+      let classroomsUnavailable = false;
+      try {
+        const classroomsResponse = await fetchTeacherClassrooms();
+        classroomsList = mapClassWiseStudentsToClassrooms(classroomsResponse.data || []);
+        const reportedTotal = Number(
+          (classroomsResponse as any)?.pagination?.total ??
+            (classroomsResponse as any)?.meta?.total_count ??
+            NaN,
+        );
+        const hasMore = Boolean((classroomsResponse as any)?.pagination?.hasMore);
+        classroomCount = resolveAuthoritativeClassroomCount({
+          uniqueClassrooms: classroomsList.length,
+          reportedTotal: Number.isFinite(reportedTotal) ? reportedTotal : null,
+          hasMore,
+        });
+        classroomsUnavailable = false;
+      } catch (classroomErr) {
+        console.error('Teacher classrooms fetch failed; preserving prior count:', classroomErr);
+        classroomsUnavailable = true;
+        // Keep prior classroomsList / classroomCount; do not report zero.
+      }
 
       const calculatedStats = {
         ...calculateStats(response.data, classroomsList),
@@ -408,7 +438,10 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
         lastFetched: Date.now(),
         isInitialized: true,
         loading: false,
-        error: null,
+        error: classroomsUnavailable
+          ? 'Classroom list temporarily unavailable. Showing last known class count.'
+          : null,
+        classroomsUnavailable,
       });
 
     } catch (err) {
@@ -439,11 +472,14 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
    * Refresh - clears cache and reloads
    */
   refresh: async () => {
-    set({ 
+    // Preserve classrooms/count across refresh so a classroom fetch failure
+    // cannot flash zero after a successful prior load.
+    set({
       allQuizzes: [],
       isInitialized: false,
       lastFetched: null,
       studentListsCache: {},
+      classroomsUnavailable: false,
     });
     await get().loadDashboard();
   },
@@ -540,6 +576,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       uniqueStudents: [],
       loading: false,
       error: null,
+      classroomsUnavailable: false,
       lastFetched: null,
       isInitialized: false,
       studentListsCache: {},

@@ -1,9 +1,26 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image as RNImage } from 'react-native';
+import {
+  computeAspectPreservingResize,
+  computeContainFitBitmapSize,
+  computePdfContainDrawRect,
+  fileNameForMime,
+  inferMimeFromNameOrUri,
+} from '../utils/documentImageGeometry';
 
 /** Max long-edge for OCR/upload derivatives (aspect preserved). */
 export const DOCUMENT_IMAGE_MAX_EDGE = 1600;
+
+export type NormalizedDocumentImage = {
+  uri: string;
+  mimeType: string;
+  fileName: string;
+  /** True only when manipulator successfully re-encoded to JPEG. */
+  convertedToJpeg: boolean;
+  width?: number;
+  height?: number;
+};
 
 function getImageSize(uri: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -19,13 +36,30 @@ function getImageSize(uri: string): Promise<{ width: number; height: number }> {
  * Bake EXIF orientation into pixels once, then optionally downscale while
  * preserving aspect ratio. Never crops. A single manipulate+save avoids
  * double-rotation (no separate rotate after bake).
+ *
+ * On failure returns the original URI with its inferred MIME — callers must not
+ * claim image/jpeg when convertedToJpeg is false (e.g. unconverted HEIC/PNG).
  */
 export async function normalizeAndCompressImage(
   uri: string,
-  options?: { maxEdge?: number; compress?: number },
-): Promise<string> {
+  options?: {
+    maxEdge?: number;
+    compress?: number;
+    originalName?: string;
+    sourceMimeType?: string;
+  },
+): Promise<NormalizedDocumentImage> {
   const maxEdge = options?.maxEdge ?? DOCUMENT_IMAGE_MAX_EDGE;
   const compress = options?.compress ?? 0.75;
+  const sourceMime =
+    options?.sourceMimeType ||
+    inferMimeFromNameOrUri(options?.originalName || uri, 'application/octet-stream');
+  const fallbackName = fileNameForMime(
+    options?.originalName || `page-${Date.now()}`,
+    sourceMime,
+    `page-${Date.now()}`,
+  );
+
   try {
     let width: number | undefined;
     let height: number | undefined;
@@ -39,32 +73,55 @@ export async function normalizeAndCompressImage(
 
     const context = ImageManipulator.manipulate(uri);
     if (width && height) {
-      const longEdge = Math.max(width, height);
-      if (longEdge > maxEdge) {
-        if (width >= height) {
-          context.resize({ width: maxEdge });
-        } else {
-          context.resize({ height: maxEdge });
-        }
+      const target = computeAspectPreservingResize(width, height, maxEdge);
+      if (target.width !== width || target.height !== height) {
+        context.resize({ width: target.width, height: target.height });
       }
     } else {
-      // Unknown size: cap width only (aspect preserved by manipulator).
       context.resize({ width: maxEdge });
     }
     const image = await context.renderAsync();
     const result = await image.saveAsync({ compress, format: SaveFormat.JPEG });
+    const outW = image.width || width;
+    const outH = image.height || height;
     context.release();
     image.release();
-    return result.uri;
+    return {
+      uri: result.uri,
+      mimeType: 'image/jpeg',
+      fileName: fileNameForMime(options?.originalName || fallbackName, 'image/jpeg', 'page'),
+      convertedToJpeg: true,
+      width: outW,
+      height: outH,
+    };
   } catch {
-    return uri;
+    return {
+      uri,
+      mimeType: sourceMime,
+      fileName: fallbackName,
+      convertedToJpeg: false,
+    };
   }
 }
 
-/** Resize/compress camera captures for faster local storage and upload. */
-export async function compressCameraImage(uri: string): Promise<string> {
-  return normalizeAndCompressImage(uri, { maxEdge: DOCUMENT_IMAGE_MAX_EDGE, compress: 0.75 });
+/** Resize/compress camera captures; throws nothing — check convertedToJpeg. */
+export async function compressCameraImage(
+  uri: string,
+  options?: { originalName?: string; sourceMimeType?: string },
+): Promise<NormalizedDocumentImage> {
+  return normalizeAndCompressImage(uri, {
+    maxEdge: DOCUMENT_IMAGE_MAX_EDGE,
+    compress: 0.75,
+    originalName: options?.originalName,
+    sourceMimeType: options?.sourceMimeType || 'image/jpeg',
+  });
 }
+
+export {
+  computeAspectPreservingResize,
+  computeContainFitBitmapSize,
+  computePdfContainDrawRect,
+};
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const normalized = base64.replace(/[\r\n\s]/g, '');
@@ -118,18 +175,10 @@ async function containFitToPage(uri: string, pageW: number, pageH: number): Prom
     throw new Error('Could not read image dimensions.');
   }
 
-  const srcAspect = srcW / srcH;
-  const pageAspect = pageW / pageH;
-
-  let fitW: number;
-  let fitH: number;
-  if (srcAspect > pageAspect) {
-    fitW = pageW;
-    fitH = Math.max(1, Math.round(pageW / srcAspect));
-  } else {
-    fitH = pageH;
-    fitW = Math.max(1, Math.round(pageH * srcAspect));
-  }
+  const { width: fitW, height: fitH } = computeContainFitBitmapSize(
+    { width: srcW, height: srcH },
+    { width: pageW, height: pageH },
+  );
 
   const resizeContext = ImageManipulator.manipulate(uri);
   resizeContext.resize({ width: fitW, height: fitH });
@@ -137,18 +186,6 @@ async function containFitToPage(uri: string, pageW: number, pageH: number): Prom
   const fitted = await resized.saveAsync({ compress: 0.92, format: SaveFormat.JPEG });
   resizeContext.release();
   resized.release();
-
-  // If already exact page size, done.
-  if (fitW === pageW && fitH === pageH) {
-    return fitted.uri;
-  }
-
-  // Pad to exact page by creating a white canvas via a second contain-then-stretch
-  // path: export fitted image as-is for PDF MediaBox matching fitted pixel size
-  // (variable page size). Callers use fixed MediaBox — so pad by compositing.
-  // Without a canvas API, stretch the fitted image to page (minor letterbox loss
-  // of whitespace only when aspect differs). Prefer no crop of content:
-  // return fitted at its natural size and let PDF page match image pixels.
   return fitted.uri;
 }
 
@@ -393,21 +430,13 @@ function buildPdfFromJpegsContain(
     const imageObj = 5 + i * 3;
     const { jpeg, pixelW, pixelH } = pages[i];
 
-    const imgAspect = pixelW / Math.max(1, pixelH);
-    const pageAspect = pageWidthPt / pageHeightPt;
-    let drawW: number;
-    let drawH: number;
-    if (imgAspect > pageAspect) {
-      drawW = pageWidthPt;
-      drawH = pageWidthPt / imgAspect;
-    } else {
-      drawH = pageHeightPt;
-      drawW = pageHeightPt * imgAspect;
-    }
-    const ox = (pageWidthPt - drawW) / 2;
-    const oy = (pageHeightPt - drawH) / 2;
+    const draw = computePdfContainDrawRect(
+      { width: pixelW, height: pixelH },
+      pageWidthPt,
+      pageHeightPt,
+    );
 
-    const contentStream = `q\n${drawW} 0 0 ${drawH} ${ox} ${oy} cm\n/Im${i} Do\nQ\n`;
+    const contentStream = `q\n${draw.width} 0 0 ${draw.height} ${draw.x} ${draw.y} cm\n/Im${i} Do\nQ\n`;
     const contentBytes = encodeAscii(contentStream);
 
     startObj(pageObj);

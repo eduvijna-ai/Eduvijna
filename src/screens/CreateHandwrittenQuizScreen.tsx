@@ -185,14 +185,16 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         const newImages: PickedImage[] = await Promise.all(
           result.assets.map(async (asset, idx) => {
             // Full frame preserved; EXIF baked once; aspect-preserving resize (web parity JPEG).
-            const compressedUri = await normalizeAndCompressImage(asset.uri, {
+            const normalized = await normalizeAndCompressImage(asset.uri, {
               maxEdge: 1600,
               compress: 0.75,
+              originalName: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
+              sourceMimeType: asset.mimeType,
             });
             return {
-              uri: compressedUri,
-              name: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
-              type: 'image/jpeg',
+              uri: normalized.uri,
+              name: normalized.fileName,
+              type: normalized.mimeType,
             };
           }),
         );
@@ -269,6 +271,9 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       const { userMessage, diagnostic } = formatError(err);
       setError(userMessage);
       setErrorDiagnostic(diagnostic);
+      if (diagnostic) {
+        console.warn('[handwritten]', diagnostic);
+      }
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
@@ -376,6 +381,9 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       const { userMessage, diagnostic } = formatError(err);
       setError(userMessage);
       setErrorDiagnostic(diagnostic);
+      if (diagnostic) {
+        console.warn('[handwritten]', diagnostic);
+      }
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
@@ -396,20 +404,25 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         diagnostic: `HTTP 413 · batch-ocr-upload / generate-strict`,
       };
     }
-    if (status === 503 && /Mathpix/i.test(detailStr)) {
+    if (status === 503 && /Mathpix|OCR/i.test(detailStr)) {
       return {
         userMessage:
-          'Handwritten OCR is unavailable on this API environment (Mathpix not enabled). ' +
-          'This matches the web handwritten path (POST /api/v1/batch-ocr-upload). ' +
-          'Your images and form values were kept — try again when OCR is configured, or use Document upload if that path works for your school.',
-        diagnostic: `HTTP 503 · POST /api/v1/batch-ocr-upload · ${detailStr.slice(0, 180)}`,
+          'Text extraction is temporarily unavailable. Your images and form values were kept — try again shortly, or contact your school administrator if this continues.',
+        diagnostic: `HTTP 503 · ${detailStr.slice(0, 180)}`,
       };
     }
+    // Prefer a short actionable message; keep API paths/providers out of user-facing copy.
+    const sanitizedUser =
+      typeof detailStr === 'string' && !/\/api\/v1|Mathpix|ENABLE_/i.test(detailStr)
+        ? detailStr
+        : status
+          ? `Something went wrong while processing your pages (error ${status}). Your images and form values were kept — please try again.`
+          : 'Something went wrong while processing your pages. Your images and form values were kept — please try again.';
     return {
-      userMessage: detailStr,
+      userMessage: sanitizedUser,
       diagnostic: status
-        ? `HTTP ${status} · ${String(err?.config?.url || err?.response?.config?.url || 'handwritten').slice(0, 120)}`
-        : 'client',
+        ? `HTTP ${status} · ${String(err?.config?.url || err?.response?.config?.url || 'handwritten').slice(0, 120)} · ${detailStr.slice(0, 160)}`
+        : `client · ${detailStr.slice(0, 160)}`,
     };
   };
 
@@ -654,14 +667,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         {!!error && (
           <View style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={18} color="#EF4444" />
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.errorBannerText}>{error}</Text>
-              {!!errorDiagnostic && (
-                <Text style={styles.errorDiagnosticText} numberOfLines={2}>
-                  {errorDiagnostic}
-                </Text>
-              )}
-            </View>
+            <Text style={styles.errorBannerText}>{error}</Text>
           </View>
         )}
       </ScrollView>

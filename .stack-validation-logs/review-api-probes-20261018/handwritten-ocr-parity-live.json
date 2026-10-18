@@ -1,0 +1,20 @@
+{
+  "apiBase": "https://dev-api.eduvijna.com",
+  "role": "instructor",
+  "steps": [
+    {
+      "name": "batch-ocr-upload",
+      "method": "POST",
+      "path": "/api/v1/batch-ocr-upload",
+      "multipartField": "files",
+      "filename": "hw_parity_probe.jpg",
+      "mimeType": "image/jpeg",
+      "status": 503,
+      "elapsedMs": 202,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "success": false,
+      "mathpixGate": true
+    }
+  ],
+  "conclusion": "SHARED_BACKEND_BLOCKER: Mathpix OCR not enabled/configured on this API origin. Mobile and web handwritten both call the same endpoint; generation cannot succeed until provider is enabled server-side."
+}

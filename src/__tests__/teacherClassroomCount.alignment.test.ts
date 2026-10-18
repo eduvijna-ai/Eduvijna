@@ -1,4 +1,7 @@
-import { mapClassWiseStudentsToClassrooms } from '../core/store/teacherDashboard.store';
+import {
+  mapClassWiseStudentsToClassrooms,
+  resolveAuthoritativeClassroomCount,
+} from '../core/store/teacherDashboard.store';
 
 describe('teacher classroom summary vs ClassesList alignment', () => {
   it('counts unique classroom_id entries from class_wise_students (not quiz uniqueness)', () => {
@@ -29,5 +32,30 @@ describe('teacher classroom summary vs ClassesList alignment', () => {
         { classroom_id: 'ok', classroom_name: 'OK' },
       ]),
     ).toHaveLength(1);
+  });
+
+  it('uses reported total only when it equals unique classroom identities', () => {
+    expect(
+      resolveAuthoritativeClassroomCount({
+        uniqueClassrooms: 5,
+        reportedTotal: 5,
+        hasMore: false,
+      }),
+    ).toBe(5);
+    // Divergent total (e.g. assignment rows) must not inflate/deflate the KPI.
+    expect(
+      resolveAuthoritativeClassroomCount({
+        uniqueClassrooms: 5,
+        reportedTotal: 12,
+        hasMore: false,
+      }),
+    ).toBe(5);
+    expect(
+      resolveAuthoritativeClassroomCount({
+        uniqueClassrooms: 5,
+        reportedTotal: 5,
+        hasMore: true,
+      }),
+    ).toBe(5);
   });
 });

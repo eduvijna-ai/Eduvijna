@@ -34,22 +34,26 @@
 | M-09 | Instructor | Share modal | Clipped actions | Scroll + footer | Prior `ShareQuizModal` KAV | Implemented (prior commit) | Physical **Blocked** |
 | M-10 | All | Push | — | FCM | API send **201** + 1 Android token; **not received** on OPPO | Physical send OK / receipt **FAIL** | OEM/FCM delivery open; tap **Not tested** |
 | M-11 | Student Home | Incoming params log | Noise | Harmless | Not a defect | Valid scope | — |
-| M-12 | Instructor/Teacher | Camera/gallery page preview cropped | Full page | Full frame unless user crops; EXIF bake; contain preview; OCR uses fileUri | `captureDocumentImage` (no forced crop); `normalizeAndCompressImage`; PDF contain-fit; FullScreenImagePreview | Implemented + unit-tested | Code PASS; **manual not verified** |
-| M-13 | Instructor/Teacher | Tap image → preview | Full-screen fit + zoom/pan; Back closes; select/remove separate | Same | `FullScreenImagePreview` on Document + Handwritten | Implemented | Code PASS; **manual not verified** |
-| M-14 | Instructor Home | Duplicate “Document Quiz / Upload & books” | Single Document entry | Capability dedupe (`document`); retain DocumentUploadHomeScreen → AssessmentWorkspace | QuizGenerationGrid + SCREEN_DEFAULTS label Document | Implemented + unit-tested | Code PASS; **manual not verified** |
-| M-15 | Instructor | Handwritten Mathpix 503 | Web parity OCR + generate | Same `POST /batch-ocr-upload` `files` + `generate-strict` `{content,language}` | Client contract aligned; **generation not claimed fixed** if Mathpix disabled on shared API | Implemented + unit-tested; generation **Blocked** on provider | Backend Mathpix gate likely shared with web handwritten |
-| M-16 | Student | Pending Notifications “Unknown Class” | Real classroom name | `fetchStudentClassroomNameLookup` on Notifications + check-record loader | Implemented + unit-tested | Code PASS; **manual not verified** |
-| M-17 | Teacher/Instructor | Classes KPI 3 vs list 5 | Same count as ClassesList | `total_classes` from `fetchTeacherClassrooms` / class_wise_students (not unique-from-summary quizzes) | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-12 | Instructor/Teacher | Camera/gallery page preview cropped | Full page | Full frame unless user crops; EXIF bake; contain preview; OCR uses fileUri | Android PanResponder zoom/pan; layout-bound zoom on preview; MIME-safe normalize; geometry unit tests | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-13 | Instructor/Teacher | Tap image → preview | Full-screen fit + zoom/pan; Back closes; select/remove separate | Same | `FullScreenImagePreview` PanResponder (not iOS-only ScrollView zoom) | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-14 | Instructor Home | Duplicate “Document Quiz / Upload & books” | Single Document entry | Capability dedupe via production `resolveQuizGenerationTiles` | QuizGenerationGrid uses shared helper; production tests | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-15 | Instructor | Handwritten Mathpix 503 | Web parity OCR + generate | Same `POST /batch-ocr-upload` | Live probe **503 Mathpix gate** on `dev-api` (`handwritten-ocr-parity-live.json`). Generation **Blocked** shared backend. User-facing copy cleaned | Live API verified blocker | **Genuinely blocked** until Mathpix enabled server-side |
+| M-16 | Student | Pending Notifications “Unknown Class” | Real classroom name | Scoped lookup + retry; prior map on failure; live classes view resolves DEV_* opaque ids | `studentClassroomLookup` + live `pending-classroom-names-live.json` (unresolved=0) | Implemented + unit-tested; Live API | Code+live PASS; **manual not verified** |
+| M-17 | Teacher/Instructor | Classes KPI vs list | Same count as ClassesList | Unique `classroom_id` from class_wise; ignore divergent reported total; preserve prior on fetch fail | Live: unique=6, summaryUnique=3, reported=4≠6 (`teacher-classroom-count-live.json`) | Implemented + unit-tested; Live API | Code+live PASS; **manual not verified** |
 
 ### Live API notes (sanitized)
 - Analytics `student_total_details`: 200, 51 rows; completed=25 (all null score in sample), pending=8, missed=18; expired avail=43 / active=8 (`analytics-classification-live.json`).
 - Fixture 479: check-record status 200; attended-quiz 200 with 10 items (`submission-document-live.json`).
 - Document: `/api/v1/batch-ocr-upload` reachable (422 missing files on empty body) — matches web path; not Mathpix-config proof.
+- Handwritten OCR (2026-10-18 follow-up): instructor `POST /api/v1/batch-ocr-upload` → **503 Mathpix not enabled** on `https://dev-api.eduvijna.com` (shared with web handwritten).
+- Pending classroom names: classes view lookupSize=5; DEV_MATRIX/DEV_DOC opaque `class_*` ids resolve (e.g. 4A-Mathematics / 4A-Telugu); unresolvedOpaqueIds=0.
+- Teacher classrooms: class_wise unique=6; summary-named unique=3; pagination reportedTotal=4 does **not** match unique — KPI must use unique classroom ids.
 
 ### Remaining blockers
 1. Journey B native date-picker automation (or alternate date entry) on OPPO Android 10.
 2. Push FCM receipt/tap despite API `201` + registered Android token.
-3. Same-source Mathpix/provider Network capture (successful web handwritten + mobile handwritten on `dev-api`); do not treat generation as fixed without success evidence.
+3. **Mathpix/provider must be enabled on shared API** before handwritten generation can succeed (mobile+web same gate). Do not mark M-15 fixed without successful generation evidence.
 4. Fresh student submit (beyond fixture 479 reopen) + document save/history/reopen.
 5. Founder review/acceptance (PR #26 remains DRAFT).
-6. M-12…M-17 physical/manual verification on OPPO (this handoff is manual-test ready, not release approval).
+6. M-12…M-17 / M-01…M-11 physical/manual verification on OPPO (focused code checks ≠ release approval).
+7. OPPO last known install is **release APK** (`com.eduvijna.app` @ b570e91) — cannot load Metro JS; needs new install of a build that includes this SHA (dev client or rebuilt release). Do not uninstall without authorization.

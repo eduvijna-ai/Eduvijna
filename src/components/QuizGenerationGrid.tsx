@@ -20,66 +20,13 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  useQuizNavItems,
-  SCREEN_DEFAULTS,
-  type ResolvedNavItem,
-} from '@core/hooks/useQuizNavItems';
+import { useQuizNavItems, type ResolvedNavItem } from '@core/hooks/useQuizNavItems';
 import { useQuizNavScreenAccess } from '@core/hooks/useQuizNavScreenAccess';
 import {
-  resolveQuizNavCapabilityForScreen,
-  type QuizNavCapability,
-} from '@core/domain/quizNavCapability';
+  resolveQuizGenerationNavigation,
+  resolveQuizGenerationTiles,
+} from '@core/utils/quizGenerationTiles';
 import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
-
-/** Hard-coded fallback order – shown when the API returns no items */
-const FALLBACK_SCREENS = [
-  'CreateAIQuizScreen',
-  'CreateDocumentQuizScreen',
-  'CreateImageQuizScreen',
-  'CreateYouTubeQuizScreen',
-];
-
-/**
- * The web "AI Assessment Platform" is a single nav item whose workspace contains
- * tabs (AI Assessment / Document & Handwritten / Image / Exam Paper). On mobile
- * we don't render an in-page tab workspace, so when a user is granted the
- * platform we expand it into the equivalent standalone tiles below.
- */
-const isPlatformTile = (tile: ResolvedNavItem): boolean => {
-  const label = tile.label.trim().toLowerCase();
-  return (
-    label === 'ai assessment platform' ||
-    label.includes('assessment platform') ||
-    tile.screen === 'CreateHandwrittenQuizScreen'
-  );
-};
-
-/**
- * Screens the AI Assessment Platform expands into on mobile.
- * Prefer DocumentUploadHomeScreen (API document route target) over the legacy
- * CreateDocumentQuizScreen label so Home never shows a duplicate "Document Quiz".
- */
-const PLATFORM_EXPANSION_SCREENS = [
-  'CreateAIQuizScreen',
-  'DocumentUploadHomeScreen',
-  'CreateHandwrittenQuizScreen',
-  'CreateImageQuizScreen',
-];
-
-function presentCapabilities(tiles: ResolvedNavItem[]): Set<QuizNavCapability> {
-  const caps = new Set<QuizNavCapability>();
-  for (const tile of tiles) {
-    const cap = resolveQuizNavCapabilityForScreen(tile.screen);
-    if (cap) caps.add(cap);
-  }
-  return caps;
-}
-
-const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
-  // The platform itself is never shown as a tile; it is expanded into its parts.
-  return isPlatformTile(tile);
-};
 
 interface QuizGenerationGridProps {
   navigation?: any;
@@ -101,83 +48,11 @@ export default function QuizGenerationGrid({
   const { items: navItems, loading, fetchStatus } = useQuizNavItems();
   const { canAccessScreen } = useQuizNavScreenAccess();
 
-  /** Tiles to render — API items when available, defaults otherwise */
-  const tiles: ResolvedNavItem[] = useMemo(() => {
-    const source =
-      fetchStatus === 'ready'
-        ? navItems
-        : fetchStatus === 'error'
-        ? FALLBACK_SCREENS.map((screen, i) => {
-            const d = SCREEN_DEFAULTS[screen]!;
-            return {
-              screen,
-              label: d.label,
-              subtitle: d.subtitle,
-              iconName: d.icon,
-              iconColor: d.color,
-              bgColor: d.bg,
-              display_order: i,
-            };
-          })
-        : [];
-
-    // Whether the user is granted the AI Assessment Platform (its workspace
-    // includes AI Assessment / Document & Handwritten / Image on web).
-    const hasPlatform = source.some(isPlatformTile);
-
-    const visible = source.filter((tile) => !isHiddenGenerationTile(tile));
-
-    if (!hasPlatform) {
-      return visible;
-    }
-
-    // Expand the platform into standalone Document / Image / AI Assessment tiles,
-    // skipping any capability the backend already granted (stable identity, not label text).
-    const presentScreens = new Set(visible.map((t) => t.screen));
-    const presentCaps = presentCapabilities(visible);
-    const baseOrder = Math.max(0, ...visible.map((t) => t.display_order ?? 0)) + 1;
-    const expanded = PLATFORM_EXPANSION_SCREENS.filter((screen) => {
-      if (presentScreens.has(screen)) return false;
-      const cap = resolveQuizNavCapabilityForScreen(screen);
-      if (cap && presentCaps.has(cap)) return false;
-      return true;
-    }).map((screen, i) => {
-      const d = SCREEN_DEFAULTS[screen]!;
-      // Prefer API-facing "Document" label for the retained document tile.
-      const label =
-        screen === 'DocumentUploadHomeScreen' || screen === 'CreateDocumentQuizScreen'
-          ? 'Document'
-          : d.label;
-      return {
-        screen,
-        label,
-        subtitle: d.subtitle,
-        iconName: d.icon,
-        iconColor: d.color,
-        bgColor: d.bg,
-        display_order: baseOrder + i,
-      };
-    });
-
-    // Final capability dedupe: keep first tile per capability (API order wins).
-    const seenCaps = new Set<QuizNavCapability>();
-    const deduped: ResolvedNavItem[] = [];
-    for (const tile of [...visible, ...expanded].sort(
-      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
-    )) {
-      const cap = resolveQuizNavCapabilityForScreen(tile.screen);
-      if (cap) {
-        if (seenCaps.has(cap)) continue;
-        seenCaps.add(cap);
-      }
-      deduped.push(
-        tile.screen === 'DocumentUploadHomeScreen' || tile.screen === 'CreateDocumentQuizScreen'
-          ? { ...tile, label: tile.label === 'Document Quiz' ? 'Document' : tile.label }
-          : tile,
-      );
-    }
-    return deduped;
-  }, [navItems, fetchStatus]);
+  /** Tiles to render — production helper shared with unit tests. */
+  const tiles: ResolvedNavItem[] = useMemo(
+    () => resolveQuizGenerationTiles({ fetchStatus, navItems }),
+    [navItems, fetchStatus],
+  );
 
   const handlePress = (screen: string) => {
     const isDocumentScreen =
@@ -195,7 +70,6 @@ export default function QuizGenerationGrid({
       );
       return;
     }
-    // Tab-level destinations — use the root nav ref to switch tabs reliably
     if (screen === 'ERPSchools') {
       navigateToAppMainTab(APP_MAIN_TABS.ERP_SCHOOLS);
       return;
@@ -205,20 +79,10 @@ export default function QuizGenerationGrid({
       return;
     }
 
-    const useWorkspaceRedirect = Platform.OS !== 'web';
-    const resolvedScreen =
-      useWorkspaceRedirect && (isDocumentScreen || screen === 'CreateHandwrittenQuizScreen')
-        ? 'AssessmentWorkspaceScreen'
-        : useWorkspaceRedirect && screen === 'CreateImageQuizScreen'
-          ? 'ImageAssessmentScreen'
-          : screen;
-
-    const resolvedParams =
-      useWorkspaceRedirect && isDocumentScreen
-        ? { mode: 'document' }
-        : useWorkspaceRedirect && screen === 'CreateHandwrittenQuizScreen'
-          ? { mode: 'handwritten' }
-          : undefined;
+    const { screen: resolvedScreen, params: resolvedParams } = resolveQuizGenerationNavigation(
+      screen,
+      { isWeb: Platform.OS === 'web' },
+    );
 
     if (navigation?.navigate) {
       navigation.navigate(resolvedScreen, resolvedParams);
@@ -309,7 +173,6 @@ export default function QuizGenerationGrid({
         </View>
       )}
 
-      {/* My AI Content — always visible, separated from generation tiles */}
       <View style={[styles.aiContentDivider, { borderTopColor: theme.colors.border }]}>
         <Text style={[styles.aiContentHeading, { color: theme.colors.textSecondary }]}>
           MY AI CONTENT
@@ -348,7 +211,6 @@ export default function QuizGenerationGrid({
   );
 }
 
-// ─── extra styles injected below the grid ───────────────────────────────────
 const styles = StyleSheet.create({
   section: {
     paddingHorizontal: 12,
@@ -371,7 +233,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  /** 3-column wrapping grid — mirrors ERPMainScreen grid */
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -453,4 +314,3 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 });
-

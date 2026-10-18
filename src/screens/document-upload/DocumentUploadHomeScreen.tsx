@@ -392,13 +392,16 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       const pages = [];
       for (let i = 0; i < galleryResult.assets.length; i += 1) {
         const asset = galleryResult.assets[i];
-        const compressedUri = await compressCameraImage(asset.uri);
+        const normalized = await compressCameraImage(asset.uri, {
+          originalName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
+          sourceMimeType: asset.mimeType,
+        });
         pages.push({
           pageNumber: i + 1,
-          fileUri: compressedUri,
-          fileName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
-          mimeType: asset.mimeType || 'image/jpeg',
-          thumbnailUri: compressedUri,
+          fileUri: normalized.uri,
+          fileName: normalized.fileName,
+          mimeType: normalized.mimeType,
+          thumbnailUri: normalized.uri,
         });
       }
 

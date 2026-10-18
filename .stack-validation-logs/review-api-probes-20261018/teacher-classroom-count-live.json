@@ -1,0 +1,36 @@
+{
+  "apiBase": "https://dev-api.eduvijna.com",
+  "classWiseStatus": 200,
+  "classWiseRowCount": 6,
+  "uniqueClassroomIds": 6,
+  "reportedTotal": 4,
+  "reportedMatchesUnique": false,
+  "summaryUniqueNamedClassrooms": 3,
+  "sampleNames": [
+    {
+      "id": "class_38c28982",
+      "name": "10A-Mathematics-Sam"
+    },
+    {
+      "id": "class_4d82c60e",
+      "name": "4A-Mathematics"
+    },
+    {
+      "id": "class_54bebe1f",
+      "name": "10A-Science"
+    },
+    {
+      "id": "class_7ba8d042",
+      "name": "10A-English-Sam"
+    },
+    {
+      "id": "class_b3261be7",
+      "name": "4A-Telugu"
+    },
+    {
+      "id": "class_e2d9c6ba",
+      "name": "5A-Mathematics-Sam"
+    }
+  ],
+  "kpiShouldUse": 6
+}

@@ -1,24 +1,36 @@
 /**
  * Full-screen image preview for document / handwritten capture flows.
- * Starts with aspect-fit contain; supports pinch/scroll zoom + pan; Back closes.
- * Does not mutate page selection or trigger deletion.
+ * Starts with aspect-fit contain; Android + iOS pinch zoom and two-axis pan
+ * via PanResponder (does not rely on iOS-only ScrollView maximumZoomScale).
+ * Back/close only — never mutates page selection or deletion.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
-  Dimensions,
   Image,
   Modal,
-  ScrollView,
+  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type PanResponderGestureState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  clampPan,
+  clampScale,
+  computeContainSize,
+  distanceBetween,
+  nextPinchScale,
+  type Point,
+} from '../utils/zoomableImageMath';
 
 export type FullScreenImagePreviewProps = {
   visible: boolean;
@@ -27,6 +39,9 @@ export type FullScreenImagePreviewProps = {
   onClose: () => void;
 };
 
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
 export default function FullScreenImagePreview({
   visible,
   uri,
@@ -34,9 +49,26 @@ export default function FullScreenImagePreview({
   onClose,
 }: FullScreenImagePreviewProps) {
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const [stage, setStage] = useState({ width: window.width, height: 400 });
+  const [scale, setScale] = useState(1);
+  const [translate, setTranslate] = useState<Point>({ x: 0, y: 0 });
+
+  const scaleRef = useRef(1);
+  const translateRef = useRef<Point>({ x: 0, y: 0 });
+  const pinchStartScale = useRef(1);
+  const pinchStartDistance = useRef(0);
+  const panStartTranslate = useRef<Point>({ x: 0, y: 0 });
+  const modeRef = useRef<'none' | 'pan' | 'pinch'>('none');
+
+  const resetViewport = useCallback(() => {
+    scaleRef.current = 1;
+    translateRef.current = { x: 0, y: 0 };
+    setScale(1);
+    setTranslate({ x: 0, y: 0 });
+  }, []);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -50,6 +82,7 @@ export default function FullScreenImagePreview({
   useEffect(() => {
     setNatural(null);
     setLoadError(false);
+    resetViewport();
     if (!uri || !visible) return undefined;
     let cancelled = false;
     Image.getSize(
@@ -64,22 +97,101 @@ export default function FullScreenImagePreview({
     return () => {
       cancelled = true;
     };
-  }, [uri, visible]);
+  }, [uri, visible, resetViewport]);
 
-  const window = Dimensions.get('window');
-  const stageW = window.width;
-  const stageH = Math.max(200, window.height - insets.top - insets.bottom - 56);
+  // Rotation / window change → recompute fit baseline and reset zoom/pan.
+  useEffect(() => {
+    resetViewport();
+  }, [window.width, window.height, stage.width, stage.height, resetViewport]);
 
-  const fitted = useMemo(() => {
-    if (!natural?.width || !natural?.height) {
-      return { width: stageW, height: stageH };
+  const fitted = useMemo(
+    () =>
+      computeContainSize(natural || { width: stage.width, height: stage.height }, stage),
+    [natural, stage],
+  );
+
+  const applyScaleTranslate = useCallback(
+    (nextScale: number, nextTranslate: Point) => {
+      const s = clampScale(nextScale, MIN_SCALE, MAX_SCALE);
+      const t =
+        s <= 1
+          ? { x: 0, y: 0 }
+          : clampPan(nextTranslate, fitted, s, stage);
+      scaleRef.current = s;
+      translateRef.current = t;
+      setScale(s);
+      setTranslate(t);
+    },
+    [fitted, stage],
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (e: GestureResponderEvent) => {
+          const touches = e.nativeEvent.touches || [];
+          if (touches.length >= 2) {
+            modeRef.current = 'pinch';
+            pinchStartScale.current = scaleRef.current;
+            pinchStartDistance.current = distanceBetween(touches[0], touches[1]);
+          } else {
+            modeRef.current = scaleRef.current > 1 ? 'pan' : 'none';
+            panStartTranslate.current = { ...translateRef.current };
+          }
+        },
+        onPanResponderMove: (e: GestureResponderEvent, gesture: PanResponderGestureState) => {
+          const touches = e.nativeEvent.touches || [];
+          if (touches.length >= 2) {
+            if (modeRef.current !== 'pinch') {
+              modeRef.current = 'pinch';
+              pinchStartScale.current = scaleRef.current;
+              pinchStartDistance.current = distanceBetween(touches[0], touches[1]);
+            }
+            const dist = distanceBetween(touches[0], touches[1]);
+            const next = nextPinchScale(
+              pinchStartScale.current,
+              pinchStartDistance.current,
+              dist,
+              MIN_SCALE,
+              MAX_SCALE,
+            );
+            applyScaleTranslate(next, translateRef.current);
+            return;
+          }
+          if (modeRef.current === 'pan' && scaleRef.current > 1) {
+            applyScaleTranslate(scaleRef.current, {
+              x: panStartTranslate.current.x + gesture.dx,
+              y: panStartTranslate.current.y + gesture.dy,
+            });
+          }
+        },
+        onPanResponderRelease: () => {
+          modeRef.current = 'none';
+          applyScaleTranslate(scaleRef.current, translateRef.current);
+        },
+        onPanResponderTerminate: () => {
+          modeRef.current = 'none';
+          applyScaleTranslate(scaleRef.current, translateRef.current);
+        },
+      }),
+    [applyScaleTranslate],
+  );
+
+  const onStageLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width > 0 && height > 0) {
+      setStage({ width, height });
     }
-    const scale = Math.min(stageW / natural.width, stageH / natural.height);
-    return {
-      width: Math.max(1, natural.width * scale),
-      height: Math.max(1, natural.height * scale),
-    };
-  }, [natural, stageW, stageH]);
+  };
+
+  const headerReserve = 56;
+  const hintReserve = 36;
+  const stageHeight = Math.max(
+    200,
+    window.height - insets.top - insets.bottom - headerReserve - hintReserve,
+  );
 
   return (
     <Modal
@@ -94,44 +206,62 @@ export default function FullScreenImagePreview({
           <Text style={styles.title} numberOfLines={1}>
             {title || 'Image preview'}
           </Text>
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close image preview"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="close" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => applyScaleTranslate(scale - 0.5, translate)}
+              accessibilityRole="button"
+              accessibilityLabel="Zoom out"
+            >
+              <Ionicons name="remove" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => applyScaleTranslate(scale + 0.5, translate)}
+              accessibilityRole="button"
+              accessibilityLabel="Zoom in"
+            >
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close image preview"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={[styles.stage, { height: stageH }]}>
+        <View style={[styles.stage, { height: stageHeight }]} onLayout={onStageLayout} {...panResponder.panHandlers}>
           {uri && !loadError ? (
-            <ScrollView
-              ref={scrollRef}
-              style={styles.scroll}
-              contentContainerStyle={[
-                styles.scrollContent,
-                { minWidth: stageW, minHeight: stageH },
-              ]}
-              maximumZoomScale={4}
-              minimumZoomScale={1}
-              centerContent
-              bouncesZoom
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-            >
-              {natural ? (
+            natural ? (
+              <View
+                style={[
+                  styles.imageWrap,
+                  {
+                    width: fitted.width,
+                    height: fitted.height,
+                    transform: [
+                      { translateX: translate.x },
+                      { translateY: translate.y },
+                      { scale },
+                    ],
+                  },
+                ]}
+              >
                 <Image
                   source={{ uri }}
                   style={{ width: fitted.width, height: fitted.height }}
                   resizeMode="contain"
                   accessibilityLabel="Full page image"
                 />
-              ) : (
-                <ActivityIndicator color="#FFFFFF" />
-              )}
-            </ScrollView>
+              </View>
+            ) : (
+              <ActivityIndicator color="#FFFFFF" />
+            )
           ) : (
             <View style={styles.errorBox}>
               <Ionicons name="image-outline" size={40} color="#94A3B8" />
@@ -142,7 +272,9 @@ export default function FullScreenImagePreview({
           )}
         </View>
 
-        <Text style={styles.hint}>Pinch or scroll to zoom · Close or Back to return</Text>
+        <Text style={styles.hint}>
+          Pinch or use +/− to zoom · Drag to pan · Close or Back to return
+        </Text>
       </View>
     </Modal>
   );
@@ -166,6 +298,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   closeBtn: {
     width: 40,
     height: 40,
@@ -177,11 +322,11 @@ const styles = StyleSheet.create({
   stage: {
     width: '100%',
     backgroundColor: '#020617',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
+  imageWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
