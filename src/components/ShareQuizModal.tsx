@@ -17,7 +17,11 @@ import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient, API_BASE_URL } from '@core/api/config';
-import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
+import {
+  buildAssessmentClassroomScopeFromUser,
+  useAssessmentClassroomsStore,
+} from '@core/store/assessmentClassrooms.store';
+import { useUserStore } from '@core/store/user.store';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
 import { getAccessToken } from '@core/services/tokenStorage';
 import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
@@ -226,38 +230,32 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         setClassrooms([]);
         return;
       }
-      
-      try {
-        // Use dashboardApi service to fetch classrooms
-        const response = await fetchTeacherClassrooms();
-        const classroomList = response.data || [];
-        console.log('📚 Fetched classrooms:', classroomList.map((c: any) => ({
-          id: c.classroom_id,
-          name: c.classroom_name,
-          total_count: c.total_count,
-          student_count: c.student_count,
-          students_length: c.students?.length || 0,
-        })));
-        
-        // Classrooms already have parsed students from fetchTeacherClassrooms
-        const normalizedClassrooms: Classroom[] = classroomList.map((c: any) => ({
-          classroom_id: c.classroom_id,
-          classroom_name: c.classroom_name,
-          total_count: c.total_count || c.student_count || c.students?.length || 0,
-          students: c.students || [],
-        }));
-        setClassrooms(normalizedClassrooms);
-        if (normalizedClassrooms.length > 0) {
-          setSelectedClassroom(normalizedClassrooms[0].classroom_id);
-        }
-      } catch (apiError) {
-        // API endpoint might not exist - set empty classrooms and continue
-        console.warn('Could not fetch classrooms - API may not be available:', apiError);
+
+      const schoolId = useUserStore.getState().schoolId;
+      const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+      if (!scope) {
         setClassrooms([]);
+        return;
+      }
+
+      await useAssessmentClassroomsStore.getState().ensureLoaded(scope);
+      const inventory = useAssessmentClassroomsStore.getState().classrooms;
+      const normalizedClassrooms: Classroom[] = inventory.map((c) => ({
+        classroom_id: c.classroom_id,
+        classroom_name: c.classroom_name,
+        total_count: c.total_count || c.student_count || c.students?.length || 0,
+        students: (c.students as any[]) || [],
+      }));
+      setClassrooms(normalizedClassrooms);
+      if (normalizedClassrooms.length > 0 && !selectedClassroom) {
+        setSelectedClassroom(normalizedClassrooms[0].classroom_id);
       }
     } catch (error) {
       console.error('Error in fetchClassrooms:', error);
-      setClassrooms([]);
+      // Preserve prior selection list on failure — do not flash empty if we already had data.
+      if (classrooms.length === 0) {
+        setClassrooms([]);
+      }
     }
   };
 

@@ -36,6 +36,8 @@ import {
   calculateStudentHealthKPIs,
 } from '../core/services/quizAnalyticsApi';
 import type { ClassOverview, QuizListItem, QuizTile } from '../core/types/quizAnalytics.types';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import { mergeAssessmentClassroomInventoryWithMetrics } from '@core/services/assessmentClassroomAnalytics';
 import {
   generateKPITiles,
   getDefaultDateRange,
@@ -111,11 +113,20 @@ export default function QuizTeacherAnalyticsScreen() {
     submittedAt: null as string | null,
   });
 
+  const {
+    classrooms: assessmentClassrooms,
+    count: assessmentClassroomCount,
+    refresh: refreshAssessmentClassrooms,
+  } = useAssessmentClassrooms();
+
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
+      if (isRefresh) {
+        await refreshAssessmentClassrooms();
+      }
       const res = await getQuizAnalytics({
         view_type: 'all',
         limit: 500,
@@ -130,13 +141,21 @@ export default function QuizTeacherAnalyticsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [appliedStart, appliedEnd]);
+  }, [appliedStart, appliedEnd, refreshAssessmentClassrooms]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const classOverviews = useMemo(() => aggregateClassOverview(rawData), [rawData]);
+  // Inventory is independent of date filters; metrics attach to selected classroom_id.
+  const classOverviews = useMemo(() => {
+    const metrics = aggregateClassOverview(rawData);
+    return mergeAssessmentClassroomInventoryWithMetrics(assessmentClassrooms, metrics);
+  }, [rawData, assessmentClassrooms]);
+  const classesWithActivityInRange = useMemo(
+    () => aggregateClassOverview(rawData).length,
+    [rawData],
+  );
   const kpiTiles = useMemo(() => generateKPITiles(rawData), [rawData]);
   const academicKPIs = useMemo(() => calculateAcademicKPIs(rawData), [rawData]);
   const studentHealth = useMemo(() => calculateStudentHealthKPIs(rawData), [rawData]);
@@ -570,6 +589,16 @@ export default function QuizTeacherAnalyticsScreen() {
         {drillLevel === 'classes' ? (
           <View style={styles.kpiSection}>
             <AnalyticsKPIGrid tiles={kpiTiles} />
+            {assessmentClassroomCount > 0 &&
+            classesWithActivityInRange !== assessmentClassroomCount ? (
+              <Text
+                style={[styles.inventoryHint, { color: colors.textSecondary }]}
+                accessibilityLabel={`Authorized classrooms ${assessmentClassroomCount}; ${classesWithActivityInRange} with activity in selected date range`}
+              >
+                {assessmentClassroomCount} authorized classrooms · {classesWithActivityInRange}{' '}
+                with activity in selected date range
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -908,6 +937,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   kpiSection: { paddingVertical: 12 },
+  inventoryHint: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 16,
+  },
   classKpiSection: { paddingVertical: 4 },
   errorBox: { margin: 16, padding: 12, backgroundColor: '#fef2f2', borderRadius: 8 },
   errorText: { color: '#dc2626', fontSize: 13 },

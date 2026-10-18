@@ -13,9 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { fetchTeacherQuizzes, fetchTeacherClassrooms } from '@core/services/dashboardApi';
+import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { Classroom } from '@core/types/quiz.types';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import { 
   isStudentQuizActive, 
   isStudentQuizUpcoming,
@@ -46,9 +47,16 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
   
   // Get dashboard data from store (already loaded by StudentDashboard)
   const { quizzes: storedQuizzes } = useDashboardStore();
+  const {
+    classrooms: assessmentClassrooms,
+    unavailable: classroomsUnavailable,
+    error: classroomsError,
+    refresh: refreshAssessmentClassrooms,
+  } = useAssessmentClassrooms();
   
   // Determine if user is a student
   const isStudent = user?.role === 'student';
@@ -58,55 +66,28 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
 
   useEffect(() => {
     loadClasses();
-  }, []);
+  }, [assessmentClassrooms, storedQuizzes, isStudent]);
 
   const loadClasses = async () => {
     setLoading(true);
+    setListError(null);
     try {
       let fetchedClasses: any[] = [];
       let allQuizzes: any[] = [];
       
+      // Shared authorized inventory (teacher: class_wise_students; student: classes).
+      // Includes zero-assignment classrooms; never derive the list from quizzes alone.
+      fetchedClasses = assessmentClassrooms.map((c) => ({ ...c }));
+
+      if (classroomsUnavailable && fetchedClasses.length === 0) {
+        setListError(classroomsError || 'Classroom list temporarily unavailable.');
+        setLoading(false);
+        return;
+      }
+
       if (isStudent) {
-        // For students: Reuse dashboard data from store (already loaded by StudentDashboard)
-        
-        if (storedQuizzes.length === 0) {
-          console.warn('⚠️ No data in store. StudentDashboard should load data first.');
-          setLoading(false);
-          return;
-        }
-        
-        // Aggregate classes from stored quiz data
-        const classMap = new Map<string, any>();
-        
-        storedQuizzes.forEach((quiz: any) => {
-          const classId = quiz.classroom_id || quiz.class_id;
-          // Use classroom_id as the name if classroom_name looks like a quiz name
-          // Quiz names typically have underscores and dates, classroom names are cleaner
-          let className = quiz.classroom_name || classId || 'Unknown Class';
-          
-          // Aggregate by classroom_id
-          if (classId && !classMap.has(classId)) {
-            classMap.set(classId, {
-              classroom_id: classId,
-              classroom_name: className,
-              instructor: quiz.instructor ? quiz.instructor : undefined,
-              quizzes: [],
-            });
-          }
-          
-          if (classId) {
-            const classData = classMap.get(classId);
-            classData.quizzes.push(quiz);
-          }
-        });
-        
-        fetchedClasses = Array.from(classMap.values());
         allQuizzes = storedQuizzes;
       } else {
-        // For teachers: Get instructor's classes
-        const classesResponse = await fetchTeacherClassrooms();
-        fetchedClasses = classesResponse.data || [];
-        
         // Get all quizzes for the instructor with complete attempt data
         // Use view_type='all' to get detailed student statuses (completed, pending, missed)
         const quizzesResult = await fetchTeacherQuizzes({
@@ -266,6 +247,7 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    await refreshAssessmentClassrooms();
     await loadClasses();
   };
 

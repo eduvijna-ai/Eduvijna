@@ -16,7 +16,6 @@ import { useDashboardStore } from '../store/dashboard.store';
 import { resetStudentAssignmentDashboardStore } from '../store/studentAssignmentDashboard.store';
 import {
   fetchTeacherDashboardSummary,
-  fetchTeacherClassrooms,
   fetchStudentQuizzes,
 } from './dashboardApi';
 import {
@@ -25,6 +24,10 @@ import {
   fetchLevels,
   clearDropdownCache,
 } from './dropdown';
+import {
+  buildAssessmentClassroomScopeFromUser,
+  useAssessmentClassroomsStore,
+} from '../store/assessmentClassrooms.store';
 
 interface DataLoadingState {
   isLoading: boolean;
@@ -84,10 +87,16 @@ async function loadTeacherData(): Promise<void> {
     // Store in global state
     dashboardStore.setQuizzes(summaryResponse.data, summaryResponse.meta.total_count);
     
-    // Load classrooms
-    const classroomsResponse = await fetchTeacherClassrooms();
-    console.log('✅ Teacher classrooms loaded:', classroomsResponse.data.length);
-    dashboardStore.setClassrooms(classroomsResponse.data);
+    // Load classrooms via shared assessment inventory (class_wise_students, paginated).
+    const user = useUserStore.getState().user;
+    const schoolId = useUserStore.getState().schoolId;
+    const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+    if (scope) {
+      await useAssessmentClassroomsStore.getState().refresh(scope);
+      const inventory = useAssessmentClassroomsStore.getState().classrooms;
+      console.log('✅ Teacher classrooms loaded:', inventory.length);
+      dashboardStore.setClassrooms(inventory as any);
+    }
     
     // Load dropdown data in parallel
     await Promise.allSettled([
@@ -270,9 +279,15 @@ export async function refreshData(dataType: 'quizzes' | 'classrooms' | 'dropdown
         const response = await fetchStudentQuizzes({ view_type: 'student_total_details', limit: 1000 });
         useDashboardStore.getState().setQuizzes(response.data, response.meta.total_count);
       }
-    } else if (dataType === 'classrooms' && user.role === 'instructor') {
-      const response = await fetchTeacherClassrooms();
-      useDashboardStore.getState().setClassrooms(response.data);
+    } else if (dataType === 'classrooms' && (user.role === 'instructor' || user.role === 'teacher')) {
+      const schoolId = useUserStore.getState().schoolId;
+      const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+      if (scope) {
+        await useAssessmentClassroomsStore.getState().refresh(scope);
+        useDashboardStore
+          .getState()
+          .setClassrooms(useAssessmentClassroomsStore.getState().classrooms as any);
+      }
     } else if (dataType === 'dropdowns') {
       await Promise.allSettled([
         fetchClasses(),

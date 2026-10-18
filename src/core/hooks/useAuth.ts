@@ -341,6 +341,12 @@ export function useAuth(): UseAuthReturn {
         });
         await invalidateTeacherDashboardCaches();
         useTeacherDashboardStore.getState().reset();
+        try {
+          const { useAssessmentClassroomsStore } = await import('../store/assessmentClassrooms.store');
+          useAssessmentClassroomsStore.getState().reset();
+        } catch {
+          // optional
+        }
         await storeUserDataForSession(sessionEpoch, JSON.stringify(enrichedUser));
       } catch (err) {
         commit.run(() => {

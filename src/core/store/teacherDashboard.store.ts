@@ -8,10 +8,18 @@
 import { AppState } from 'react-native';
 import { create } from 'zustand';
 import {
-  fetchTeacherClassrooms,
   fetchTeacherDashboardSummary,
   fetchTeacherQuizzes,
 } from '../services/dashboardApi';
+import {
+  loadAssessmentClassrooms,
+  mapClassWiseStudentsToClassrooms,
+  resolveAuthoritativeClassroomCount,
+} from '../services/assessmentClassrooms.service';
+import {
+  buildAssessmentClassroomScopeFromUser,
+  useAssessmentClassroomsStore,
+} from './assessmentClassrooms.store';
 import { getPendingCropUri, subscribeCropSession } from '../services/imageCropSession';
 import * as TokenStorage from '../services/tokenStorage';
 import type {
@@ -19,69 +27,11 @@ import type {
   TeacherDashboardStats,
   WeakStudent,
   Classroom,
-  Instructor,
 } from '../types/quiz.types';
+import { useUserStore } from './user.store';
 
-/**
- * Map class_wise_students rows to Classroom entries using stable classroom_id.
- * Same source/scope as ClassesList drill-down (not unique-from-summary-quizzes).
- */
-/**
- * Use pagination/meta total only when it matches unique classroom identities
- * (same unit as ClassesList rows). Never treat assignment-row totals as class count.
- */
-export function resolveAuthoritativeClassroomCount(params: {
-  uniqueClassrooms: number;
-  reportedTotal?: number | null;
-  hasMore?: boolean;
-}): number {
-  const unique = Math.max(0, params.uniqueClassrooms);
-  if (params.hasMore) return unique;
-  const reported = Number(params.reportedTotal);
-  if (Number.isFinite(reported) && reported === unique) {
-    return unique;
-  }
-  return unique;
-}
-
-export function mapClassWiseStudentsToClassrooms(rows: any[]): Classroom[] {
-  const map = new Map<string, Classroom>();
-  for (const row of rows || []) {
-    const id = String(row?.classroom_id || row?.class_id || '').trim();
-    if (!id || map.has(id)) continue;
-    let instructorData: Instructor;
-    if (row.instructor) {
-      try {
-        instructorData =
-          typeof row.instructor === 'string' ? JSON.parse(row.instructor) : row.instructor;
-      } catch {
-        instructorData = {
-          instructor_id: '0',
-          instructor_username: 'unknown',
-          instructor_fullname: 'Unknown Instructor',
-          instructor_avatar_url: null,
-        };
-      }
-    } else {
-      instructorData = {
-        instructor_id: '0',
-        instructor_username: 'unknown',
-        instructor_fullname: 'Unknown Instructor',
-        instructor_avatar_url: null,
-      };
-    }
-    const studentCount =
-      Number(row.total_students ?? row.total_count ?? row.student_count ?? 0) ||
-      (Array.isArray(row.students) ? row.students.length : 0);
-    map.set(id, {
-      classroom_id: id,
-      classroom_name: String(row.classroom_name || row.name || id),
-      instructor: instructorData,
-      total_students: studentCount,
-    });
-  }
-  return Array.from(map.values());
-}
+// Re-export for existing tests / callers — implementation lives in assessmentClassrooms.service.
+export { mapClassWiseStudentsToClassrooms, resolveAuthoritativeClassroomCount };
 
 export interface Student {
   student_id: number;
@@ -383,25 +333,48 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
         offset: 0,
       });
 
-      // Same classroom source as ClassesList — never substitute empty on failure.
+      // Same classroom source as ClassesList (shared assessment inventory).
       let classroomsList = state.classrooms;
       let classroomCount = state.stats.total_classes;
       let classroomsUnavailable = false;
       try {
-        const classroomsResponse = await fetchTeacherClassrooms();
-        classroomsList = mapClassWiseStudentsToClassrooms(classroomsResponse.data || []);
-        const reportedTotal = Number(
-          (classroomsResponse as any)?.pagination?.total ??
-            (classroomsResponse as any)?.meta?.total_count ??
-            NaN,
-        );
-        const hasMore = Boolean((classroomsResponse as any)?.pagination?.hasMore);
-        classroomCount = resolveAuthoritativeClassroomCount({
-          uniqueClassrooms: classroomsList.length,
-          reportedTotal: Number.isFinite(reportedTotal) ? reportedTotal : null,
-          hasMore,
+        const user = useUserStore.getState().user;
+        const schoolId = useUserStore.getState().schoolId;
+        const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+        if (!scope) {
+          throw new Error('assessment_classrooms_missing_scope');
+        }
+        const classroomResult = await loadAssessmentClassrooms(scope, {
+          getCurrentScope: () =>
+            buildAssessmentClassroomScopeFromUser(
+              useUserStore.getState().user,
+              useUserStore.getState().schoolId,
+            ),
         });
-        classroomsUnavailable = false;
+        if (classroomResult.kind === 'ok') {
+          classroomsList = classroomResult.classrooms;
+          classroomCount = resolveAuthoritativeClassroomCount({
+            uniqueClassrooms: classroomResult.count,
+          });
+          classroomsUnavailable = false;
+          useAssessmentClassroomsStore.setState({
+            scopeKey: classroomResult.scopeKey,
+            classrooms: classroomResult.classrooms,
+            count: classroomResult.count,
+            source: classroomResult.source,
+            loading: false,
+            unavailable: false,
+            error: null,
+            lastFetched: Date.now(),
+            contractNote: null,
+          });
+        } else if (classroomResult.prior?.length) {
+          classroomsList = classroomResult.prior;
+          classroomCount = classroomResult.prior.length;
+          classroomsUnavailable = true;
+        } else {
+          classroomsUnavailable = true;
+        }
       } catch (classroomErr) {
         console.error('Teacher classrooms fetch failed; preserving prior count:', classroomErr);
         classroomsUnavailable = true;
@@ -568,6 +541,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
    * Reset store (for logout)
    */
   reset: () => {
+    useAssessmentClassroomsStore.getState().reset();
     set({
       allQuizzes: [],
       classrooms: [],

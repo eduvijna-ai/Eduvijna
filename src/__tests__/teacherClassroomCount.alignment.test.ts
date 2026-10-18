@@ -34,7 +34,7 @@ describe('teacher classroom summary vs ClassesList alignment', () => {
     ).toHaveLength(1);
   });
 
-  it('uses reported total only when it equals unique classroom identities', () => {
+  it('always uses unique classroom identities (never unverified reported totals)', () => {
     expect(
       resolveAuthoritativeClassroomCount({
         uniqueClassrooms: 5,
@@ -52,10 +52,10 @@ describe('teacher classroom summary vs ClassesList alignment', () => {
     ).toBe(5);
     expect(
       resolveAuthoritativeClassroomCount({
-        uniqueClassrooms: 5,
-        reportedTotal: 5,
-        hasMore: true,
+        uniqueClassrooms: 6,
+        reportedTotal: 4,
+        hasMore: false,
       }),
-    ).toBe(5);
+    ).toBe(6);
   });
 });

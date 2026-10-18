@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import { usesTeacherAssessmentClassroomPath } from '@core/services/assessmentClassrooms.service';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
@@ -152,11 +154,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     attemptData: any;
   } | null>(null);
 
-  const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
+  const isTeacher =
+    userRole === 'instructor' ||
+    usesTeacherAssessmentClassroomPath(user?.role) ||
+    usesTeacherAssessmentClassroomPath(userRole);
   const isStudent = user?.role === 'student';
 
   // Fetch data based on role
   const teacherData = useTeacherDashboard();
+  const { options: assessmentClassroomOptions } = useAssessmentClassrooms();
   const { setQuizzes } = useDashboardStore();
 
   const {
@@ -237,18 +243,26 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // Filter assessments - ensure we always have an array
   const allQuizzes = isTeacher ? (teacherQuizzes || []) : (studentQuizzes || []);
   
-  // Extract unique classrooms for filter dropdown
+  // Authorized classroom inventory (includes zero-assignment). Quiz-derived sets omit those.
   const uniqueClassrooms = React.useMemo(() => {
+    // Teacher/instructor always use the shared inventory (may be empty while loading).
+    if (isTeacher || assessmentClassroomOptions.length > 0) {
+      return assessmentClassroomOptions;
+    }
+    // Student cold-start fallback only when shared classes inventory is not yet ready.
     const classroomMap = new Map<string, string>();
     allQuizzes.forEach((quiz: any) => {
-      const classroomId = quiz.classroom_id || quiz.class_id;
-      const classroomName = quiz.classroom_name || quiz.class_name;
-      if (classroomId && classroomName && !classroomMap.has(classroomId)) {
-        classroomMap.set(classroomId, classroomName);
+      const id = quiz.classroom_id || quiz.class_id;
+      const name = quiz.classroom_name || quiz.class_name;
+      if (id && name && !classroomMap.has(String(id))) {
+        classroomMap.set(String(id), String(name));
       }
     });
-    return Array.from(classroomMap.entries()).map(([classroom_id, classroom_name]) => ({ classroom_id, classroom_name }));
-  }, [allQuizzes]);
+    return Array.from(classroomMap.entries()).map(([classroom_id, classroom_name]) => ({
+      classroom_id,
+      classroom_name,
+    }));
+  }, [assessmentClassroomOptions, allQuizzes, isTeacher]);
   
   // First, apply classroom, date, and search filters (not tab filter yet)
   const baseFilteredQuizzes = React.useMemo(() => {
