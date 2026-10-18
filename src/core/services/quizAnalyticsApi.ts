@@ -22,6 +22,14 @@ import type {
   QuizTile,
 } from '../types/quizAnalytics.types';
 import { API_VIEW_TYPES } from '../types/quizAnalytics.types';
+import {
+  classifyStudentAnalyticsAttemptStatus,
+  classifyStudentAnalyticsAvailability,
+  isStudentAnalyticsCompleted,
+  isStudentAnalyticsMissed,
+  isStudentAnalyticsPendingLike,
+  scoreForStudentAnalyticsDisplay,
+} from '../utils/studentAnalyticsClassification';
 
 /**
  * Fetch quiz analytics data
@@ -92,48 +100,16 @@ export const parseLogData = (logDataString: string | null): ParsedLogData | null
   }
 };
 
-function studentAttemptCompleted(quiz: QuizListItem): boolean {
-  const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
-  if (score != null && Number.isFinite(Number(score))) return true;
-  const status = String(
-    (quiz as { student_status?: string }).student_status ||
-      (quiz as { quiz_status?: string }).quiz_status ||
-      '',
-  ).toLowerCase();
-  if (status === 'completed') return true;
-  let attemptsArray = quiz.attempts as unknown;
-  if (typeof attemptsArray === 'string') {
-    try {
-      attemptsArray = JSON.parse(attemptsArray);
-    } catch {
-      attemptsArray = [];
-    }
-  }
-  if (Array.isArray(attemptsArray) && attemptsArray.length > 0) {
-    return attemptsArray.some(
-      (a: { status?: string }) => String(a?.status || '').toLowerCase() === 'completed',
-    );
-  }
-  return false;
-}
-
 function looksLikeStudentTotalDetails(data: QuizListItem[]): boolean {
   if (data.length === 0) return false;
-  // student_total_details rows include per-student student_status even when cohort
-  // completed_count is also populated. Prefer student_status over cohort math.
-  const withStudentStatus = data.filter(
-    (q) => (q as { student_status?: string }).student_status != null,
-  ).length;
-  if (withStudentStatus >= Math.ceil(data.length * 0.5)) {
-    return true;
-  }
-  const studentSignal = data.filter(
-    (q) =>
-      q.best_score != null ||
-      q.latest_score != null ||
-      (Array.isArray(q.attempts) && q.attempts.length > 0),
-  ).length;
-  return studentSignal > 0;
+  // student_total_details rows include per-student student_status / quiz_status
+  // even when cohort completed_count is also populated.
+  const withStudentStatus = data.filter((q) => {
+    const ss = (q as { student_status?: string | null }).student_status;
+    const qs = (q as { quiz_status?: string | null }).quiz_status;
+    return ss != null || qs != null;
+  }).length;
+  return withStudentStatus >= Math.ceil(data.length * 0.5);
 }
 
 /**
@@ -170,16 +146,18 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
     classData.total_quizzes += 1;
 
     if (studentMode) {
-      const completed = studentAttemptCompleted(quiz);
-      const expired =
-        quiz.availability_status === 'expired' ||
-        (quiz.end_time ? new Date(quiz.end_time) < new Date() : false);
-      if (completed) {
+      const attempt = classifyStudentAnalyticsAttemptStatus(quiz);
+      if (attempt === 'completed') {
         classData.completed_count += 1;
-      } else if (expired) {
+      } else if (attempt === 'missed') {
         classData.missed_count += 1;
+      } else if (attempt === 'in_progress') {
+        classData.in_progress_count += 1;
       } else {
         classData.pending_count += 1;
+      }
+      if (classifyStudentAnalyticsAvailability(quiz) === 'expired') {
+        classData.expired_count += 1;
       }
     } else {
       classData.missed_count +=
@@ -214,10 +192,10 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
 
     classQuizzes.forEach((quiz) => {
       if (studentMode) {
-        const scoreRaw = quiz.best_score ?? quiz.latest_score ?? quiz.score;
-        if (scoreRaw == null) return;
-        const score = typeof scoreRaw === 'number' ? scoreRaw : parseFloat(String(scoreRaw));
-        if (Number.isNaN(score)) return;
+        // Avg only from rows that both completed and have a numeric score.
+        if (!isStudentAnalyticsCompleted(quiz)) return;
+        const score = scoreForStudentAnalyticsDisplay(quiz);
+        if (score == null) return;
         totalScore += score;
         scoreCount += 1;
         highestScore = highestScore === null ? score : Math.max(highestScore, score);
@@ -259,44 +237,60 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
 };
 
 /**
- * Extract status summary for a specific class
+ * Extract status summary for a specific class.
+ * Student total-details: web Status + Availability columns (not cohort counts).
  */
 export const extractStatusSummary = (data: QuizListItem[], classroomId?: string): StatusSummary => {
   const filtered = classroomId ? data.filter(q => q.classroom_id === classroomId) : data;
-  
+
   const summary: StatusSummary = {
     missed: 0,
     completed: 0,
     pending: 0,
     expired: 0,
     not_started: 0,
-    active: 0
+    active: 0,
   };
-  
-  filtered.forEach(quiz => {
+
+  if (looksLikeStudentTotalDetails(filtered)) {
+    filtered.forEach((quiz) => {
+      if (isStudentAnalyticsCompleted(quiz)) summary.completed += 1;
+      else if (isStudentAnalyticsMissed(quiz)) summary.missed += 1;
+      else if (isStudentAnalyticsPendingLike(quiz)) summary.pending += 1;
+
+      const avail = classifyStudentAnalyticsAvailability(quiz);
+      if (avail === 'active') summary.active += 1;
+      else if (avail === 'expired') summary.expired += 1;
+      else if (avail === 'upcoming' || avail === 'not_started' || avail === 'available_soon') {
+        summary.not_started += 1;
+      }
+    });
+    return summary;
+  }
+
+  filtered.forEach((quiz) => {
     const now = new Date();
     const isExpired = quiz.end_time ? new Date(quiz.end_time) < now : false;
-    
+
     summary.completed += quiz.completed_count || 0;
     summary.pending += (quiz.in_progress_count || 0) + (quiz.pending_count || 0);
-    
+
     if (isExpired) {
       summary.expired += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
     }
-    
-    // Count availability-based statuses
+
     if (quiz.availability_status === 'active') {
       summary.active += 1;
     } else if (quiz.availability_status === 'upcoming' || quiz.availability_status === 'not_started') {
       summary.not_started += 1;
     }
-    
-    // Missed = total students - (completed + in_progress + pending)
+
     const totalStudents = quiz.total_students || 0;
-    const accounted = (quiz.completed_count || 0) + (quiz.in_progress_count || 0) + (quiz.pending_count || 0);
+    const accounted =
+      (quiz.completed_count || 0) + (quiz.in_progress_count || 0) + (quiz.pending_count || 0);
     summary.missed += Math.max(0, totalStudents - accounted);
   });
-  
+
   return summary;
 };
 

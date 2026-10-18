@@ -2,6 +2,12 @@
  * Analytics helpers — KPI tile generation (ported from Quiz-React KPIBanner)
  */
 import type { QuizListItem } from '../types/quizAnalytics.types';
+import {
+  isStudentAnalyticsCompleted,
+  isStudentAnalyticsMissed,
+  isStudentAnalyticsPendingLike,
+  scoreForStudentAnalyticsDisplay,
+} from './studentAnalyticsClassification';
 
 export type KPIColor = 'green' | 'amber' | 'red' | 'blue' | 'purple';
 
@@ -88,35 +94,18 @@ export function generateKPITiles(data: QuizListItem[] | null | undefined): KPITi
   ];
 }
 
-function studentRowCompleted(q: QuizListItem): boolean {
-  const score = q.best_score ?? q.latest_score ?? q.score;
-  if (score != null && Number.isFinite(Number(score))) return true;
-  return String((q as { student_status?: string }).student_status || '').toLowerCase() === 'completed';
-}
-
-function studentRowMissed(q: QuizListItem): boolean {
-  if (studentRowCompleted(q)) return false;
-  const status = String((q as { student_status?: string }).student_status || '').toLowerCase();
-  return status === 'missed' || q.availability_status === 'expired';
-}
-
 export function generateStudentKPITiles(data: QuizListItem[] | null | undefined): KPITileData[] {
   const items = data ?? [];
-  const scoreOf = (q: QuizListItem) => q.best_score ?? q.latest_score ?? q.score;
-  const completed = items.filter(studentRowCompleted);
-  const pending = items.filter((q) => {
-    if (studentRowCompleted(q) || studentRowMissed(q)) return false;
-    return q.availability_status === 'active' || !q.availability_status;
-  }).length;
-  const scored = completed.filter((q) => {
-    const score = scoreOf(q);
-    return score != null && Number.isFinite(Number(score));
-  });
+  const completed = items.filter(isStudentAnalyticsCompleted);
+  const pending = items.filter(isStudentAnalyticsPendingLike).length;
+  const missed = items.filter(isStudentAnalyticsMissed).length;
+  const scored = completed
+    .map((q) => scoreForStudentAnalyticsDisplay(q))
+    .filter((s): s is number => s != null);
   const avgScore =
     scored.length > 0
-      ? Math.round(scored.reduce((sum, q) => sum + (Number(scoreOf(q)) || 0), 0) / scored.length)
+      ? Math.round(scored.reduce((sum, s) => sum + s, 0) / scored.length)
       : 0;
-  const missed = items.filter(studentRowMissed).length;
 
   return [
     { title: 'Completed', value: completed.length, color: 'green', icon: 'checkmark-done-outline' },

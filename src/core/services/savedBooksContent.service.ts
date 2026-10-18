@@ -727,20 +727,43 @@ export async function getSavedBooksBoards(
   });
 }
 
-/** Collapse duplicate class labels that normalize to the same grade (e.g. "10" / "Class 10"). */
+/**
+ * Preserve distinct selectable class IDs for downstream subjects/topics.
+ * Only collapse exact duplicate IDs. When labels collide across different IDs,
+ * disambiguate the display label with stable metadata (id) — do not discard rows.
+ */
+export function normalizeSavedBooksClassOptions(
+  items: SavedBooksDropdownItem[],
+): SavedBooksDropdownItem[] {
+  const byId = new Map<number, SavedBooksDropdownItem>();
+  for (const item of items) {
+    if (!byId.has(item.id)) {
+      byId.set(item.id, { ...item });
+    }
+  }
+  const unique = Array.from(byId.values());
+  const labelCounts = new Map<string, number>();
+  for (const item of unique) {
+    const key = item.label.trim().toLowerCase();
+    labelCounts.set(key, (labelCounts.get(key) || 0) + 1);
+  }
+  return unique.map((item) => {
+    const key = item.label.trim().toLowerCase();
+    if ((labelCounts.get(key) || 0) <= 1) return item;
+    const grade = normalizeGradeToken(item.label);
+    const base = grade ? `Class ${grade}` : item.label.trim();
+    return {
+      ...item,
+      label: `${base} (#${item.id})`,
+    };
+  });
+}
+
+/** @deprecated use normalizeSavedBooksClassOptions — kept for test name stability during review. */
 export function dedupeSavedBooksClassesByGrade(
   items: SavedBooksDropdownItem[],
 ): SavedBooksDropdownItem[] {
-  const seen = new Set<string>();
-  const out: SavedBooksDropdownItem[] = [];
-  for (const item of items) {
-    const token = normalizeGradeToken(item.label) || normalizeGradeToken(String(item.id));
-    const key = token || `id:${item.id}|${item.label.trim().toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
-  }
-  return out;
+  return normalizeSavedBooksClassOptions(items);
 }
 
 export async function getSavedBooksClasses(
@@ -751,7 +774,7 @@ export async function getSavedBooksClasses(
   const cacheKey = buildSavedBooksCacheKey('classes', schoolId, [boardId], accountId);
   return getCachedSavedBooksDropdown(cacheKey, async () => {
     const res = await apiClient.get(buildSavedBooksClassesPath(boardId, schoolId));
-    return dedupeSavedBooksClassesByGrade(unwrapDropdownItems(res.data));
+    return normalizeSavedBooksClassOptions(unwrapDropdownItems(res.data));
   });
 }
 

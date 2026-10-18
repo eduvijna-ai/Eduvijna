@@ -1,72 +1,42 @@
-# Founder mobile regression recovery — final handoff (2026-10-18)
+# Founder mobile regression — final handoff (review correction pass)
 
-## Verdict
-Product fixes for student request amplification, student analytics Completed/Done mapping, ERP Class Overview data source/name/KPI parity, timetable `Pundefined`, share-modal reachability, and saved-books class dedupe are implemented and unit-tested on branch `integration/mobile-founder-acceptance-20261011`. **Physical OPPO verification and a new release APK are BLOCKED** because ADB showed no device `OBAAZLSK5DFIGYZ5` during this run. **PR #26 remains DRAFT.** Do not treat Journey A/B or unit tests alone as full acceptance.
+**PR:** #26 DRAFT — recovery not accepted  
+**Branch:** `integration/mobile-founder-acceptance-20261011`  
+**Review baseline:** `54fa5fb`  
+**This pass:** review corrections 1–7 (status-first analytics, class identity, ERP errors/pagination, dashboard coalesce, product investigation, isolated APK, evidence)  
+**API:** `https://dev-api.eduvijna.com` · **Web:** `https://dev.eduvijna.com`  
+**Device:** OPPO `OBAAZLSK5DFIGYZ5` — connect/unlock only when ready; no emulator fallback.
 
-## Identity
-| Item | Value |
-|------|--------|
-| Worktree | `C:\Users\kanne\dev\Eduvijna-pr26-closure` |
-| Branch | `integration/mobile-founder-acceptance-20261011` |
-| Pre-fix HEAD | `8df956ffc6985e96aadf107832a9cf0e9ee2a051` |
-| API | `https://dev-api.eduvijna.com` |
-| Web | `https://dev.eduvijna.com` |
-| Last installed APK (historical) | `2fb85b0` SHA-256 `F37F33F24C41E613AE5A6E94769DD22EBBF8360DB18087815DC52C5F8479D6BE` |
-| New APK this session | **Not built** — blocked on device reconnect + release assemble after push |
-| Primary Eduvijna / Quiz-React | Untouched |
+## Corrections landed
 
-## Issue dispositions (summary)
-See full ledger: `.stack-validation-logs/FOUNDER_MOBILE_REGRESSION_ISSUE_LEDGER_20261018.md`
+1. **Analytics** — shared `studentAnalyticsClassification` (status-first; availability separate). Live: 51 rows, 25 completed with null score, completed+expired present. Pending-with-score covered by unit tests (not present in current live cohort).
+2. **Saved-books classes** — `normalizeSavedBooksClassOptions` keeps distinct IDs; disambiguates colliding labels with `(#id)`.
+3. **ERP Class Overview** — per-section error/retry; `fetchAllPages` (no silent 500/200 caps); `loadGenRef` stale guard; KPI shows `—` on section error; teacher roster never broadens when assignments empty/fail.
+4. **Student Home** — identical in-flight coalesced; loading owned by latest owner; list epoch from `refreshStudentAssignmentDashboard` defeats 8s focus stale window after submit refresh.
+5. **Product investigation** — fixture 479 attended-quiz **200** (10 items); check-record string `p_student_id` contract confirmed. Document: mobile/web share `/api/v1/batch-ocr-upload` (empty → 422 files). Mathpix-config claim still needs same-source web success + mobile fail Network capture. **Pundefined:** root cause was ERP **Timetable Templates** list falling through `item.name` to `P${period_number}` — fixed via `template_name` + `P—`.
+6. **APK** — built at isolated `C:\ev-rc` (android retained; no `--clean` prebuild on primary checkout). Identity recorded below after assemble.
+7. **Tests/gates** — focused Jest 17/17; ledger tiers updated; commit/push without force.
 
-| ID | Disposition |
-|----|-------------|
-| M-01 Student Home amplification | **PASS** (code + unit). Physical timing blocked. |
-| M-02 Analytics Completed 0 / Done | **PASS** (code + unit + live API shape: `student_status` with null scores). |
-| M-03 Unknown Class | **PASS** with lookup; opaque id fallback unchanged. |
-| M-04 Submission persist | **BLOCKED** — needs OPPO + live submit/reopen. |
-| M-05 Instructor fixture 479 | **Not reproduced** this session; prior Journey B PASS @ `2fb85b0` retained historically. |
-| M-06 Document gen / Mathpix | **Backend/environment** (owner enable Mathpix/provider). Class dedupe **PASS**. Live gen blocked. |
-| M-07 ERP Class Overview 6 vs 168 / Student #N / Teachers 0 vs 38 | **PASS** (code): students-by-user + web KPI formula; Staff list 38 named via `/erp/hr/staff`. Teachers KPI vs staff directory = **valid scope**. |
-| M-08 Timetable Pundefined | **PASS** (code). |
-| M-09 Share modal layout | **PASS** (code). |
-| M-10 Push | **BLOCKED** (device/FCM). |
-| M-11 Params undefined log | Not a defect. |
+## APK identity
+_(filled after assembleRelease)_
 
-## Proven root causes & fixes
-1. **Home hydrate storm** — removed attended-quiz enrichment from default list load; focus/mount dedupe + in-flight coalesce; bounded hydrate retries when explicitly enabled.
-2. **Student Done/Completed** — `student_total_details` carries `student_status` and often null scores; KPI and class aggregation now use `student_status`, not cohort `completed_count` alone.
-3. **ERP Class Overview** — list used `studentProfilesApi` (ids without names) while KPI summed class `student_count`; now students-by-user + distinct-profile KPI; staff names from HR fields.
-4. **Pundefined** — student/staff timetable mappers now accept `periodNumber`/`period_no` aliases.
-5. **Duplicate Class N** — `dedupeSavedBooksClassesByGrade` on saved-books class dropdown.
+| Field | Value |
+|-------|-------|
+| Product SHA | _pending build_ |
+| API env | `EDUVIJNA_API_ENV=development` → `https://dev-api.eduvijna.com` |
+| App version | `1.0.0` (`app.json` / `runtimeVersion`) |
+| APK path | _pending_ |
+| SHA-256 | _pending_ |
 
-## Web/mobile API comparison (sanitized)
-| Action | Contract | Probe |
-|--------|----------|-------|
-| Login | `POST /api/v1/auth/login` `{username_or_email,password,…}` | OK student 70 / instructor 66 |
-| Check-record | `POST /api/v1/quiz/check-record` `{p_student_id,p_session_id,p_check_type}` | 200, 26 pending rows |
-| Student analytics | `GET /dashboard/quizzes?view_type=student_total_details` | 200, 51 rows, ~121ms; 25 completed by status |
-| Staff | `GET /api/v1/erp/hr/staff` | 200, 38 named |
-| Wrong origin | `eduapi.eduvijna.com` + `{username,password}` | 422 — not the mobile/dev contract |
+## Physical suite
+**Blocked** until OPPO attached. Founder action: connect + unlock + approve system prompts. Install preserve-data (`adb install -r`).
 
-## Before/after request counts
-| | Before | After |
-|--|--------|-------|
-| Student Home | 3 list APIs + **N× attended-quiz (≤5 retries each)** + focus refetch | 3 list APIs only; focus skipped if &lt;8s / coalesced |
+## Exact remaining blockers
+1. OPPO reconnect → install/release suite (submit/reopen, document save/history, Templates UI, analytics screens).
+2. Same-source Mathpix/provider request pair before backend-config declaration.
+3. Push delivery/tap.
+4. Matrix rows outside PR26 slice remain prior disposition; this pass does not claim full-stack release approval.
 
-## Tests & matrix
-- New/updated unit: studentDashboardLoad.noHydrate, quizAnalytics student aggregate, student KPI status, personDisplayName, dedupeSavedBooksClasses — **PASS**
-- `npm run test:journey-logic` — **28/28 PASS**
-- Full-stack matrix — **not re-run** this session (prior disposition: PR26 diagnostic / not full PASS). Do not cite PR26-only as full-stack PASS.
-
-## Physical device
-- ADB `devices` empty throughout session → all Maestro/ADB steps **BLOCKED**
-- Next action: attach OPPO `OBAAZLSK5DFIGYZ5`, `. .\scripts\engineering-physical-device-env.ps1`, build+install new release APK (preserve data), run consolidated physical suite (student submit/reopen, instructor drill, document modes, ERP, logout/deeplink/bell, controlled failure navigation).
-
-## Screenshots
-Extracted: `.stack-validation-logs/founder-screenshot-inventory-20261018/` from the four WhatsApp ZIPs.
-
-## Remaining owner actions
-1. Reconnect OPPO; authorize new APK install if destructive clear needed.
-2. Backend: configure Mathpix / assessment provider on `dev-api` (do not embed secrets in mobile).
-3. After APK: live submission + document save/history + push registration.
-4. Keep PR #26 **DRAFT** until acceptance gates complete.
+## Evidence paths
+- Ledger: `.stack-validation-logs/FOUNDER_MOBILE_REGRESSION_ISSUE_LEDGER_20261018.md`
+- Live probes: `.stack-validation-logs/review-api-probes-20261018/`

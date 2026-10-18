@@ -1,0 +1,206 @@
+{
+  "api": "https://dev-api.eduvijna.com",
+  "fixture": {
+    "quizId": 479,
+    "studentId": "70",
+    "attemptId": 207,
+    "sessionId": "a6882262-5c50-4cf5-a4a8-dc8786862916"
+  },
+  "studentUserId": "70",
+  "instructorUserId": "66",
+  "steps": [
+    {
+      "name": "student_check_record_pending",
+      "status": 200,
+      "elapsedMs": 250,
+      "retryAfter": null,
+      "message": "26 record(s) found",
+      "keys": [
+        "success",
+        "result",
+        "check_type",
+        "message"
+      ],
+      "rowHint": 26
+    },
+    {
+      "name": "student_check_record_fixture_session",
+      "status": 200,
+      "elapsedMs": 82,
+      "retryAfter": null,
+      "message": "Record exists",
+      "keys": [
+        "success",
+        "result",
+        "check_type",
+        "message"
+      ],
+      "rowHint": null
+    },
+    {
+      "name": "dashboard_quiz_attempts_session_scoped",
+      "status": 200,
+      "elapsedMs": 75,
+      "retryAfter": null,
+      "message": null,
+      "keys": [
+        "0"
+      ],
+      "rowHint": null
+    },
+    {
+      "name": "attended_quiz_fixture",
+      "status": 200,
+      "elapsedMs": 239,
+      "retryAfter": null,
+      "message": null,
+      "keys": [
+        "quiz_id",
+        "classroom_id",
+        "student_id",
+        "attempt",
+        "created_at",
+        "submitted_at",
+        "file_name",
+        "session_id",
+        "time_spent_seconds",
+        "duration",
+        "items",
+        "counts",
+        "score",
+        "assessment_type",
+        "log_data",
+        "worksheet_data"
+      ],
+      "rowHint": 10
+    },
+    {
+      "name": "mobile_web_batch_ocr_upload_empty",
+      "endpoint": "/api/v1/batch-ocr-upload",
+      "status": 422,
+      "elapsedMs": 63,
+      "retryAfter": null,
+      "message": [
+        {
+          "type": "missing",
+          "loc": [
+            "body",
+            "files"
+          ],
+          "msg": "Field required",
+          "input": null
+        }
+      ],
+      "keys": [
+        "code",
+        "message",
+        "detail",
+        "status_code",
+        "path",
+        "request_id",
+        "errors",
+        "timestamp"
+      ],
+      "rowHint": null
+    },
+    {
+      "name": "mobile_shaped_generate_strict_probe",
+      "endpoint": "/api/v1/quiz/generate-strict",
+      "status": 422,
+      "elapsedMs": 28,
+      "retryAfter": null,
+      "message": [
+        {
+          "type": "missing",
+          "loc": [
+            "body",
+            "content"
+          ],
+          "msg": "Field required",
+          "input": {
+            "dry_run": true,
+            "source": "probe"
+          }
+        }
+      ],
+      "keys": [
+        "code",
+        "message",
+        "detail",
+        "status_code",
+        "path",
+        "request_id",
+        "errors",
+        "timestamp"
+      ],
+      "rowHint": null
+    },
+    {
+      "name": "mobile_shaped_assessment_multimodal_probe",
+      "endpoint": "/api/v1/assessment/generate-multimodal",
+      "status": 400,
+      "elapsedMs": 45,
+      "retryAfter": null,
+      "message": "Please provide at least one file or URL to generate an assessment from.",
+      "keys": [
+        "code",
+        "message",
+        "detail",
+        "status_code",
+        "path",
+        "request_id",
+        "retryable",
+        "timestamp"
+      ],
+      "rowHint": null
+    },
+    {
+      "name": "mobile_shaped_generate_from_book_probe",
+      "endpoint": "/api/v1/study-materials/generate-from-book",
+      "status": 422,
+      "elapsedMs": 45,
+      "retryAfter": null,
+      "message": [
+        {
+          "type": "missing",
+          "loc": [
+            "body",
+            "doc_id"
+          ],
+          "msg": "Field required",
+          "input": {
+            "dry_run": true,
+            "source": "probe"
+          }
+        },
+        {
+          "type": "missing",
+          "loc": [
+            "body",
+            "page_numbers"
+          ],
+          "msg": "Field required",
+          "input": {
+            "dry_run": true,
+            "source": "probe"
+          }
+        }
+      ],
+      "keys": [
+        "code",
+        "message",
+        "detail",
+        "status_code",
+        "path",
+        "request_id",
+        "errors",
+        "timestamp"
+      ],
+      "rowHint": null
+    }
+  ],
+  "interpretation": {
+    "submissionPersistence": "API read-back of fixture attempt/attended-quiz only; live submit+reopen still requires OPPO.",
+    "mathpixProvider": "Probe captures mobile-shaped endpoint status/messages. Compare to successful browser Network tab for same mode before declaring backend-only."
+  }
+}

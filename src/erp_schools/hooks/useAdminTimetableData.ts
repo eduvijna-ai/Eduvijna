@@ -78,7 +78,7 @@ function mapSlot(r: Record<string, unknown>): TtSlot {
     id: pickNumber(r.id),
     templateId: pickNumber(r.template_id),
     dayOfWeek: pickNumber(r.day_of_week),
-    periodNumber: pickNumber(r.period_number, 1),
+    periodNumber: pickNumber(r.period_number, r.periodNumber, r.period_no, r.period, 1),
     startTime: pickString(r.start_time),
     endTime: pickString(r.end_time),
     classId: pickNumber(r.class_id) || undefined,

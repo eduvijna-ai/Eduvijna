@@ -375,7 +375,9 @@ function FreeRow({
   return (
     <View style={[styles.periodRow, { borderTopColor: theme.colors.border }]}>
       <View style={styles.periodMeta}>
-        <Text style={[styles.periodNo, { color: theme.colors.textPrimary }]}>P{period}</Text>
+        <Text style={[styles.periodNo, { color: theme.colors.textPrimary }]}>
+          P{period > 0 ? period : '—'}
+        </Text>
         <Text style={[styles.periodTime, { color: theme.colors.textSecondary }]}>
           {fmtSlotTime(start)}
         </Text>

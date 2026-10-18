@@ -18,6 +18,9 @@ import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { FONT_FAMILY } from '../theme/fonts';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
+import {
+  getStudentDashboardListEpoch,
+} from '@core/services/studentDashboardRefresh.service';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   ParsedQuiz,
@@ -76,9 +79,14 @@ export default function StudentDashboard({ navigation, route }: Props) {
   const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
   const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
-  const dashboardLoadInFlightRef = React.useRef<Promise<void> | null>(null);
+  const dashboardLoadInFlightRef = React.useRef<{
+    key: string;
+    promise: Promise<void>;
+  } | null>(null);
   const lastDashboardLoadAtRef = React.useRef(0);
   const lastDashboardStudentIdRef = React.useRef<string | null>(null);
+  const lastDashboardEpochRef = React.useRef(getStudentDashboardListEpoch());
+  const loadOwnerRef = React.useRef(0);
 
   useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
 
@@ -104,7 +112,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student dashboard data (deduped across mount + focus; no overlapping loads)
+  // Fetch student dashboard data — coalesce identical in-flight; force supersedes via store generation.
   const fetchDashboardData = useCallback(
     async (opts?: { force?: boolean }) => {
       if (!isAuthenticated || !user) {
@@ -115,10 +123,14 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
       const studentId = String(user.id);
       const force = opts?.force === true;
+      const requestKey = `student:${studentId}`;
+      const listEpoch = getStudentDashboardListEpoch();
       const now = Date.now();
+
       if (
         !force &&
         lastDashboardStudentIdRef.current === studentId &&
+        lastDashboardEpochRef.current === listEpoch &&
         now - lastDashboardLoadAtRef.current < 8_000 &&
         useStudentAssignmentDashboardStore.getState().rawQuizzes.length > 0
       ) {
@@ -126,14 +138,20 @@ export default function StudentDashboard({ navigation, route }: Props) {
         setRefreshing(false);
         return;
       }
-      if (dashboardLoadInFlightRef.current && !force) {
-        await dashboardLoadInFlightRef.current;
+
+      const inflight = dashboardLoadInFlightRef.current;
+      if (inflight && inflight.key === requestKey) {
+        // Coalesce identical request (including force): share ownership of loading UI.
+        await inflight.promise;
         return;
       }
 
+      const owner = ++loadOwnerRef.current;
       const run = (async () => {
         try {
-          setLoading(true);
+          if (owner === loadOwnerRef.current) {
+            setLoading(true);
+          }
 
           const loadGeneration =
             useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
@@ -148,6 +166,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
           lastDashboardLoadAtRef.current = Date.now();
           lastDashboardStudentIdRef.current = studentId;
+          lastDashboardEpochRef.current = getStudentDashboardListEpoch();
 
           if (parsed.length === 0) {
             setQuizzes([], 0);
@@ -159,20 +178,22 @@ export default function StudentDashboard({ navigation, route }: Props) {
             data: error?.response?.data,
             url: error?.config?.url,
           });
-          if (!refreshing) {
+          if (owner === loadOwnerRef.current && !refreshing) {
             Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
           }
         } finally {
-          setLoading(false);
-          setRefreshing(false);
+          if (owner === loadOwnerRef.current) {
+            setLoading(false);
+            setRefreshing(false);
+          }
         }
       })();
 
-      dashboardLoadInFlightRef.current = run;
+      dashboardLoadInFlightRef.current = { key: requestKey, promise: run };
       try {
         await run;
       } finally {
-        if (dashboardLoadInFlightRef.current === run) {
+        if (dashboardLoadInFlightRef.current?.promise === run) {
           dashboardLoadInFlightRef.current = null;
         }
       }

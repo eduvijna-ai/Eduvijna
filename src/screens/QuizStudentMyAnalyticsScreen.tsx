@@ -42,24 +42,15 @@ import {
 import {
   executeStudentAssignedQuizViewResults,
 } from '../core/services/assessmentQuizStart.service';
+import {
+  classifyStudentAnalyticsAttemptStatus,
+  scoreForStudentAnalyticsDisplay,
+  studentAnalyticsMatchesStatusFilter,
+} from '../core/utils/studentAnalyticsClassification';
 
 type DrillLevel = 'overview' | 'class';
 
 const ITEMS_PER_PAGE = 10;
-
-function getStudentQuizStatus(quiz: QuizListItem): string {
-  const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
-  if (score != null && Number.isFinite(Number(score))) return 'completed';
-  const studentStatus = String(
-    (quiz as { student_status?: string }).student_status || '',
-  ).toLowerCase();
-  if (studentStatus === 'completed') return 'completed';
-  if (studentStatus === 'missed' || quiz.availability_status === 'expired') return 'missed';
-  if (quiz.availability_status === 'active' || studentStatus === 'pending' || studentStatus === 'in_progress') {
-    return 'pending';
-  }
-  return quiz.availability_status || studentStatus || 'pending';
-}
 
 export default function QuizStudentMyAnalyticsScreen() {
   const { theme } = useTheme();
@@ -123,11 +114,7 @@ export default function QuizStudentMyAnalyticsScreen() {
   const filteredQuizzes = useMemo(() => {
     let items = selectedClass ? rawData.filter((q) => q.classroom_id === selectedClass) : rawData;
     if (statusFilter && statusFilter !== 'total') {
-      items = items.filter((q) => {
-        const st = getStudentQuizStatus(q);
-        if (statusFilter === 'active') return q.availability_status === 'active';
-        return st === statusFilter;
-      });
+      items = items.filter((q) => studentAnalyticsMatchesStatusFilter(q, statusFilter));
     }
     return items;
   }, [rawData, selectedClass, statusFilter]);
@@ -239,8 +226,8 @@ export default function QuizStudentMyAnalyticsScreen() {
   );
 
   const renderQuizRow = (quiz: QuizListItem) => {
-    const status = getStudentQuizStatus(quiz);
-    const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
+    const status = classifyStudentAnalyticsAttemptStatus(quiz);
+    const score = scoreForStudentAnalyticsDisplay(quiz);
     const summary = generateQuizSummary({
       quiz_id: quiz.quiz_id,
       quiz_name: quiz.quiz_name,
@@ -255,7 +242,10 @@ export default function QuizStudentMyAnalyticsScreen() {
       summary: '',
     });
 
-    const canStart = status === 'pending' && quiz.availability_status === 'active' && quiz.session_id;
+    const canStart =
+      (status === 'pending' || status === 'in_progress') &&
+      quiz.availability_status === 'active' &&
+      quiz.session_id;
     const canView = status === 'completed' && (quiz.log_data || quiz.session_id);
 
     return (
