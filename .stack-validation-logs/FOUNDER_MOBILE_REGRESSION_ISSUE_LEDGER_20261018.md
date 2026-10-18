@@ -3,6 +3,9 @@
 **Worktree:** `C:\Users\kanne\dev\Eduvijna-pr26-closure`  
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
 **Review baseline:** `54fa5fb` (partial recovery; not accepted)  
+**Product SHA (review pass):** `b570e91f7823074e55fb6049c42f61a48303f06b`  
+**Release APK:** `.stack-validation-logs/founder-acceptance/eduvijna-acceptance-release-b570e91-universal.apk`  
+**APK SHA-256:** `00093298cb95c66d1cc15f8ec465d2218bebb33ac4a1305718776e6b551760f1`  
 **API origin (mobile/dev):** `https://dev-api.eduvijna.com`  
 **Web:** `https://dev.eduvijna.com`  
 **Device target:** OPPO CPH1823 `OBAAZLSK5DFIGYZ5` — reconnect required for physical install/suite.  

@@ -3,40 +3,71 @@
 **PR:** #26 DRAFT — recovery not accepted  
 **Branch:** `integration/mobile-founder-acceptance-20261011`  
 **Review baseline:** `54fa5fb`  
-**This pass:** review corrections 1–7 (status-first analytics, class identity, ERP errors/pagination, dashboard coalesce, product investigation, isolated APK, evidence)  
+**Product SHA (this pass):** `b570e91f7823074e55fb6049c42f61a48303f06b`  
 **API:** `https://dev-api.eduvijna.com` · **Web:** `https://dev.eduvijna.com`  
-**Device:** OPPO `OBAAZLSK5DFIGYZ5` — connect/unlock only when ready; no emulator fallback.
+**Device:** OPPO `OBAAZLSK5DFIGYZ5` — **not attached** (ADB empty). Founder: connect + unlock + approve prompts only.
 
-## Corrections landed
+## Corrections landed (from `54fa5fb`)
 
-1. **Analytics** — shared `studentAnalyticsClassification` (status-first; availability separate). Live: 51 rows, 25 completed with null score, completed+expired present. Pending-with-score covered by unit tests (not present in current live cohort).
-2. **Saved-books classes** — `normalizeSavedBooksClassOptions` keeps distinct IDs; disambiguates colliding labels with `(#id)`.
-3. **ERP Class Overview** — per-section error/retry; `fetchAllPages` (no silent 500/200 caps); `loadGenRef` stale guard; KPI shows `—` on section error; teacher roster never broadens when assignments empty/fail.
-4. **Student Home** — identical in-flight coalesced; loading owned by latest owner; list epoch from `refreshStudentAssignmentDashboard` defeats 8s focus stale window after submit refresh.
-5. **Product investigation** — fixture 479 attended-quiz **200** (10 items); check-record string `p_student_id` contract confirmed. Document: mobile/web share `/api/v1/batch-ocr-upload` (empty → 422 files). Mathpix-config claim still needs same-source web success + mobile fail Network capture. **Pundefined:** root cause was ERP **Timetable Templates** list falling through `item.name` to `P${period_number}` — fixed via `template_name` + `P—`.
-6. **APK** — built at isolated `C:\ev-rc` (android retained; no `--clean` prebuild on primary checkout). Identity recorded below after assemble.
-7. **Tests/gates** — focused Jest 17/17; ledger tiers updated; commit/push without force.
+| # | Item | Result |
+|---|------|--------|
+| 1 | Analytics status-first shared contract | `studentAnalyticsClassification` → KPI/chips/rows/API. Live: 51 rows, 25 completed null-score, completed+expired present. |
+| 2 | Saved-books class identity | Distinct IDs kept; label collisions → `Class N (#id)`. |
+| 3 | ERP Class Overview | Per-section error/retry; full pagination; stale `loadGenRef`; KPI `—` on error; teacher roster never broadens. |
+| 4 | Dashboard coordination | Identical in-flight coalesced; post-submit list epoch invalidates 8s focus window. |
+| 5 | Submission / document / Pundefined | Fixture 479 attended-quiz **200**/10 items. `/api/v1/batch-ocr-upload` shared with web (empty→422 files). Mathpix-config needs same-source Network pair — **not** declared backend-only. **Pundefined** fixed on ERP **Timetable Templates** (`template_name`, not student SlotRow alone). |
+| 6 | Isolated APK | Built at `C:\ev-rc` @ `b570e91` (android retained; no destructive prebuild on primary). |
+| 7 | Tests / push / ledger | Focused Jest **17/17**; commit+push `b570e91`; ledger tiers below. |
 
 ## APK identity
-_(filled after assembleRelease)_
 
 | Field | Value |
 |-------|-------|
-| Product SHA | _pending build_ |
-| API env | `EDUVIJNA_API_ENV=development` → `https://dev-api.eduvijna.com` |
-| App version | `1.0.0` (`app.json` / `runtimeVersion`) |
-| APK path | _pending_ |
-| SHA-256 | _pending_ |
+| Product / implementation SHA | `b570e91f7823074e55fb6049c42f61a48303f06b` |
+| API environment | `EDUVIJNA_API_ENV=development` → `https://dev-api.eduvijna.com` |
+| Version | `1.0.0` (`app.json` / `runtimeVersion`) |
+| Build root | `C:\ev-rc` (detached `b570e91`) |
+| APK | `.stack-validation-logs/founder-acceptance/eduvijna-acceptance-release-b570e91-universal.apk` |
+| Size | 113,313,192 bytes |
+| SHA-256 | `00093298cb95c66d1cc15f8ec465d2218bebb33ac4a1305718776e6b551760f1` |
+| Bundle embed verify | `implementationShaFoundInBundle: true` (`embedded-bundle-sha-verify-b570e91.json`) |
+| Assemble logs | `assembleRelease-b570e91.log`, `assembleRelease-b570e91-restamp.log` |
 
-## Physical suite
-**Blocked** until OPPO attached. Founder action: connect + unlock + approve system prompts. Install preserve-data (`adb install -r`).
+## Evidence tiers (ledger)
+
+| Issue | Implemented+unit | Live API | Physical |
+|-------|------------------|----------|----------|
+| M-01 Home amplify | Yes | — | **Blocked** |
+| M-02 Analytics | Yes | Yes (classification probe) | **Blocked** |
+| M-03 Classroom labels | Yes | — | **Blocked** |
+| M-04 Submit/reopen | Code intact | Fixture read-back Yes | Submit **Blocked** |
+| M-05 Instructor fixture UI | Prior historical | — | **Blocked** (not re-run) |
+| M-06 Document/Mathpix | Class IDs Yes | Endpoint shape Yes | OCR/save **Blocked**; Mathpix claim pending same-source |
+| M-07 Class Overview | Yes | Partial historical | **Blocked** |
+| M-08 Pundefined Templates | Yes | — | **Blocked** |
+| M-09 Share modal | Prior Yes | — | **Blocked** |
+| M-10 Push | — | — | **Blocked** |
+
+## Web / mobile comparison (sanitized)
+
+- Login: `POST /api/v1/auth/login` `{username_or_email,…}` → student **70** / instructor **66**
+- Analytics: `GET …/dashboard/quizzes?view_type=student_total_details` → 51 rows; status-first matches web Status vs Availability columns
+- Fixture: check-record (string `p_student_id`) 200; attended-quiz 200
+- Document: mobile+web `POST /api/v1/batch-ocr-upload`
+
+## Matrix disposition
+
+Prior stack-gate snapshot remains **`diagnostic_regression`** for the multi-PR aggregate. PR #26 row historically **tsGenuine 0 / eslintGenuine 0** @ `0f75610`. This pass does **not** re-claim full-stack release approval; PR26 remains DRAFT acceptance/integration.
 
 ## Exact remaining blockers
-1. OPPO reconnect → install/release suite (submit/reopen, document save/history, Templates UI, analytics screens).
-2. Same-source Mathpix/provider request pair before backend-config declaration.
-3. Push delivery/tap.
-4. Matrix rows outside PR26 slice remain prior disposition; this pass does not claim full-stack release approval.
 
-## Evidence paths
-- Ledger: `.stack-validation-logs/FOUNDER_MOBILE_REGRESSION_ISSUE_LEDGER_20261018.md`
-- Live probes: `.stack-validation-logs/review-api-probes-20261018/`
+1. Connect OPPO `OBAAZLSK5DFIGYZ5` → `adb install -r` preserve-data of `eduvijna-acceptance-release-b570e91-universal.apk` → consolidated physical suite (submit/reopen, analytics UI, Class Overview, Timetable Templates, document save/history).
+2. Capture successful **dev-web** + failing **mobile** Mathpix/provider requests for the same source/mode before declaring backend configuration required.
+3. Push delivery/tap after device FCM registration.
+
+## Install command (when device ready)
+
+```powershell
+adb -s OBAAZLSK5DFIGYZ5 install -r `
+  C:\Users\kanne\dev\Eduvijna-pr26-closure\.stack-validation-logs\founder-acceptance\eduvijna-acceptance-release-b570e91-universal.apk
+```

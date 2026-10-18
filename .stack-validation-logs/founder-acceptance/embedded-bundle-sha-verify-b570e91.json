@@ -1,0 +1,8 @@
+{
+  "verifiedAt": "2026-10-18T08:36:54.408Z",
+  "apkPath": "C:\\Users\\kanne\\dev\\Eduvijna-pr26-closure\\.stack-validation-logs\\founder-acceptance\\eduvijna-acceptance-release-b570e91-universal.apk",
+  "apkSha256": "00093298cb95c66d1cc15f8ec465d2218bebb33ac4a1305718776e6b551760f1",
+  "expectedImplementationSha": "b570e91f7823074e55fb6049c42f61a48303f06b",
+  "bundleEntry": "assets/index.android.bundle",
+  "implementationShaFoundInBundle": true
+}
