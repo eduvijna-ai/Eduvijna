@@ -39,9 +39,24 @@ if (!authenticatedMarker(xml)) {
     {
       cwd: repoRoot,
       encoding: 'utf8',
-      env: { ...process.env, MAESTRO_BIN: maestroBin, ...(javaHome ? { JAVA_HOME: javaHome } : {}) },
+      timeout: Number(process.env.ENGINEERING_MAESTRO_LOGIN_TIMEOUT_MS || 300000),
+      env: {
+        ...process.env,
+        ENGINEERING_PHYSICAL_DEVICE: process.env.ENGINEERING_PHYSICAL_DEVICE || '',
+        ENGINEERING_ADB_SERIAL: h.device,
+        ADB_DEVICE: h.device,
+        ANDROID_SERIAL: h.device,
+        MAESTRO_BIN: maestroBin,
+        ...(javaHome ? { JAVA_HOME: javaHome } : {}),
+      },
     },
   );
+  if (maestroLogin.error?.code === 'ETIMEDOUT') {
+    const results = { routeOk: false, error: 'maestro_login_timeout', evidenceDir };
+    writeFileSync(join(evidenceDir, 'results.json'), JSON.stringify(results, null, 2));
+    console.log(JSON.stringify(results));
+    process.exit(1);
+  }
   if (maestroLogin.status !== 0) process.exit(1);
   sleep(3500);
   xml = dumpUi();

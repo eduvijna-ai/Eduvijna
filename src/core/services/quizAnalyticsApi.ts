@@ -92,15 +92,62 @@ export const parseLogData = (logDataString: string | null): ParsedLogData | null
   }
 };
 
+function studentAttemptCompleted(quiz: QuizListItem): boolean {
+  const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
+  if (score != null && Number.isFinite(Number(score))) return true;
+  const status = String(
+    (quiz as { student_status?: string }).student_status ||
+      (quiz as { quiz_status?: string }).quiz_status ||
+      '',
+  ).toLowerCase();
+  if (status === 'completed') return true;
+  let attemptsArray = quiz.attempts as unknown;
+  if (typeof attemptsArray === 'string') {
+    try {
+      attemptsArray = JSON.parse(attemptsArray);
+    } catch {
+      attemptsArray = [];
+    }
+  }
+  if (Array.isArray(attemptsArray) && attemptsArray.length > 0) {
+    return attemptsArray.some(
+      (a: { status?: string }) => String(a?.status || '').toLowerCase() === 'completed',
+    );
+  }
+  return false;
+}
+
+function looksLikeStudentTotalDetails(data: QuizListItem[]): boolean {
+  if (data.length === 0) return false;
+  // student_total_details rows include per-student student_status even when cohort
+  // completed_count is also populated. Prefer student_status over cohort math.
+  const withStudentStatus = data.filter(
+    (q) => (q as { student_status?: string }).student_status != null,
+  ).length;
+  if (withStudentStatus >= Math.ceil(data.length * 0.5)) {
+    return true;
+  }
+  const studentSignal = data.filter(
+    (q) =>
+      q.best_score != null ||
+      q.latest_score != null ||
+      (Array.isArray(q.attempts) && q.attempts.length > 0),
+  ).length;
+  return studentSignal > 0;
+}
+
 /**
- * Aggregate data into class overview cards
+ * Aggregate data into class overview cards.
+ * Teacher `view_type=all` uses cohort completed_count.
+ * Student `student_total_details` derives Done/Pending from this student's attempts/scores.
  */
 export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] => {
   const classMap = new Map<string, ClassOverview>();
-  
-  data.forEach(quiz => {
+  const studentMode = looksLikeStudentTotalDetails(data);
+
+  data.forEach((quiz) => {
     const classId = quiz.classroom_id;
-    
+
     if (!classMap.has(classId)) {
       classMap.set(classId, {
         classroom_id: classId,
@@ -115,38 +162,69 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
         avg_score: 0,
         highest_score: null,
         lowest_score: null,
-        completion_rate: 0
+        completion_rate: 0,
       });
     }
-    
+
     const classData = classMap.get(classId)!;
     classData.total_quizzes += 1;
-    classData.missed_count += (quiz.total_students || 0) - (quiz.completed_count || 0) - (quiz.in_progress_count || 0) - (quiz.pending_count || 0);
-    classData.completed_count += quiz.completed_count || 0;
-    classData.in_progress_count += quiz.in_progress_count || 0;
-    classData.pending_count += quiz.pending_count || 0;
-    
-    // Check if quiz is expired
-    if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
-      classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
+
+    if (studentMode) {
+      const completed = studentAttemptCompleted(quiz);
+      const expired =
+        quiz.availability_status === 'expired' ||
+        (quiz.end_time ? new Date(quiz.end_time) < new Date() : false);
+      if (completed) {
+        classData.completed_count += 1;
+      } else if (expired) {
+        classData.missed_count += 1;
+      } else {
+        classData.pending_count += 1;
+      }
+    } else {
+      classData.missed_count +=
+        (quiz.total_students || 0) -
+        (quiz.completed_count || 0) -
+        (quiz.in_progress_count || 0) -
+        (quiz.pending_count || 0);
+      classData.completed_count += quiz.completed_count || 0;
+      classData.in_progress_count += quiz.in_progress_count || 0;
+      classData.pending_count += quiz.pending_count || 0;
+
+      if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
+        classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
+      }
     }
   });
-  
-  // Calculate averages and completion rates
-  classMap.forEach(classData => {
-    const totalAttempts = classData.completed_count + classData.in_progress_count + classData.pending_count + classData.missed_count;
-    classData.completion_rate = totalAttempts > 0 ? (classData.completed_count / totalAttempts) * 100 : 0;
-    
-    // Calculate average score from all completed attempts
-    // Note: attempts field is a JSON string that needs to be parsed
-    const completedQuizzes = data.filter(q => q.classroom_id === classData.classroom_id);
+
+  classMap.forEach((classData) => {
+    const totalAttempts =
+      classData.completed_count +
+      classData.in_progress_count +
+      classData.pending_count +
+      classData.missed_count;
+    classData.completion_rate =
+      totalAttempts > 0 ? (classData.completed_count / totalAttempts) * 100 : 0;
+
+    const classQuizzes = data.filter((q) => q.classroom_id === classData.classroom_id);
     let totalScore = 0;
     let scoreCount = 0;
     let highestScore: number | null = null;
     let lowestScore: number | null = null;
-    
-    completedQuizzes.forEach(quiz => {
-      // Parse attempts if it's a string
+
+    classQuizzes.forEach((quiz) => {
+      if (studentMode) {
+        const scoreRaw = quiz.best_score ?? quiz.latest_score ?? quiz.score;
+        if (scoreRaw == null) return;
+        const score = typeof scoreRaw === 'number' ? scoreRaw : parseFloat(String(scoreRaw));
+        if (Number.isNaN(score)) return;
+        totalScore += score;
+        scoreCount += 1;
+        highestScore = highestScore === null ? score : Math.max(highestScore, score);
+        lowestScore = lowestScore === null ? score : Math.min(lowestScore, score);
+        return;
+      }
+
       let attemptsArray = quiz.attempts;
       if (typeof quiz.attempts === 'string') {
         try {
@@ -156,10 +234,11 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
           attemptsArray = [];
         }
       }
-      
+
       attemptsArray?.forEach((attempt: any) => {
         if (attempt.status === 'completed' && attempt.score !== null && attempt.score !== undefined) {
-          const score = typeof attempt.score === 'number' ? attempt.score : parseFloat(attempt.score);
+          const score =
+            typeof attempt.score === 'number' ? attempt.score : parseFloat(attempt.score);
           if (Number.isNaN(score)) {
             return;
           }
@@ -170,12 +249,12 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
         }
       });
     });
-    
+
     classData.avg_score = scoreCount > 0 ? totalScore / scoreCount : 0;
     classData.highest_score = highestScore;
     classData.lowest_score = lowestScore;
   });
-  
+
   return Array.from(classMap.values());
 };
 

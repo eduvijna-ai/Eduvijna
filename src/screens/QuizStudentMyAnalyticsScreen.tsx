@@ -48,10 +48,17 @@ type DrillLevel = 'overview' | 'class';
 const ITEMS_PER_PAGE = 10;
 
 function getStudentQuizStatus(quiz: QuizListItem): string {
-  if (quiz.best_score !== null || quiz.latest_score !== null) return 'completed';
-  if (quiz.availability_status === 'expired') return 'missed';
-  if (quiz.availability_status === 'active') return 'pending';
-  return quiz.availability_status || 'pending';
+  const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
+  if (score != null && Number.isFinite(Number(score))) return 'completed';
+  const studentStatus = String(
+    (quiz as { student_status?: string }).student_status || '',
+  ).toLowerCase();
+  if (studentStatus === 'completed') return 'completed';
+  if (studentStatus === 'missed' || quiz.availability_status === 'expired') return 'missed';
+  if (quiz.availability_status === 'active' || studentStatus === 'pending' || studentStatus === 'in_progress') {
+    return 'pending';
+  }
+  return quiz.availability_status || studentStatus || 'pending';
 }
 
 export default function QuizStudentMyAnalyticsScreen() {

@@ -88,20 +88,35 @@ export function generateKPITiles(data: QuizListItem[] | null | undefined): KPITi
   ];
 }
 
+function studentRowCompleted(q: QuizListItem): boolean {
+  const score = q.best_score ?? q.latest_score ?? q.score;
+  if (score != null && Number.isFinite(Number(score))) return true;
+  return String((q as { student_status?: string }).student_status || '').toLowerCase() === 'completed';
+}
+
+function studentRowMissed(q: QuizListItem): boolean {
+  if (studentRowCompleted(q)) return false;
+  const status = String((q as { student_status?: string }).student_status || '').toLowerCase();
+  return status === 'missed' || q.availability_status === 'expired';
+}
+
 export function generateStudentKPITiles(data: QuizListItem[] | null | undefined): KPITileData[] {
   const items = data ?? [];
-  const completed = items.filter((q) => {
-    const score = q.best_score ?? q.latest_score ?? q.score;
-    return score !== null && score !== undefined;
+  const scoreOf = (q: QuizListItem) => q.best_score ?? q.latest_score ?? q.score;
+  const completed = items.filter(studentRowCompleted);
+  const pending = items.filter((q) => {
+    if (studentRowCompleted(q) || studentRowMissed(q)) return false;
+    return q.availability_status === 'active' || !q.availability_status;
+  }).length;
+  const scored = completed.filter((q) => {
+    const score = scoreOf(q);
+    return score != null && Number.isFinite(Number(score));
   });
-  const pending = items.filter((q) => q.availability_status === 'active' && !q.best_score && !q.latest_score).length;
   const avgScore =
-    completed.length > 0
-      ? Math.round(
-          completed.reduce((sum, q) => sum + (q.best_score ?? q.latest_score ?? q.score ?? 0), 0) / completed.length,
-        )
+    scored.length > 0
+      ? Math.round(scored.reduce((sum, q) => sum + (Number(scoreOf(q)) || 0), 0) / scored.length)
       : 0;
-  const missed = items.filter((q) => q.availability_status === 'expired' && !q.best_score).length;
+  const missed = items.filter(studentRowMissed).length;
 
   return [
     { title: 'Completed', value: completed.length, color: 'green', icon: 'checkmark-done-outline' },

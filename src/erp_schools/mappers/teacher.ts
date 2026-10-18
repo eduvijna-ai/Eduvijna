@@ -279,7 +279,15 @@ export function mapTeacherStudents(roster: unknown): StudentInfo[] {
         `stu-${i}`,
       ),
       rollNo: pickString(s.roll_no, s.roll_number, s.admission_number, String(i + 1)),
-      name: pickString(s.student_name, s.full_name, s.name, 'Student'),
+      name: (() => {
+        const first = pickString(s.first_name);
+        const last = pickString(s.last_name);
+        const fromParts = [first, last].filter(Boolean).join(' ');
+        return (
+          pickString(s.student_name, s.full_name, s.name, fromParts, s.username, 'Student') ||
+          'Student'
+        );
+      })(),
       classCode,
       attendanceStatus: (pickString(s.attendance_status, s.status).toLowerCase() ||
         'present') as StudentInfo['attendanceStatus'],

@@ -9,7 +9,9 @@ import {
   TextInput,
   Alert,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
@@ -102,6 +104,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
   const {user} = useAuth();
   const isWorksheet = assessmentType === 'worksheet';
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -664,7 +667,20 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   return (
     <Modal visible={visible} onRequestClose={onClose} {...getFullScreenModalProps('fade')}>
       <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
-        <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%', alignItems: 'center', maxHeight: '92%' }}
+        >
+        <View
+          style={[
+            styles.modalContainer,
+            {
+              backgroundColor: colors.card,
+              marginBottom: Math.max(insets.bottom, 8),
+              maxHeight: '90%',
+            },
+          ]}
+        >
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               🔗 Share {isWorksheet ? 'Worksheet' : 'Assessment'}
@@ -673,7 +689,12 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
               <Text style={[styles.closeButtonText, { color: colors.text }]}>✕</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>
                 {isWorksheet ? 'Worksheet' : 'Quiz'} Topic (Read-only)
@@ -877,6 +898,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAvoidingView>
 
         {/* Start Date/Time Picker Modal */}
         {showStartPicker && (
@@ -987,7 +1009,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
 const styles = StyleSheet.create({
   modalOverlay: { justifyContent: 'center', alignItems: 'center' },
-  modalContainer: {width: '90%', maxHeight: '85%', borderRadius: 16, overflow: 'hidden'},
+  modalContainer: {width: '92%', maxHeight: '90%', borderRadius: 16, overflow: 'hidden'},
   modalHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1},
   modalTitle: {fontSize: 20, fontWeight: '700'},
   closeButton: {width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center'},

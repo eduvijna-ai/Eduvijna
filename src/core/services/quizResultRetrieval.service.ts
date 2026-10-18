@@ -570,18 +570,22 @@ async function fetchTeacherAttemptBundle(params: {
 async function loadStudentAttendedWithWorksheetFallback(
   baseParams: AttendedQuizParams,
   classroomId?: string | null,
+  options?: GetAttendedQuizOptions,
 ): Promise<AttendedQuizResponse> {
-  const attended = await getAttendedQuiz(baseParams);
+  const attended = await getAttendedQuiz(baseParams, options);
   if (
     isWorksheetAttendedResponse(attended) &&
     !attended.worksheet_data &&
     classroomId &&
     String(classroomId).trim()
   ) {
-    return getAttendedQuiz({
-      ...baseParams,
-      classroom_id: classroomId,
-    });
+    return getAttendedQuiz(
+      {
+        ...baseParams,
+        classroom_id: classroomId,
+      },
+      options,
+    );
   }
   return attended;
 }
@@ -593,8 +597,21 @@ export async function fetchPersistedQuizResult(params: {
   studentId: string;
   attemptId?: number;
   isTeacherView?: boolean;
+  signal?: AbortSignal;
+  maxAttempts?: number;
 }): Promise<QuizResultLoadState> {
-  const { quizId, sessionId, classroomId, studentId, attemptId, isTeacherView } = params;
+  const {
+    quizId,
+    sessionId,
+    classroomId,
+    studentId,
+    attemptId,
+    isTeacherView,
+    signal,
+    maxAttempts,
+  } = params;
+  const attendedOptions: GetAttendedQuizOptions | undefined =
+    signal || maxAttempts != null ? { signal, maxAttempts } : undefined;
 
   if (!quizId || !studentId) {
     return { status: 'missing' };
@@ -624,6 +641,7 @@ export async function fetchPersistedQuizResult(params: {
           classroom_id: safeClassroomId,
         },
         safeClassroomId,
+        attendedOptions,
       );
       const normalized = normalizeAttendedQuizResponse(attended);
       if (!normalized) {

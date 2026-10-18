@@ -504,7 +504,7 @@ function SlotRow({ slot }: { slot: StudentTimetableSlot }) {
     <View style={[styles.periodRow, { borderTopColor: theme.colors.border }]}>
       <View style={styles.periodMeta}>
         <Text style={[styles.periodNo, { color: theme.colors.textPrimary }]}>
-          P{slot.periodNumber}
+          P{slot.periodNumber > 0 ? slot.periodNumber : '—'}
         </Text>
         <Text style={[styles.periodTime, { color: theme.colors.textSecondary }]}>
           {fmtSlotTime(slot.startTime)}

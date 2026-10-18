@@ -86,13 +86,32 @@ if (physical && !inplace) {
     return h.dumpUi();
   };
 
-  let xml = ensureAppForeground();
-  if (
-    h.authenticatedMarker(xml) &&
+  const dismissStuckDatePicker = (xml) => {
+    if (!/resource-id="android:id\/datePicker"/.test(xml)) return xml;
+    const cancel = xml.match(/text="CANCEL"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    if (cancel) {
+      const cx = Math.floor((Number(cancel[1]) + Number(cancel[3])) / 2);
+      const cy = Math.floor((Number(cancel[2]) + Number(cancel[4])) / 2);
+      h.adb(`shell input tap ${cx} ${cy}`);
+      h.sleep(1200);
+      return h.dumpUi();
+    }
+    h.adb('shell input keyevent 4');
+    h.sleep(800);
+    return h.dumpUi();
+  };
+
+  let xml = dismissStuckDatePicker(ensureAppForeground());
+  const physicalInstructorMainShell = (ui) =>
+    ui &&
     role === 'instructor' &&
-    /Demo School/.test(xml) &&
-    !/login-email-input/.test(xml)
-  ) {
+    !/login-email-input/.test(ui) &&
+    !/Validating quiz|rate-limiting|No Quiz Available/i.test(ui) &&
+    /Demo School/.test(ui) &&
+    (/content-desc="Assessments"/.test(ui) ||
+      /Analytics Dashboard|Generate Assessment/i.test(ui) ||
+      /content-desc="[^"]*Analytics/i.test(ui));
+  if (physical && physicalInstructorMainShell(xml)) {
     writeFileSync(join(outDir, 'physical-preflight-ui.xml'), xml.slice(0, 120000), 'utf8');
     writeFileSync(
       join(outDir, 'results.json'),

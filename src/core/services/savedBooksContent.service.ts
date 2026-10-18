@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../api/config';
+import { normalizeGradeToken } from './savedBooksCurriculumSemantic';
 import {
   ASSESSMENT_DEPENDENCY_UNAVAILABLE_CODE,
   ASSESSMENT_GENERATION_CANCELLED_CODE,
@@ -726,6 +727,22 @@ export async function getSavedBooksBoards(
   });
 }
 
+/** Collapse duplicate class labels that normalize to the same grade (e.g. "10" / "Class 10"). */
+export function dedupeSavedBooksClassesByGrade(
+  items: SavedBooksDropdownItem[],
+): SavedBooksDropdownItem[] {
+  const seen = new Set<string>();
+  const out: SavedBooksDropdownItem[] = [];
+  for (const item of items) {
+    const token = normalizeGradeToken(item.label) || normalizeGradeToken(String(item.id));
+    const key = token || `id:${item.id}|${item.label.trim().toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
 export async function getSavedBooksClasses(
   boardId: number,
   schoolId?: number,
@@ -734,7 +751,7 @@ export async function getSavedBooksClasses(
   const cacheKey = buildSavedBooksCacheKey('classes', schoolId, [boardId], accountId);
   return getCachedSavedBooksDropdown(cacheKey, async () => {
     const res = await apiClient.get(buildSavedBooksClassesPath(boardId, schoolId));
-    return unwrapDropdownItems(res.data);
+    return dedupeSavedBooksClassesByGrade(unwrapDropdownItems(res.data));
   });
 }
 

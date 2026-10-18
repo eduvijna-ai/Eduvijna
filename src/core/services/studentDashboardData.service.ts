@@ -12,9 +12,7 @@ import type { StudentQuiz } from '../types/dashboard.types';
 import {
   dedupeCheckRecordQuizzes,
   fetchStudentCheckRecordRows,
-  hydrateCompletedParsedQuizMetrics,
 } from './studentCheckRecordDashboardLoader';
-import type { ParsedQuiz } from '../types';
 import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 export interface StudentDashboardAggregateStats {
   total_quizzes: number;
@@ -169,6 +167,9 @@ function mapStudentDetailsRow(
 
 /**
  * Loads pending + completed assignments (check-record + student_total_details), merges, dedupes.
+ *
+ * Does NOT fetch attended-quiz detail for every completed row. List/summary metrics come from
+ * the list contracts; open View Results when answer detail is needed.
  */
 export async function loadStudentDashboardQuizzes(
   studentId: string,
@@ -189,10 +190,6 @@ export async function loadStudentDashboardQuizzes(
   );
   const mapped = [...fromCheckRecord, ...fromStudentDetails];
   const deduped = dedupeStudentDashboardQuizzes(mapped);
-  const hydrated = (await hydrateCompletedParsedQuizMetrics(
-    studentId,
-    deduped as ParsedQuiz[],
-  )) as StudentDashboardQuizRow[];
-  const stats = computeStudentDashboardStats(hydrated);
-  return { quizzes: hydrated, stats };
+  const stats = computeStudentDashboardStats(deduped);
+  return { quizzes: deduped, stats };
 }

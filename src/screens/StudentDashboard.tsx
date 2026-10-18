@@ -76,6 +76,9 @@ export default function StudentDashboard({ navigation, route }: Props) {
   const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
   const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
+  const dashboardLoadInFlightRef = React.useRef<Promise<void> | null>(null);
+  const lastDashboardLoadAtRef = React.useRef(0);
+  const lastDashboardStudentIdRef = React.useRef<string | null>(null);
 
   useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
 
@@ -101,56 +104,90 @@ export default function StudentDashboard({ navigation, route }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student dashboard data
-  const fetchDashboardData = useCallback(async () => {
-    if (!isAuthenticated || !user) {
-      console.log('⚠️ User not authenticated, skipping dashboard fetch');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      const studentId = String(user.id);
-      const loadGeneration =
-        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
-      const { quizzes: parsed } = await loadStudentDashboardQuizzes(studentId);
-
-      const committed = useStudentAssignmentDashboardStore
-        .getState()
-        .commitLoad(studentId, loadGeneration, parsed as any);
-      if (!committed) {
+  // Fetch student dashboard data (deduped across mount + focus; no overlapping loads)
+  const fetchDashboardData = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!isAuthenticated || !user) {
+        console.log('⚠️ User not authenticated, skipping dashboard fetch');
+        setLoading(false);
         return;
       }
 
-      if (parsed.length === 0) {
-        setQuizzes([], 0);
+      const studentId = String(user.id);
+      const force = opts?.force === true;
+      const now = Date.now();
+      if (
+        !force &&
+        lastDashboardStudentIdRef.current === studentId &&
+        now - lastDashboardLoadAtRef.current < 8_000 &&
+        useStudentAssignmentDashboardStore.getState().rawQuizzes.length > 0
+      ) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
       }
-    } catch (error: any) {
-      console.error('❌ Error fetching student dashboard:', {
-        message: error?.message,
-        status: error?.response?.status,
-        data: error?.response?.data,
-        url: error?.config?.url,
-      });
-      if (!refreshing) {
-        Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
+      if (dashboardLoadInFlightRef.current && !force) {
+        await dashboardLoadInFlightRef.current;
+        return;
       }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isAuthenticated, user, selectedClassroom, refreshing]);
+
+      const run = (async () => {
+        try {
+          setLoading(true);
+
+          const loadGeneration =
+            useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+          const { quizzes: parsed } = await loadStudentDashboardQuizzes(studentId);
+
+          const committed = useStudentAssignmentDashboardStore
+            .getState()
+            .commitLoad(studentId, loadGeneration, parsed as any);
+          if (!committed) {
+            return;
+          }
+
+          lastDashboardLoadAtRef.current = Date.now();
+          lastDashboardStudentIdRef.current = studentId;
+
+          if (parsed.length === 0) {
+            setQuizzes([], 0);
+          }
+        } catch (error: any) {
+          console.error('❌ Error fetching student dashboard:', {
+            message: error?.message,
+            status: error?.response?.status,
+            data: error?.response?.data,
+            url: error?.config?.url,
+          });
+          if (!refreshing) {
+            Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
+          }
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      })();
+
+      dashboardLoadInFlightRef.current = run;
+      try {
+        await run;
+      } finally {
+        if (dashboardLoadInFlightRef.current === run) {
+          dashboardLoadInFlightRef.current = null;
+        }
+      }
+    },
+    [isAuthenticated, user, refreshing],
+  );
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    void fetchDashboardData({ force: true });
+  }, [isAuthenticated, user?.id]);
 
   // Refresh handler
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDashboardData();
+    void fetchDashboardData({ force: true });
   };
 
   // Time ago formatter
@@ -229,7 +266,9 @@ export default function StudentDashboard({ navigation, route }: Props) {
   };
 
   const focusRefetch =
-    Platform.OS !== 'web' ? <NativeFocusRefetch onFocus={fetchDashboardData} /> : null;
+    Platform.OS !== 'web' ? (
+      <NativeFocusRefetch onFocus={() => void fetchDashboardData()} />
+    ) : null;
 
   // Authentication check - show message if not authenticated
   if (!isAuthenticated) {

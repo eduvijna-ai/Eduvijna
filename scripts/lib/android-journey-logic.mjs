@@ -634,7 +634,12 @@ export function buildMobileQuizDiscoveryState(mobilePageMemberships, expectedTot
  * @param {{ quizId: number; sessionId: string }} fixtureIdentity
  */
 /** @param {ReturnType<typeof parseUiXml>} nodes */
-export function findClassDrillNestedScrollViewport(nodes, { minY = 680, maxY = 1780 } = {}) {
+export function findClassDrillNestedScrollViewport(nodes, opts = {}) {
+  const defaults =
+    process.env.ENGINEERING_PHYSICAL_DEVICE === '1'
+      ? { minY: 680, maxY: 2120 }
+      : { minY: 680, maxY: 1780 };
+  const { minY, maxY } = { ...defaults, ...opts };
   const scrolls = nodes
     .filter(
       (n) =>

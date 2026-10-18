@@ -16,4 +16,7 @@ $env:ANDROID_SERIAL = $serial
 $javaHome = 'C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot'
 if (Test-Path $javaHome) { $env:JAVA_HOME = $javaHome }
 
+$env:ANALYTICS_FIXTURE_CREATED_FROM = '2026-08-01'
+$env:ANALYTICS_FIXTURE_CREATED_TO = '2026-10-16'
+
 Write-Host "ENGINEERING_PHYSICAL_DEVICE=1 serial=$serial"

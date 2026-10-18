@@ -94,8 +94,12 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
 export async function hydrateCompletedParsedQuizMetrics(
   studentId: string,
   quizzes: ParsedQuiz[],
+  options?: { signal?: AbortSignal; maxAttempts?: number },
 ): Promise<ParsedQuiz[]> {
   return mapWithConcurrency(quizzes, HYDRATE_CONCURRENCY, async (quiz) => {
+    if (options?.signal?.aborted) {
+      return quiz;
+    }
     if (!completedRowNeedsHydration(quiz)) {
       return quiz;
     }
@@ -104,6 +108,9 @@ export async function hydrateCompletedParsedQuizMetrics(
       sessionId: quiz.session_id,
       studentId,
       isTeacherView: false,
+      signal: options?.signal,
+      // Background list enrichment must stay bounded; interactive View Results uses defaults.
+      maxAttempts: options?.maxAttempts ?? 2,
     });
     if (result.status !== 'ready') {
       return quiz;
@@ -162,12 +169,18 @@ export async function fetchStudentCheckRecordRows(studentId: string): Promise<Ch
   return dedupeCheckRecordQuizzes(pendingRes.result || []);
 }
 
-export async function loadStudentCheckRecordDashboard(studentId: string): Promise<{
+export async function loadStudentCheckRecordDashboard(
+  studentId: string,
+  options?: { hydrateCompletedMetrics?: boolean },
+): Promise<{
   quizzes: ParsedQuiz[];
   stats: DashboardStats;
 }> {
   const rows = await fetchStudentCheckRecordRows(studentId);
   const mapped = rows.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
-  const hydrated = await hydrateCompletedParsedQuizMetrics(studentId, mapped);
-  return { quizzes: hydrated, stats: computeCheckRecordDashboardStats(hydrated) };
+  // Default: skip attended-quiz enrichment on list load (N× retries). Opt in only when needed.
+  const quizzes = options?.hydrateCompletedMetrics
+    ? await hydrateCompletedParsedQuizMetrics(studentId, mapped)
+    : mapped;
+  return { quizzes, stats: computeCheckRecordDashboardStats(quizzes) };
 }

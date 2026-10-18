@@ -1311,9 +1311,12 @@ function navigateAndroidMaterialDatePicker(targetIso, log, label) {
           continue;
         }
       } else if (!daySelected) {
-        const dayHit = nodes.find(
-          (n) => n.clickable === 'true' && String(n['content-desc'] || '') === targetCellLabel,
-        );
+        const dayHit = nodes.find((n) => {
+          const desc = String(n['content-desc'] || '');
+          if (!n.boundsRect) return false;
+          if (desc === targetCellLabel) return true;
+          return desc.toLowerCase() === targetCellLabel.toLowerCase();
+        });
         if (dayHit?.boundsRect) {
           tapTarget({
             x: dayHit.boundsRect.cx,
@@ -1752,16 +1755,68 @@ function runInstalledMaestroLogin() {
 
 function shellReady(xml) {
   if (!isEduvijnaAppForeground(xml)) return false;
+  if (/resource-id="android:id\/datePicker"/.test(xml)) return false;
   const nodes = parseUiXml(xml);
   return (
     locateByLabel(nodes, 'Assessments', { minY: 0 }) != null ||
-    locateByLabel(nodes, 'Analytics', { minY: 0 }) != null ||
+    locateByLabel(nodes, 'Analytics', { minY: 0, pick: 'bottom' }) != null ||
+    locateByLabel(nodes, /Analytics Dashboard/i, { minY: 0 }) != null ||
+    locateByTestId(nodes, 'analytics-drill-classes') != null ||
+    /analytics-drill-class-/.test(xml) ||
     nodes.some((n) => /Generate Assessment|Demo School/i.test(`${n.text || ''} ${n['content-desc'] || ''}`))
   );
 }
 
+function dismissStuckNativeDatePicker() {
+  const path = dump('nav-dismiss-datepicker.xml');
+  let xml = readXmlContent(path);
+  if (!/resource-id="android:id\/datePicker"/.test(xml)) return;
+  const cancel = xml.match(/text="CANCEL"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+  if (cancel) {
+    const cx = Math.floor((Number(cancel[1]) + Number(cancel[3])) / 2);
+    const cy = Math.floor((Number(cancel[2]) + Number(cancel[4])) / 2);
+    adb(`shell input tap ${cx} ${cy}`);
+    sleep(1200);
+    return;
+  }
+  adb('shell input keyevent 4');
+  sleep(800);
+}
+
+function physicalInstructorSession(xml) {
+  if (!xml || /login-email-input/.test(xml)) return false;
+  return (
+    /Demo School/i.test(xml) ||
+    /Analytics Dashboard/i.test(xml) ||
+    /analytics-drill-/i.test(xml) ||
+    /teacherSubmissions/i.test(xml)
+  );
+}
+
+function recoverFromBlockingQuizScreens() {
+  for (let i = 0; i < 8; i++) {
+    const path = dump(`nav-recover-quiz-gate-${i}.xml`);
+    const xml = readXmlContent(path);
+    if (shellReady(xml)) return xml;
+    if (!/Validating quiz|rate-limiting|No Quiz Available/i.test(xml)) break;
+    const goBack = xml.match(/content-desc="Go back"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i);
+    if (goBack) {
+      const cx = Math.floor((Number(goBack[1]) + Number(goBack[3])) / 2);
+      const cy = Math.floor((Number(goBack[2]) + Number(goBack[4])) / 2);
+      adb(`shell input tap ${cx} ${cy}`);
+    } else {
+      adb('shell input keyevent 4');
+    }
+    sleep(1200);
+  }
+  return null;
+}
+
 function ensureInApp() {
-  let ready = waitFor(shellReady, { attempts: 4, pauseMs: 800, dumpName: 'nav-initial' });
+  dismissStuckNativeDatePicker();
+  recoverFromBlockingQuizScreens();
+  const initialAttempts = process.env.ENGINEERING_PHYSICAL_DEVICE === '1' ? 10 : 4;
+  let ready = waitFor(shellReady, { attempts: initialAttempts, pauseMs: 800, dumpName: 'nav-initial' });
   if (!ready.ok && INSTALLED_RELEASE) {
     const onLogin =
       ready.xml &&
@@ -1776,9 +1831,7 @@ function ensureInApp() {
     if (!ready.ok || /login-email-input/.test(ready.xml || '')) {
       const sessionXml = ready.xml || '';
       const physicalInstructorShell =
-        process.env.ENGINEERING_PHYSICAL_DEVICE === '1' &&
-        /Demo School/.test(sessionXml) &&
-        !/login-email-input/.test(sessionXml);
+        process.env.ENGINEERING_PHYSICAL_DEVICE === '1' && physicalInstructorSession(sessionXml);
       if (!physicalInstructorShell && !runInstalledMaestroLogin()) {
         throw new Error('installed_release_maestro_login_failed');
       }
