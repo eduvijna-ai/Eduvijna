@@ -1113,10 +1113,14 @@ export async function fetchStudentClassroomNameLookup(): Promise<Map<string, str
   }
   const rows = Array.isArray(data?.data) ? data.data : [];
   for (const row of rows) {
-    const id = row.classroom_id || row.class_id;
     const name = row.classroom_name || row.name;
-    if (id && name && String(name) !== String(id)) {
-      map.set(String(id), String(name));
+    if (!name) continue;
+    const nameStr = String(name);
+    const ids = [row.classroom_id, row.class_id, row.classid].filter(Boolean).map(String);
+    for (const id of ids) {
+      if (nameStr !== id) {
+        map.set(id, nameStr);
+      }
     }
   }
   return map;

@@ -120,8 +120,9 @@ export function sanitizeCameraDocumentTitle(raw?: string): string {
 export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pageNumber: number): string | undefined {
   if (!book) return undefined;
   const fromPages = book.pages?.find((p) => p.pageNumber === pageNumber);
-  if (fromPages) return fromPages.thumbnailUri || fromPages.fileUri;
-  if (pageNumber === 1) return book.thumbnailUri || book.fileUri;
+  // Prefer full page file over any derived thumbnail (upload/OCR must not use cropped thumbs).
+  if (fromPages) return fromPages.fileUri || fromPages.thumbnailUri;
+  if (pageNumber === 1) return book.fileUri || book.thumbnailUri;
   return undefined;
 }
 

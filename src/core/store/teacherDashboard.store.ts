@@ -8,6 +8,7 @@
 import { AppState } from 'react-native';
 import { create } from 'zustand';
 import {
+  fetchTeacherClassrooms,
   fetchTeacherDashboardSummary,
   fetchTeacherQuizzes,
 } from '../services/dashboardApi';
@@ -20,6 +21,49 @@ import type {
   Classroom,
   Instructor,
 } from '../types/quiz.types';
+
+/**
+ * Map class_wise_students rows to Classroom entries using stable classroom_id.
+ * Same source/scope as ClassesList drill-down (not unique-from-summary-quizzes).
+ */
+export function mapClassWiseStudentsToClassrooms(rows: any[]): Classroom[] {
+  const map = new Map<string, Classroom>();
+  for (const row of rows || []) {
+    const id = String(row?.classroom_id || row?.class_id || '').trim();
+    if (!id || map.has(id)) continue;
+    let instructorData: Instructor;
+    if (row.instructor) {
+      try {
+        instructorData =
+          typeof row.instructor === 'string' ? JSON.parse(row.instructor) : row.instructor;
+      } catch {
+        instructorData = {
+          instructor_id: '0',
+          instructor_username: 'unknown',
+          instructor_fullname: 'Unknown Instructor',
+          instructor_avatar_url: null,
+        };
+      }
+    } else {
+      instructorData = {
+        instructor_id: '0',
+        instructor_username: 'unknown',
+        instructor_fullname: 'Unknown Instructor',
+        instructor_avatar_url: null,
+      };
+    }
+    const studentCount =
+      Number(row.total_students ?? row.total_count ?? row.student_count ?? 0) ||
+      (Array.isArray(row.students) ? row.students.length : 0);
+    map.set(id, {
+      classroom_id: id,
+      classroom_name: String(row.classroom_name || row.name || id),
+      instructor: instructorData,
+      total_students: studentCount,
+    });
+  }
+  return Array.from(map.values());
+}
 
 export interface Student {
   student_id: number;
@@ -312,58 +356,32 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
     set({ loading: true, error: null });
 
     try {
-      // SINGLE API CALL with view_type=summary
-      const response = await fetchTeacherDashboardSummary({
-        view_type: 'summary',
-        limit: 1000,
-        offset: 0,
-      });
+      // Quizzes (summary) + classrooms (class_wise_students) — same classroom source as ClassesList.
+      const [response, classroomsResponse] = await Promise.all([
+        fetchTeacherDashboardSummary({
+          view_type: 'summary',
+          limit: 1000,
+          offset: 0,
+        }),
+        fetchTeacherClassrooms().catch(() => ({ data: [] as any[] })),
+      ]);
 
-      // console.log('✅ Teacher dashboard loaded:', {
-      //   quizzes: response.data.length,
-      //   total: response.meta?.total_count || 0,
-      //   sampleQuiz: response.data[0],
-      // });
+      const classroomsList = mapClassWiseStudentsToClassrooms(classroomsResponse.data || []);
+      // Prefer authoritative pagination total when present and covers all pages.
+      const reportedTotal = Number(
+        (classroomsResponse as any)?.pagination?.total ??
+          (classroomsResponse as any)?.meta?.total_count ??
+          NaN,
+      );
+      const classroomCount =
+        Number.isFinite(reportedTotal) && reportedTotal >= classroomsList.length
+          ? reportedTotal
+          : classroomsList.length;
 
-      // Extract classrooms
-      const uniqueClassrooms = new Map<string, Classroom>();
-      response.data.forEach((quiz) => {
-        if (quiz.classroom_id && quiz.classroom_name) {
-          let instructorData: Instructor;
-          if (quiz.instructor) {
-            try {
-              instructorData = typeof quiz.instructor === 'string' 
-                ? JSON.parse(quiz.instructor) 
-                : quiz.instructor;
-            } catch {
-              instructorData = {
-                instructor_id: '0',
-                instructor_username: 'unknown',
-                instructor_fullname: 'Unknown Instructor',
-                instructor_avatar_url: null,
-              };
-            }
-          } else {
-            instructorData = {
-              instructor_id: '0',
-              instructor_username: 'unknown',
-              instructor_fullname: 'Unknown Instructor',
-              instructor_avatar_url: null,
-            };
-          }
-
-          uniqueClassrooms.set(quiz.classroom_id, {
-            classroom_id: quiz.classroom_id,
-            classroom_name: quiz.classroom_name,
-            instructor: instructorData,
-            total_students: quiz.total_students || 0,
-          });
-        }
-      });
-
-      const classroomsList = Array.from(uniqueClassrooms.values());
-      
-      const calculatedStats = calculateStats(response.data, classroomsList);
+      const calculatedStats = {
+        ...calculateStats(response.data, classroomsList),
+        total_classes: classroomCount,
+      };
       
       // Fetch all students data for weak students calculation
       let weak: WeakStudent[] = [];

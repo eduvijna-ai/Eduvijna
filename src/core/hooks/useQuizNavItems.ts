@@ -76,8 +76,8 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
 /** Default tile appearance per RN screen name */
 export const SCREEN_DEFAULTS: Record<string, { color: string; bg: string; icon: string; label: string; subtitle: string }> = {
   CreateAIQuizScreen:          { color: '#0891B2', bg: '#E3F2FD', icon: 'bulb',         label: 'AI Assessment',  subtitle: 'Topic-based' },
-  CreateDocumentQuizScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'document',     label: 'Document Quiz',  subtitle: 'Upload & books' },
-  DocumentUploadHomeScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'folder-open',  label: 'Document Quiz',  subtitle: 'Upload & books' },
+  CreateDocumentQuizScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'document',     label: 'Document',       subtitle: 'Upload & books' },
+  DocumentUploadHomeScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'folder-open',  label: 'Document',       subtitle: 'Upload & books' },
   CreateHandwrittenQuizScreen: { color: '#7C3AED', bg: '#F3E5F5', icon: 'create',       label: 'Handwritten',    subtitle: 'Notes/Paper' },
   CreateImageQuizScreen:       { color: '#D97706', bg: '#FFF3E0', icon: 'image',        label: 'Image',          subtitle: 'Photo/PDF' },
   CreateYouTubeQuizScreen:     { color: '#059669', bg: '#E8F5E9', icon: 'logo-youtube', label: 'YouTube',        subtitle: 'Video-based' },

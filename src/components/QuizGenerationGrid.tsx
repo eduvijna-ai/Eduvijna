@@ -26,6 +26,10 @@ import {
   type ResolvedNavItem,
 } from '@core/hooks/useQuizNavItems';
 import { useQuizNavScreenAccess } from '@core/hooks/useQuizNavScreenAccess';
+import {
+  resolveQuizNavCapabilityForScreen,
+  type QuizNavCapability,
+} from '@core/domain/quizNavCapability';
 import { navigateToAppMainTab, APP_MAIN_TABS } from '../platforms/mobile/navigation/navigateToAppMainTab';
 
 /** Hard-coded fallback order – shown when the API returns no items */
@@ -51,13 +55,26 @@ const isPlatformTile = (tile: ResolvedNavItem): boolean => {
   );
 };
 
-/** Screens the AI Assessment Platform expands into on mobile. */
+/**
+ * Screens the AI Assessment Platform expands into on mobile.
+ * Prefer DocumentUploadHomeScreen (API document route target) over the legacy
+ * CreateDocumentQuizScreen label so Home never shows a duplicate "Document Quiz".
+ */
 const PLATFORM_EXPANSION_SCREENS = [
   'CreateAIQuizScreen',
-  'CreateDocumentQuizScreen',
+  'DocumentUploadHomeScreen',
   'CreateHandwrittenQuizScreen',
   'CreateImageQuizScreen',
 ];
+
+function presentCapabilities(tiles: ResolvedNavItem[]): Set<QuizNavCapability> {
+  const caps = new Set<QuizNavCapability>();
+  for (const tile of tiles) {
+    const cap = resolveQuizNavCapabilityForScreen(tile.screen);
+    if (cap) caps.add(cap);
+  }
+  return caps;
+}
 
 const isHiddenGenerationTile = (tile: ResolvedNavItem): boolean => {
   // The platform itself is never shown as a tile; it is expanded into its parts.
@@ -115,34 +132,60 @@ export default function QuizGenerationGrid({
     }
 
     // Expand the platform into standalone Document / Image / AI Assessment tiles,
-    // skipping any the backend already granted directly (to avoid duplicates).
-    const present = new Set(visible.map((t) => t.screen));
+    // skipping any capability the backend already granted (stable identity, not label text).
+    const presentScreens = new Set(visible.map((t) => t.screen));
+    const presentCaps = presentCapabilities(visible);
     const baseOrder = Math.max(0, ...visible.map((t) => t.display_order ?? 0)) + 1;
-    const expanded = PLATFORM_EXPANSION_SCREENS.filter((screen) => !present.has(screen)).map(
-      (screen, i) => {
-        const d = SCREEN_DEFAULTS[screen]!;
-        return {
-          screen,
-          label: d.label,
-          subtitle: d.subtitle,
-          iconName: d.icon,
-          iconColor: d.color,
-          bgColor: d.bg,
-          display_order: baseOrder + i,
-        };
-      },
-    );
+    const expanded = PLATFORM_EXPANSION_SCREENS.filter((screen) => {
+      if (presentScreens.has(screen)) return false;
+      const cap = resolveQuizNavCapabilityForScreen(screen);
+      if (cap && presentCaps.has(cap)) return false;
+      return true;
+    }).map((screen, i) => {
+      const d = SCREEN_DEFAULTS[screen]!;
+      // Prefer API-facing "Document" label for the retained document tile.
+      const label =
+        screen === 'DocumentUploadHomeScreen' || screen === 'CreateDocumentQuizScreen'
+          ? 'Document'
+          : d.label;
+      return {
+        screen,
+        label,
+        subtitle: d.subtitle,
+        iconName: d.icon,
+        iconColor: d.color,
+        bgColor: d.bg,
+        display_order: baseOrder + i,
+      };
+    });
 
-    return [...visible, ...expanded].sort(
+    // Final capability dedupe: keep first tile per capability (API order wins).
+    const seenCaps = new Set<QuizNavCapability>();
+    const deduped: ResolvedNavItem[] = [];
+    for (const tile of [...visible, ...expanded].sort(
       (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
-    );
+    )) {
+      const cap = resolveQuizNavCapabilityForScreen(tile.screen);
+      if (cap) {
+        if (seenCaps.has(cap)) continue;
+        seenCaps.add(cap);
+      }
+      deduped.push(
+        tile.screen === 'DocumentUploadHomeScreen' || tile.screen === 'CreateDocumentQuizScreen'
+          ? { ...tile, label: tile.label === 'Document Quiz' ? 'Document' : tile.label }
+          : tile,
+      );
+    }
+    return deduped;
   }, [navItems, fetchStatus]);
 
   const handlePress = (screen: string) => {
+    const isDocumentScreen =
+      screen === 'CreateDocumentQuizScreen' || screen === 'DocumentUploadHomeScreen';
     const workspaceMode =
       screen === 'CreateHandwrittenQuizScreen'
         ? 'handwritten'
-        : screen === 'CreateDocumentQuizScreen'
+        : isDocumentScreen
           ? 'document'
           : undefined;
     if (!canAccessScreen(screen, workspaceMode ? { workspaceMode } : undefined)) {
@@ -164,14 +207,14 @@ export default function QuizGenerationGrid({
 
     const useWorkspaceRedirect = Platform.OS !== 'web';
     const resolvedScreen =
-      useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')
+      useWorkspaceRedirect && (isDocumentScreen || screen === 'CreateHandwrittenQuizScreen')
         ? 'AssessmentWorkspaceScreen'
         : useWorkspaceRedirect && screen === 'CreateImageQuizScreen'
           ? 'ImageAssessmentScreen'
           : screen;
 
     const resolvedParams =
-      useWorkspaceRedirect && screen === 'CreateDocumentQuizScreen'
+      useWorkspaceRedirect && isDocumentScreen
         ? { mode: 'document' }
         : useWorkspaceRedirect && screen === 'CreateHandwrittenQuizScreen'
           ? { mode: 'handwritten' }

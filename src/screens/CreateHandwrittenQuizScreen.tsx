@@ -23,14 +23,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
-import { MAX_IMAGE_UPLOADS } from '../core/services/documentUploadApi';
-import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
+import {
+  MAX_IMAGE_UPLOADS,
+  runBatchOcrOnImages,
+  aggregateOcrText,
+} from '../core/services/documentUploadApi';
+import { captureDocumentImage } from '../core/services/documentCameraCapture';
+import { normalizeAndCompressImage } from '../core/services/documentImageUtils';
+import FullScreenImagePreview from '../core/components/FullScreenImagePreview';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
 import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
@@ -48,31 +53,6 @@ interface WorkspacePreset {
   difficulty?: 'easy' | 'medium' | 'hard' | '';
   questionCount?: number;
   additionalInstructions?: string;
-}
-
-interface BatchOCRPageResult {
-  page_number: number;
-  status: string;
-  text?: string;
-  latex?: string;
-}
-
-interface BatchOCRFileResult {
-  filename: string;
-  file_id: string;
-  file_type: string;
-  total_pages: number;
-  status: string;
-  pages: BatchOCRPageResult[];
-}
-
-interface BatchOCRResponse {
-  success: boolean;
-  message: string;
-  files: BatchOCRFileResult[];
-  total_files: number;
-  successful_files: number;
-  total_pages_processed: number;
 }
 
 interface StrictQuizQuestion {
@@ -104,37 +84,6 @@ const FLOW_STEPS = [
   'Set class, subject, and quiz options',
   'Generate assessment and start the quiz',
 ] as const;
-
-async function compressImage(uri: string): Promise<string> {
-  try {
-    const context = ImageManipulator.manipulate(uri);
-    context.resize({ width: 1500 });
-    const image = await context.renderAsync();
-    const result = await image.saveAsync({ compress: 0.6, format: SaveFormat.JPEG });
-    context.release();
-    image.release();
-    return result.uri;
-  } catch {
-    return uri;
-  }
-}
-
-function aggregateOcrText(files: BatchOCRFileResult[]): string {
-  const parts: string[] = [];
-  for (const file of files) {
-    if (file.status === 'success' || file.status === 'partial_success') {
-      for (const page of file.pages) {
-        if (page.status === 'success' && page.text && page.text.trim()) {
-          parts.push(page.text.trim());
-        }
-        if (page.latex && page.latex.trim()) {
-          parts.push(page.latex.trim());
-        }
-      }
-    }
-  }
-  return parts.join('\n\n');
-}
 
 /** Web parity (DocImageExtraction): prepend metadata to OCR text for generate-strict. */
 export function buildStrictQuizContent(params: {
@@ -186,6 +135,8 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
   const [error, setError] = useState('');
+  const [errorDiagnostic, setErrorDiagnostic] = useState('');
+  const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
 
   useEffect(() => {
     requestPermissions();
@@ -233,7 +184,11 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       if (!result.canceled && result.assets) {
         const newImages: PickedImage[] = await Promise.all(
           result.assets.map(async (asset, idx) => {
-            const compressedUri = await compressImage(asset.uri);
+            // Full frame preserved; EXIF baked once; aspect-preserving resize (web parity JPEG).
+            const compressedUri = await normalizeAndCompressImage(asset.uri, {
+              maxEdge: 1600,
+              compress: 0.75,
+            });
             return {
               uri: compressedUri,
               name: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
@@ -259,14 +214,15 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         return;
       }
-      const captured = await captureAndCropDocumentImage();
+      const captured = await captureDocumentImage();
       if (!captured) return;
-      // Helper already cropped + compressed — do not compress again.
+      // Full frame already EXIF-normalized + compressed — do not compress again.
       setPickedImages((prev) => [
         ...prev,
         { uri: captured.uri, name: captured.name, type: captured.mimeType || 'image/jpeg' },
       ]);
       setError('');
+      setErrorDiagnostic('');
     } catch {
       Alert.alert('Error', 'Failed to open camera. Please try again.');
     }
@@ -285,20 +241,17 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     setIsProcessing(true);
     setProcessingStep('ocr');
     setError('');
+    setErrorDiagnostic('');
 
     try {
-      const formData = new FormData();
-      pickedImages.forEach((img) => {
-        formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
-      });
-
-      const ocrResponse = await apiClient.post<BatchOCRResponse>(
-        '/api/v1/batch-ocr-upload',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+      // Same contract as web HandwrittenWorkspace: POST /batch-ocr-upload field `files`.
+      const ocrData = await runBatchOcrOnImages(
+        pickedImages.map((img) => ({
+          uri: img.uri,
+          name: img.name,
+          type: img.type || 'image/jpeg',
+        })),
       );
-
-      const ocrData = ocrResponse.data;
       if (!ocrData.success || !ocrData.files?.length) {
         throw new Error(ocrData.message || 'OCR processing failed. No output received.');
       }
@@ -313,7 +266,9 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       setExtractedOcrText(ocrText);
       setFlowPhase('configure');
     } catch (err: any) {
-      setError(formatError(err));
+      const { userMessage, diagnostic } = formatError(err);
+      setError(userMessage);
+      setErrorDiagnostic(diagnostic);
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
@@ -329,6 +284,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     setIsProcessing(true);
     setProcessingStep('generate');
     setError('');
+    setErrorDiagnostic('');
 
     const resolvedClass = classValue.trim() || 'General';
     const resolvedSubject = subject.trim() || 'Handwritten';
@@ -345,9 +301,10 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     });
 
     try {
+      // Web HandwrittenWorkspace: generate-strict with content + language.
       const quizResponse = await apiClient.post<StrictQuizResponse>(
         '/api/v1/quiz/generate-strict',
-        { content },
+        { content, language: 'English' },
         { timeout: 90000 },
       );
 
@@ -416,23 +373,44 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         showActionButtons: true,
       });
     } catch (err: any) {
-      setError(formatError(err));
+      const { userMessage, diagnostic } = formatError(err);
+      setError(userMessage);
+      setErrorDiagnostic(diagnostic);
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
     }
   };
 
-  const formatError = (err: any): string => {
-    if (err?.response?.status === 413) {
-      return 'Images are too large to upload. Please try with fewer or smaller images.';
-    }
-    return (
+  const formatError = (err: any): { userMessage: string; diagnostic: string } => {
+    const status = err?.response?.status;
+    const detail =
       err?.response?.data?.detail ||
       err?.response?.data?.message ||
       err?.message ||
-      'Failed to process your images. Please try again.'
-    );
+      'Failed to process your images. Please try again.';
+    const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    if (status === 413) {
+      return {
+        userMessage: 'Images are too large to upload. Please try with fewer or smaller images.',
+        diagnostic: `HTTP 413 · batch-ocr-upload / generate-strict`,
+      };
+    }
+    if (status === 503 && /Mathpix/i.test(detailStr)) {
+      return {
+        userMessage:
+          'Handwritten OCR is unavailable on this API environment (Mathpix not enabled). ' +
+          'This matches the web handwritten path (POST /api/v1/batch-ocr-upload). ' +
+          'Your images and form values were kept — try again when OCR is configured, or use Document upload if that path works for your school.',
+        diagnostic: `HTTP 503 · POST /api/v1/batch-ocr-upload · ${detailStr.slice(0, 180)}`,
+      };
+    }
+    return {
+      userMessage: detailStr,
+      diagnostic: status
+        ? `HTTP ${status} · ${String(err?.config?.url || err?.response?.config?.url || 'handwritten').slice(0, 120)}`
+        : 'client',
+    };
   };
 
   const processingLabel =
@@ -440,11 +418,22 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
 
   const renderImageThumbnail = ({ item, index }: { item: PickedImage; index: number }) => (
     <View style={styles.thumbnailContainer}>
-      <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="cover" />
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => setFullPreviewUri(item.uri)}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={`Open handwritten page ${index + 1} preview`}
+        disabled={isProcessing}
+      >
+        <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="contain" />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.removeImageBtn}
         onPress={() => handleRemoveImage(index)}
         disabled={isProcessing}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove page ${index + 1}`}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Ionicons name="close-circle" size={22} color="#EF4444" />
       </TouchableOpacity>
@@ -665,7 +654,14 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         {!!error && (
           <View style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={18} color="#EF4444" />
-            <Text style={styles.errorBannerText}>{error}</Text>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.errorBannerText}>{error}</Text>
+              {!!errorDiagnostic && (
+                <Text style={styles.errorDiagnosticText} numberOfLines={2}>
+                  {errorDiagnostic}
+                </Text>
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -702,6 +698,13 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           )}
         </TouchableOpacity>
       </View>
+
+      <FullScreenImagePreview
+        visible={!!fullPreviewUri}
+        uri={fullPreviewUri}
+        title="Handwritten page"
+        onClose={() => setFullPreviewUri(null)}
+      />
     </View>
   );
 }
@@ -843,6 +846,7 @@ function createStyles(colors: any) {
       backgroundColor: '#FEF2F2',
     },
     errorBannerText: { flex: 1, fontSize: 13, lineHeight: 18, color: '#DC2626' },
+    errorDiagnosticText: { fontSize: 11, lineHeight: 15, color: '#9F1239', opacity: 0.85 },
     footer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
     ctaButton: { height: 54, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     buttonInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },

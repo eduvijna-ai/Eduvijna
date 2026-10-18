@@ -2,7 +2,12 @@
  * PR #18: pending + completed check-record loads (no Phase 2 classification helpers).
  */
 
-import { checkRecordToQuiz, fetchQuizCheckRecord, type CheckRecordQuiz } from './dashboardApi';
+import {
+  checkRecordToQuiz,
+  fetchQuizCheckRecord,
+  fetchStudentClassroomNameLookup,
+  type CheckRecordQuiz,
+} from './dashboardApi';
 import type { DashboardStats, ParsedQuiz } from '../types';
 import {
   checkRecordAssignmentKey,
@@ -16,6 +21,7 @@ import {
   countCorrectAnswersFromPersistedResult,
   mapWithConcurrency,
 } from './completedQuizMetrics';
+import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 
 const HYDRATE_CONCURRENCY = 4;
 
@@ -45,7 +51,10 @@ export function dedupeCheckRecordQuizzes<T extends CheckRecordAssignableRow>(row
   return Array.from(quizMap.values());
 }
 
-function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>): ParsedQuiz {
+function mapCheckRecordToParsedQuiz(
+  quiz: ReturnType<typeof checkRecordToQuiz>,
+  classroomNameLookup?: Map<string, string>,
+): ParsedQuiz {
   const now = new Date();
   const dueDate = quiz.due_date ? new Date(quiz.due_date) : null;
   const isOverdue = dueDate ? now > dueDate : false;
@@ -59,10 +68,16 @@ function mapCheckRecordToParsedQuiz(quiz: ReturnType<typeof checkRecordToQuiz>):
     | 'missed'
     | 'in_progress';
 
+  const classId = String(quiz.classroom_id || quiz.class_id || '');
+  const classroomName = resolveClassroomDisplayName(classId, {
+    recordName: quiz.classroom_name,
+    lookup: classroomNameLookup,
+  });
+
   return {
     quiz_id: Number(quiz.quiz_id) || 0,
-    class_id: String(quiz.classroom_id || quiz.class_id || ''),
-    classroom_name: String(quiz.classroom_name || 'Unknown Class'),
+    class_id: classId,
+    classroom_name: classroomName,
     quiz_name: String(quiz.quiz_name || 'Untitled Quiz'),
     status,
     score: typeof quiz.score === 'number' ? quiz.score : null,
@@ -176,8 +191,16 @@ export async function loadStudentCheckRecordDashboard(
   quizzes: ParsedQuiz[];
   stats: DashboardStats;
 }> {
-  const rows = await fetchStudentCheckRecordRows(studentId);
-  const mapped = rows.map((row) => mapCheckRecordToParsedQuiz(checkRecordToQuiz(row)));
+  const [rows, classroomLookup] = await Promise.all([
+    fetchStudentCheckRecordRows(studentId),
+    fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
+  ]);
+  const mapped = rows.map((row) =>
+    mapCheckRecordToParsedQuiz(
+      checkRecordToQuiz(row, { classroomNameLookup: classroomLookup }),
+      classroomLookup,
+    ),
+  );
   // Default: skip attended-quiz enrichment on list load (N× retries). Opt in only when needed.
   const quizzes = options?.hydrateCompletedMetrics
     ? await hydrateCompletedParsedQuizMetrics(studentId, mapped)

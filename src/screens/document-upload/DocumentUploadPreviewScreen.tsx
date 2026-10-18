@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   Platform,
   ScrollView,
@@ -41,13 +42,14 @@ import {
   sanitizeCameraDocumentTitle,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
-import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
+import { captureDocumentImage } from '@core/services/documentCameraCapture';
 import {
   getDocumentUploadBookById,
   upsertDocumentUploadBook,
   removeDocumentUploadBook,
 } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
+import FullScreenImagePreview from '@core/components/FullScreenImagePreview';
 import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
@@ -158,6 +160,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [loadingImages, setLoadingImages] = useState(false);
   const [resolvedPageCount, setResolvedPageCount] = useState<number | null>(null);
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
+  const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
   const requestedImages = useRef<Set<string>>(new Set());
 
   const totalPages = resolvedPageCount ?? bookState?.totalPages ?? 1;
@@ -355,7 +358,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setError('');
       setCapturingPage(true);
 
-      const captured = await captureAndCropDocumentImage();
+      const captured = await captureDocumentImage();
       if (!captured) return;
 
       const newPage = {
@@ -772,6 +775,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   };
 
+  // Reset inline zoom/pan when the focused page changes.
+  useEffect(() => {
+    setZoom(100);
+  }, [page]);
+
   if (!bookState) {
     return (
       <View style={styles.centerEmpty}>
@@ -801,8 +809,19 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   const pageList = pageItems(totalPages);
-  const previewUri = previewImages[page] || thumbImages[page] || getLocalPageUri(bookState, page);
+  const cameraPageFileUri = bookState?.pages?.find((p) => p.pageNumber === page)?.fileUri;
+  // Prefer full-resolution page source for main preview / OCR; never a cover-cropped thumb.
+  const previewUri =
+    cameraPageFileUri ||
+    previewImages[page] ||
+    thumbImages[page] ||
+    getLocalPageUri(bookState, page);
   const showImageFallback = !previewUri && !loadingImages;
+
+  const openFullPreview = (uri?: string | null) => {
+    if (!uri) return;
+    setFullPreviewUri(uri);
+  };
 
   const toggleSelectAll = () => {
     setError('');
@@ -859,13 +878,32 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           </View>
         </View>
 
-        <View style={styles.previewWrap}>
+        <ScrollView
+          style={styles.previewWrap}
+          contentContainerStyle={styles.previewScrollContent}
+          maximumZoomScale={3}
+          minimumZoomScale={1}
+          centerContent
+          bouncesZoom
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+        >
           {previewUri ? (
-            <Image
-              source={{ uri: previewUri }}
-              style={[styles.previewImage, { transform: [{ scale: zoom / 100 }] }]}
-              resizeMode="contain"
-            />
+            <TouchableOpacity
+              activeOpacity={0.95}
+              onPress={() => openFullPreview(previewUri)}
+              accessibilityRole="imagebutton"
+              accessibilityLabel="Open full-screen page preview"
+            >
+              <Image
+                source={{ uri: previewUri }}
+                style={[
+                  styles.previewImage,
+                  { transform: [{ scale: zoom / 100 }] },
+                ]}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
           ) : showImageFallback ? (
             <View style={styles.previewPlaceholder}>
               {loadingImages ? (
@@ -883,13 +921,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
               <Text style={styles.previewPlaceholderText}>Loading page {page}…</Text>
             </View>
           )}
-        </View>
+        </ScrollView>
 
         <View style={styles.selectionBar}>
           <Text style={styles.thumbHint} numberOfLines={2}>
             {isCameraSession
-              ? `Tap thumbnails to preview. Use ✓ to select pages and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
-              : `Tap thumbnails to preview, use the check icon to include pages (max ${MAX_QUIZ_PAGES})`}
+              ? `Tap image or thumbnail for full-screen preview. Use ✓ to select and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
+              : `Tap image or thumbnail for full-screen preview; use ✓ to include pages (max ${MAX_QUIZ_PAGES})`}
           </Text>
           <View style={styles.selectionMetaRow}>
             <Text style={styles.selectionCount}>
@@ -956,9 +994,21 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                     <Ionicons name="close-circle" size={16} color="#DC2626" />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => setPage(p)}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setPage(p);
+                    const thumbUri =
+                      bookState?.pages?.find((pg) => pg.pageNumber === p)?.fileUri ||
+                      previewImages[p] ||
+                      thumbImages[p] ||
+                      getLocalPageUri(bookState, p);
+                    openFullPreview(thumbUri);
+                  }}
+                  accessibilityRole="imagebutton"
+                  accessibilityLabel={`Open page ${p} full-screen preview`}
+                >
                   {thumbImages[p] ? (
-                    <Image source={{ uri: thumbImages[p] }} style={styles.thumbImage} />
+                    <Image source={{ uri: thumbImages[p] }} style={styles.thumbImage} resizeMode="contain" />
                   ) : (
                     <View style={styles.thumbPlaceholder}>
                       <Text style={styles.thumbPlaceholderText}>{p}</Text>
@@ -1072,6 +1122,12 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      <FullScreenImagePreview
+        visible={!!fullPreviewUri}
+        uri={fullPreviewUri}
+        title={`Page ${page}`}
+        onClose={() => setFullPreviewUri(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1143,13 +1199,16 @@ const makeStyles = (colors: any) =>
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.inputBackground,
-      overflow: 'hidden',
+    },
+    previewScrollContent: {
+      flexGrow: 1,
+      minHeight: 318,
       alignItems: 'center',
       justifyContent: 'center',
     },
     previewImage: {
-      width: '100%',
-      height: '100%',
+      width: Dimensions.get('window').width - 48,
+      height: 300,
     },
     previewPlaceholder: {
       flex: 1,

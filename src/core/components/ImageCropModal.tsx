@@ -316,6 +316,12 @@ export default function ImageCropModal() {
     }
   };
 
+  /** Keep the complete captured frame — no crop applied. */
+  const handleUseFullImage = () => {
+    if (processing || !imageUri) return;
+    resolveCropSession({ uri: imageUri });
+  };
+
   const visible = !!imageUri;
 
   return (
@@ -328,7 +334,9 @@ export default function ImageCropModal() {
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Crop photo</Text>
-          <Text style={styles.subtitle}>Drag corners to keep only the content you need</Text>
+          <Text style={styles.subtitle}>
+            Optional — use full image to keep the complete page, or drag corners to crop
+          </Text>
         </View>
 
         <View style={styles.stage} onLayout={onLayout} {...panResponder.panHandlers}>
@@ -440,6 +448,16 @@ export default function ImageCropModal() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.btn, styles.btnGhost]}
+            onPress={handleUseFullImage}
+            disabled={processing || !imageUri}
+            accessibilityRole="button"
+            accessibilityLabel="Use full image without cropping"
+          >
+            <Text style={styles.btnGhostText}>Use full image</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.btn, styles.btnPrimary, processing && styles.btnDisabled]}
             onPress={handleConfirm}
             disabled={processing || !crop}
@@ -449,7 +467,7 @@ export default function ImageCropModal() {
             {processing ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.btnPrimaryText}>Use Photo</Text>
+              <Text style={styles.btnPrimaryText}>Crop & use</Text>
             )}
           </TouchableOpacity>
         </View>

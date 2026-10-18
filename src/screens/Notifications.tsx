@@ -20,7 +20,12 @@ import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
 import { isStudentQuizActive } from '../utils/quizFilters';
 import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
-import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
+import {
+  fetchQuizCheckRecord,
+  checkRecordToQuiz,
+  fetchStudentClassroomNameLookup,
+} from '@core/services/dashboardApi';
+import { resolveClassroomDisplayName } from '../utils/classroomDisplayName';
 
 interface Props {
   navigation?: any;
@@ -53,15 +58,29 @@ export default function Notifications({ navigation, onNavigate }: Props) {
 
   // Fetch student pending quizzes via check-record endpoint
   // status: null → pending (shown here)   |   status: "completed" → not shown
+  // Classroom names: same school-scoped lookup as Home/Assessments (not session_id).
   const fetchStudentQuizzes = useCallback(async () => {
     if (!user || isTeacher) return;
     
     try {
       setLoading(true);
 
-      const response = await fetchQuizCheckRecord(user.id, 'pending');
+      const [response, classroomLookup] = await Promise.all([
+        fetchQuizCheckRecord(user.id, 'pending'),
+        fetchStudentClassroomNameLookup().catch(() => new Map<string, string>()),
+      ]);
       const mapped = (response.result || [])
-        .map(checkRecordToQuiz)
+        .map((row) => {
+          const quiz = checkRecordToQuiz(row, { classroomNameLookup: classroomLookup });
+          const classId = String(quiz.classroom_id || quiz.class_id || row.classid || '');
+          return {
+            ...quiz,
+            classroom_name: resolveClassroomDisplayName(classId, {
+              recordName: quiz.classroom_name,
+              lookup: classroomLookup,
+            }),
+          };
+        })
         // Only show quizzes whose status came back as null (pending) and are still within the time window
         .filter(isStudentQuizActive);
 

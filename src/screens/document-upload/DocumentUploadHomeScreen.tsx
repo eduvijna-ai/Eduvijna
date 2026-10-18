@@ -39,7 +39,7 @@ import {
   DOCUMENT_FILE_MIME_TYPES,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
-import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
+import { captureDocumentImage } from '@core/services/documentCameraCapture';
 import {
   getDocumentUploadBooks,
   getDocumentUploadBookById,
@@ -219,7 +219,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     size?: number;
   }) => {
     setError('');
-    // URI is already cropped + compressed by captureAndCropDocumentImage.
+    // URI is already EXIF-normalized + aspect-preserving compressed (full frame).
     const fileUri = asset.uri;
     const fileName = asset.name || `camera-${Date.now()}.jpg`;
     const page = {
@@ -438,7 +438,7 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       setSuccess('');
       setCapturing(true);
 
-      const captured = await captureAndCropDocumentImage();
+      const captured = await captureDocumentImage();
       if (!captured) return;
 
       await processCameraCapture({

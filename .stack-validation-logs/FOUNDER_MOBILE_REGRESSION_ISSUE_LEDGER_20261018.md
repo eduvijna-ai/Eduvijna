@@ -34,6 +34,12 @@
 | M-09 | Instructor | Share modal | Clipped actions | Scroll + footer | Prior `ShareQuizModal` KAV | Implemented (prior commit) | Physical **Blocked** |
 | M-10 | All | Push | — | FCM | API send **201** + 1 Android token; **not received** on OPPO | Physical send OK / receipt **FAIL** | OEM/FCM delivery open; tap **Not tested** |
 | M-11 | Student Home | Incoming params log | Noise | Harmless | Not a defect | Valid scope | — |
+| M-12 | Instructor/Teacher | Camera/gallery page preview cropped | Full page | Full frame unless user crops; EXIF bake; contain preview; OCR uses fileUri | `captureDocumentImage` (no forced crop); `normalizeAndCompressImage`; PDF contain-fit; FullScreenImagePreview | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-13 | Instructor/Teacher | Tap image → preview | Full-screen fit + zoom/pan; Back closes; select/remove separate | Same | `FullScreenImagePreview` on Document + Handwritten | Implemented | Code PASS; **manual not verified** |
+| M-14 | Instructor Home | Duplicate “Document Quiz / Upload & books” | Single Document entry | Capability dedupe (`document`); retain DocumentUploadHomeScreen → AssessmentWorkspace | QuizGenerationGrid + SCREEN_DEFAULTS label Document | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-15 | Instructor | Handwritten Mathpix 503 | Web parity OCR + generate | Same `POST /batch-ocr-upload` `files` + `generate-strict` `{content,language}` | Client contract aligned; **generation not claimed fixed** if Mathpix disabled on shared API | Implemented + unit-tested; generation **Blocked** on provider | Backend Mathpix gate likely shared with web handwritten |
+| M-16 | Student | Pending Notifications “Unknown Class” | Real classroom name | `fetchStudentClassroomNameLookup` on Notifications + check-record loader | Implemented + unit-tested | Code PASS; **manual not verified** |
+| M-17 | Teacher/Instructor | Classes KPI 3 vs list 5 | Same count as ClassesList | `total_classes` from `fetchTeacherClassrooms` / class_wise_students (not unique-from-summary quizzes) | Implemented + unit-tested | Code PASS; **manual not verified** |
 
 ### Live API notes (sanitized)
 - Analytics `student_total_details`: 200, 51 rows; completed=25 (all null score in sample), pending=8, missed=18; expired avail=43 / active=8 (`analytics-classification-live.json`).
@@ -43,6 +49,7 @@
 ### Remaining blockers
 1. Journey B native date-picker automation (or alternate date entry) on OPPO Android 10.
 2. Push FCM receipt/tap despite API `201` + registered Android token.
-3. Same-source Mathpix/provider Network capture (successful web + failing mobile).
+3. Same-source Mathpix/provider Network capture (successful web handwritten + mobile handwritten on `dev-api`); do not treat generation as fixed without success evidence.
 4. Fresh student submit (beyond fixture 479 reopen) + document save/history/reopen.
 5. Founder review/acceptance (PR #26 remains DRAFT).
+6. M-12…M-17 physical/manual verification on OPPO (this handoff is manual-test ready, not release approval).
