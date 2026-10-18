@@ -23,12 +23,12 @@ import AnalyticsPagination from '../components/analytics/AnalyticsPagination';
 import AnalyticsStatusChips, { type StatusFilterKey } from '../components/analytics/AnalyticsStatusChips';
 import QuizAttemptDetailModal from '../components/analytics/QuizAttemptDetailModal';
 import {
-  getQuizAnalytics,
   aggregateClassOverview,
   extractStatusSummary,
   generateInsights,
   generateQuizSummary,
 } from '../core/services/quizAnalyticsApi';
+import { loadQuizAnalyticsRowsCoalesced } from '../core/services/quizAnalyticsPagination';
 import type { ClassOverview, QuizListItem } from '../core/types/quizAnalytics.types';
 import {
   generateStudentKPITiles,
@@ -36,6 +36,7 @@ import {
   formatDate,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
+import { isAnalyticsAllTime } from '../core/utils/analyticsDateState';
 import {
   isAssignedQuizRecoveryProbeError,
 } from '../core/services/assignedQuizRecovery.service';
@@ -64,10 +65,12 @@ export default function QuizStudentMyAnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rawData, setRawData] = useState<QuizListItem[]>([]);
-  const [startDate, setStartDate] = useState(defaultDates.from);
-  const [endDate, setEndDate] = useState(defaultDates.to);
-  const [appliedStart, setAppliedStart] = useState(defaultDates.from);
-  const [appliedEnd, setAppliedEnd] = useState(defaultDates.to);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [appliedStart, setAppliedStart] = useState('');
+  const [appliedEnd, setAppliedEnd] = useState('');
+  const hasMetricsRef = React.useRef(false);
+  const metricsGenerationRef = React.useRef(0);
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('overview');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState('');
@@ -84,31 +87,45 @@ export default function QuizStudentMyAnalyticsScreen() {
   const [viewingQuizId, setViewingQuizId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
+    const generation = ++metricsGenerationRef.current;
+    const blocking = !isRefresh && !hasMetricsRef.current;
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
+    else if (blocking) setLoading(true);
     try {
-      const res = await getQuizAnalytics({
+      const allTime = isAnalyticsAllTime(appliedStart, appliedEnd);
+      const outcome = await loadQuizAnalyticsRowsCoalesced({
         view_type: 'student_total_details',
-        limit: 100,
-        offset: 0,
-        created_from: appliedStart,
-        created_to: appliedEnd,
+        ...(allTime
+          ? {}
+          : { created_from: appliedStart, created_to: appliedEnd }),
       });
-      setRawData(res.data ?? []);
+      if (generation !== metricsGenerationRef.current) return;
+      if (outcome.kind === 'incomplete') {
+        setError(`Incomplete analytics fetch (${outcome.reason}).`);
+        if (!hasMetricsRef.current) setRawData([]);
+        return;
+      }
+      setRawData(outcome.rows);
+      hasMetricsRef.current = true;
+      setError(null);
     } catch (err: any) {
+      if (generation !== metricsGenerationRef.current) return;
       setError(err?.message || 'Failed to load analytics');
     } finally {
+      if (generation !== metricsGenerationRef.current) return;
       setLoading(false);
       setRefreshing(false);
     }
   }, [appliedStart, appliedEnd]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
-  const classOverviews = useMemo(() => aggregateClassOverview(rawData), [rawData]);
+  const classOverviews = useMemo(
+    () => aggregateClassOverview(rawData, { mode: 'student' }),
+    [rawData],
+  );
   const kpiTiles = useMemo(() => generateStudentKPITiles(rawData), [rawData]);
 
   const filteredQuizzes = useMemo(() => {
@@ -136,17 +153,25 @@ export default function QuizStudentMyAnalyticsScreen() {
   const paginatedQuizzes = filteredQuizzes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const handleApplyDates = () => {
-    setAppliedStart(startDate);
-    setAppliedEnd(endDate);
+    if (!String(startDate || '').trim() && !String(endDate || '').trim()) {
+      setAppliedStart('');
+      setAppliedEnd('');
+    } else {
+      const from = String(startDate || '').trim() || defaultDates.from;
+      const to = String(endDate || '').trim() || defaultDates.to;
+      setStartDate(from);
+      setEndDate(to);
+      setAppliedStart(from);
+      setAppliedEnd(to);
+    }
     setPage(1);
   };
 
   const handleClearDates = () => {
-    const d = getDefaultDateRange();
-    setStartDate(d.from);
-    setEndDate(d.to);
-    setAppliedStart(d.from);
-    setAppliedEnd(d.to);
+    setStartDate('');
+    setEndDate('');
+    setAppliedStart('');
+    setAppliedEnd('');
     setPage(1);
   };
 

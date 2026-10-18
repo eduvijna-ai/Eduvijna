@@ -30,6 +30,7 @@ import {
   isStudentAnalyticsPendingLike,
   scoreForStudentAnalyticsDisplay,
 } from '../utils/studentAnalyticsClassification';
+import { normalizeAvailabilityStatus } from './quizAnalyticsPagination';
 
 /**
  * Fetch quiz analytics data
@@ -102,8 +103,7 @@ export const parseLogData = (logDataString: string | null): ParsedLogData | null
 
 function looksLikeStudentTotalDetails(data: QuizListItem[]): boolean {
   if (data.length === 0) return false;
-  // student_total_details rows include per-student student_status / quiz_status
-  // even when cohort completed_count is also populated.
+  // Heuristic fallback only — prefer explicit AggregationMode from the caller.
   const withStudentStatus = data.filter((q) => {
     const ss = (q as { student_status?: string | null }).student_status;
     const qs = (q as { quiz_status?: string | null }).quiz_status;
@@ -112,14 +112,29 @@ function looksLikeStudentTotalDetails(data: QuizListItem[]): boolean {
   return withStudentStatus >= Math.ceil(data.length * 0.5);
 }
 
+export type AggregationMode = 'teacher' | 'student';
+
+export type AggregateClassOverviewOptions = {
+  /** Prefer explicit role/view contract; do not infer from mixed payloads. */
+  mode?: AggregationMode;
+};
+
 /**
  * Aggregate data into class overview cards.
- * Teacher `view_type=all` uses cohort completed_count.
+ * Teacher `view_type=all` uses cohort completed_count + availability-gated pending.
  * Student `student_total_details` derives Done/Pending from this student's attempts/scores.
  */
-export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] => {
+export const aggregateClassOverview = (
+  data: QuizListItem[],
+  options?: AggregateClassOverviewOptions,
+): ClassOverview[] => {
   const classMap = new Map<string, ClassOverview>();
-  const studentMode = looksLikeStudentTotalDetails(data);
+  const studentMode =
+    options?.mode === 'student'
+      ? true
+      : options?.mode === 'teacher'
+        ? false
+        : looksLikeStudentTotalDetails(data);
 
   data.forEach((quiz) => {
     const classId = quiz.classroom_id;
@@ -135,6 +150,9 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
         in_progress_count: 0,
         pending_count: 0,
         expired_count: 0,
+        active_assignment_count: 0,
+        upcoming_assignment_count: 0,
+        expired_assignment_count: 0,
         avg_score: 0,
         highest_score: null,
         lowest_score: null,
@@ -159,18 +177,43 @@ export const aggregateClassOverview = (data: QuizListItem[]): ClassOverview[] =>
       if (classifyStudentAnalyticsAvailability(quiz) === 'expired') {
         classData.expired_count += 1;
       }
+      const avail = normalizeAvailabilityStatus(quiz.availability_status);
+      if (avail === 'active') classData.active_assignment_count = (classData.active_assignment_count || 0) + 1;
+      else if (avail === 'upcoming') {
+        classData.upcoming_assignment_count = (classData.upcoming_assignment_count || 0) + 1;
+      } else if (avail === 'expired') {
+        classData.expired_assignment_count = (classData.expired_assignment_count || 0) + 1;
+      }
     } else {
-      classData.missed_count +=
-        (quiz.total_students || 0) -
-        (quiz.completed_count || 0) -
-        (quiz.in_progress_count || 0) -
-        (quiz.pending_count || 0);
-      classData.completed_count += quiz.completed_count || 0;
-      classData.in_progress_count += quiz.in_progress_count || 0;
-      classData.pending_count += quiz.pending_count || 0;
-
-      if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
+      // Teacher: availability buckets are assignment counts (Assessments tabs).
+      const avail = normalizeAvailabilityStatus(quiz.availability_status);
+      if (avail === 'active') {
+        classData.active_assignment_count = (classData.active_assignment_count || 0) + 1;
+        // Pending submissions only on active assignments (web / drill-down contract).
+        classData.pending_count += quiz.pending_count || 0;
+        classData.in_progress_count += quiz.in_progress_count || 0;
+      } else if (avail === 'upcoming') {
+        classData.upcoming_assignment_count = (classData.upcoming_assignment_count || 0) + 1;
+      } else if (avail === 'expired') {
+        classData.expired_assignment_count = (classData.expired_assignment_count || 0) + 1;
         classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
+        classData.missed_count += quiz.pending_count || 0;
+      }
+
+      classData.completed_count += quiz.completed_count || 0;
+
+      // Fallback when availability_status missing: preserve prior cohort math.
+      if (avail === 'unknown') {
+        classData.missed_count +=
+          (quiz.total_students || 0) -
+          (quiz.completed_count || 0) -
+          (quiz.in_progress_count || 0) -
+          (quiz.pending_count || 0);
+        classData.in_progress_count += quiz.in_progress_count || 0;
+        classData.pending_count += quiz.pending_count || 0;
+        if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
+          classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
+        }
       }
     }
   });

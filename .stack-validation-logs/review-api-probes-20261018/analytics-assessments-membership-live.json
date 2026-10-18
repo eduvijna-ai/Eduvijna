@@ -1,0 +1,140 @@
+{
+  "verifiedAt": "2026-10-18T16:49:49.293Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "account": "demo_samatha",
+  "classroomName": "4A-Mathematics",
+  "classroomId": "class_4d82c60e",
+  "defaultWindow": {
+    "from": "2026-09-18",
+    "to": "2026-10-19"
+  },
+  "summaryAllTime": {
+    "pages": 1,
+    "globalRows": 43,
+    "class": {
+      "rowCount": 32,
+      "uniqueAssignments": 32,
+      "duplicateKeys": 0,
+      "buckets": {
+        "active": 2,
+        "upcoming": 0,
+        "expired": 30,
+        "unknown": 0
+      },
+      "cohortCompletedSum": 23,
+      "cohortPendingSum": 73,
+      "keys": [
+        "371::b710918e-890c-4727-bba0-5db5d70cbdc0::class_4d82c60e",
+        "474::a4f24fe6-3c02-4372-9248-e8c3267c4c05::class_4d82c60e",
+        "475::15665706-90c8-4127-b0f6-bc421bb45866::class_4d82c60e",
+        "478::220abcbd-8568-4337-972c-bdcf253715d8::class_4d82c60e",
+        "479::a6882262-5c50-4cf5-a4a8-dc8786862916::class_4d82c60e",
+        "483::a7a32bd5-c596-4a79-bfa8-51e0cc44c253::class_4d82c60e",
+        "484::be893578-c5ca-4081-ae41-e4640d726a13::class_4d82c60e",
+        "512::8e27d1da-b970-4d8c-8ce9-1552c25ad056::class_4d82c60e"
+      ]
+    }
+  },
+  "analyticsAllTimePaginated": {
+    "pages": 1,
+    "globalRows": 43,
+    "class": {
+      "rowCount": 32,
+      "uniqueAssignments": 32,
+      "duplicateKeys": 0,
+      "buckets": {
+        "active": 2,
+        "upcoming": 0,
+        "expired": 30,
+        "unknown": 0
+      },
+      "cohortCompletedSum": 23,
+      "cohortPendingSum": 73,
+      "keys": [
+        "371::b710918e-890c-4727-bba0-5db5d70cbdc0::class_4d82c60e",
+        "474::a4f24fe6-3c02-4372-9248-e8c3267c4c05::class_4d82c60e",
+        "475::15665706-90c8-4127-b0f6-bc421bb45866::class_4d82c60e",
+        "478::220abcbd-8568-4337-972c-bdcf253715d8::class_4d82c60e",
+        "479::a6882262-5c50-4cf5-a4a8-dc8786862916::class_4d82c60e",
+        "483::a7a32bd5-c596-4a79-bfa8-51e0cc44c253::class_4d82c60e",
+        "484::be893578-c5ca-4081-ae41-e4640d726a13::class_4d82c60e",
+        "512::8e27d1da-b970-4d8c-8ce9-1552c25ad056::class_4d82c60e"
+      ]
+    }
+  },
+  "analyticsDefaultWindowPaginated": {
+    "pages": 1,
+    "globalRows": 37,
+    "class": {
+      "rowCount": 27,
+      "uniqueAssignments": 27,
+      "duplicateKeys": 0,
+      "buckets": {
+        "active": 2,
+        "upcoming": 0,
+        "expired": 25,
+        "unknown": 0
+      },
+      "cohortCompletedSum": 17,
+      "cohortPendingSum": 64,
+      "keys": [
+        "483::a7a32bd5-c596-4a79-bfa8-51e0cc44c253::class_4d82c60e",
+        "484::be893578-c5ca-4081-ae41-e4640d726a13::class_4d82c60e",
+        "512::8e27d1da-b970-4d8c-8ce9-1552c25ad056::class_4d82c60e",
+        "513::66494261-2748-4b72-a714-6547c0cfa561::class_4d82c60e",
+        "514::82aa2419-dff2-4a1b-8ec1-859727657af1::class_4d82c60e",
+        "515::f6579604-5b61-4b85-970f-0ecef37ed659::class_4d82c60e",
+        "516::3b60a508-3384-49df-b900-b76179fc241b::class_4d82c60e",
+        "517::c37f5851-fba4-47d2-b732-20e6103836c3::class_4d82c60e"
+      ]
+    }
+  },
+  "analyticsDefaultWindowLimit500SinglePage": {
+    "status": 200,
+    "globalRows": 37,
+    "pagination": null,
+    "class": {
+      "rowCount": 27,
+      "uniqueAssignments": 27,
+      "duplicateKeys": 0,
+      "buckets": {
+        "active": 2,
+        "upcoming": 0,
+        "expired": 25,
+        "unknown": 0
+      },
+      "cohortCompletedSum": 17,
+      "cohortPendingSum": 64,
+      "keys": [
+        "483::a7a32bd5-c596-4a79-bfa8-51e0cc44c253::class_4d82c60e",
+        "484::be893578-c5ca-4081-ae41-e4640d726a13::class_4d82c60e",
+        "512::8e27d1da-b970-4d8c-8ce9-1552c25ad056::class_4d82c60e",
+        "513::66494261-2748-4b72-a714-6547c0cfa561::class_4d82c60e",
+        "514::82aa2419-dff2-4a1b-8ec1-859727657af1::class_4d82c60e",
+        "515::f6579604-5b61-4b85-970f-0ecef37ed659::class_4d82c60e",
+        "516::3b60a508-3384-49df-b900-b76179fc241b::class_4d82c60e",
+        "517::c37f5851-fba4-47d2-b732-20e6103836c3::class_4d82c60e"
+      ]
+    }
+  },
+  "membershipDiff": {
+    "summaryVsAllTimePaginated": {
+      "missingFromAnalytics": [],
+      "extraInAnalytics": [],
+      "missingCount": 0,
+      "extraCount": 0
+    },
+    "summaryVsDefaultWindow": {
+      "missingFromAnalytics": [
+        "371::b710918e-890c-4727-bba0-5db5d70cbdc0::class_4d82c60e",
+        "474::a4f24fe6-3c02-4372-9248-e8c3267c4c05::class_4d82c60e",
+        "475::15665706-90c8-4127-b0f6-bc421bb45866::class_4d82c60e",
+        "478::220abcbd-8568-4337-972c-bdcf253715d8::class_4d82c60e",
+        "479::a6882262-5c50-4cf5-a4a8-dc8786862916::class_4d82c60e"
+      ],
+      "missingCount": 5,
+      "extraCount": 0
+    }
+  },
+  "note": "Assessments mobile uses view_type=summary limit=1000 All Time. Teacher Analytics uses view_type=all limit=500 with created_from/to default window."
+}

@@ -679,8 +679,10 @@ export function getAttemptSummaryText(row: QuizAttemptViewRow, isCompleted: bool
   if (!isCompleted) {
     return row.derivedStatus === 'missed' ? 'Missed' : 'Not attempted';
   }
+  const scoreLabel =
+    row.score === null || row.score === undefined ? 'Score: —' : `Score: ${row.score}%`;
   if (!row.log_data) {
-    return `Score: ${row.score ?? 0}% | Completed`;
+    return `${scoreLabel} | Completed`;
   }
   try {
     const parsed = JSON.parse(row.log_data);
@@ -689,11 +691,13 @@ export function getAttemptSummaryText(row: QuizAttemptViewRow, isCompleted: bool
     const correctCount = answers.filter((a: { isCorrect?: boolean }) => a.isCorrect).length;
     const skippedCount = answers.filter((a: { userAnswer?: unknown }) => !a.userAnswer).length;
     const incorrectCount = Math.max(0, totalQuestions - correctCount - skippedCount);
+    if (totalQuestions === 0) return `${scoreLabel} | Completed`;
     const percentScore =
-      totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : (row.score ?? 0);
-    if (totalQuestions === 0) return `Score: ${row.score ?? 0}% | Completed`;
+      row.score === null || row.score === undefined
+        ? Math.round((correctCount / totalQuestions) * 100)
+        : row.score;
     return `Q:${totalQuestions} | Correct:${correctCount} | Incorrect:${incorrectCount} | Score:${percentScore}%`;
   } catch {
-    return `Score: ${row.score ?? 0}% | Completed`;
+    return `${scoreLabel} | Completed`;
   }
 }

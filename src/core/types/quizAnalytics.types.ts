@@ -182,13 +182,23 @@ export interface ClassOverview {
   classroom_id: string;
   classroom_name: string;
   instructor_name?: string;
+  /** Distinct assignment count (quiz_id + session_id + classroom_id). */
   total_quizzes: number;
   total_students: number;
   missed_count: number;
+  /** Student submission completions (cohort completed_count sum) — not availability Active. */
   completed_count: number;
   in_progress_count: number;
+  /**
+   * Student submissions still pending on *active* assignments only
+   * (matches drill-down / web AnalyticsPage pending gate).
+   */
   pending_count: number;
   expired_count: number;
+  /** Assignment availability buckets — separate from attempt Done/Pending. */
+  active_assignment_count?: number;
+  upcoming_assignment_count?: number;
+  expired_assignment_count?: number;
   avg_score: number;
   highest_score: number | null;
   lowest_score: number | null;

@@ -35,6 +35,7 @@ import {
   calculateAcademicKPIs,
   calculateStudentHealthKPIs,
 } from '../core/services/quizAnalyticsApi';
+import { loadQuizAnalyticsRowsCoalesced } from '../core/services/quizAnalyticsPagination';
 import type { ClassOverview, QuizListItem, QuizTile } from '../core/types/quizAnalytics.types';
 import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import { mergeAssessmentClassroomInventoryWithMetrics } from '@core/services/assessmentClassroomAnalytics';
@@ -43,6 +44,8 @@ import {
   getDefaultDateRange,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
+import { isAnalyticsAllTime } from '../core/utils/analyticsDateState';
+import { useUserStore } from '@core/store/user.store';
 import {
   buildQuizSummaryRows,
   buildQuizCardData,
@@ -66,15 +69,19 @@ export default function QuizTeacherAnalyticsScreen() {
   const { colors } = theme;
   const insets = useSafeAreaInsets();
   const defaultDates = getDefaultDateRange();
+  const userId = useUserStore((s) => s.user?.id);
+  const schoolId = useUserStore((s) => s.schoolId);
+  const accountScopeKey = `${userId ?? ''}::${schoolId ?? ''}`;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rawData, setRawData] = useState<QuizListItem[]>([]);
-  const [startDate, setStartDate] = useState(defaultDates.from);
-  const [endDate, setEndDate] = useState(defaultDates.to);
-  const [appliedStart, setAppliedStart] = useState(defaultDates.from);
-  const [appliedEnd, setAppliedEnd] = useState(defaultDates.to);
+  // Default All Time — reconciles with Assessments (no created_from/to). Apply sets a range.
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [appliedStart, setAppliedStart] = useState('');
+  const [appliedEnd, setAppliedEnd] = useState('');
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('classes');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState('');
@@ -137,15 +144,29 @@ export default function QuizTeacherAnalyticsScreen() {
       // filter / soft refresh: keep rendered content; non-blocking indicator only when refreshing
 
       try {
-        const res = await getQuizAnalytics({
-          view_type: 'all',
-          limit: 500,
-          offset: 0,
-          created_from: appliedStart,
-          created_to: appliedEnd,
-        });
+        const allTime = isAnalyticsAllTime(appliedStart, appliedEnd);
+        const base = {
+          view_type: 'all' as const,
+          ...(allTime
+            ? {}
+            : {
+                created_from: appliedStart,
+                created_to: appliedEnd,
+              }),
+        };
+        const outcome = await loadQuizAnalyticsRowsCoalesced(base);
         if (generation !== metricsGenerationRef.current) return;
-        setRawData(res.data ?? []);
+        if (outcome.kind === 'incomplete') {
+          setError(
+            `Incomplete analytics fetch (${outcome.reason}). Showing prior data when available.`,
+          );
+          // Preserve prior complete rawData within this authorized scope.
+          if (!hasMetricsRef.current) {
+            setRawData([]);
+          }
+          return;
+        }
+        setRawData(outcome.rows);
         hasMetricsRef.current = true;
         setError(null);
       } catch (err: any) {
@@ -165,6 +186,25 @@ export default function QuizTeacherAnalyticsScreen() {
     void fetchMetrics(hasMetricsRef.current ? 'filter' : 'initial');
   }, [fetchMetrics]);
 
+  // Account / school switch: invalidate in-flight work and clear old-account rows.
+  const prevAccountScopeRef = useRef(accountScopeKey);
+  useEffect(() => {
+    if (prevAccountScopeRef.current === accountScopeKey) return;
+    prevAccountScopeRef.current = accountScopeKey;
+    metricsGenerationRef.current += 1;
+    hasMetricsRef.current = false;
+    setRawData([]);
+    setError(null);
+    setDrillLevel('classes');
+    setSelectedClass(null);
+    setSelectedClassName('');
+    setSelectedAssignment(null);
+    setSelectedQuizName('');
+    setAttemptFilter(null);
+    setLoading(true);
+    void fetchMetrics('initial');
+  }, [accountScopeKey, fetchMetrics]);
+
   const handlePullRefresh = useCallback(async () => {
     setRefreshing(true);
     // One explicit refresh → one inventory load + one metrics load (coalesced in-flight).
@@ -173,11 +213,11 @@ export default function QuizTeacherAnalyticsScreen() {
 
   // Inventory is independent of date filters; metrics attach to selected classroom_id.
   const classOverviews = useMemo(() => {
-    const metrics = aggregateClassOverview(rawData);
+    const metrics = aggregateClassOverview(rawData, { mode: 'teacher' });
     return mergeAssessmentClassroomInventoryWithMetrics(assessmentClassrooms, metrics);
   }, [rawData, assessmentClassrooms]);
   const classesWithActivityInRange = useMemo(
-    () => aggregateClassOverview(rawData).length,
+    () => aggregateClassOverview(rawData, { mode: 'teacher' }).length,
     [rawData],
   );
   const kpiTiles = useMemo(() => generateKPITiles(rawData), [rawData]);
@@ -322,17 +362,27 @@ export default function QuizTeacherAnalyticsScreen() {
 
   const handleApplyDates = () => {
     resetDrillToClasses();
-    setAppliedStart(startDate);
-    setAppliedEnd(endDate);
+    // Empty inputs → All Time; otherwise require both ends for a range filter.
+    if (!String(startDate || '').trim() && !String(endDate || '').trim()) {
+      setAppliedStart('');
+      setAppliedEnd('');
+      return;
+    }
+    const from = String(startDate || '').trim() || defaultDates.from;
+    const to = String(endDate || '').trim() || defaultDates.to;
+    setStartDate(from);
+    setEndDate(to);
+    setAppliedStart(from);
+    setAppliedEnd(to);
   };
 
   const handleClearDates = () => {
-    const d = getDefaultDateRange();
+    // Clear → All Time (omit created_from/created_to) — matches Assessments All Time.
     resetDrillToClasses();
-    setStartDate(d.from);
-    setEndDate(d.to);
-    setAppliedStart(d.from);
-    setAppliedEnd(d.to);
+    setStartDate('');
+    setEndDate('');
+    setAppliedStart('');
+    setAppliedEnd('');
   };
 
   const analyticsDrillTestId = useMemo(() => {
@@ -493,13 +543,29 @@ export default function QuizTeacherAnalyticsScreen() {
           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
             {cls.total_quizzes} quizzes · {cls.total_students} students
           </Text>
+          <Text
+            testID={`analytics-class-availability-${cls.classroom_id}`}
+            accessibilityLabel={`Assignment availability active ${cls.active_assignment_count ?? 0} upcoming ${cls.upcoming_assignment_count ?? 0} expired ${cls.expired_assignment_count ?? 0}`}
+            style={[styles.cardSub, { color: colors.textSecondary, marginTop: 2 }]}
+          >
+            Active {cls.active_assignment_count ?? 0} · Upcoming {cls.upcoming_assignment_count ?? 0} · Expired{' '}
+            {cls.expired_assignment_count ?? 0}
+          </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
       </View>
       <View style={styles.metricsRow}>
         <MetricPill label="Avg" value={`${Math.round(cls.avg_score)}%`} color={scoreColor(cls.avg_score)} />
-        <MetricPill label="Done" value={String(cls.completed_count)} color="#059669" />
-        <MetricPill label="Pending" value={String(cls.pending_count)} color="#d97706" />
+        <MetricPill
+          label="Subs done"
+          value={String(cls.completed_count)}
+          color="#059669"
+        />
+        <MetricPill
+          label="Subs pending"
+          value={String(cls.pending_count)}
+          color="#d97706"
+        />
         <MetricPill label="Rate" value={`${Math.round(cls.completion_rate)}%`} color={colors.primary} />
       </View>
     </TouchableOpacity>

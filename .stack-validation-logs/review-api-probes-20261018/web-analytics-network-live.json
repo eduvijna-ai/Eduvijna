@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-10-18T17:05:00.000Z",
+  "origin": "https://dev.eduvijna.com",
+  "account": "demo_samatha",
+  "route": "/analytics",
+  "method": "browser Network/performance resource entries after authenticated login",
+  "requests": [
+    {
+      "url": "https://dev.eduvijna.com/api/v1/dashboard/quizzes?view_type=all&limit=500&offset=0&created_from=2026-09-18&created_to=2026-10-19",
+      "type": "fetch",
+      "notes": "Teacher Analytics landing — view_type=all, single page limit=500, default last-month→tomorrow date window"
+    },
+    {
+      "url": "https://dev.eduvijna.com/api/v1/class-management/lms-classrooms?is_active=true&school_id=7&page=1&per_page=100",
+      "type": "fetch",
+      "notes": "Web classroom roster (LMS) — mobile uses class_wise_students inventory instead"
+    },
+    {
+      "url": "https://dev.eduvijna.com/api/v1/class-management/lms-classrooms?academic_year_id=4&is_active=true&school_id=7&page=1&per_page=100",
+      "type": "fetch"
+    }
+  ],
+  "uiObserved": {
+    "from": "2026-09-18",
+    "to": "2026-10-19",
+    "classroomsVisible": [
+      "10A-English-Sam",
+      "10A-Mathematics-Sam",
+      "5A-Mathematics-Sam",
+      "10A-Science",
+      "4A-Telugu",
+      "4A-Mathematics"
+    ],
+    "zeroAssignmentNote": "10A-Science shown with 'No assessments in the selected period'"
+  },
+  "mobileParityNotes": {
+    "assessmentsMembershipApi": "GET /api/v1/dashboard/quizzes?view_type=summary&limit=1000 (All Time = no created_* params)",
+    "analyticsMetricsApi": "GET /api/v1/dashboard/quizzes?view_type=all (paginated; All Time omits created_*)",
+    "liveMembershipCompare": "see analytics-assessments-membership-live.json — summary vs all All Time identical for 4A-Mathematics (32/32, Active 2 / Upcoming 0 / Expired 30)"
+  }
+}

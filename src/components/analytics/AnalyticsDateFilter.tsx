@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { getDefaultDateRange } from '../../core/utils/analyticsUiUtils';
-import { formatAnalyticsDateStateAccessibility } from '../../core/utils/analyticsDateState';
+import {
+  formatAnalyticsDateStateAccessibility,
+  isAnalyticsAllTime,
+} from '../../core/utils/analyticsDateState';
 
 interface Props {
   startDate: string;
@@ -39,8 +41,7 @@ export default function AnalyticsDateFilter({
 }: Props) {
   const [showFrom, setShowFrom] = useState(false);
   const [showTo, setShowTo] = useState(false);
-  const defaults = getDefaultDateRange();
-  const isCustom = startDate !== defaults.from || endDate !== defaults.to;
+  const allTime = isAnalyticsAllTime(startDate, endDate);
   const analyticsDateStateLabel = formatAnalyticsDateStateAccessibility(startDate, endDate);
 
   return (
@@ -53,6 +54,15 @@ export default function AnalyticsDateFilter({
       >
         {' '}
       </Text>
+      {allTime ? (
+        <Text
+          testID="analytics-date-all-time-label"
+          accessibilityLabel="Analytics showing all time"
+          style={[styles.allTimeBanner, { color: colors.textSecondary }]}
+        >
+          All time — no created_from / created_to filter (matches Assessments All Time)
+        </Text>
+      ) : null}
       <View style={styles.row}>
         <View style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
@@ -63,7 +73,7 @@ export default function AnalyticsDateFilter({
               accessibilityLabel="Analytics date from"
               value={startDate}
               onChangeText={onStartChange}
-              placeholder="YYYY-MM-DD"
+              placeholder={allTime ? 'All time' : 'YYYY-MM-DD'}
               placeholderTextColor={colors.textSecondary}
               style={[styles.dateInput, { color: colors.text }]}
               {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
@@ -84,7 +94,7 @@ export default function AnalyticsDateFilter({
               accessibilityLabel="Analytics date to"
               value={endDate}
               onChangeText={onEndChange}
-              placeholder="YYYY-MM-DD"
+              placeholder={allTime ? 'All time' : 'YYYY-MM-DD'}
               placeholderTextColor={colors.textSecondary}
               style={[styles.dateInput, { color: colors.text }]}
               {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
@@ -108,10 +118,16 @@ export default function AnalyticsDateFilter({
         >
           <Text style={styles.applyText}>Apply</Text>
         </TouchableOpacity>
-        {isCustom ? (
-          <TouchableOpacity style={[styles.clearBtn, { borderColor: colors.border }]} onPress={onClear}>
+        {!allTime ? (
+          <TouchableOpacity
+            testID="analytics-date-clear-all-time"
+            accessibilityRole="button"
+            accessibilityLabel="Clear to all time"
+            style={[styles.clearBtn, { borderColor: colors.border }]}
+            onPress={onClear}
+          >
             <Ionicons name="close" size={14} color={colors.textSecondary} />
-            <Text style={[styles.clearText, { color: colors.textSecondary }]}>Clear</Text>
+            <Text style={[styles.clearText, { color: colors.textSecondary }]}>All time</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity style={[styles.iconBtn, { borderColor: colors.border }]} onPress={onRefresh} disabled={loading}>
@@ -157,6 +173,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   wrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, gap: 8 },
+  allTimeBanner: { fontSize: 11, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 8 },
   dateBtn: {
     flex: 1,

@@ -32,6 +32,43 @@ jest.mock('@core/services/navigationService', () => ({
 }));
 jest.mock('../components/analytics/ClassStudentsModal', () => () => null);
 jest.mock('../components/analytics/QuizAttemptDetailModal', () => () => null);
+jest.mock('@core/hooks/useAssessmentClassrooms', () => ({
+  useAssessmentClassrooms: () => ({
+    classrooms: [
+      {
+        classroom_id: 'class-9',
+        classroom_name: 'Class 9',
+        total_students: 1,
+        instructor: {
+          instructor_id: '0',
+          instructor_username: 'x',
+          instructor_fullname: 'x',
+          instructor_avatar_url: null,
+        },
+      },
+    ],
+    count: 1,
+    options: [{ label: 'Class 9', value: 'class-9' }],
+    source: 'class_wise_students',
+    loading: false,
+    unavailable: false,
+    error: null,
+    contractNote: null,
+    refresh: jest.fn(async () => undefined),
+  }),
+}));
+jest.mock('@core/store/user.store', () => {
+  const state = {
+    user: { id: '66', role: 'instructor' },
+    schoolId: 1,
+    isAuthenticated: true,
+  };
+  const useUserStore = Object.assign(
+    jest.fn((selector: (s: typeof state) => unknown) => selector(state)),
+    { getState: () => state },
+  );
+  return { useUserStore };
+});
 
 const fixture = {
   quiz_id: 42,
