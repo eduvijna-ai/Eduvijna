@@ -1,20 +1,36 @@
 {
   "apiBase": "https://dev-api.eduvijna.com",
+  "webOrigin": "https://dev.eduvijna.com",
   "role": "instructor",
   "steps": [
     {
-      "name": "batch-ocr-upload",
+      "label": "mobile_dev_api",
       "method": "POST",
-      "path": "/api/v1/batch-ocr-upload",
-      "multipartField": "files",
-      "filename": "hw_parity_probe.jpg",
+      "url": "https://dev-api.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
       "mimeType": "image/jpeg",
+      "elapsedMs": 141,
       "status": 503,
-      "elapsedMs": 202,
       "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
       "success": false,
       "mathpixGate": true
+    },
+    {
+      "label": "deployed_web_same_origin",
+      "method": "POST",
+      "url": "https://dev.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
+      "mimeType": "image/jpeg",
+      "loginStatus": 200,
+      "loginOk": true,
+      "status": 503,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "success": false,
+      "mathpixGate": true,
+      "elapsedMs": 99
     }
   ],
-  "conclusion": "SHARED_BACKEND_BLOCKER: Mathpix OCR not enabled/configured on this API origin. Mobile and web handwritten both call the same endpoint; generation cannot succeed until provider is enabled server-side."
+  "conclusion": "SHARED_MATHPIX_GATE: same image → 503 Mathpix on both mobile/dev-api and deployed-web /api/v1. Generation remains blocked until provider is enabled on the shared backend behind these origins. Do not mark handwritten generation fixed until a real generated quiz succeeds.",
+  "generationFixed": false,
+  "evidencePath": "C:/Users/kanne/dev/Eduvijna-pr26-closure/.stack-validation-logs/review-api-probes-20261018/handwritten-web-same-image-live.json"
 }

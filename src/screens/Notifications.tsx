@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,19 +14,19 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import { useErpRole } from '../erp/hooks/useErpRole';
 import { formatDistanceToNow } from 'date-fns';
-import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
+import { ParsedQuiz } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
-import { isStudentQuizActive } from '../utils/quizFilters';
 import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
-import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
-import { resolveClassroomDisplayName } from '../utils/classroomDisplayName';
 import {
-  classroomLookupScopeKey,
-  effectiveClassroomNameMap,
-  loadScopedStudentClassroomNameLookup,
-} from '@core/services/studentClassroomLookup';
+  canApplyPendingNotificationsResult,
+  invalidatePendingStudentNotificationsLoads,
+  loadPendingStudentNotifications,
+  usesTeacherNotificationsPath,
+  type PendingNotificationsScope,
+} from '@core/services/pendingStudentNotificationsLoad';
 import { useUserStore } from '@core/store/user.store';
 
 interface Props {
@@ -39,20 +39,28 @@ export default function Notifications({ navigation, onNavigate }: Props) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const { user } = useAuth();
+  const { isTeacher: isErpTeacher, isAdmin: isErpAdmin } = useErpRole();
   const schoolId = useUserStore((s) => s.schoolId);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  
-  const isTeacher = user?.role === 'instructor' || user?.role === 'admin';
-  
+
+  // Canonical ERP helper: instructor | teacher → teacher path; admin → teacher submissions.
+  const isTeacher = isErpTeacher || isErpAdmin || usesTeacherNotificationsPath(user?.role);
+
   // Teacher data from hook
   const teacherData = useTeacherDashboard();
-  
+
   // Student state
   const [studentQuizzes, setStudentQuizzes] = useState<ParsedQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [classroomLookupWarning, setClassroomLookupWarning] = useState('');
-  const loadGenerationRef = React.useRef(0);
+
+  // Live scope refs — completion handlers read these, not values closed over at request start.
+  const scopeRef = useRef<PendingNotificationsScope | null>(null);
+  scopeRef.current = user
+    ? { userId: String(user.id), schoolId, role: user.role }
+    : null;
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
@@ -61,30 +69,57 @@ export default function Notifications({ navigation, onNavigate }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student pending quizzes via check-record endpoint
+  // Invalidate pending loads on logout / account / school / role change and unmount.
+  useEffect(() => {
+    mountedRef.current = true;
+    invalidatePendingStudentNotificationsLoads();
+    return () => {
+      mountedRef.current = false;
+      invalidatePendingStudentNotificationsLoads();
+    };
+  }, [user?.id, schoolId, user?.role]);
+
+  // Fetch student pending quizzes via check-record endpoint.
   // status: null → pending (shown here)   |   status: "completed" → not shown
   // Classroom names: account/school-scoped lookup with failure ≠ empty map.
+  // Note: do NOT depend on `refreshing` — that recreates the callback and duplicates loads.
   const fetchStudentQuizzes = useCallback(async () => {
-    if (!user || isTeacher) return;
-    const generation = ++loadGenerationRef.current;
-    const scopeKey = classroomLookupScopeKey({ userId: String(user.id), schoolId });
+    const scope = scopeRef.current;
+    if (!scope?.userId || usesTeacherNotificationsPath(scope.role)) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
-    try {
-      setLoading(true);
-      setClassroomLookupWarning('');
+    setLoading(true);
+    setClassroomLookupWarning('');
 
-      const [response, lookupResult] = await Promise.all([
-        fetchQuizCheckRecord(user.id, 'pending'),
-        loadScopedStudentClassroomNameLookup({
-          userId: String(user.id),
-          schoolId,
-        }),
-      ]);
+    const result = await loadPendingStudentNotifications(scope, {
+      getCurrentScope: () => (mountedRef.current ? scopeRef.current : null),
+    });
 
-      // Drop stale responses after logout / account / school change.
-      if (generation !== loadGenerationRef.current) return;
-      if (classroomLookupScopeKey({ userId: String(user.id), schoolId }) !== scopeKey) return;
+    if (!mountedRef.current) return;
+    if (!canApplyPendingNotificationsResult(result, () => scopeRef.current)) {
+      // Stale success/error must not update the new session. Clear spinner only when
+      // no student scope remains (logout / role flip); a live student scope has a newer load.
+      const live = scopeRef.current;
+      if (!live?.userId || usesTeacherNotificationsPath(live.role)) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      return;
+    }
 
+    if (result.kind === 'error') {
+      console.error('Failed to load student quizzes:', result.error);
+      Alert.alert('Error', 'Failed to load notifications');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    if (result.kind === 'ok') {
+      const { lookupResult, quizzes } = result.data;
       if (lookupResult.status === 'failed') {
         setClassroomLookupWarning(
           lookupResult.priorMap?.size
@@ -92,50 +127,27 @@ export default function Notifications({ navigation, onNavigate }: Props) {
             : 'Classroom names could not be loaded. Pull to refresh.',
         );
       }
-
-      const classroomLookup = effectiveClassroomNameMap(lookupResult);
-      const mapped = (response.result || [])
-        .map((row) => {
-          const quiz = checkRecordToQuiz(row, { classroomNameLookup: classroomLookup });
-          const classId = String(quiz.classroom_id || quiz.class_id || row.classid || '');
-          return {
-            ...quiz,
-            classroom_name: resolveClassroomDisplayName(classId, {
-              recordName: quiz.classroom_name,
-              lookup: classroomLookup,
-            }),
-          };
-        })
-        .filter(isStudentQuizActive);
-
-      mapped.sort((a: any, b: any) => {
-        const dateA = new Date(a.assigned_at || a.created_at).getTime();
-        const dateB = new Date(b.assigned_at || b.created_at).getTime();
-        return dateB - dateA;
-      });
-
-      if (generation !== loadGenerationRef.current) return;
-      setStudentQuizzes(mapped);
-    } catch (error) {
-      console.error('Failed to load student quizzes:', error);
-      Alert.alert('Error', 'Failed to load notifications');
-    } finally {
-      if (generation === loadGenerationRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setStudentQuizzes(quizzes);
     }
-  }, [user, isTeacher, schoolId, refreshing]);
 
-  // Load data on mount
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  // Load data when role path or teacher hook loading changes (student fetch is stable).
   useEffect(() => {
     if (isTeacher) {
-      // Teacher uses hook data, just set loading false
+      setStudentQuizzes([]);
+      setClassroomLookupWarning('');
       setLoading(teacherData.loading);
+    } else if (!user) {
+      setStudentQuizzes([]);
+      setLoading(false);
+      setRefreshing(false);
     } else {
-      fetchStudentQuizzes();
+      void fetchStudentQuizzes();
     }
-  }, [isTeacher, teacherData.loading, fetchStudentQuizzes]);
+  }, [isTeacher, teacherData.loading, fetchStudentQuizzes, user?.id, schoolId, user]);
 
   const onRefresh = async () => {
     setRefreshing(true);

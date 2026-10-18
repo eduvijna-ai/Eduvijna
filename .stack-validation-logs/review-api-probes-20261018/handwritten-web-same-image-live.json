@@ -1,0 +1,37 @@
+{
+  "webOrigin": "https://dev.eduvijna.com",
+  "mobileApiBase": "https://dev-api.eduvijna.com",
+  "imagePath": "C:/Users/kanne/dev/Eduvijna-pr26-closure/.stack-validation-logs/founder-manual-assets/edge-markers-portrait.jpg",
+  "imageBytes": 20957,
+  "role": "instructor",
+  "steps": [
+    {
+      "label": "mobile_dev_api",
+      "method": "POST",
+      "url": "https://dev-api.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
+      "mimeType": "image/jpeg",
+      "elapsedMs": 141,
+      "status": 503,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "success": false,
+      "mathpixGate": true
+    },
+    {
+      "label": "deployed_web_same_origin",
+      "method": "POST",
+      "url": "https://dev.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
+      "mimeType": "image/jpeg",
+      "loginStatus": 200,
+      "loginOk": true,
+      "status": 503,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "success": false,
+      "mathpixGate": true,
+      "elapsedMs": 99
+    }
+  ],
+  "conclusion": "SHARED_MATHPIX_GATE: same image → 503 Mathpix on both mobile/dev-api and deployed-web /api/v1. Generation remains blocked until provider is enabled on the shared backend behind these origins. Do not mark handwritten generation fixed until a real generated quiz succeeds.",
+  "generationFixed": false
+}
