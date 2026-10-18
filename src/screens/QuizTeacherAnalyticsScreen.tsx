@@ -561,7 +561,7 @@ export default function QuizTeacherAnalyticsScreen() {
       */}
       <View style={styles.metricsRow}>
         <MetricPill label="Avg" value={`${Math.round(cls.avg_score)}%`} color={scoreColor(cls.avg_score)} />
-        <MetricPill label="Done" value={String(cls.completed_count)} color="#059669" />
+        <MetricPill label="Completed" value={String(cls.completed_count)} color="#059669" />
         <MetricPill label="Pending" value={String(cls.pending_count)} color="#d97706" />
         <MetricPill label="Rate" value={`${Math.round(cls.completion_rate)}%`} color={colors.primary} />
       </View>

@@ -32,6 +32,7 @@ import {
   useStudentAssignmentDashboardStats,
   useStudentAssignmentDashboardStore,
 } from '@core/store/studentAssignmentDashboard.store';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import {
   executeStudentAssignedQuizViewResults,
   isAssignedQuizLoadError,
@@ -74,6 +75,16 @@ export default function StudentDashboard({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const stats = useStudentAssignmentDashboardStats();
+  // Authoritative classroom inventory (view_type=classes) — same source as ClassesList.
+  // Do not use quiz-derived unique class counts (misses zero-assessment classrooms).
+  const {
+    count: authorizedClassroomCount,
+    loading: classroomsLoading,
+  } = useAssessmentClassrooms();
+  const classroomCountForHome =
+    classroomsLoading && authorizedClassroomCount === 0
+      ? stats.total_classes || 0
+      : authorizedClassroomCount;
   const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
   const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
   const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
@@ -377,7 +388,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
             ]}
           >
             {[
-              { label: 'Classes', value: stats.total_classes || 0, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
+              { label: 'Classes', value: classroomCountForHome, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
               { label: 'Quizzes', value: stats.total_quizzes, icon: 'document-text-outline' as const, accent: theme.colors.tintBlue, fg: theme.colors.onTintBlue, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'all' }) },
               { label: 'Completed', value: stats.completed_count, icon: 'checkmark-done-outline' as const, accent: theme.colors.tintGreen, fg: theme.colors.onTintGreen, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
               { label: 'Avg Score', value: `${stats.average_score}%`, icon: 'trophy-outline' as const, accent: theme.colors.tintPurple, fg: theme.colors.onTintPurple, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },

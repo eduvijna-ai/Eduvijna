@@ -365,10 +365,21 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
         {/* ─── Header: mode switch ────────────────────────────────────── */}
         <View style={styles.headerCard}>
           <Text style={styles.title}>Assessment Workspace</Text>
-          <Text style={styles.subTitle}>Unified entry for Document + Handwritten modules</Text>
+          <Text style={styles.subTitle}>
+            {mode === 'handwritten'
+              ? 'Handwritten assessment entry — OCR and quiz settings on the next screens'
+              : 'Document assessment entry — upload, books, and history'}
+          </Text>
 
+          {/*
+            Handwritten entry: show only Handwritten (no Document toggle).
+            Document remains reachable via its own workspace/tile entry.
+          */}
           <View style={styles.modeSwitchRow}>
-            {(['document', 'handwritten'] as WorkspaceMode[]).map((m) => {
+            {(mode === 'handwritten'
+              ? (['handwritten'] as WorkspaceMode[])
+              : (['document', 'handwritten'] as WorkspaceMode[])
+            ).map((m) => {
               const isActive = mode === m;
               const icon = m === 'document' ? 'document-text-outline' : 'create-outline';
               return (
@@ -377,6 +388,9 @@ export default function AssessmentWorkspaceScreen({ navigation, route }: Props) 
                   style={[styles.modeButton, isActive && styles.modeButtonActive]}
                   onPress={() => setMode(m)}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={m === 'document' ? 'Document assessment' : 'Handwritten assessment'}
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Ionicons name={icon as any} size={16} color={isActive ? '#fff' : theme.colors.primary} />
                   <Text style={[styles.modeButtonText, isActive && styles.modeButtonTextActive]}>

@@ -302,6 +302,13 @@ export default function ImageCropModal() {
     resolveCropSession('retake');
   };
 
+  const handleResetCrop = () => {
+    if (processing || !imageBounds) return;
+    const next = defaultCropRect(imageBounds);
+    setCrop(next);
+    cropRef.current = next;
+  };
+
   const handleConfirm = async () => {
     if (processing || !imageUri || !naturalSize || !imageBounds || !crop) return;
     setProcessing(true);
@@ -445,6 +452,16 @@ export default function ImageCropModal() {
             accessibilityLabel="Retake photo"
           >
             <Text style={styles.btnGhostText}>Retake</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnGhost]}
+            onPress={handleResetCrop}
+            disabled={processing || !imageBounds}
+            accessibilityRole="button"
+            accessibilityLabel="Reset crop selection"
+          >
+            <Text style={styles.btnGhostText}>Reset</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

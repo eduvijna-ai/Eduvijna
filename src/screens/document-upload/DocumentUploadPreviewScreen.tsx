@@ -43,6 +43,7 @@ import {
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureDocumentImage } from '@core/services/documentCameraCapture';
+import { openImageCropper } from '@core/services/imageCropSession';
 import {
   getDocumentUploadBookById,
   upsertDocumentUploadBook,
@@ -347,6 +348,49 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     };
   }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
 
+  // Camera Step 2 no longer exposes Class/Subject/Lesson — clear any restored stale values.
+  useEffect(() => {
+    if (!isCameraSession) return;
+    setClassId('');
+    setSubjectId('');
+    setLesson('');
+  }, [isCameraSession]);
+
+  const handleCropCurrentPage = async () => {
+    if (!bookState?.isCameraSession) return;
+    const current = bookState.pages?.find((p) => p.pageNumber === page);
+    const sourceUri = current?.fileUri || getLocalPageUri(bookState, page);
+    if (!sourceUri) {
+      setError('No image available to crop for this page.');
+      return;
+    }
+    try {
+      setError('');
+      setCapturingPage(true);
+      const result = await openImageCropper(sourceUri);
+      if (result === 'cancelled' || result === 'retake' || !result?.uri) return;
+      const croppedUri = result.uri;
+      const nextPages = (bookState.pages || []).map((p) =>
+        p.pageNumber === page
+          ? {
+              ...p,
+              fileUri: croppedUri,
+              thumbnailUri: croppedUri,
+              mimeType: p.mimeType || 'image/jpeg',
+            }
+          : p,
+      );
+      const next = { ...bookState, pages: nextPages };
+      await persistBook(next);
+      setPreviewImages((prev) => ({ ...prev, [page]: croppedUri }));
+      setThumbImages((prev) => ({ ...prev, [page]: croppedUri }));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
   const handleAddCameraPage = async () => {
     if (!bookState?.isCameraSession) return;
     if ((bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) {
@@ -550,10 +594,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         setProcessingStatus('Extracting text from images…');
         cameraOcrText = await extractCameraTextForSelectedPages();
         setProcessingStatus('Generating assessment…');
+        // Camera Step 2: omit optional class/subject/lesson (controls removed).
         const content = buildStrictQuizContent({
-          classValue: resolvedClass,
-          subject: resolvedSubject,
-          lesson: resolvedLesson,
           difficulty,
           questionCount,
           ocrText: cameraOcrText,
@@ -981,6 +1023,17 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                       {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`}
                     </Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="document-preview-crop-page"
+                    accessibilityRole="button"
+                    accessibilityLabel="Crop selected page"
+                    style={[styles.compactActionBtn, capturingPage && styles.disabled]}
+                    onPress={handleCropCurrentPage}
+                    disabled={capturingPage || !(bookState.pages?.length)}
+                  >
+                    <Ionicons name="crop-outline" size={14} color={colors.primary} />
+                    <Text style={styles.compactActionText}>Crop</Text>
+                  </TouchableOpacity>
                 </>
               )}
               <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
@@ -1044,31 +1097,33 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
               : 'Configure options, then generate from selected pages'}
           </Text>
 
-          <QuizFormFields
-            compact
-            fieldsRequired={false}
-            localSearchOnly
-            showClass
-            classValue={classId}
-            onClassChange={setClassId}
-            classes={classes}
-            isLoadingClasses={isLoadingClasses}
-            classError={!classId && error.includes('class') ? error : ''}
-            showSubject
-            subjectValue={subjectId}
-            onSubjectChange={setSubjectId}
-            subjects={subjects}
-            isLoadingSubjects={isLoadingSubjects}
-            subjectError={!subjectId && error.includes('subject') ? error : ''}
-            showLesson
-            lessonValue={lesson}
-            onLessonChange={setLesson}
-            lessonPlaceholder="e.g., Photosynthesis"
-            lessonLabel="Lesson / Topic"
-            showAdditionalInstructions={false}
-            showDifficultyLevel={false}
-            showQuestionCount={false}
-          />
+          {!isCameraSession ? (
+            <QuizFormFields
+              compact
+              fieldsRequired={false}
+              localSearchOnly
+              showClass
+              classValue={classId}
+              onClassChange={setClassId}
+              classes={classes}
+              isLoadingClasses={isLoadingClasses}
+              classError={!classId && error.includes('class') ? error : ''}
+              showSubject
+              subjectValue={subjectId}
+              onSubjectChange={setSubjectId}
+              subjects={subjects}
+              isLoadingSubjects={isLoadingSubjects}
+              subjectError={!subjectId && error.includes('subject') ? error : ''}
+              showLesson
+              lessonValue={lesson}
+              onLessonChange={setLesson}
+              lessonPlaceholder="e.g., Photosynthesis"
+              lessonLabel="Lesson / Topic"
+              showAdditionalInstructions={false}
+              showDifficultyLevel={false}
+              showQuestionCount={false}
+            />
+          ) : null}
 
           <Text style={styles.label}>Difficulty Level</Text>
           <View style={styles.pillRow}>

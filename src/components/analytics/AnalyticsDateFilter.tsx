@@ -60,7 +60,7 @@ export default function AnalyticsDateFilter({
           accessibilityLabel="Analytics showing all time"
           style={[styles.allTimeBanner, { color: colors.textSecondary }]}
         >
-          All time — no created_from / created_to filter (matches Assessments All Time)
+          Showing assessments from all dates
         </Text>
       ) : null}
       <View style={styles.row}>
