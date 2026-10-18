@@ -1,14 +1,20 @@
 /**
  * Shared assessment classroom inventory hook.
  * Teacher/instructor: class_wise_students. Student: view_type=classes.
+ *
+ * Stable callbacks — callers must not put a freshly-allocated refresh wrapper
+ * into effect dependency arrays (that caused Analytics reload loops).
  */
 
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   buildAssessmentClassroomScopeFromUser,
   useAssessmentClassroomsStore,
 } from '../store/assessmentClassrooms.store';
-import { assessmentClassroomsToOptions } from '../services/assessmentClassrooms.service';
+import {
+  assessmentClassroomScopeKey,
+  assessmentClassroomsToOptions,
+} from '../services/assessmentClassrooms.service';
 import { useUserStore } from '../store/user.store';
 
 export function useAssessmentClassrooms(options?: { refreshOnMount?: boolean }) {
@@ -16,40 +22,42 @@ export function useAssessmentClassrooms(options?: { refreshOnMount?: boolean }) 
   const schoolId = useUserStore((s) => s.schoolId);
   const isAuthenticated = useUserStore((s) => s.isAuthenticated);
 
-  const {
-    classrooms,
-    count,
-    source,
-    loading,
-    unavailable,
-    error,
-    contractNote,
-    ensureLoaded,
-    refresh,
-  } = useAssessmentClassroomsStore();
+  const classrooms = useAssessmentClassroomsStore((s) => s.classrooms);
+  const count = useAssessmentClassroomsStore((s) => s.count);
+  const source = useAssessmentClassroomsStore((s) => s.source);
+  const loading = useAssessmentClassroomsStore((s) => s.loading);
+  const unavailable = useAssessmentClassroomsStore((s) => s.unavailable);
+  const error = useAssessmentClassroomsStore((s) => s.error);
+  const contractNote = useAssessmentClassroomsStore((s) => s.contractNote);
+  const ensureLoaded = useAssessmentClassroomsStore((s) => s.ensureLoaded);
+  const refreshStore = useAssessmentClassroomsStore((s) => s.refresh);
 
   const scope = useMemo(
     () => buildAssessmentClassroomScopeFromUser(user, schoolId),
-    [user, schoolId],
+    // Primitive fields only — full user object identity changes every auth enrich.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id, user?.role, schoolId],
   );
+  const scopeKey = scope ? assessmentClassroomScopeKey(scope) : null;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+
+  const refreshOnMount = options?.refreshOnMount === true;
 
   useEffect(() => {
     if (!isAuthenticated || !scope) return;
-    if (options?.refreshOnMount) {
-      void refresh(scope);
+    if (refreshOnMount) {
+      void refreshStore(scope);
     } else {
       void ensureLoaded(scope);
     }
-  }, [
-    isAuthenticated,
-    scope?.userId,
-    scope?.role,
-    scope?.schoolId,
-    scope?.apiEnv,
-    ensureLoaded,
-    refresh,
-    options?.refreshOnMount,
-  ]);
+  }, [isAuthenticated, scopeKey, ensureLoaded, refreshStore, refreshOnMount, scope]);
+
+  const refresh = useCallback(async () => {
+    const current = scopeRef.current;
+    if (!current) return;
+    await refreshStore(current);
+  }, [refreshStore]);
 
   const optionsList = useMemo(
     () => assessmentClassroomsToOptions(classrooms),
@@ -65,6 +73,6 @@ export function useAssessmentClassrooms(options?: { refreshOnMount?: boolean }) 
     unavailable,
     error,
     contractNote,
-    refresh: () => (scope ? refresh(scope) : Promise.resolve()),
+    refresh,
   };
 }

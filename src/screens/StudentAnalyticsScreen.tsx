@@ -212,27 +212,8 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         offset: 0,
       });
 
-      // Prefer shared authorized inventory (includes zero-assignment classrooms).
+      // Classroom dropdown comes from shared inventory (separate effect).
       // Metric rows still come from quiz APIs; filter by selected classroom_id.
-      if (assessmentClassroomOptions.length > 0) {
-        setClassrooms(assessmentClassroomOptions);
-      } else {
-        const uniqueClassrooms = new Map<string, string>();
-        response.data.forEach((item: any) => {
-          if (item.classroom_id) {
-            const classroomName =
-              item.classroom_name ||
-              `Class ${String(item.classroom_id).replace('class_', '').toUpperCase()}`;
-            uniqueClassrooms.set(item.classroom_id, classroomName);
-          }
-        });
-        setClassrooms(
-          Array.from(uniqueClassrooms.entries()).map(([id, name]) => ({
-            classroom_id: id,
-            classroom_name: name,
-          })),
-        );
-      }
 
       // Extract unique quizzes from the complete dataset for quiz filter dropdown
       const uniqueQuizzes = new Map<number, string>();
@@ -463,8 +444,14 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     dateRangeStart.getTime(),
     dateRangeEnd.getTime(),
     classroomId,
-    assessmentClassroomOptions,
   ]);
+
+  // Inventory options update independently — never re-trigger metrics fetch.
+  useEffect(() => {
+    if (assessmentClassroomOptions.length > 0) {
+      setClassrooms(assessmentClassroomOptions);
+    }
+  }, [assessmentClassroomOptions]);
 
   // Load analytics when dependencies change
   useEffect(() => {
@@ -480,7 +467,6 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
     dateFilter,
     dateRangeStart.getTime(),
     dateRangeEnd.getTime(),
-    assessmentClassroomOptions,
   ]);
 
   const handleRefresh = useCallback(() => {

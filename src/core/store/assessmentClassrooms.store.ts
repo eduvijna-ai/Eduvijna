@@ -73,13 +73,18 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
   ensureLoaded: async (scope) => {
     const scopeKey = assessmentClassroomScopeKey(scope);
     const state = get();
+    // Already have a successful complete inventory for this scope — do not refetch.
     if (
       state.scopeKey === scopeKey &&
       state.lastFetched != null &&
       !state.unavailable &&
-      (state.classrooms.length > 0 || state.source != null) &&
+      state.source != null &&
       !state.loading
     ) {
+      return;
+    }
+    // In-flight load for same scope — coalesce via service; avoid stacking store refreshes.
+    if (state.loading && state.scopeKey === scopeKey) {
       return;
     }
     await get().refresh(scope);
@@ -88,10 +93,13 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
   refresh: async (scope) => {
     const scopeKey = assessmentClassroomScopeKey(scope);
     const teacherPath = usesTeacherAssessmentClassroomPath(scope.role);
+    const hadContent = get().scopeKey === scopeKey && get().classrooms.length > 0;
     set({
-      loading: true,
+      // Soft loading when content already visible — consumers should not blank UI.
+      loading: !hadContent,
       error: null,
       unavailable: false,
+      scopeKey,
       contractNote: teacherPath
         ? null
         : 'Student inventory uses view_type=classes; class_wise_students is not authorized for students.',
@@ -128,7 +136,7 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
       return;
     }
 
-    // Failure: preserve prior for this scope; never flash a false zero.
+    // Failure / incomplete pagination: preserve prior complete inventory; never publish partial.
     const prior =
       result.prior ??
       (get().scopeKey === scopeKey ? get().classrooms : null);

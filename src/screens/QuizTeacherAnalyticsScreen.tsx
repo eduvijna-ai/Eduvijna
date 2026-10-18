@@ -119,33 +119,57 @@ export default function QuizTeacherAnalyticsScreen() {
     refresh: refreshAssessmentClassrooms,
   } = useAssessmentClassrooms();
 
-  const fetchData = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    try {
-      if (isRefresh) {
-        await refreshAssessmentClassrooms();
+  // Metrics generation — stale responses / finally handlers must not touch new session.
+  const metricsGenerationRef = useRef(0);
+  const hasMetricsRef = useRef(false);
+
+  /**
+   * Metrics fetch is independent of inventory refresh.
+   * Proven blink cause: unstable refreshAssessmentClassrooms in deps recreated
+   * fetchData every render → useEffect re-fired → setLoading(true) forever.
+   */
+  const fetchMetrics = useCallback(
+    async (mode: 'initial' | 'refresh' | 'filter') => {
+      const generation = ++metricsGenerationRef.current;
+      const showBlockingSpinner = mode === 'initial' && !hasMetricsRef.current;
+      if (showBlockingSpinner) setLoading(true);
+      if (mode === 'refresh') setRefreshing(true);
+      // filter / soft refresh: keep rendered content; non-blocking indicator only when refreshing
+
+      try {
+        const res = await getQuizAnalytics({
+          view_type: 'all',
+          limit: 500,
+          offset: 0,
+          created_from: appliedStart,
+          created_to: appliedEnd,
+        });
+        if (generation !== metricsGenerationRef.current) return;
+        setRawData(res.data ?? []);
+        hasMetricsRef.current = true;
+        setError(null);
+      } catch (err: any) {
+        if (generation !== metricsGenerationRef.current) return;
+        setError(err?.message || 'Failed to load analytics');
+        // Keep prior rawData — do not blank the screen on transient failure.
+      } finally {
+        if (generation !== metricsGenerationRef.current) return;
+        setLoading(false);
+        setRefreshing(false);
       }
-      const res = await getQuizAnalytics({
-        view_type: 'all',
-        limit: 500,
-        offset: 0,
-        created_from: appliedStart,
-        created_to: appliedEnd,
-      });
-      setRawData(res.data ?? []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load analytics');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [appliedStart, appliedEnd, refreshAssessmentClassrooms]);
+    },
+    [appliedStart, appliedEnd],
+  );
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    void fetchMetrics(hasMetricsRef.current ? 'filter' : 'initial');
+  }, [fetchMetrics]);
+
+  const handlePullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    // One explicit refresh → one inventory load + one metrics load (coalesced in-flight).
+    await Promise.all([refreshAssessmentClassrooms(), fetchMetrics('refresh')]);
+  }, [refreshAssessmentClassrooms, fetchMetrics]);
 
   // Inventory is independent of date filters; metrics attach to selected classroom_id.
   const classOverviews = useMemo(() => {
@@ -561,7 +585,7 @@ export default function QuizTeacherAnalyticsScreen() {
         onEndChange={setEndDate}
         onApply={handleApplyDates}
         onClear={handleClearDates}
-        onRefresh={() => fetchData(true)}
+        onRefresh={handlePullRefresh}
         loading={refreshing}
         colors={{ ...colors, background: colors.background }}
       />
@@ -569,6 +593,14 @@ export default function QuizTeacherAnalyticsScreen() {
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => void fetchMetrics(hasMetricsRef.current ? 'filter' : 'initial')}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading analytics"
+            style={styles.retryBtn}
+          >
+            <Text style={[styles.retryText, { color: colors.primary }]}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -579,7 +611,7 @@ export default function QuizTeacherAnalyticsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => fetchData(true)}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
           />
         }
@@ -946,6 +978,8 @@ const styles = StyleSheet.create({
   classKpiSection: { paddingVertical: 4 },
   errorBox: { margin: 16, padding: 12, backgroundColor: '#fef2f2', borderRadius: 8 },
   errorText: { color: '#dc2626', fontSize: 13 },
+  retryBtn: { marginTop: 8, alignSelf: 'flex-start' },
+  retryText: { fontSize: 13, fontWeight: '600' },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',

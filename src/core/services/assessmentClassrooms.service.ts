@@ -190,17 +190,84 @@ export function resolveAuthoritativeClassroomCount(params: {
   return Math.max(0, params.uniqueClassrooms);
 }
 
-type PageFetchResult = {
+export type AssessmentClassroomPageResult = {
   rows: unknown[];
+  /** Server (or contract-derived) indication that more pages exist. */
   hasMore: boolean;
   reportedTotal: number | null;
+  /** Next offset to request; defaults to offset + applied limit. */
+  nextOffset: number;
+  appliedLimit: number;
 };
+
+export type FetchAllAssessmentClassroomsOutcome =
+  | { kind: 'complete'; rows: unknown[]; pagesFetched: number }
+  | {
+      kind: 'incomplete';
+      rows: unknown[];
+      pagesFetched: number;
+      reason:
+        | 'hasMore_short_or_empty_page'
+        | 'repeated_page'
+        | 'no_progress_loop'
+        | 'safety_limit_exhausted'
+        | 'inconsistent_pagination';
+    };
+
+function rowClassroomId(row: unknown): string {
+  const r = row as Record<string, unknown>;
+  return String(r?.classroom_id || r?.class_id || r?.classid || '').trim();
+}
+
+function pageFingerprint(rows: unknown[]): string {
+  return rows.map(rowClassroomId).filter(Boolean).join('|');
+}
+
+/**
+ * Interpret API pagination for one page. Prefer explicit hasMore/next_offset;
+ * fall back to reported total and full-page heuristics without inventing totals.
+ */
+export function interpretAssessmentClassroomPage(params: {
+  rows: unknown[];
+  offset: number;
+  limit: number;
+  body?: any;
+}): AssessmentClassroomPageResult {
+  const { rows, offset, limit, body } = params;
+  const reportedRaw =
+    body?.pagination?.total ?? body?.meta?.total_count ?? body?.pagination?.total_count ?? null;
+  const reportedTotal = Number.isFinite(Number(reportedRaw)) ? Number(reportedRaw) : null;
+  const explicitHasMore = body?.pagination?.hasMore ?? body?.pagination?.has_more;
+  const nextFromServer = body?.pagination?.next_offset ?? body?.pagination?.nextOffset;
+  const nextOffset =
+    Number.isFinite(Number(nextFromServer)) && Number(nextFromServer) > offset
+      ? Number(nextFromServer)
+      : offset + limit;
+
+  let hasMore: boolean;
+  if (typeof explicitHasMore === 'boolean') {
+    hasMore = explicitHasMore;
+  } else if (reportedTotal != null) {
+    hasMore = offset + rows.length < reportedTotal;
+  } else {
+    // No explicit cursor/total — a full page may have more; a short page ends.
+    hasMore = rows.length >= limit;
+  }
+
+  return {
+    rows,
+    hasMore,
+    reportedTotal,
+    nextOffset,
+    appliedLimit: limit,
+  };
+}
 
 async function fetchAssessmentClassroomPage(params: {
   viewType: 'class_wise_students' | 'classes';
   limit: number;
   offset: number;
-}): Promise<PageFetchResult> {
+}): Promise<AssessmentClassroomPageResult> {
   const token = await TokenStorage.getAccessToken();
   if (!token) {
     throw new Error('assessment_classrooms_unauthenticated');
@@ -222,51 +289,110 @@ async function fetchAssessmentClassroomPage(params: {
   }
   const body = await response.json();
   const rows = Array.isArray(body?.data) ? body.data : [];
-  const reportedRaw =
-    body?.pagination?.total ?? body?.meta?.total_count ?? body?.pagination?.total_count ?? null;
-  const reportedTotal = Number.isFinite(Number(reportedRaw)) ? Number(reportedRaw) : null;
-  const hasMoreFlag = Boolean(body?.pagination?.hasMore ?? body?.pagination?.has_more);
-  const limit = params.limit;
-  const offset = params.offset;
-  const hasMore =
-    hasMoreFlag ||
-    (reportedTotal != null && offset + rows.length < reportedTotal) ||
-    rows.length >= limit;
-  return { rows, hasMore: hasMore && rows.length > 0, reportedTotal };
+  return interpretAssessmentClassroomPage({
+    rows,
+    offset: params.offset,
+    limit: params.limit,
+    body,
+  });
 }
 
 /**
- * Walk all pages. Stops when a page returns fewer than PAGE_SIZE rows
- * (or hasMore is false). Dedupes by classroom_id across pages.
+ * Walk all pages until the API indicates completion.
+ * Never treats a short/duplicate page with hasMore=true as success.
+ * Safety-limit exhaustion and non-progress loops are incomplete failures.
  */
 export async function fetchAllAssessmentClassroomRows(
   viewType: 'class_wise_students' | 'classes',
-  options?: { pageSize?: number; fetchPage?: typeof fetchAssessmentClassroomPage },
-): Promise<{ rows: unknown[]; pagesFetched: number }> {
+  options?: {
+    pageSize?: number;
+    maxPages?: number;
+    fetchPage?: typeof fetchAssessmentClassroomPage;
+  },
+): Promise<FetchAllAssessmentClassroomsOutcome> {
   const pageSize = options?.pageSize ?? PAGE_SIZE;
+  const maxPages = options?.maxPages ?? 50;
   const fetchPage = options?.fetchPage ?? fetchAssessmentClassroomPage;
   const byId = new Map<string, unknown>();
   let offset = 0;
   let pagesFetched = 0;
-  const maxPages = 50;
+  let consecutiveNoProgress = 0;
+  const seenPageKeys = new Set<string>();
 
   while (pagesFetched < maxPages) {
     const page = await fetchPage({ viewType, limit: pageSize, offset });
     pagesFetched += 1;
+
+    const fingerprint = pageFingerprint(page.rows);
+    const pageKey = `${offset}::${fingerprint}`;
+    if (seenPageKeys.has(pageKey)) {
+      return {
+        kind: 'incomplete',
+        rows: Array.from(byId.values()),
+        pagesFetched,
+        reason: 'repeated_page',
+      };
+    }
+    seenPageKeys.add(pageKey);
+
     const sizeBefore = byId.size;
     for (const row of page.rows) {
-      const id = String(
-        (row as any)?.classroom_id || (row as any)?.class_id || (row as any)?.classid || '',
-      ).trim();
+      const id = rowClassroomId(row);
       if (!id || byId.has(id)) continue;
       byId.set(id, row);
     }
     const madeProgress = byId.size > sizeBefore;
-    if (!page.hasMore || page.rows.length < pageSize || !madeProgress) break;
-    offset += pageSize;
+
+    if (!page.hasMore) {
+      return {
+        kind: 'complete',
+        rows: Array.from(byId.values()),
+        pagesFetched,
+      };
+    }
+
+    // Server says more pages remain.
+    if (page.rows.length === 0 || page.rows.length < page.appliedLimit) {
+      return {
+        kind: 'incomplete',
+        rows: Array.from(byId.values()),
+        pagesFetched,
+        reason: 'hasMore_short_or_empty_page',
+      };
+    }
+
+    // Duplicate-only page: keep advancing while hasMore, but bound non-progress.
+    if (!madeProgress) {
+      consecutiveNoProgress += 1;
+      if (consecutiveNoProgress >= 2) {
+        return {
+          kind: 'incomplete',
+          rows: Array.from(byId.values()),
+          pagesFetched,
+          reason: 'no_progress_loop',
+        };
+      }
+    } else {
+      consecutiveNoProgress = 0;
+    }
+
+    if (!Number.isFinite(page.nextOffset) || page.nextOffset <= offset) {
+      return {
+        kind: 'incomplete',
+        rows: Array.from(byId.values()),
+        pagesFetched,
+        reason: 'inconsistent_pagination',
+      };
+    }
+    offset = page.nextOffset;
   }
 
-  return { rows: Array.from(byId.values()), pagesFetched };
+  return {
+    kind: 'incomplete',
+    rows: Array.from(byId.values()),
+    pagesFetched,
+    reason: 'safety_limit_exhausted',
+  };
 }
 
 export type LoadAssessmentClassroomsOptions = {
@@ -317,7 +443,7 @@ export async function loadAssessmentClassrooms(
 
   const promise = (async (): Promise<AssessmentClassroomsResult> => {
     try {
-      const { rows, pagesFetched } = await fetchAll(source);
+      const outcome = await fetchAll(source);
       if (!scopeStillCurrent(scopeKey, generation, options.getCurrentScope)) {
         return {
           kind: 'failed',
@@ -327,7 +453,19 @@ export async function loadAssessmentClassrooms(
           prior: priorByScope.get(scopeKey) ?? null,
         };
       }
-      const classrooms = normalizeAssessmentClassroomRows(rows);
+
+      // Incomplete pagination must not publish a partial count as authoritative.
+      if (outcome.kind === 'incomplete') {
+        return {
+          kind: 'failed',
+          scopeKey,
+          generation,
+          error: `incomplete_inventory:${outcome.reason}`,
+          prior: priorByScope.get(scopeKey) ?? null,
+        };
+      }
+
+      const classrooms = normalizeAssessmentClassroomRows(outcome.rows);
       priorByScope.set(scopeKey, classrooms);
       return {
         kind: 'ok',
@@ -336,7 +474,7 @@ export async function loadAssessmentClassrooms(
         classrooms,
         count: classrooms.length,
         source,
-        pagesFetched,
+        pagesFetched: outcome.pagesFetched,
       };
     } catch (err) {
       const error = err instanceof Error ? err.message : 'assessment_classrooms_failed';

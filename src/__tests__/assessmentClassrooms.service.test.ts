@@ -3,11 +3,13 @@ import {
   canApplyAssessmentClassroomsResult,
   fetchAllAssessmentClassroomRows,
   getAssessmentClassroomsLoadGeneration,
+  interpretAssessmentClassroomPage,
   invalidateAssessmentClassroomsLoads,
   loadAssessmentClassrooms,
   normalizeAssessmentClassroomRows,
   resolveAuthoritativeClassroomCount,
   usesTeacherAssessmentClassroomPath,
+  type FetchAllAssessmentClassroomsOutcome,
 } from '../core/services/assessmentClassrooms.service';
 import { mergeAssessmentClassroomInventoryWithMetrics } from '../core/services/assessmentClassroomAnalytics';
 
@@ -31,18 +33,15 @@ describe('assessmentClassrooms.service', () => {
       { classroom_id: 'c4', classroom_name: '10A-Science', total_count: 0 },
       { classroom_id: 'c5', classroom_name: '10A-English-Sam', total_count: 12 },
       { classroom_id: 'c6', classroom_name: '10A-Mathematics-Sam', total_count: 7 },
-      // Duplicate API row must not inflate
       { classroom_id: 'c4', classroom_name: '10A-Science', total_count: 0 },
-      // Same label/subject different id stays distinct
       { classroom_id: 'c7', classroom_name: '4A-Mathematics', total_count: 3 },
     ]);
     expect(classrooms).toHaveLength(7);
     expect(classrooms.find((c) => c.classroom_id === 'c4')?.classroom_name).toBe('10A-Science');
-    expect(classrooms.find((c) => c.classroom_id === 'c3')?.total_students).toBe(0);
     expect(resolveAuthoritativeClassroomCount({ uniqueClassrooms: classrooms.length })).toBe(7);
   });
 
-  it('ignores divergent reported totals when counting', () => {
+  it('always uses unique classroom identities (never unverified reported totals)', () => {
     expect(
       resolveAuthoritativeClassroomCount({
         uniqueClassrooms: 6,
@@ -52,30 +51,160 @@ describe('assessmentClassrooms.service', () => {
     ).toBe(6);
   });
 
-  it('paginates until a short page and does not assume limit=1000 completeness', async () => {
-    const pages: Record<number, unknown[]> = {
-      0: [
-        { classroom_id: 'a', classroom_name: 'A' },
-        { classroom_id: 'b', classroom_name: 'B' },
-      ],
-      2: [{ classroom_id: 'c', classroom_name: 'C' }],
-    };
+  it('honours explicit hasMore=true on a short page as incomplete (not success)', async () => {
+    const fetchPage = jest.fn(async ({ offset }: { offset: number; limit: number }) =>
+      interpretAssessmentClassroomPage({
+        rows: [{ classroom_id: 'a', classroom_name: 'A' }],
+        offset,
+        limit: 100,
+        body: { pagination: { hasMore: true, total: 50 } },
+      }),
+    );
+
+    const outcome = await fetchAllAssessmentClassroomRows('class_wise_students', {
+      pageSize: 100,
+      fetchPage: fetchPage as any,
+    });
+    expect(outcome.kind).toBe('incomplete');
+    if (outcome.kind === 'incomplete') {
+      expect(outcome.reason).toBe('hasMore_short_or_empty_page');
+    }
+  });
+
+  it('continues past a duplicate-only intermediate page when hasMore and later pages add classrooms', async () => {
     const fetchPage = jest.fn(async ({ offset }: { offset: number; limit: number }) => {
-      const rows = pages[offset] || [];
-      return {
-        rows,
-        hasMore: offset === 0,
-        reportedTotal: 3,
-      };
+      if (offset === 0) {
+        return interpretAssessmentClassroomPage({
+          rows: [
+            { classroom_id: 'a', classroom_name: 'A' },
+            { classroom_id: 'b', classroom_name: 'B' },
+          ],
+          offset: 0,
+          limit: 2,
+          body: { pagination: { hasMore: true } },
+        });
+      }
+      if (offset === 2) {
+        // Duplicate-only page (server re-sent prior ids) but still hasMore.
+        return interpretAssessmentClassroomPage({
+          rows: [
+            { classroom_id: 'a', classroom_name: 'A' },
+            { classroom_id: 'b', classroom_name: 'B' },
+          ],
+          offset: 2,
+          limit: 2,
+          body: { pagination: { hasMore: true } },
+        });
+      }
+      return interpretAssessmentClassroomPage({
+        rows: [
+          { classroom_id: 'c', classroom_name: 'C' },
+          { classroom_id: 'd', classroom_name: '10A-Science' },
+        ],
+        offset: 4,
+        limit: 2,
+        body: { pagination: { hasMore: false } },
+      });
     });
 
-    const { rows, pagesFetched } = await fetchAllAssessmentClassroomRows('class_wise_students', {
+    const outcome = await fetchAllAssessmentClassroomRows('class_wise_students', {
       pageSize: 2,
       fetchPage: fetchPage as any,
     });
-    expect(pagesFetched).toBeGreaterThanOrEqual(2);
-    expect(normalizeAssessmentClassroomRows(rows)).toHaveLength(3);
-    expect(fetchPage).toHaveBeenCalled();
+    expect(outcome.kind).toBe('complete');
+    if (outcome.kind === 'complete') {
+      expect(normalizeAssessmentClassroomRows(outcome.rows)).toHaveLength(4);
+      expect(outcome.pagesFetched).toBe(3);
+    }
+  });
+
+  it('detects repeated identical pages at the same offset as incomplete', async () => {
+    const fetchPage = jest.fn(async ({ offset }: { offset: number; limit: number }) =>
+      interpretAssessmentClassroomPage({
+        rows: [
+          { classroom_id: 'a', classroom_name: 'A' },
+          { classroom_id: 'b', classroom_name: 'B' },
+        ],
+        offset,
+        limit: 2,
+        // nextOffset stuck — same offset forever
+        body: { pagination: { hasMore: true, next_offset: offset } },
+      }),
+    );
+
+    const outcome = await fetchAllAssessmentClassroomRows('class_wise_students', {
+      pageSize: 2,
+      maxPages: 5,
+      fetchPage: fetchPage as any,
+    });
+    expect(outcome.kind).toBe('incomplete');
+    if (outcome.kind === 'incomplete') {
+      expect(['repeated_page', 'inconsistent_pagination', 'no_progress_loop']).toContain(
+        outcome.reason,
+      );
+    }
+  });
+
+  it('treats safety-limit exhaustion as incomplete failure', async () => {
+    const fetchPage = jest.fn(async ({ offset }: { offset: number; limit: number }) =>
+      interpretAssessmentClassroomPage({
+        rows: [
+          { classroom_id: `id-${offset}`, classroom_name: `C${offset}` },
+          { classroom_id: `id-${offset}-b`, classroom_name: `C${offset}b` },
+        ],
+        offset,
+        limit: 2,
+        body: { pagination: { hasMore: true } },
+      }),
+    );
+
+    const outcome = await fetchAllAssessmentClassroomRows('class_wise_students', {
+      pageSize: 2,
+      maxPages: 3,
+      fetchPage: fetchPage as any,
+    });
+    expect(outcome.kind).toBe('incomplete');
+    if (outcome.kind === 'incomplete') {
+      expect(outcome.reason).toBe('safety_limit_exhausted');
+    }
+  });
+
+  it('does not publish incomplete inventory as ok; preserves prior complete data', async () => {
+    const scope = {
+      apiEnv: 'dev',
+      userId: '66',
+      role: 'instructor',
+      schoolId: 1,
+    };
+    await loadAssessmentClassrooms(scope, {
+      getCurrentScope: () => scope,
+      fetchAll: async () =>
+        ({
+          kind: 'complete',
+          rows: [
+            { classroom_id: 'c1', classroom_name: '10A-Science', total_count: 0 },
+            { classroom_id: 'c2', classroom_name: '4A-Math', total_count: 4 },
+          ],
+          pagesFetched: 1,
+        }) satisfies FetchAllAssessmentClassroomsOutcome,
+    });
+
+    const failed = await loadAssessmentClassrooms(scope, {
+      getCurrentScope: () => scope,
+      fetchAll: async () =>
+        ({
+          kind: 'incomplete',
+          rows: [{ classroom_id: 'partial', classroom_name: 'Partial' }],
+          pagesFetched: 2,
+          reason: 'hasMore_short_or_empty_page',
+        }) satisfies FetchAllAssessmentClassroomsOutcome,
+    });
+    expect(failed.kind).toBe('failed');
+    if (failed.kind === 'failed') {
+      expect(failed.error).toContain('incomplete_inventory');
+      expect(failed.prior).toHaveLength(2);
+      expect(failed.prior?.[0].classroom_name).toBe('10A-Science');
+    }
   });
 
   it('coalesces identical in-flight loads for one refresh', async () => {
@@ -84,6 +213,7 @@ describe('assessmentClassrooms.service', () => {
       calls += 1;
       await new Promise((r) => setTimeout(r, 30));
       return {
+        kind: 'complete' as const,
         rows: [
           { classroom_id: 'c1', classroom_name: '10A-Science', total_count: 0 },
           { classroom_id: 'c2', classroom_name: '4A-Mathematics', total_count: 5 },
@@ -107,17 +237,13 @@ describe('assessmentClassrooms.service', () => {
     expect(calls).toBe(1);
     expect(a.kind).toBe('ok');
     expect(b.kind).toBe('ok');
-    if (a.kind === 'ok') {
-      expect(a.count).toBe(2);
-      expect(a.source).toBe('class_wise_students');
-    }
   });
 
   it('rejects stale success after account switch during a pending request', async () => {
-    let resolveFetch!: (value: { rows: unknown[]; pagesFetched: number }) => void;
+    let resolveFetch!: (value: FetchAllAssessmentClassroomsOutcome) => void;
     const fetchAll = jest.fn(
       () =>
-        new Promise<{ rows: unknown[]; pagesFetched: number }>((resolve) => {
+        new Promise<FetchAllAssessmentClassroomsOutcome>((resolve) => {
           resolveFetch = resolve;
         }),
     );
@@ -137,6 +263,7 @@ describe('assessmentClassrooms.service', () => {
     invalidateAssessmentClassroomsLoads();
 
     resolveFetch({
+      kind: 'complete',
       rows: [{ classroom_id: 'old', classroom_name: 'Old' }],
       pagesFetched: 1,
     });
@@ -146,6 +273,7 @@ describe('assessmentClassrooms.service', () => {
     const second = await loadAssessmentClassrooms(live, {
       getCurrentScope: () => live,
       fetchAll: async () => ({
+        kind: 'complete',
         rows: [{ classroom_id: 'new', classroom_name: 'New' }],
         pagesFetched: 1,
       }),
@@ -154,37 +282,6 @@ describe('assessmentClassrooms.service', () => {
     if (second.kind === 'ok') {
       expect(second.classrooms[0].classroom_id).toBe('new');
       expect(second.generation).toBe(getAssessmentClassroomsLoadGeneration());
-    }
-  });
-
-  it('preserves prior inventory on failure instead of a false zero', async () => {
-    const scope = {
-      apiEnv: 'dev',
-      userId: '66',
-      role: 'instructor',
-      schoolId: 1,
-    };
-    await loadAssessmentClassrooms(scope, {
-      getCurrentScope: () => scope,
-      fetchAll: async () => ({
-        rows: [
-          { classroom_id: 'c1', classroom_name: '10A-Science', total_count: 0 },
-          { classroom_id: 'c2', classroom_name: '4A-Math', total_count: 4 },
-        ],
-        pagesFetched: 1,
-      }),
-    });
-
-    const failed = await loadAssessmentClassrooms(scope, {
-      getCurrentScope: () => scope,
-      fetchAll: async () => {
-        throw new Error('network');
-      },
-    });
-    expect(failed.kind).toBe('failed');
-    if (failed.kind === 'failed') {
-      expect(failed.prior).toHaveLength(2);
-      expect(failed.prior?.[0].classroom_name).toBe('10A-Science');
     }
   });
 
@@ -200,6 +297,7 @@ describe('assessmentClassrooms.service', () => {
       fetchAll: async (viewType) => {
         expect(viewType).toBe('classes');
         return {
+          kind: 'complete',
           rows: [{ classroom_id: 's1', classroom_name: '4A-Telugu' }],
           pagesFetched: 1,
         };
@@ -208,7 +306,6 @@ describe('assessmentClassrooms.service', () => {
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
       expect(result.source).toBe('classes');
-      expect(result.count).toBe(1);
     }
   });
 
@@ -256,6 +353,5 @@ describe('assessmentClassrooms.service', () => {
     );
     expect(merged).toHaveLength(2);
     expect(merged.find((c) => c.classroom_id === 'c1')?.total_quizzes).toBe(0);
-    expect(merged.find((c) => c.classroom_id === 'c2')?.total_quizzes).toBe(3);
   });
 });

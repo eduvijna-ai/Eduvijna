@@ -60,16 +60,26 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
   
   // Determine if user is a student
   const isStudent = user?.role === 'student';
+  const inventoryKey = assessmentClassrooms.map((c) => c.classroom_id).join(',');
+  const teacherQuizzesCacheRef = React.useRef<any[] | null>(null);
+  const loadGenerationRef = React.useRef(0);
 
   // Responsive layout detection
   const isWeb = width > 768;
 
   useEffect(() => {
-    loadClasses();
-  }, [assessmentClassrooms, storedQuizzes, isStudent]);
+    void loadClasses({ forceQuizzes: false });
+    // inventoryKey: only re-enhance when classroom identity set changes (not array identity churn).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventoryKey, storedQuizzes, isStudent]);
 
-  const loadClasses = async () => {
-    setLoading(true);
+  const loadClasses = async (opts?: { forceQuizzes?: boolean }) => {
+    const generation = ++loadGenerationRef.current;
+    const hasVisibleContent = classes.length > 0;
+    // Keep rendered list during inventory/metrics refresh — only block when empty.
+    if (!hasVisibleContent) {
+      setLoading(true);
+    }
     setListError(null);
     try {
       let fetchedClasses: any[] = [];
@@ -81,12 +91,14 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
 
       if (classroomsUnavailable && fetchedClasses.length === 0) {
         setListError(classroomsError || 'Classroom list temporarily unavailable.');
-        setLoading(false);
+        if (generation === loadGenerationRef.current) setLoading(false);
         return;
       }
 
       if (isStudent) {
         allQuizzes = storedQuizzes;
+      } else if (!opts?.forceQuizzes && teacherQuizzesCacheRef.current) {
+        allQuizzes = teacherQuizzesCacheRef.current;
       } else {
         // Get all quizzes for the instructor with complete attempt data
         // Use view_type='all' to get detailed student statuses (completed, pending, missed)
@@ -94,7 +106,8 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           view_type: 'all',
           limit: 1000,
         });
-        
+        if (generation !== loadGenerationRef.current) return;
+        teacherQuizzesCacheRef.current = quizzesResult.data;
         allQuizzes = quizzesResult.data;
       }
       
@@ -236,19 +249,22 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         };
       });
       
+      if (generation !== loadGenerationRef.current) return;
       setClasses(enhancedClasses);
     } catch (error) {
       console.error('Error loading classes:', error);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshAssessmentClassrooms();
-    await loadClasses();
+    await loadClasses({ forceQuizzes: true });
   };
 
   const handleClassPress = (classItem: ClassData) => {
