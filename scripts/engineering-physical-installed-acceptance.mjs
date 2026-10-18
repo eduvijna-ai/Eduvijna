@@ -21,7 +21,19 @@ function runStep(name, script, scriptArgs = [], extraEnv = {}) {
       ...process.env,
       ENGINEERING_PHYSICAL_DEVICE: '1',
       ENGINEERING_INSTALLED_RELEASE: '1',
-      ENGINEERING_APK_IMPLEMENTATION_SHA: '2fb85b0',
+      ENGINEERING_APK_IMPLEMENTATION_SHA:
+        process.env.ENGINEERING_APK_IMPLEMENTATION_SHA || 'b570e91',
+      ENGINEERING_EXPECTED_APK_SHA256:
+        process.env.ENGINEERING_EXPECTED_APK_SHA256 ||
+        '00093298CB95C66D1CC15F8EC465D2218BEBB33AC4A1305718776E6B551760F1',
+      ENGINEERING_RELEASE_APK:
+        process.env.ENGINEERING_RELEASE_APK ||
+        join(
+          repoRoot,
+          '.stack-validation-logs',
+          'founder-acceptance',
+          'eduvijna-acceptance-release-b570e91-universal.apk',
+        ),
       ...(resolveMaestroJavaHome() ? { JAVA_HOME: resolveMaestroJavaHome() } : {}),
       ...extraEnv,
     },
@@ -40,6 +52,12 @@ function runStep(name, script, scriptArgs = [], extraEnv = {}) {
 process.env.ENGINEERING_PHYSICAL_DEVICE = '1';
 const bound = assertBoundAdbDevice();
 applyEngineeringDeviceEnv(bound.serial);
+
+const PRODUCT_SHA = process.env.ENGINEERING_APK_IMPLEMENTATION_SHA || 'b570e91';
+const APK_SHA256 = (
+  process.env.ENGINEERING_EXPECTED_APK_SHA256 ||
+  '00093298CB95C66D1CC15F8EC465D2218BEBB33AC4A1305718776E6B551760F1'
+).toUpperCase();
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const evidenceDir = join(
@@ -66,8 +84,8 @@ const summary = {
   ok: steps.every((s) => s.ok),
   deviceSerial: bound.serial,
   harnessGitHead: spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).stdout?.trim(),
-  productApkSha: '2fb85b0',
-  apkSha256: 'F37F33F24C41E613AE5A6E94769DD22EBBF8360DB18087815DC52C5F8479D6BE',
+  productApkSha: PRODUCT_SHA,
+  apkSha256: APK_SHA256,
   steps,
   evidenceDir,
   note: 'Per-step UI evidence under .stack-validation-logs/engineering-installed-smoke/* with timestamps from each runner.',

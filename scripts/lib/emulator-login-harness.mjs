@@ -59,13 +59,23 @@ export function createEmulatorLoginHarness(device = getEngineeringAdbSerial()) {
   }
 
   function tapContentDesc(xml, desc) {
-    const re = new RegExp(`content-desc="${desc}"[^>]*bounds="([^"]+)"`, 'i');
-    const m = re.exec(xml);
-    if (!m) return false;
-    const c = centerFromBounds(m[1]);
-    if (!c) return false;
-    adb(`shell input tap ${c.x} ${c.y}`);
-    return true;
+    const esc = String(desc).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Exact match first, then suffix match for RN tab bars that prefix icon glyphs
+    // (e.g. content-desc=", Assessments").
+    const patterns = [
+      new RegExp(`content-desc="${esc}"[^>]*bounds="([^"]+)"`, 'i'),
+      new RegExp(`content-desc="[^"]*[,:]\\s*${esc}"[^>]*bounds="([^"]+)"`, 'i'),
+      new RegExp(`content-desc="[^"]*${esc}"[^>]*bounds="([^"]+)"`, 'i'),
+    ];
+    for (const re of patterns) {
+      const m = re.exec(xml);
+      if (!m) continue;
+      const c = centerFromBounds(m[1]);
+      if (!c || (c.x === 0 && c.y === 0)) continue;
+      adb(`shell input tap ${c.x} ${c.y}`);
+      return true;
+    }
+    return false;
   }
 
   function fieldNode(xml, testId) {

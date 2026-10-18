@@ -64,7 +64,7 @@ mkdirSync(evidenceDir, { recursive: true });
 
 const apiSession = await verifyEngineeringStudentSession();
 apiSession.harnessGitHead = execSync('git rev-parse HEAD', { cwd: repoRoot, encoding: 'utf8' }).trim();
-apiSession.implementationApkSha = process.env.ENGINEERING_APK_IMPLEMENTATION_SHA || '8b10562';
+apiSession.implementationApkSha = process.env.ENGINEERING_APK_IMPLEMENTATION_SHA || 'b570e91';
 
 process.env.DEV_API_CREDENTIALS_FILE =
   process.env.DEV_API_CREDENTIALS_FILE || resolveDevApiCredentialsPath(repoRoot);
@@ -92,29 +92,91 @@ if (dismissPostLoginInterstitials(xml)) {
 }
 shot('00-home.png');
 
-tapContentDesc(xml, 'Assessments');
-sleep(4000);
+// Bottom tabs often expose label as text= without content-desc on the pressable.
+function tapBottomTab(label) {
+  if (tapContentDesc(xml, label)) return true;
+  const textRe = new RegExp(`text="${label}"[^>]*bounds="([^"]+)"`, 'i');
+  const tm = textRe.exec(xml);
+  if (tm) {
+    const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(tm[1]);
+    if (c) {
+      adb(
+        `shell input tap ${((Number(c[1]) + Number(c[3])) / 2) | 0} ${((Number(c[2]) + Number(c[4])) / 2) | 0}`,
+      );
+      return true;
+    }
+  }
+  // 5-tab student bar fallback (Analytics, Assessments, Home, ERP, Schools) on ~1080px width.
+  const tabIndex = { Analytics: 0, Assessments: 1, Home: 2, ERP: 3, Schools: 4 }[label];
+  if (tabIndex == null) return false;
+  const x = Math.floor((1080 / 5) * (tabIndex + 0.5));
+  adb(`shell input tap ${x} 1980`);
+  return true;
+}
+
+tapBottomTab('Assessments');
+sleep(4500);
 xml = dumpUi();
-if (!/content-desc="Completed \(\d+\)"/i.test(xml)) {
+if (!/Completed|Pending|Assigned/i.test(xml) || /Hello,/i.test(xml)) {
+  // Still on Home — retry coordinate tap once.
+  adb('shell input tap 324 1980');
+  sleep(4000);
+  xml = dumpUi();
+}
+// Always select Completed chip (presence ≠ selected; data-state tab may still be "all").
+{
   const cm = /content-desc="Completed \(\d+\)"[^>]*bounds="([^"]+)"/i.exec(xml);
   if (cm) {
     const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(cm[1]);
     adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
   } else {
     tapContentDesc(xml, 'Completed');
+    const completedText = /text="Completed[^"]*"[^>]*bounds="([^"]+)"/i.exec(xml);
+    if (completedText) {
+      const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(completedText[1]);
+      if (c) {
+        adb(
+          `shell input tap ${((Number(c[1]) + Number(c[3])) / 2) | 0} ${((Number(c[2]) + Number(c[4])) / 2) | 0}`,
+        );
+      }
+    }
   }
 }
-sleep(3500);
+sleep(4000);
 xml = dumpUi();
 shot('01-completed-tab.png');
 
-const { xml: traversedXml, traversal, fixtureDiscovery } = traverseCompletedTab({
+let { xml: traversedXml, traversal, fixtureDiscovery } = traverseCompletedTab({
   dumpUi,
   adb,
   sleep,
   quizTitle,
 });
 xml = traversedXml;
+
+// If title identity is absent from the completed list, try Assessments search (API title / token).
+if (!fixtureDiscovery.found) {
+  const searchToken = labels.searchToken || quizTitle.slice(0, 14);
+  const searchField =
+    /resource-id="[^"]*search[^"]*"[^>]*bounds="([^"]+)"/i.exec(xml) ||
+    /text="Search"[^>]*bounds="([^"]+)"/i.exec(xml) ||
+    /content-desc="Search"[^>]*bounds="([^"]+)"/i.exec(xml);
+  if (searchField) {
+    const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(searchField[1]);
+    if (c) {
+      adb(
+        `shell input tap ${((Number(c[1]) + Number(c[3])) / 2) | 0} ${((Number(c[2]) + Number(c[4])) / 2) | 0}`,
+      );
+      sleep(800);
+      adb(`shell input text ${JSON.stringify(String(searchToken).replace(/"/g, ''))}`);
+      sleep(2500);
+      xml = dumpUi();
+      fixtureDiscovery = discoverFixtureIdentity(xml, quizTitle);
+      traversal.searchAttempt = { token: searchToken, found: fixtureDiscovery.found };
+    }
+  }
+}
+
 writeFileSync(join(evidenceDir, 'traversal.json'), JSON.stringify(traversal, null, 2));
 writeFileSync(join(evidenceDir, 'assessments.xml'), xml);
 shot('02-after-traversal.png');
@@ -127,9 +189,30 @@ let resultsXml = xml;
 let resultsAssert = { pass: false };
 
 if (fixtureDiscovery.found) {
-  viewTap = revealAndTapFixtureResults(adb, dumpUi, sleep, quizTitle);
+  const altTitles = [quizTitle, 'Mathematics — maths', 'Mathematics - maths', labels.searchToken].filter(
+    Boolean,
+  );
+  for (const title of altTitles) {
+    viewTap = revealAndTapFixtureResults(adb, dumpUi, sleep, title);
+    if (viewTap.tapped) break;
+  }
+  // Single filtered completed card: tap Results control directly.
+  if (!viewTap.tapped) {
+    const resultsBtn =
+      /content-desc="[^"]*Results"[^>]*bounds="([^"]+)"/i.exec(xml) ||
+      /text="Results"[^>]*bounds="([^"]+)"/i.exec(xml);
+    if (resultsBtn) {
+      const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(resultsBtn[1]);
+      if (c) {
+        adb(
+          `shell input tap ${((Number(c[1]) + Number(c[3])) / 2) | 0} ${((Number(c[2]) + Number(c[4])) / 2) | 0}`,
+        );
+        viewTap = { tapped: true, via: 'direct_results_control', xml };
+      }
+    }
+  }
   if (viewTap.xml) xml = viewTap.xml;
-  sleep(10000);
+  sleep(12000);
   resultsXml = dumpUi();
   writeFileSync(join(evidenceDir, 'results.xml'), resultsXml);
   shot('03-results-screen.png');
@@ -177,7 +260,9 @@ const results = {
     : viewTap,
   resultsAssert,
   inlineOk,
-  implementationApkSha256: process.env.ENGINEERING_APK_SHA256 || '64b3efa7294e5bb83f81c759937811bbba7d9ea6607e40ddb5876f2ca801fd46',
+  implementationApkSha256:
+    process.env.ENGINEERING_EXPECTED_APK_SHA256 ||
+    '00093298cb95c66d1cc15f8ec465d2218bebb33ac4a1305718776e6b551760f1',
   evidenceDir,
 };
 

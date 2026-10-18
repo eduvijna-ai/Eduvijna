@@ -12,13 +12,16 @@ import {
 } from './lib/resolve-engineering-adb-device.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const EXPECTED_SHA =
-  'F37F33F24C41E613AE5A6E94769DD22EBBF8360DB18087815DC52C5F8479D6BE';
+const EXPECTED_SHA = (
+  process.env.ENGINEERING_EXPECTED_APK_SHA256 ||
+  '00093298CB95C66D1CC15F8EC465D2218BEBB33AC4A1305718776E6B551760F1'
+).toUpperCase();
 const APK = join(
   repoRoot,
   '.stack-validation-logs',
   'founder-acceptance',
-  'eduvijna-acceptance-release-2fb85b0-universal.apk',
+  process.env.ENGINEERING_RELEASE_APK_NAME ||
+    'eduvijna-acceptance-release-b570e91-universal.apk',
 );
 
 function sha256File(path) {

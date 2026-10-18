@@ -52,12 +52,29 @@ export function discoverFixtureIdentity(xml, quizTitle) {
     attempt207: /attempt-207|attempt_id=207/.test(xml),
     resultSummary: /quiz-result-summary[^"]*quiz-479/.test(xml),
   };
-  const found = hits.titleExact || hits.titlePartial || hits.resultSummary;
+  // Prefer title/result-summary; also accept quiz+attempt identity when list labels differ from API title.
+  const found =
+    hits.titleExact ||
+    hits.titlePartial ||
+    hits.resultSummary ||
+    (hits.quiz479 && (hits.attempt207 || hits.sessionPrefix));
   return { found, hits };
 }
 
 export function tapTestId(adb, xml, testId) {
   const m = new RegExp(`resource-id="${testId}"[^>]*bounds="([^"]+)"`, 'i').exec(xml);
+  if (!m) return false;
+  const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(m[1]);
+  if (!c) return false;
+  adb(`shell input tap ${(Number(c[1]) + Number(c[3])) / 2 | 0} ${(Number(c[2]) + Number(c[4])) / 2 | 0}`);
+  return true;
+}
+
+export function tapLoadMoreControl(adb, xml) {
+  if (tapTestId(adb, xml, 'assessments-load-more')) return true;
+  const m =
+    /content-desc="Load More[^"]*"[^>]*bounds="([^"]+)"/i.exec(xml) ||
+    /text="Load More[^"]*"[^>]*bounds="([^"]+)"/i.exec(xml);
   if (!m) return false;
   const c = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(m[1]);
   if (!c) return false;
@@ -215,7 +232,7 @@ export function traverseCompletedTab({
     if (!hasLoadMoreControl(xml)) break;
     const beforeRemaining = parseLoadMoreRemaining(xml);
     const beforeFiltered = parseAssessmentsDataState(xml)?.filtered;
-    const tapped = tapLoadMore ? tapLoadMore(xml) : tapTestId(adb, xml, 'assessments-load-more');
+    const tapped = tapLoadMore ? tapLoadMore(xml) : tapLoadMoreControl(adb, xml);
     if (!tapped) break;
     loadMoreTaps += 1;
     sleep(3500);

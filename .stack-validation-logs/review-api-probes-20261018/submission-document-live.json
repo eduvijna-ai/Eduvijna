@@ -12,7 +12,7 @@
     {
       "name": "student_check_record_pending",
       "status": 200,
-      "elapsedMs": 250,
+      "elapsedMs": 248,
       "retryAfter": null,
       "message": "26 record(s) found",
       "keys": [
@@ -26,7 +26,7 @@
     {
       "name": "student_check_record_fixture_session",
       "status": 200,
-      "elapsedMs": 82,
+      "elapsedMs": 98,
       "retryAfter": null,
       "message": "Record exists",
       "keys": [
@@ -40,7 +40,7 @@
     {
       "name": "dashboard_quiz_attempts_session_scoped",
       "status": 200,
-      "elapsedMs": 75,
+      "elapsedMs": 88,
       "retryAfter": null,
       "message": null,
       "keys": [
@@ -51,7 +51,7 @@
     {
       "name": "attended_quiz_fixture",
       "status": 200,
-      "elapsedMs": 239,
+      "elapsedMs": 208,
       "retryAfter": null,
       "message": null,
       "keys": [
@@ -78,7 +78,7 @@
       "name": "mobile_web_batch_ocr_upload_empty",
       "endpoint": "/api/v1/batch-ocr-upload",
       "status": 422,
-      "elapsedMs": 63,
+      "elapsedMs": 59,
       "retryAfter": null,
       "message": [
         {
@@ -107,7 +107,7 @@
       "name": "mobile_shaped_generate_strict_probe",
       "endpoint": "/api/v1/quiz/generate-strict",
       "status": 422,
-      "elapsedMs": 28,
+      "elapsedMs": 60,
       "retryAfter": null,
       "message": [
         {
@@ -139,7 +139,7 @@
       "name": "mobile_shaped_assessment_multimodal_probe",
       "endpoint": "/api/v1/assessment/generate-multimodal",
       "status": 400,
-      "elapsedMs": 45,
+      "elapsedMs": 59,
       "retryAfter": null,
       "message": "Please provide at least one file or URL to generate an assessment from.",
       "keys": [
@@ -158,7 +158,7 @@
       "name": "mobile_shaped_generate_from_book_probe",
       "endpoint": "/api/v1/study-materials/generate-from-book",
       "status": 422,
-      "elapsedMs": 45,
+      "elapsedMs": 63,
       "retryAfter": null,
       "message": [
         {
