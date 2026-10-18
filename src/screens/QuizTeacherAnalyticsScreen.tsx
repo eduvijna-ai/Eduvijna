@@ -554,18 +554,15 @@ export default function QuizTeacherAnalyticsScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
       </View>
+      {/*
+        Web class-card contract: Done/Pending = submission slot aggregates (ungated).
+        Active/Upcoming/Expired above = assignment availability — different entity.
+        Drill-down chips gate Pending to active availability separately.
+      */}
       <View style={styles.metricsRow}>
         <MetricPill label="Avg" value={`${Math.round(cls.avg_score)}%`} color={scoreColor(cls.avg_score)} />
-        <MetricPill
-          label="Subs done"
-          value={String(cls.completed_count)}
-          color="#059669"
-        />
-        <MetricPill
-          label="Subs pending"
-          value={String(cls.pending_count)}
-          color="#d97706"
-        />
+        <MetricPill label="Done" value={String(cls.completed_count)} color="#059669" />
+        <MetricPill label="Pending" value={String(cls.pending_count)} color="#d97706" />
         <MetricPill label="Rate" value={`${Math.round(cls.completion_rate)}%`} color={colors.primary} />
       </View>
     </TouchableOpacity>

@@ -18,6 +18,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import { usesTeacherAssessmentClassroomPath } from '@core/services/assessmentClassrooms.service';
+import { teacherAvailabilityTabMatch } from '@core/utils/statusContracts';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
@@ -319,12 +320,18 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // Calculate tab counts from base filtered quizzes (after classroom, date, search filters)
   const tabCounts = React.useMemo(() => {
     if (isTeacher) {
-      // Teacher tab counts based on availability_status
+      // Teacher tabs = assignment availability (not student-attempt / Pending).
       const counts: Record<FilterTab, number> = {
         all: baseFilteredQuizzes.length,
-        active: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'active').length,
-        available_soon: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'coming soon').length,
-        expired: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'expired').length,
+        active: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'active'),
+        ).length,
+        available_soon: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'available_soon'),
+        ).length,
+        expired: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'expired'),
+        ).length,
         // Student-only tabs (not used for teachers)
         ongoing: 0,
         upcoming: 0,
@@ -355,9 +362,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       // Tab filter for teachers
       if (isTeacher) {
         if (selectedTab === 'all') return true;
-        if (selectedTab === 'active') return quiz.availability_status === 'active';
-        if (selectedTab === 'available_soon') return quiz.availability_status === 'coming soon';
-        if (selectedTab === 'expired') return quiz.availability_status === 'expired';
+        if (selectedTab === 'active') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'active');
+        }
+        if (selectedTab === 'available_soon') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'available_soon');
+        }
+        if (selectedTab === 'expired') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'expired');
+        }
         return true;
       }
       

@@ -17,6 +17,7 @@ import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { Classroom } from '@core/types/quiz.types';
 import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import { teacherAvailabilityTabMatch } from '@core/utils/statusContracts';
 import { 
   isStudentQuizActive, 
   isStudentQuizUpcoming,
@@ -151,10 +152,16 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           completedQuizzes = filterCompletedQuizzes(classQuizzes).length;
           expiredQuizzes = filterMissedQuizzes(classQuizzes).length;
         } else {
-          // For teachers: count by availability status
-          activeQuizzes = classQuizzes.filter(q => q.availability_status === 'active').length;
-          expiredQuizzes = classQuizzes.filter(q => q.availability_status === 'expired').length;
-          upcomingQuizzes = classQuizzes.filter(q => q.availability_status === 'available_soon').length;
+          // Teachers: assignment availability counts (same axis as Assessments tabs).
+          activeQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'active'),
+          ).length;
+          expiredQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'expired'),
+          ).length;
+          upcomingQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'available_soon'),
+          ).length;
         }
         
         // Calculate performance metrics

@@ -190,8 +190,8 @@ export interface ClassOverview {
   completed_count: number;
   in_progress_count: number;
   /**
-   * Student submissions still pending on *active* assignments only
-   * (matches drill-down / web AnalyticsPage pending gate).
+   * Class-card contract (web AnalyticsPage): ungated Σ pending_count across
+   * assignments. Drill-down actionable Pending is gated separately in helpers.
    */
   pending_count: number;
   expired_count: number;

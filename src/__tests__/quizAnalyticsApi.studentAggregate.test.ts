@@ -54,7 +54,7 @@ describe('aggregateClassOverview student_total_details', () => {
     expect(overview.missed_count).toBe(1);
   });
 
-  it('teacher mode: availability buckets separate from gated pending submissions', () => {
+  it('teacher class-card: availability buckets separate from ungated submission Pending (web contract)', () => {
     const rows = [
       {
         classroom_id: 'c1',
@@ -96,13 +96,15 @@ describe('aggregateClassOverview student_total_details', () => {
 
     const [overview] = aggregateClassOverview(rows, { mode: 'teacher' });
     expect(overview.total_quizzes).toBe(3);
+    // Assignment availability axis (Assessments-like)
     expect(overview.active_assignment_count).toBe(1);
     expect(overview.upcoming_assignment_count).toBe(1);
     expect(overview.expired_assignment_count).toBe(1);
-    // Pending only from active assignment — not expired pending_count=5
-    expect(overview.pending_count).toBe(3);
+    // Submission axis — web class card: ungated Σ pending (3+5+2), not Active-only
+    expect(overview.pending_count).toBe(10);
     expect(overview.completed_count).toBe(6);
-    expect(overview.missed_count).toBe(5);
+    // Residual missed per row: (10-4-1-3)+(10-2-0-5)+(10-0-0-2) = 2+3+8 = 13
+    expect(overview.missed_count).toBe(13);
   });
 
   it('does not infer student mode from mixed teacher payload with occasional student_status', () => {

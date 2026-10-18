@@ -121,14 +121,21 @@ export type AggregateClassOverviewOptions = {
 
 /**
  * Aggregate data into class overview cards.
- * Teacher `view_type=all` uses cohort completed_count + availability-gated pending.
- * Student `student_total_details` derives Done/Pending from this student's attempts/scores.
+ *
+ * Teacher (explicit mode): matches Quiz-React AnalyticsPage class-card contract —
+ *   - total_quizzes = assignment rows
+ *   - Active/Upcoming/Expired = assignment availability counts (separate axis)
+ *   - Done/Pending = ungated Σ completed_count / pending_count (submission slots)
+ *   - Drill-down actionable pending stays availability-gated in teacherAnalyticsHelpers
+ * Student (explicit mode): per-row attempt status for this student.
+ * Never infer mode from mixed payload fields when callers pass mode.
  */
 export const aggregateClassOverview = (
   data: QuizListItem[],
   options?: AggregateClassOverviewOptions,
 ): ClassOverview[] => {
   const classMap = new Map<string, ClassOverview>();
+  // Explicit mode required for production callers. Heuristic is test/legacy fallback only.
   const studentMode =
     options?.mode === 'student'
       ? true
@@ -185,35 +192,28 @@ export const aggregateClassOverview = (
         classData.expired_assignment_count = (classData.expired_assignment_count || 0) + 1;
       }
     } else {
-      // Teacher: availability buckets are assignment counts (Assessments tabs).
+      // Assignment availability axis (Assessments tabs) — counts assignments, not submissions.
       const avail = normalizeAvailabilityStatus(quiz.availability_status);
       if (avail === 'active') {
         classData.active_assignment_count = (classData.active_assignment_count || 0) + 1;
-        // Pending submissions only on active assignments (web / drill-down contract).
-        classData.pending_count += quiz.pending_count || 0;
-        classData.in_progress_count += quiz.in_progress_count || 0;
       } else if (avail === 'upcoming') {
         classData.upcoming_assignment_count = (classData.upcoming_assignment_count || 0) + 1;
       } else if (avail === 'expired') {
         classData.expired_assignment_count = (classData.expired_assignment_count || 0) + 1;
-        classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
-        classData.missed_count += quiz.pending_count || 0;
       }
 
+      // Submission aggregate axis — web class-card contract (UNGATED).
+      classData.missed_count +=
+        (quiz.total_students || 0) -
+        (quiz.completed_count || 0) -
+        (quiz.in_progress_count || 0) -
+        (quiz.pending_count || 0);
       classData.completed_count += quiz.completed_count || 0;
+      classData.in_progress_count += quiz.in_progress_count || 0;
+      classData.pending_count += quiz.pending_count || 0;
 
-      // Fallback when availability_status missing: preserve prior cohort math.
-      if (avail === 'unknown') {
-        classData.missed_count +=
-          (quiz.total_students || 0) -
-          (quiz.completed_count || 0) -
-          (quiz.in_progress_count || 0) -
-          (quiz.pending_count || 0);
-        classData.in_progress_count += quiz.in_progress_count || 0;
-        classData.pending_count += quiz.pending_count || 0;
-        if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
-          classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
-        }
+      if (quiz.end_time && new Date(quiz.end_time) < new Date()) {
+        classData.expired_count += (quiz.pending_count || 0) + (quiz.in_progress_count || 0);
       }
     }
   });

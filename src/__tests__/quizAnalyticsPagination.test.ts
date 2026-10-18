@@ -177,9 +177,24 @@ describe('quizAnalyticsPagination', () => {
 describe('analytics membership reconciliation helpers', () => {
   it('class overview quiz count matches list membership for a classroom', () => {
     const rows = [
-      row(1, 's1', 'c1', { availability_status: 'active', pending_count: 2, completed_count: 1 }),
-      row(2, 's2', 'c1', { availability_status: 'expired', pending_count: 4, completed_count: 0 }),
-      row(3, 's3', 'c2', { availability_status: 'active', pending_count: 1, completed_count: 0 }),
+      row(1, 's1', 'c1', {
+        availability_status: 'active',
+        pending_count: 2,
+        completed_count: 1,
+        total_students: 10,
+      }),
+      row(2, 's2', 'c1', {
+        availability_status: 'expired',
+        pending_count: 4,
+        completed_count: 0,
+        total_students: 10,
+      }),
+      row(3, 's3', 'c2', {
+        availability_status: 'active',
+        pending_count: 1,
+        completed_count: 0,
+        total_students: 10,
+      }),
     ];
     const overview = aggregateClassOverview(rows, { mode: 'teacher' }).find(
       (c) => c.classroom_id === 'c1',
@@ -188,7 +203,8 @@ describe('analytics membership reconciliation helpers', () => {
     expect(overview.total_quizzes).toBe(list.length);
     expect(overview.active_assignment_count).toBe(1);
     expect(overview.expired_assignment_count).toBe(1);
-    expect(overview.pending_count).toBe(2);
+    // Ungated submission pending (web class card): 2 + 4
+    expect(overview.pending_count).toBe(6);
     expect(overview.completed_count).toBe(1);
   });
 
