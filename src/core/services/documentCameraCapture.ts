@@ -97,22 +97,31 @@ export async function captureAndCropDocumentImage(opts?: {
     }
 
     const captured = cameraResult.assets[0];
-    const cropResult = await openImageCropper(captured.uri);
+    const cropResult = await openImageCropper(captured.uri, {
+      suggestedFileName: captured.fileName || undefined,
+    });
 
-    if (cropResult === 'cancelled') {
+    if (cropResult.kind === 'cancelled') {
       return null;
     }
-    if (cropResult === 'retake') {
+    if (cropResult.kind === 'retake') {
       continue;
     }
 
     const sourceMime =
-      captured.mimeType ||
-      inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
-    const normalized = await compressCameraImage(cropResult.uri, {
-      originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+      cropResult.kind === 'cropped'
+        ? cropResult.mimeType
+        : captured.mimeType ||
+          inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+    const sourceUri = cropResult.uri;
+    const originalName =
+      cropResult.kind === 'cropped'
+        ? cropResult.fileName
+        : captured.fileName || `camera-${Date.now()}.jpg`;
+    const normalized = await compressCameraImage(sourceUri, {
+      originalName,
       sourceMimeType: sourceMime,
     });
-    return toCaptured(normalized, captured.fileName || `camera-${Date.now()}.jpg`, captured.fileSize);
+    return toCaptured(normalized, originalName, captured.fileSize);
   }
 }

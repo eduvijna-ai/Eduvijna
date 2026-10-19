@@ -21,6 +21,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import {
+  cropFileNameFromBase,
+  getPendingCropSuggestedFileName,
   getPendingCropUri,
   resolveCropSession,
   subscribeCropSession,
@@ -98,7 +100,7 @@ async function applyCrop(
   natural: { width: number; height: number },
   bounds: Rect,
   crop: Rect,
-): Promise<string> {
+): Promise<{ uri: string; width: number; height: number }> {
   const scaleX = natural.width / bounds.width;
   const scaleY = natural.height / bounds.height;
 
@@ -118,7 +120,11 @@ async function applyCrop(
   const result = await image.saveAsync({ compress: 0.92, format: SaveFormat.JPEG });
   context.release();
   image.release();
-  return result.uri;
+  return {
+    uri: result.uri,
+    width: result.width || width,
+    height: result.height || height,
+  };
 }
 
 export default function ImageCropModal() {
@@ -294,12 +300,12 @@ export default function ImageCropModal() {
 
   const handleCancel = () => {
     if (processing) return;
-    resolveCropSession('cancelled');
+    resolveCropSession({ kind: 'cancelled' });
   };
 
   const handleRetake = () => {
     if (processing) return;
-    resolveCropSession('retake');
+    resolveCropSession({ kind: 'retake' });
   };
 
   const handleResetCrop = () => {
@@ -314,8 +320,18 @@ export default function ImageCropModal() {
     setProcessing(true);
     setError('');
     try {
-      const croppedUri = await applyCrop(imageUri, naturalSize, imageBounds, crop);
-      resolveCropSession({ uri: croppedUri });
+      const cropped = await applyCrop(imageUri, naturalSize, imageBounds, crop);
+      resolveCropSession({
+        kind: 'cropped',
+        uri: cropped.uri,
+        mimeType: 'image/jpeg',
+        fileName: cropFileNameFromBase(
+          getPendingCropSuggestedFileName(),
+          'page',
+        ),
+        width: cropped.width,
+        height: cropped.height,
+      });
     } catch {
       setError('Failed to crop image. Please try again.');
     } finally {
@@ -323,10 +339,18 @@ export default function ImageCropModal() {
     }
   };
 
-  /** Keep the complete captured frame — no crop applied. */
-  const handleUseFullImage = () => {
+  /**
+   * Keep the current input bytes without cropping.
+   * Does not restore a pre-crop original — callers own that via Restore.
+   */
+  const handleUseCurrentImage = () => {
     if (processing || !imageUri) return;
-    resolveCropSession({ uri: imageUri });
+    resolveCropSession({
+      kind: 'unchanged',
+      uri: imageUri,
+      width: naturalSize?.width,
+      height: naturalSize?.height,
+    });
   };
 
   const visible = !!imageUri;
@@ -342,7 +366,7 @@ export default function ImageCropModal() {
         <View style={styles.header}>
           <Text style={styles.title}>Crop photo</Text>
           <Text style={styles.subtitle}>
-            Optional — use full image to keep the complete page, or drag corners to crop
+            Optional — keep the current image unchanged, or drag corners to crop. Restore original is on the previous screen.
           </Text>
         </View>
 
@@ -434,59 +458,63 @@ export default function ImageCropModal() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnGhost]}
-            onPress={handleCancel}
-            disabled={processing}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel crop"
-          >
-            <Text style={styles.btnGhostText}>Cancel</Text>
-          </TouchableOpacity>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleCancel}
+              disabled={processing}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel crop"
+            >
+              <Text style={styles.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnGhost]}
-            onPress={handleRetake}
-            disabled={processing}
-            accessibilityRole="button"
-            accessibilityLabel="Retake photo"
-          >
-            <Text style={styles.btnGhostText}>Retake</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleRetake}
+              disabled={processing}
+              accessibilityRole="button"
+              accessibilityLabel="Retake photo"
+            >
+              <Text style={styles.btnGhostText}>Retake</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnGhost]}
-            onPress={handleResetCrop}
-            disabled={processing || !imageBounds}
-            accessibilityRole="button"
-            accessibilityLabel="Reset crop selection"
-          >
-            <Text style={styles.btnGhostText}>Reset</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleResetCrop}
+              disabled={processing || !imageBounds}
+              accessibilityRole="button"
+              accessibilityLabel="Reset crop selection"
+            >
+              <Text style={styles.btnGhostText}>Reset</Text>
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnGhost]}
-            onPress={handleUseFullImage}
-            disabled={processing || !imageUri}
-            accessibilityRole="button"
-            accessibilityLabel="Use full image without cropping"
-          >
-            <Text style={styles.btnGhostText}>Use full image</Text>
-          </TouchableOpacity>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleUseCurrentImage}
+              disabled={processing || !imageUri}
+              accessibilityRole="button"
+              accessibilityLabel="Keep current image without cropping"
+            >
+              <Text style={styles.btnGhostText}>Keep current</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary, processing && styles.btnDisabled]}
-            onPress={handleConfirm}
-            disabled={processing || !crop}
-            accessibilityRole="button"
-            accessibilityLabel="Use cropped photo"
-          >
-            {processing ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.btnPrimaryText}>Crop & use</Text>
-            )}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary, styles.btnPrimaryWide, processing && styles.btnDisabled]}
+              onPress={handleConfirm}
+              disabled={processing || !crop}
+              accessibilityRole="button"
+              accessibilityLabel="Use cropped photo"
+            >
+              {processing ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.btnPrimaryText}>Crop & use</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -554,35 +582,42 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   actions: {
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
   },
   btn: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   btnGhost: {
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   btnGhostText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+    textAlign: 'center',
   },
   btnPrimary: {
     backgroundColor: '#1B4F5C',
   },
+  btnPrimaryWide: {
+    flex: 1.35,
+  },
   btnPrimaryText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
   },
   btnDisabled: {

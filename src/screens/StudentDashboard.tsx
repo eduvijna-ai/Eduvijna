@@ -76,15 +76,21 @@ export default function StudentDashboard({ navigation, route }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const stats = useStudentAssignmentDashboardStats();
   // Authoritative classroom inventory (view_type=classes) — same source as ClassesList.
-  // Do not use quiz-derived unique class counts (misses zero-assessment classrooms).
+  // Never fall back to quiz-derived stats.total_classes (misses zero-assessment classrooms).
   const {
     count: authorizedClassroomCount,
     loading: classroomsLoading,
+    unavailable: classroomsUnavailable,
+    inventoryKnown: classroomsKnown,
+    refresh: refreshClassrooms,
   } = useAssessmentClassrooms();
-  const classroomCountForHome =
-    classroomsLoading && authorizedClassroomCount === 0
-      ? stats.total_classes || 0
-      : authorizedClassroomCount;
+  const classroomCountDisplay = classroomsKnown
+    ? String(authorizedClassroomCount)
+    : classroomsLoading
+      ? '…'
+      : classroomsUnavailable
+        ? '—'
+        : '…';
   const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
   const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
   const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
@@ -146,7 +152,6 @@ export default function StudentDashboard({ navigation, route }: Props) {
         useStudentAssignmentDashboardStore.getState().rawQuizzes.length > 0
       ) {
         setLoading(false);
-        setRefreshing(false);
         return;
       }
 
@@ -195,7 +200,6 @@ export default function StudentDashboard({ navigation, route }: Props) {
         } finally {
           if (owner === loadOwnerRef.current) {
             setLoading(false);
-            setRefreshing(false);
           }
         }
       })();
@@ -216,10 +220,19 @@ export default function StudentDashboard({ navigation, route }: Props) {
     void fetchDashboardData({ force: true });
   }, [isAuthenticated, user?.id]);
 
-  // Refresh handler
+  // Refresh: inventory + dashboard once each; no quiz-derived classroom fallback.
   const onRefresh = () => {
     setRefreshing(true);
-    void fetchDashboardData({ force: true });
+    void (async () => {
+      try {
+        await Promise.all([
+          refreshClassrooms(),
+          fetchDashboardData({ force: true }),
+        ]);
+      } finally {
+        setRefreshing(false);
+      }
+    })();
   };
 
   // Time ago formatter
@@ -388,7 +401,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
             ]}
           >
             {[
-              { label: 'Classes', value: classroomCountForHome, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
+              { label: 'Classes', value: classroomCountDisplay, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
               { label: 'Quizzes', value: stats.total_quizzes, icon: 'document-text-outline' as const, accent: theme.colors.tintBlue, fg: theme.colors.onTintBlue, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'all' }) },
               { label: 'Completed', value: stats.completed_count, icon: 'checkmark-done-outline' as const, accent: theme.colors.tintGreen, fg: theme.colors.onTintGreen, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
               { label: 'Avg Score', value: `${stats.average_score}%`, icon: 'trophy-outline' as const, accent: theme.colors.tintPurple, fg: theme.colors.onTintPurple, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },

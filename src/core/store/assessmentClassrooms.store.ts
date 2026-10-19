@@ -67,6 +67,9 @@ const initialState = {
   contractNote: null as string | null,
 };
 
+/** Monotonic id so superseded refreshes cannot write finally/failure into a newer scope. */
+let refreshEpoch = 0;
+
 export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((set, get) => ({
   ...initialState,
 
@@ -93,17 +96,38 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
   refresh: async (scope) => {
     const scopeKey = assessmentClassroomScopeKey(scope);
     const teacherPath = usesTeacherAssessmentClassroomPath(scope.role);
-    const hadContent = get().scopeKey === scopeKey && get().classrooms.length > 0;
-    set({
-      // Soft loading when content already visible — consumers should not blank UI.
-      loading: !hadContent,
-      error: null,
-      unavailable: false,
-      scopeKey,
-      contractNote: teacherPath
-        ? null
-        : 'Student inventory uses view_type=classes; class_wise_students is not authorized for students.',
-    });
+    const contractNote = teacherPath
+      ? null
+      : 'Student inventory uses view_type=classes; class_wise_students is not authorized for students.';
+    const prev = get();
+    const sameScope = prev.scopeKey === scopeKey;
+    const hadAuthoritative =
+      sameScope && prev.source != null && prev.classrooms.length >= 0 && prev.lastFetched != null;
+    const epoch = ++refreshEpoch;
+
+    if (!sameScope) {
+      // Never display previous-scope inventory under the new scopeKey.
+      set({
+        scopeKey,
+        classrooms: [],
+        count: 0,
+        source: null,
+        loading: true,
+        unavailable: false,
+        error: null,
+        lastFetched: null,
+        contractNote,
+      });
+    } else {
+      set({
+        // Soft loading when same-scope content already visible — consumers should not blank UI.
+        loading: !hadAuthoritative,
+        error: null,
+        unavailable: false,
+        scopeKey,
+        contractNote,
+      });
+    }
 
     const result = await loadAssessmentClassrooms(scope, {
       getCurrentScope: () => {
@@ -113,12 +137,20 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
       },
     });
 
+    // Superseded by a newer refresh (scope switch / force) — do not touch state.
+    if (epoch !== refreshEpoch) {
+      return;
+    }
+
     if (!canApplyAssessmentClassroomsResult(result, () => {
       const user = useUserStore.getState().user;
       const schoolId = useUserStore.getState().schoolId;
       return buildAssessmentClassroomScopeFromUser(user, schoolId);
     })) {
-      set({ loading: false });
+      // Only clear loading if we still own this scope.
+      if (get().scopeKey === scopeKey && epoch === refreshEpoch) {
+        set({ loading: false });
+      }
       return;
     }
 
@@ -132,26 +164,30 @@ export const useAssessmentClassroomsStore = create<AssessmentClassroomsState>((s
         unavailable: false,
         error: null,
         lastFetched: Date.now(),
+        contractNote,
       });
       return;
     }
 
-    // Failure / incomplete pagination: preserve prior complete inventory; never publish partial.
-    const prior =
-      result.prior ??
-      (get().scopeKey === scopeKey ? get().classrooms : null);
+    // Failure: preserve only same-scope prior from the service map — never prior-scope store rows.
+    const prior = result.prior;
     set({
-      scopeKey,
-      classrooms: prior ?? get().classrooms,
-      count: prior ? prior.length : get().count,
+      scopeKey: result.scopeKey,
+      classrooms: prior ?? [],
+      count: prior ? prior.length : 0,
+      source: prior
+        ? get().source ?? (teacherPath ? 'class_wise_students' : 'classes')
+        : null,
       loading: false,
       unavailable: true,
       error: result.error,
-      lastFetched: get().lastFetched,
+      lastFetched: prior ? get().lastFetched : null,
+      contractNote,
     });
   },
 
   reset: () => {
+    refreshEpoch += 1;
     invalidateAssessmentClassroomsLoads();
     set({ ...initialState });
   },

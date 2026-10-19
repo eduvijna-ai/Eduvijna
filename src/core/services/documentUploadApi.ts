@@ -48,12 +48,96 @@ export const DOCUMENT_FILE_MIME_TYPES = [
 
 export type BookPageImageSize = 'mini' | 'thumbnail' | 'medium' | 'full';
 
-export interface DocumentCameraPage {
-  pageNumber: number;
+/** Full capture snapshot retained so Crop can be reversed without losing MIME/dims. */
+export type DocumentCameraPageOriginal = {
   fileUri: string;
   fileName: string;
   mimeType: string;
   thumbnailUri?: string;
+  width?: number;
+  height?: number;
+};
+
+export interface DocumentCameraPage {
+  pageNumber: number;
+  /** Stable identity across renumber / reorder — never use array index for originals. */
+  pageId: string;
+  fileUri: string;
+  fileName: string;
+  mimeType: string;
+  thumbnailUri?: string;
+  width?: number;
+  height?: number;
+  /** First capture/import bytes + metadata; Restore returns to this. */
+  original?: DocumentCameraPageOriginal;
+}
+
+export function newCameraPageId(): string {
+  return `page-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Ensure pageId + original snapshot exist (idempotent). */
+export function normalizeCameraPage(
+  page: Omit<DocumentCameraPage, 'pageId' | 'original'> &
+    Partial<Pick<DocumentCameraPage, 'pageId' | 'original'>>,
+): DocumentCameraPage {
+  const pageId = page.pageId || newCameraPageId();
+  const original: DocumentCameraPageOriginal = page.original ?? {
+    fileUri: page.fileUri,
+    fileName: page.fileName,
+    mimeType: page.mimeType,
+    thumbnailUri: page.thumbnailUri || page.fileUri,
+    width: page.width,
+    height: page.height,
+  };
+  return {
+    pageNumber: page.pageNumber,
+    pageId,
+    fileUri: page.fileUri,
+    fileName: page.fileName,
+    mimeType: page.mimeType,
+    thumbnailUri: page.thumbnailUri || page.fileUri,
+    width: page.width,
+    height: page.height,
+    original,
+  };
+}
+
+export function restoreCameraPageOriginal(page: DocumentCameraPage): DocumentCameraPage {
+  const original = page.original;
+  if (!original) return page;
+  return {
+    ...page,
+    fileUri: original.fileUri,
+    fileName: original.fileName,
+    mimeType: original.mimeType,
+    thumbnailUri: original.thumbnailUri || original.fileUri,
+    width: original.width,
+    height: original.height,
+    original,
+  };
+}
+
+export function applyCroppedJpegToCameraPage(
+  page: DocumentCameraPage,
+  cropped: {
+    uri: string;
+    fileName: string;
+    mimeType: 'image/jpeg';
+    width: number;
+    height: number;
+  },
+): DocumentCameraPage {
+  const base = normalizeCameraPage(page);
+  return {
+    ...base,
+    fileUri: cropped.uri,
+    thumbnailUri: cropped.uri,
+    fileName: cropped.fileName,
+    mimeType: cropped.mimeType,
+    width: cropped.width,
+    height: cropped.height,
+  };
 }
 
 export interface DocumentUploadBook {
@@ -128,24 +212,25 @@ export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pag
 
 export function createCameraSessionBook(firstPage: DocumentCameraPage, title?: string): DocumentUploadBook {
   const now = new Date().toISOString();
-  const sessionTitle = sanitizeCameraDocumentTitle(title || firstPage.fileName);
+  const normalized = normalizeCameraPage(firstPage);
+  const sessionTitle = sanitizeCameraDocumentTitle(title || normalized.fileName);
   return {
     id: `camera-${Date.now()}`,
     title: sessionTitle,
-    originalName: firstPage.fileName,
+    originalName: normalized.fileName,
     totalPages: 1,
-    pages: [firstPage],
+    pages: [normalized],
     isCameraSession: true,
-    mimeType: 'image/jpeg',
-    thumbnailUri: firstPage.thumbnailUri || firstPage.fileUri,
-    fileUri: firstPage.fileUri,
+    mimeType: normalized.mimeType || 'image/jpeg',
+    thumbnailUri: normalized.thumbnailUri || normalized.fileUri,
+    fileUri: normalized.fileUri,
     createdAt: now,
     ocrExtracted: false,
   };
 }
 
 export function appendCameraPage(book: DocumentUploadBook, page: DocumentCameraPage): DocumentUploadBook {
-  const pages = [...(book.pages || []), page].map((p, index) => ({
+  const pages = [...(book.pages || []), normalizeCameraPage(page)].map((p, index) => ({
     ...p,
     pageNumber: index + 1,
   }));
@@ -198,10 +283,13 @@ export function removeCameraPage(book: DocumentUploadBook, pageNumber: number): 
   const pages = (book.pages || []).filter((p) => p.pageNumber !== pageNumber);
   if (pages.length === 0) return null;
 
-  const renumbered = pages.map((p, index) => ({
-    ...p,
-    pageNumber: index + 1,
-  }));
+  // Renumber display order only — pageId + original travel with each page.
+  const renumbered = pages.map((p, index) =>
+    normalizeCameraPage({
+      ...p,
+      pageNumber: index + 1,
+    }),
+  );
 
   return {
     ...book,

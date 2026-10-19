@@ -33,6 +33,7 @@ import {
   createCameraSessionBook,
   appendCameraPage,
   mergeCameraSessionPages,
+  normalizeCameraPage,
   sanitizeCameraDocumentTitle,
   MAX_QUIZ_PAGES,
   MAX_IMAGE_UPLOADS,
@@ -222,13 +223,13 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     // URI is already EXIF-normalized + aspect-preserving compressed (full frame).
     const fileUri = asset.uri;
     const fileName = asset.name || `camera-${Date.now()}.jpg`;
-    const page = {
+    const page = normalizeCameraPage({
       pageNumber: 1,
       fileUri,
       fileName,
       mimeType: asset.mimeType || 'image/jpeg',
       thumbnailUri: fileUri,
-    };
+    });
 
     const title = sanitizeCameraDocumentTitle(bookName || fileName);
     let next: DocumentUploadBook;
@@ -396,13 +397,15 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
           originalName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
           sourceMimeType: asset.mimeType,
         });
-        pages.push({
-          pageNumber: i + 1,
-          fileUri: normalized.uri,
-          fileName: normalized.fileName,
-          mimeType: normalized.mimeType,
-          thumbnailUri: normalized.uri,
-        });
+        pages.push(
+          normalizeCameraPage({
+            pageNumber: i + 1,
+            fileUri: normalized.uri,
+            fileName: normalized.fileName,
+            mimeType: normalized.mimeType,
+            thumbnailUri: normalized.uri,
+          }),
+        );
       }
 
       const title = sanitizeCameraDocumentTitle(bookName || 'Gallery Document');

@@ -23,6 +23,7 @@ import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
   appendCameraPage,
+  applyCroppedJpegToCameraPage,
   extractRawContent,
   fetchBookPageImage,
   generateFromBook,
@@ -33,9 +34,11 @@ import {
   MAX_QUIZ_PAGES,
   MAX_IMAGE_UPLOADS,
   mergeCameraSessionPages,
+  normalizeCameraPage,
   remapPageSelectionAfterDelete,
   removeCameraPage,
   resolveServerBook,
+  restoreCameraPageOriginal,
   runBatchOcrOnImages,
   aggregateOcrText,
   saveImagePagesAsLibraryBook,
@@ -230,9 +233,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState]);
 
   const persistBook = useCallback(async (next: DocumentUploadBook) => {
-    setBookState(next);
-    await upsertDocumentUploadBook(next);
-    navigation.setParams?.({ book: next });
+    const withIdentity =
+      next.isCameraSession && next.pages?.length
+        ? {
+            ...next,
+            pages: next.pages.map((p) => normalizeCameraPage(p)),
+          }
+        : next;
+    setBookState(withIdentity);
+    await upsertDocumentUploadBook(withIdentity);
+    navigation.setParams?.({ book: withIdentity });
   }, [navigation]);
 
   useEffect(() => {
@@ -360,32 +370,68 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (!bookState?.isCameraSession) return;
     const current = bookState.pages?.find((p) => p.pageNumber === page);
     const sourceUri = current?.fileUri || getLocalPageUri(bookState, page);
-    if (!sourceUri) {
+    if (!current || !sourceUri) {
       setError('No image available to crop for this page.');
       return;
     }
     try {
       setError('');
       setCapturingPage(true);
-      const result = await openImageCropper(sourceUri);
-      if (result === 'cancelled' || result === 'retake' || !result?.uri) return;
-      const croppedUri = result.uri;
+      const result = await openImageCropper(sourceUri, {
+        suggestedFileName: current.fileName,
+      });
+      if (result.kind === 'cancelled' || result.kind === 'retake') return;
+      if (result.kind === 'unchanged') {
+        // Keep current bytes/MIME — do not relabel as JPEG and do not claim Restore.
+        return;
+      }
+      const targetPageId = current.pageId;
       const nextPages = (bookState.pages || []).map((p) =>
-        p.pageNumber === page
-          ? {
-              ...p,
-              fileUri: croppedUri,
-              thumbnailUri: croppedUri,
-              mimeType: p.mimeType || 'image/jpeg',
-            }
+        p.pageId === targetPageId
+          ? applyCroppedJpegToCameraPage(p, {
+              uri: result.uri,
+              fileName: result.fileName,
+              mimeType: result.mimeType,
+              width: result.width,
+              height: result.height,
+            })
           : p,
       );
       const next = { ...bookState, pages: nextPages };
       await persistBook(next);
-      setPreviewImages((prev) => ({ ...prev, [page]: croppedUri }));
-      setThumbImages((prev) => ({ ...prev, [page]: croppedUri }));
+      setPreviewImages((prev) => ({ ...prev, [page]: result.uri }));
+      setThumbImages((prev) => ({ ...prev, [page]: result.uri }));
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
+  const handleRestoreCurrentPageOriginal = async () => {
+    if (!bookState?.isCameraSession) return;
+    const current = bookState.pages?.find((p) => p.pageNumber === page);
+    if (!current?.original) {
+      setError('No original image available to restore for this page.');
+      return;
+    }
+    try {
+      setError('');
+      setCapturingPage(true);
+      const targetPageId = current.pageId;
+      const restored = restoreCameraPageOriginal(current);
+      const nextPages = (bookState.pages || []).map((p) =>
+        p.pageId === targetPageId ? restored : p,
+      );
+      const next = { ...bookState, pages: nextPages };
+      await persistBook(next);
+      setPreviewImages((prev) => ({ ...prev, [page]: restored.fileUri }));
+      setThumbImages((prev) => ({
+        ...prev,
+        [page]: restored.thumbnailUri || restored.fileUri,
+      }));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to restore original page.'));
     } finally {
       setCapturingPage(false);
     }
@@ -405,13 +451,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       const captured = await captureDocumentImage();
       if (!captured) return;
 
-      const newPage = {
+      const newPage = normalizeCameraPage({
         pageNumber: (bookState.pages?.length || 0) + 1,
         fileUri: captured.uri,
         fileName: captured.name,
         mimeType: captured.mimeType || 'image/jpeg',
         thumbnailUri: captured.uri,
-      };
+      });
 
       const next = appendCameraPage(bookState, newPage);
       await persistBook(next);
@@ -459,13 +505,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           originalName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
           sourceMimeType: asset.mimeType,
         });
-        pages.push({
-          pageNumber: existingCount + i + 1,
-          fileUri: normalized.uri,
-          fileName: normalized.fileName,
-          mimeType: normalized.mimeType,
-          thumbnailUri: normalized.uri,
-        });
+        pages.push(
+          normalizeCameraPage({
+            pageNumber: existingCount + i + 1,
+            fileUri: normalized.uri,
+            fileName: normalized.fileName,
+            mimeType: normalized.mimeType,
+            thumbnailUri: normalized.uri,
+          }),
+        );
       }
 
       const next = mergeCameraSessionPages(bookState, pages);
@@ -1033,6 +1081,29 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                   >
                     <Ionicons name="crop-outline" size={14} color={colors.primary} />
                     <Text style={styles.compactActionText}>Crop</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    testID="document-preview-restore-page"
+                    accessibilityRole="button"
+                    accessibilityLabel="Restore original full-frame page"
+                    style={[
+                      styles.compactActionBtn,
+                      (capturingPage ||
+                        !bookState.pages?.find((p) => p.pageNumber === page)?.original ||
+                        bookState.pages?.find((p) => p.pageNumber === page)?.fileUri ===
+                          bookState.pages?.find((p) => p.pageNumber === page)?.original?.fileUri) &&
+                        styles.disabled,
+                    ]}
+                    onPress={handleRestoreCurrentPageOriginal}
+                    disabled={
+                      capturingPage ||
+                      !bookState.pages?.find((p) => p.pageNumber === page)?.original ||
+                      bookState.pages?.find((p) => p.pageNumber === page)?.fileUri ===
+                        bookState.pages?.find((p) => p.pageNumber === page)?.original?.fileUri
+                    }
+                  >
+                    <Ionicons name="refresh-outline" size={14} color={colors.primary} />
+                    <Text style={styles.compactActionText}>Restore</Text>
                   </TouchableOpacity>
                 </>
               )}

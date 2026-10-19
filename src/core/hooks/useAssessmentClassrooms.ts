@@ -29,6 +29,8 @@ export function useAssessmentClassrooms(options?: { refreshOnMount?: boolean }) 
   const unavailable = useAssessmentClassroomsStore((s) => s.unavailable);
   const error = useAssessmentClassroomsStore((s) => s.error);
   const contractNote = useAssessmentClassroomsStore((s) => s.contractNote);
+  const lastFetched = useAssessmentClassroomsStore((s) => s.lastFetched);
+  const storeScopeKey = useAssessmentClassroomsStore((s) => s.scopeKey);
   const ensureLoaded = useAssessmentClassroomsStore((s) => s.ensureLoaded);
   const refreshStore = useAssessmentClassroomsStore((s) => s.refresh);
 
@@ -64,15 +66,23 @@ export function useAssessmentClassrooms(options?: { refreshOnMount?: boolean }) 
     [classrooms],
   );
 
+  const inventoryForCurrentScope = Boolean(scopeKey) && storeScopeKey === scopeKey;
+  /** Authoritative same-scope inventory is known (success or preserved prior after failure). */
+  const inventoryKnown =
+    inventoryForCurrentScope && (source != null || (unavailable && lastFetched != null));
+
   return {
-    classrooms,
-    count,
-    options: optionsList,
-    source,
-    loading,
-    unavailable,
-    error,
+    classrooms: inventoryForCurrentScope ? classrooms : [],
+    count: inventoryForCurrentScope ? count : 0,
+    options: inventoryForCurrentScope ? optionsList : [],
+    source: inventoryForCurrentScope ? source : null,
+    loading: inventoryForCurrentScope ? loading : Boolean(isAuthenticated && scope),
+    unavailable: inventoryForCurrentScope ? unavailable : false,
+    error: inventoryForCurrentScope ? error : null,
     contractNote,
+    lastFetched: inventoryForCurrentScope ? lastFetched : null,
+    scopeKey,
+    inventoryKnown,
     refresh,
   };
 }

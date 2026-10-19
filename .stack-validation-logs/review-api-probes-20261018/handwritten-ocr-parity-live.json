@@ -34,7 +34,7 @@
       "elapsedMs": 99
     }
   ],
-  "conclusion": "SHARED_MATHPIX_GATE: same readable image → 503 Mathpix on both mobile/dev-api and deployed-web /api/v1. Mobile multipart field `files`, JPEG MIME, and full-resolution local URI are correct. Generation remains blocked until MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX are configured on the shared backend. Do not mark handwritten generation fixed until image → OCR text → generate assessment → usable quiz succeeds.",
+  "conclusion": "SHARED_MATHPIX_GATE: authorized probes of the same readable image against mobile/dev-api and deployed-web both return HTTP 503 Mathpix configuration. A direct API probe reaching this gate does not alone prove the mobile multipart client is defect-free under every device URI/MIME path; it does confirm the shared backend provider gate blocks generation for both clients today. Mobile keeps images/form values and offers deliberate Retry (no auto-retry loop). Generation is not fixed until image → OCR text → usable assessment succeeds after MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX are configured on the API origin. This workspace has no authorized secret/config write access to enable Mathpix on hosted dev-api.",
   "generationFixed": false,
   "relatedStudentInventoryEvidence": "student-classroom-and-ocr-live.json"
 }

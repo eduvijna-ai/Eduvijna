@@ -17,20 +17,22 @@ import {
 import * as assessmentClassroomsService from '../core/services/assessmentClassrooms.service';
 
 const mockUser = { id: '66', role: 'instructor' };
+let mockSchoolId: string | number | null = 1;
 
 jest.mock('../core/store/user.store', () => ({
   useUserStore: Object.assign(
     jest.fn((selector: (s: any) => unknown) =>
-      selector({ user: mockUser, schoolId: 1, isAuthenticated: true }),
+      selector({ user: mockUser, schoolId: mockSchoolId, isAuthenticated: true }),
     ),
     {
-      getState: () => ({ user: mockUser, schoolId: 1, isAuthenticated: true }),
+      getState: () => ({ user: mockUser, schoolId: mockSchoolId, isAuthenticated: true }),
     },
   ),
 }));
 
 describe('analytics classroom inventory lifecycle', () => {
   beforeEach(() => {
+    mockSchoolId = 1;
     assessmentClassroomsService.invalidateAssessmentClassroomsLoads();
     useAssessmentClassroomsStore.getState().reset();
     jest.restoreAllMocks();
@@ -136,5 +138,51 @@ describe('analytics classroom inventory lifecycle', () => {
     const metricsDeps = ['appliedStart', 'appliedEnd', 'explicit_refresh'];
     expect(inventoryDeps).not.toContain('appliedStart');
     expect(metricsDeps).not.toContain('classroom_inventory_array');
+  });
+
+  it('scope switch clears classrooms before fetch; failure does not resurrect prior-scope rows', async () => {
+    const scopeA = buildAssessmentClassroomScopeFromUser({ id: '66', role: 'instructor' }, 1)!;
+    const scopeB = buildAssessmentClassroomScopeFromUser({ id: '66', role: 'instructor' }, 99)!;
+    const spy = jest.spyOn(assessmentClassroomsService, 'loadAssessmentClassrooms');
+
+    spy.mockResolvedValueOnce({
+      kind: 'ok',
+      scopeKey: assessmentClassroomsService.assessmentClassroomScopeKey(scopeA),
+      generation: assessmentClassroomsService.getAssessmentClassroomsLoadGeneration(),
+      classrooms: [
+        {
+          classroom_id: 'old_scope_class',
+          classroom_name: 'Old',
+          instructor: {
+            instructor_id: '0',
+            instructor_username: 'x',
+            instructor_fullname: 'x',
+            instructor_avatar_url: null,
+          },
+          total_students: 2,
+        },
+      ],
+      count: 1,
+      source: 'class_wise_students',
+      pagesFetched: 1,
+    });
+    await useAssessmentClassroomsStore.getState().refresh(scopeA);
+    expect(useAssessmentClassroomsStore.getState().classrooms[0].classroom_id).toBe('old_scope_class');
+
+    mockSchoolId = 99;
+    spy.mockResolvedValueOnce({
+      kind: 'failed',
+      scopeKey: assessmentClassroomsService.assessmentClassroomScopeKey(scopeB),
+      generation: assessmentClassroomsService.getAssessmentClassroomsLoadGeneration(),
+      error: 'network',
+      prior: null,
+    });
+    await useAssessmentClassroomsStore.getState().refresh(scopeB);
+
+    const state = useAssessmentClassroomsStore.getState();
+    expect(state.scopeKey).toBe(assessmentClassroomsService.assessmentClassroomScopeKey(scopeB));
+    expect(state.classrooms).toEqual([]);
+    expect(state.count).toBe(0);
+    expect(state.unavailable).toBe(true);
   });
 });

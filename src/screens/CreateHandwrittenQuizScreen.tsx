@@ -8,7 +8,7 @@
  * 4. Generate quiz via /api/v1/quiz/generate-strict → QuizTakingScreen
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -41,10 +41,51 @@ import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
 import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
 
-interface PickedImage {
+interface PickedImageOriginal {
   uri: string;
   name: string;
   type: string;
+  width?: number;
+  height?: number;
+}
+
+interface PickedImage {
+  id: string;
+  uri: string;
+  name: string;
+  type: string;
+  width?: number;
+  height?: number;
+  original: PickedImageOriginal;
+}
+
+function newPickedImageId(): string {
+  return `hw-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function makePickedImage(params: {
+  uri: string;
+  name: string;
+  type: string;
+  width?: number;
+  height?: number;
+}): PickedImage {
+  const original: PickedImageOriginal = {
+    uri: params.uri,
+    name: params.name,
+    type: params.type,
+    width: params.width,
+    height: params.height,
+  };
+  return {
+    id: newPickedImageId(),
+    uri: params.uri,
+    name: params.name,
+    type: params.type,
+    width: params.width,
+    height: params.height,
+    original,
+  };
 }
 
 interface WorkspacePreset {
@@ -125,9 +166,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const workspacePreset = route?.params?.workspacePreset as WorkspacePreset | undefined;
 
   const [pickedImages, setPickedImages] = useState<PickedImage[]>([]);
-  /** Original URIs before optional crop — Cancel/Restore leave capture full-frame. */
-  const originalUrisRef = useRef<Record<number, string>>({});
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('capture');
   const [extractedOcrText, setExtractedOcrText] = useState('');
   const [classValue, setClassValue] = useState('');
@@ -195,11 +234,11 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
               originalName: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
               sourceMimeType: asset.mimeType,
             });
-            return {
+            return makePickedImage({
               uri: normalized.uri,
               name: normalized.fileName,
               type: normalized.mimeType,
-            };
+            });
           }),
         );
         const combined = [...pickedImages, ...newImages].slice(0, MAX_IMAGE_UPLOADS);
@@ -207,10 +246,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         }
         setPickedImages(combined);
-        combined.forEach((img, i) => {
-          if (!originalUrisRef.current[i]) originalUrisRef.current[i] = img.uri;
-        });
-        setSelectedImageIndex(Math.max(0, combined.length - 1));
+        setSelectedImageId(combined[combined.length - 1]?.id ?? null);
         setError('');
       }
     } catch {
@@ -228,12 +264,13 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       if (!captured) return;
       // Full frame already EXIF-normalized + compressed — do not compress again.
       setPickedImages((prev) => {
-        const next = [
-          ...prev,
-          { uri: captured.uri, name: captured.name, type: captured.mimeType || 'image/jpeg' },
-        ];
-        originalUrisRef.current[next.length - 1] = captured.uri;
-        setSelectedImageIndex(next.length - 1);
+        const added = makePickedImage({
+          uri: captured.uri,
+          name: captured.name,
+          type: captured.mimeType || 'image/jpeg',
+        });
+        const next = [...prev, added];
+        setSelectedImageId(added.id);
         return next;
       });
       setError('');
@@ -243,41 +280,47 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     }
   };
 
-  const handleRemoveImage = (index: number) => {
+  const handleRemoveImage = (imageId: string) => {
     setPickedImages((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      const remapped: Record<number, string> = {};
-      next.forEach((img, i) => {
-        const oldIdx = i < index ? i : i + 1;
-        remapped[i] = originalUrisRef.current[oldIdx] || img.uri;
+      const next = prev.filter((p) => p.id !== imageId);
+      setSelectedImageId((sel) => {
+        if (sel && next.some((p) => p.id === sel)) return sel;
+        return next[next.length - 1]?.id ?? null;
       });
-      originalUrisRef.current = remapped;
-      setSelectedImageIndex((sel) => Math.min(sel, Math.max(0, next.length - 1)));
       return next;
     });
   };
 
+  const selectedImage =
+    pickedImages.find((p) => p.id === selectedImageId) || pickedImages[pickedImages.length - 1] || null;
+  const selectedImageCanRestore =
+    !!selectedImage?.original && selectedImage.uri !== selectedImage.original.uri;
+
   const handleCropSelectedImage = async () => {
-    const idx = selectedImageIndex;
-    const img = pickedImages[idx];
+    const img = selectedImage;
     if (!img?.uri) {
       Alert.alert('Crop', 'Select an image first.');
       return;
     }
-    if (!originalUrisRef.current[idx]) {
-      originalUrisRef.current[idx] = img.uri;
-    }
     try {
-      const result = await openImageCropper(img.uri);
-      if (result === 'cancelled' || result === 'retake' || !result?.uri) return;
+      const result = await openImageCropper(img.uri, { suggestedFileName: img.name });
+      if (result.kind === 'cancelled' || result.kind === 'retake') return;
+      if (result.kind === 'unchanged') {
+        // Keep current MIME/filename — do not relabel PNG/HEIC as JPEG.
+        return;
+      }
+      const targetId = img.id;
       setPickedImages((prev) =>
-        prev.map((p, i) =>
-          i === idx
+        prev.map((p) =>
+          p.id === targetId
             ? {
                 ...p,
                 uri: result.uri,
-                name: p.name.replace(/\.\w+$/, '') + '_crop.jpg',
-                type: 'image/jpeg',
+                name: result.fileName,
+                type: result.mimeType,
+                width: result.width,
+                height: result.height,
+                original: p.original,
               }
             : p,
         ),
@@ -289,11 +332,24 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   };
 
   const handleRestoreOriginalImage = () => {
-    const idx = selectedImageIndex;
-    const original = originalUrisRef.current[idx];
-    if (!original) return;
+    const img = selectedImage;
+    if (!img?.original) return;
+    const targetId = img.id;
+    const original = img.original;
     setPickedImages((prev) =>
-      prev.map((p, i) => (i === idx ? { ...p, uri: original } : p)),
+      prev.map((p) =>
+        p.id === targetId
+          ? {
+              ...p,
+              uri: original.uri,
+              name: original.name,
+              type: original.type,
+              width: original.width,
+              height: original.height,
+              original,
+            }
+          : p,
+      ),
     );
   };
 
@@ -492,39 +548,55 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const processingLabel =
     processingStep === 'ocr' ? 'Extracting text from images…' : 'Generating assessment…';
 
-  const renderImageThumbnail = ({ item, index }: { item: PickedImage; index: number }) => (
-    <View
-      style={[
-        styles.thumbnailContainer,
-        selectedImageIndex === index && { borderColor: colors.primary, borderWidth: 2 },
-      ]}
-    >
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => setSelectedImageIndex(index)}
-        onLongPress={() => setFullPreviewUri(item.uri)}
-        accessibilityRole="imagebutton"
-        accessibilityLabel={`Select handwritten page ${index + 1}. Long press to preview.`}
-        accessibilityState={{ selected: selectedImageIndex === index }}
-        disabled={isProcessing}
+  const renderImageThumbnail = ({ item, index }: { item: PickedImage; index: number }) => {
+    const isSelected = (selectedImageId ?? pickedImages[pickedImages.length - 1]?.id) === item.id;
+    return (
+      <View
+        style={[
+          styles.thumbnailContainer,
+          isSelected && { borderColor: colors.primary, borderWidth: 2 },
+        ]}
       >
-        <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="contain" />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.removeImageBtn}
-        onPress={() => handleRemoveImage(index)}
-        disabled={isProcessing}
-        accessibilityRole="button"
-        accessibilityLabel={`Remove page ${index + 1}`}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="close-circle" size={22} color="#EF4444" />
-      </TouchableOpacity>
-      <View style={styles.imageIndexBadge}>
-        <Text style={styles.imageIndexText}>{index + 1}</Text>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => setFullPreviewUri(item.uri)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Preview handwritten page ${index + 1} fullscreen`}
+          disabled={isProcessing}
+        >
+          <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="contain" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.selectImageBtn}
+          onPress={() => setSelectedImageId(item.id)}
+          disabled={isProcessing}
+          accessibilityRole="button"
+          accessibilityLabel={`Select page ${index + 1} for crop`}
+          accessibilityState={{ selected: isSelected }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={20}
+            color={isSelected ? colors.primary : '#94A3B8'}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.removeImageBtn}
+          onPress={() => handleRemoveImage(item.id)}
+          disabled={isProcessing}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove page ${index + 1}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="close-circle" size={22} color="#EF4444" />
+        </TouchableOpacity>
+        <View style={styles.imageIndexBadge}>
+          <Text style={styles.imageIndexText}>{index + 1}</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const footerLabel =
     flowPhase === 'capture'
@@ -621,11 +693,10 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
                 style={[
                   styles.uploadButton,
                   { backgroundColor: colors.primary + '18', borderColor: colors.primary },
-                  (isProcessing || !originalUrisRef.current[selectedImageIndex]) &&
-                    styles.uploadButtonDisabled,
+                  (isProcessing || !selectedImageCanRestore) && styles.uploadButtonDisabled,
                 ]}
                 onPress={handleRestoreOriginalImage}
-                disabled={isProcessing || !originalUrisRef.current[selectedImageIndex]}
+                disabled={isProcessing || !selectedImageCanRestore}
               >
                 <Ionicons name="refresh-outline" size={20} color={colors.primary} />
                 <Text style={[styles.uploadButtonText, { color: colors.primary }]}>Restore</Text>
@@ -637,7 +708,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
             <FlatList
               data={pickedImages}
               renderItem={renderImageThumbnail}
-              keyExtractor={(_, i) => i.toString()}
+              keyExtractor={(item) => item.id}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.thumbnailList}
@@ -905,6 +976,14 @@ function createStyles(colors: any) {
       borderRadius: 8,
       borderWidth: 1,
       borderColor: 'rgba(0,0,0,0.1)',
+    },
+    selectImageBtn: {
+      position: 'absolute',
+      top: -6,
+      left: -6,
+      zIndex: 10,
+      backgroundColor: '#FFF',
+      borderRadius: 11,
     },
     removeImageBtn: {
       position: 'absolute',
