@@ -928,6 +928,73 @@ export async function saveImagePagesAsLibraryBook(params: {
   });
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Poll the document library until an uploaded book reports enough pages
+ * (or a terminal processing status). Used after camera PDF upload before
+ * generateFromBook.
+ */
+export async function waitForLibraryBookReady(params: {
+  docId: string;
+  expectedPages: number;
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<ServerBook> {
+  const expected = Math.max(1, params.expectedPages);
+  const timeoutMs = params.timeoutMs ?? 90000;
+  const pollMs = params.pollMs ?? 1500;
+  const started = Date.now();
+  let last: ServerBook | null = null;
+
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const books = await listServerBooks();
+      const match = books.find((b) => String(b.docId) === String(params.docId));
+      if (match) {
+        last = match;
+        const status = String(match.processingStatus || '').toLowerCase();
+        if (match.totalPages >= expected || status === 'completed' || status === 'ready') {
+          return match;
+        }
+        if (status === 'failed' || status === 'error') {
+          throw new Error('Document processing failed on the server. Please try again.');
+        }
+      }
+    } catch (err: any) {
+      if (typeof err?.message === 'string' && err.message.includes('processing failed')) {
+        throw err;
+      }
+      // Transient list failures — keep polling until timeout.
+    }
+    await sleepMs(pollMs);
+  }
+
+  if (last && last.totalPages >= 1) {
+    return last;
+  }
+  throw new Error(
+    'Document is still processing. Please wait a moment and try Generate again.',
+  );
+}
+
+/**
+ * Fingerprint for camera selected pages — invalidates cached library uploads
+ * after crop / restore / add / remove / selection changes.
+ */
+export function cameraSelectedPagesFingerprint(
+  pages: Array<{ pageId?: string; pageNumber: number; fileUri: string; width?: number; height?: number }>,
+): string {
+  return pages
+    .map(
+      (p) =>
+        `${p.pageId || p.pageNumber}|${p.fileUri}|${p.width || 0}x${p.height || 0}`,
+    )
+    .join(';;');
+}
+
 /**
  * Upload a book to the server library with full metadata.
  * POST /api/v1/study-materials/books/upload

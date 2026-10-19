@@ -56,6 +56,8 @@ export default function DocumentAssessmentPageStrip({
         const isFocused = p.pageNumber === focusedPageNumber;
         const isSelected = selectedPageNumbers.has(p.pageNumber);
         const thumb = p.thumbnailUri || p.uri;
+        /** Fullscreen must use the readable current page, not a mini thumbnail. */
+        const fullUri = p.uri || p.thumbnailUri;
         return (
           <View
             key={p.pageId}
@@ -93,7 +95,7 @@ export default function DocumentAssessmentPageStrip({
             <TouchableOpacity
               onPress={() => {
                 onFocusPage(p.pageNumber);
-                if (thumb) onOpenFullscreen(thumb);
+                if (fullUri) onOpenFullscreen(fullUri);
               }}
               accessibilityRole="imagebutton"
               accessibilityLabel={`Open page ${p.pageNumber} full-screen preview`}

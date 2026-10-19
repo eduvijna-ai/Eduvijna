@@ -117,6 +117,50 @@ export async function compressCameraImage(
   });
 }
 
+/**
+ * Bake EXIF orientation into pixel bytes once (no resize).
+ * Crop geometry must use this URI + its getSize dimensions together —
+ * never mix display-oriented sizes with an unoriented pixel buffer.
+ */
+export async function bakeExifOrientation(
+  uri: string,
+  options?: { originalName?: string; sourceMimeType?: string },
+): Promise<NormalizedDocumentImage> {
+  const sourceMime =
+    options?.sourceMimeType ||
+    inferMimeFromNameOrUri(options?.originalName || uri, 'image/jpeg');
+  const fallbackName = fileNameForMime(
+    options?.originalName || `page-${Date.now()}`,
+    sourceMime,
+    `page-${Date.now()}`,
+  );
+  try {
+    const context = ImageManipulator.manipulate(uri);
+    // No rotate() call — render+save bakes EXIF into the pixel buffer once.
+    const image = await context.renderAsync();
+    const result = await image.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
+    const width = image.width;
+    const height = image.height;
+    context.release();
+    image.release();
+    return {
+      uri: result.uri,
+      mimeType: 'image/jpeg',
+      fileName: fileNameForMime(options?.originalName || fallbackName, 'image/jpeg', 'page'),
+      convertedToJpeg: true,
+      width: result.width || width,
+      height: result.height || height,
+    };
+  } catch {
+    return {
+      uri,
+      mimeType: sourceMime,
+      fileName: fallbackName,
+      convertedToJpeg: false,
+    };
+  }
+}
+
 export {
   computeAspectPreservingResize,
   computeContainFitBitmapSize,

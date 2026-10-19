@@ -1,0 +1,46 @@
+{
+  "verifiedAt": "2026-10-19T11:01:26.029Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "contract": "selected images → PDF → POST /api/v1/study-materials/books/upload → wait ready → POST /api/v1/study-materials/generate-from-book (pages 1..N)",
+  "steps": [
+    {
+      "step": "books_upload",
+      "status": "passed",
+      "httpStatus": 201,
+      "docIdPresent": true
+    },
+    {
+      "step": "wait_book_ready",
+      "status": "passed",
+      "pages": 1,
+      "processingStatus": "completed"
+    },
+    {
+      "step": "generate_from_book",
+      "status": "passed",
+      "httpStatus": 200,
+      "questionCount": 3,
+      "message": null
+    },
+    {
+      "step": "save_history",
+      "status": "passed",
+      "httpStatus": 201,
+      "savedIdPresent": true
+    },
+    {
+      "step": "reopen_history",
+      "status": "passed",
+      "httpStatus": 200,
+      "questionCount": 1
+    },
+    {
+      "step": "handwritten_batch_ocr_still_blocked",
+      "status": "expected_blocked",
+      "httpStatus": 503,
+      "detailPreview": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX."
+    }
+  ],
+  "status": "passed",
+  "handwrittenDeferred": "batch-ocr / Mathpix not used for Document Assessment camera path"
+}

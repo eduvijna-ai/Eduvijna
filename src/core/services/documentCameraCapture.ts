@@ -7,7 +7,11 @@
  */
 
 import * as ImagePicker from 'expo-image-picker';
-import { compressCameraImage, type NormalizedDocumentImage } from './documentImageUtils';
+import {
+  bakeExifOrientation,
+  compressCameraImage,
+  type NormalizedDocumentImage,
+} from './documentImageUtils';
 import { openImageCropper } from './imageCropSession';
 import { inferMimeFromNameOrUri } from '../utils/documentImageGeometry';
 
@@ -97,8 +101,17 @@ export async function captureAndCropDocumentImage(opts?: {
     }
 
     const captured = cameraResult.assets[0];
-    const cropResult = await openImageCropper(captured.uri, {
-      suggestedFileName: captured.fileName || undefined,
+    const sourceMime =
+      captured.mimeType ||
+      inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+    // Bake EXIF before crop so Image.getSize and manipulator crop share one buffer.
+    const oriented = await bakeExifOrientation(captured.uri, {
+      originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+      sourceMimeType: sourceMime,
+    });
+
+    const cropResult = await openImageCropper(oriented.uri, {
+      suggestedFileName: oriented.fileName || captured.fileName || undefined,
     });
 
     if (cropResult.kind === 'cancelled') {
@@ -108,19 +121,18 @@ export async function captureAndCropDocumentImage(opts?: {
       continue;
     }
 
-    const sourceMime =
+    const cropMime =
       cropResult.kind === 'cropped'
         ? cropResult.mimeType
-        : captured.mimeType ||
-          inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+        : oriented.mimeType || sourceMime;
     const sourceUri = cropResult.uri;
     const originalName =
       cropResult.kind === 'cropped'
         ? cropResult.fileName
-        : captured.fileName || `camera-${Date.now()}.jpg`;
+        : oriented.fileName || captured.fileName || `camera-${Date.now()}.jpg`;
     const normalized = await compressCameraImage(sourceUri, {
       originalName,
-      sourceMimeType: sourceMime,
+      sourceMimeType: cropMime,
     });
     return toCaptured(normalized, originalName, captured.fileSize);
   }

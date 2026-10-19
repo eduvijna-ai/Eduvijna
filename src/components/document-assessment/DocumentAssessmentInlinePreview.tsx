@@ -51,6 +51,10 @@ export default function DocumentAssessmentInlinePreview({
 }: Props) {
   const [zoom, setZoom] = useState(100);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+  const [viewport, setViewport] = useState({
+    width: Math.max(200, Dimensions.get('window').width - 32),
+    height: 220,
+  });
   const hScrollRef = useRef<ScrollView>(null);
   const vScrollRef = useRef<ScrollView>(null);
 
@@ -80,8 +84,8 @@ export default function DocumentAssessmentInlinePreview({
     };
   }, [uri]);
 
-  const viewportW = Dimensions.get('window').width - 32;
-  const viewportH = 220;
+  const viewportW = viewport.width;
+  const viewportH = viewport.height;
 
   const fitSize = useMemo(() => {
     if (natural?.width && natural?.height) {
@@ -157,12 +161,18 @@ export default function DocumentAssessmentInlinePreview({
 
       <ScrollView
         ref={vScrollRef}
-        style={[styles.previewWrap, { borderColor: colors.border, backgroundColor: colors.inputBackground, height: viewportH }]}
+        style={[styles.previewWrap, { borderColor: colors.border, backgroundColor: colors.inputBackground, height: 220 }]}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) {
+            setViewport({ width, height });
+          }
+        }}
         contentContainerStyle={[
           styles.previewContent,
           {
             width: Math.max(viewportW, displayW),
-            minHeight: viewportH,
+            minHeight: Math.max(viewportH, displayH),
           },
         ]}
         horizontal={false}

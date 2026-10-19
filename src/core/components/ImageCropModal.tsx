@@ -1,6 +1,11 @@
 /**
  * Free-form image crop modal for post-camera capture.
  * Uses PanResponder + expo-image-manipulator (no ImagePicker allowsEditing).
+ *
+ * Proven contract:
+ * 1) Bake EXIF into pixels before measuring / cropping.
+ * 2) Gesture + crop overlay share the stage coordinate system (pageX − stage origin).
+ * 3) mapCropRectToSourcePixels uses getSize of that same baked buffer.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,9 +32,13 @@ import {
   resolveCropSession,
   subscribeCropSession,
 } from '../services/imageCropSession';
-import { mapCropRectToSourcePixels } from '../utils/imageCropGeometry';
-
-type Rect = { x: number; y: number; width: number; height: number };
+import { bakeExifOrientation } from '../services/documentImageUtils';
+import {
+  containFitRect,
+  mapCropRectToSourcePixels,
+  pagePointToStageLocal,
+  type CropRect,
+} from '../utils/imageCropGeometry';
 
 const MIN_CROP_PX = 48;
 const HANDLE_SIZE = 28;
@@ -39,37 +48,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function getImageSize(uri: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    Image.getSize(
-      uri,
-      (width, height) => resolve({ width, height }),
-      (err) => reject(err),
-    );
-  });
-}
-
-function containRect(
-  containerW: number,
-  containerH: number,
-  imageW: number,
-  imageH: number,
-): Rect {
-  if (!containerW || !containerH || !imageW || !imageH) {
-    return { x: 0, y: 0, width: containerW, height: containerH };
-  }
-  const scale = Math.min(containerW / imageW, containerH / imageH);
-  const width = imageW * scale;
-  const height = imageH * scale;
-  return {
-    x: (containerW - width) / 2,
-    y: (containerH - height) / 2,
-    width,
-    height,
-  };
-}
-
-function defaultCropRect(bounds: Rect): Rect {
+function defaultCropRect(bounds: CropRect): CropRect {
   const insetX = bounds.width * INSET_RATIO;
   const insetY = bounds.height * INSET_RATIO;
   return {
@@ -80,7 +59,7 @@ function defaultCropRect(bounds: Rect): Rect {
   };
 }
 
-function clampCropToBounds(crop: Rect, bounds: Rect): Rect {
+function clampCropToBounds(crop: CropRect, bounds: CropRect): CropRect {
   const width = clamp(crop.width, MIN_CROP_PX, bounds.width);
   const height = clamp(crop.height, MIN_CROP_PX, bounds.height);
   const x = clamp(crop.x, bounds.x, bounds.x + bounds.width - width);
@@ -88,19 +67,13 @@ function clampCropToBounds(crop: Rect, bounds: Rect): Rect {
   return { x, y, width, height };
 }
 
-type DragMode =
-  | 'move'
-  | 'tl'
-  | 'tr'
-  | 'bl'
-  | 'br'
-  | null;
+type DragMode = 'move' | 'tl' | 'tr' | 'bl' | 'br' | null;
 
 async function applyCrop(
   uri: string,
   natural: { width: number; height: number },
-  bounds: Rect,
-  crop: Rect,
+  bounds: CropRect,
+  crop: CropRect,
 ): Promise<{ uri: string; width: number; height: number }> {
   const { originX, originY, width, height } = mapCropRectToSourcePixels(natural, bounds, crop);
 
@@ -119,21 +92,25 @@ async function applyCrop(
 
 export default function ImageCropModal() {
   const insets = useSafeAreaInsets();
-  const [imageUri, setImageUri] = useState<string | null>(getPendingCropUri());
+  const [pendingUri, setPendingUri] = useState<string | null>(getPendingCropUri());
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [crop, setCrop] = useState<Rect | null>(null);
+  const [crop, setCrop] = useState<CropRect | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState('');
 
-  const cropRef = useRef<Rect | null>(null);
-  const boundsRef = useRef<Rect | null>(null);
+  const cropRef = useRef<CropRect | null>(null);
+  const boundsRef = useRef<CropRect | null>(null);
   const dragModeRef = useRef<DragMode>(null);
-  const startCropRef = useRef<Rect | null>(null);
+  const startCropRef = useRef<CropRect | null>(null);
+  const stageRef = useRef<View | null>(null);
+  const stageWindowOriginRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     return subscribeCropSession(() => {
-      setImageUri(getPendingCropUri());
+      setPendingUri(getPendingCropUri());
     });
   }, []);
 
@@ -143,31 +120,50 @@ export default function ImageCropModal() {
     setNaturalSize(null);
     setCrop(null);
     cropRef.current = null;
+    setImageUri(null);
 
-    if (!imageUri) return undefined;
+    if (!pendingUri) return undefined;
 
     (async () => {
+      setPreparing(true);
       try {
-        const size = await getImageSize(imageUri);
-        if (!cancelled) setNaturalSize(size);
+        const baked = await bakeExifOrientation(pendingUri, {
+          originalName: getPendingCropSuggestedFileName(),
+        });
+        if (cancelled) return;
+        const uri = baked.uri;
+        const width = baked.width;
+        const height = baked.height;
+        if (width && height) {
+          setNaturalSize({ width, height });
+        } else {
+          await new Promise<void>((resolve, reject) => {
+            Image.getSize(
+              uri,
+              (w, h) => {
+                if (!cancelled) setNaturalSize({ width: w, height: h });
+                resolve();
+              },
+              reject,
+            );
+          });
+        }
+        if (!cancelled) setImageUri(uri);
       } catch {
         if (!cancelled) setError('Could not load image for cropping.');
+      } finally {
+        if (!cancelled) setPreparing(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [imageUri]);
+  }, [pendingUri]);
 
   const imageBounds = useMemo(() => {
     if (!naturalSize || !containerSize.width || !containerSize.height) return null;
-    return containRect(
-      containerSize.width,
-      containerSize.height,
-      naturalSize.width,
-      naturalSize.height,
-    );
+    return containFitRect(containerSize, naturalSize);
   }, [naturalSize, containerSize]);
 
   useEffect(() => {
@@ -178,12 +174,20 @@ export default function ImageCropModal() {
     cropRef.current = next;
   }, [imageBounds]);
 
+  const refreshStageWindowOrigin = useCallback(() => {
+    stageRef.current?.measureInWindow((x, y) => {
+      stageWindowOriginRef.current = { x, y };
+    });
+  }, []);
+
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setContainerSize({ width, height });
+    // Layout can shift with safe-area / keyboard; re-measure window origin.
+    requestAnimationFrame(refreshStageWindowOrigin);
   };
 
-  const hitTest = (x: number, y: number, rect: Rect): DragMode => {
+  const hitTest = (x: number, y: number, rect: CropRect): DragMode => {
     const hs = HANDLE_SIZE;
     if (x >= rect.x - hs / 2 && x <= rect.x + hs / 2 && y >= rect.y - hs / 2 && y <= rect.y + hs / 2) {
       return 'tl';
@@ -212,12 +216,7 @@ export default function ImageCropModal() {
     ) {
       return 'br';
     }
-    if (
-      x >= rect.x &&
-      x <= rect.x + rect.width &&
-      y >= rect.y &&
-      y <= rect.y + rect.height
-    ) {
+    if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
       return 'move';
     }
     return null;
@@ -229,7 +228,7 @@ export default function ImageCropModal() {
     const mode = dragModeRef.current;
     if (!bounds || !start || !mode) return;
 
-    let next: Rect = { ...start };
+    let next: CropRect = { ...start };
 
     if (mode === 'move') {
       next.x = start.x + dx;
@@ -269,8 +268,13 @@ export default function ImageCropModal() {
         onPanResponderGrant: (e: GestureResponderEvent) => {
           const rect = cropRef.current;
           if (!rect) return;
-          const { locationX, locationY } = e.nativeEvent;
-          dragModeRef.current = hitTest(locationX, locationY, rect);
+          refreshStageWindowOrigin();
+          const { pageX, pageY } = e.nativeEvent;
+          const local = pagePointToStageLocal(
+            { x: pageX, y: pageY },
+            stageWindowOriginRef.current,
+          );
+          dragModeRef.current = hitTest(local.x, local.y, rect);
           startCropRef.current = { ...rect };
         },
         onPanResponderMove: (_e, gesture: PanResponderGestureState) => {
@@ -285,28 +289,28 @@ export default function ImageCropModal() {
           startCropRef.current = cropRef.current;
         },
       }),
-    [applyDrag],
+    [applyDrag, refreshStageWindowOrigin],
   );
 
   const handleCancel = () => {
-    if (processing) return;
+    if (processing || preparing) return;
     resolveCropSession({ kind: 'cancelled' });
   };
 
   const handleRetake = () => {
-    if (processing) return;
+    if (processing || preparing) return;
     resolveCropSession({ kind: 'retake' });
   };
 
   const handleResetCrop = () => {
-    if (processing || !imageBounds) return;
+    if (processing || preparing || !imageBounds) return;
     const next = defaultCropRect(imageBounds);
     setCrop(next);
     cropRef.current = next;
   };
 
   const handleConfirm = async () => {
-    if (processing || !imageUri || !naturalSize || !imageBounds || !crop) return;
+    if (processing || preparing || !imageUri || !naturalSize || !imageBounds || !crop) return;
     setProcessing(true);
     setError('');
     try {
@@ -315,10 +319,7 @@ export default function ImageCropModal() {
         kind: 'cropped',
         uri: cropped.uri,
         mimeType: 'image/jpeg',
-        fileName: cropFileNameFromBase(
-          getPendingCropSuggestedFileName(),
-          'page',
-        ),
+        fileName: cropFileNameFromBase(getPendingCropSuggestedFileName(), 'page'),
         width: cropped.width,
         height: cropped.height,
       });
@@ -334,16 +335,18 @@ export default function ImageCropModal() {
    * Does not restore a pre-crop original — callers own that via Restore.
    */
   const handleUseCurrentImage = () => {
-    if (processing || !imageUri) return;
+    if (processing || preparing || !pendingUri) return;
+    // Prefer baked URI when available so downstream dimensions match pixels.
+    const uri = imageUri || pendingUri;
     resolveCropSession({
       kind: 'unchanged',
-      uri: imageUri,
+      uri,
       width: naturalSize?.width,
       height: naturalSize?.height,
     });
   };
 
-  const visible = !!imageUri;
+  const visible = !!pendingUri;
 
   return (
     <Modal
@@ -356,18 +359,26 @@ export default function ImageCropModal() {
         <View style={styles.header}>
           <Text style={styles.title}>Crop photo</Text>
           <Text style={styles.subtitle}>
-            Optional — keep the current image unchanged, or drag corners to crop. Restore original is on the previous screen.
+            Optional — keep the current image unchanged, or drag corners to crop. Restore original is
+            on the previous screen.
           </Text>
         </View>
 
-        <View style={styles.stage} onLayout={onLayout} {...panResponder.panHandlers}>
+        <View
+          ref={stageRef}
+          style={styles.stage}
+          onLayout={onLayout}
+          {...panResponder.panHandlers}
+          collapsable={false}
+        >
           {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.image} resizeMode="contain" />
+            <View style={styles.image} pointerEvents="none">
+              <Image source={{ uri: imageUri }} style={styles.image} resizeMode="contain" />
+            </View>
           ) : null}
 
-          {imageBounds && crop ? (
+          {imageBounds && crop && !preparing ? (
             <>
-              {/* Dim outside crop */}
               <View pointerEvents="none" style={[styles.dim, { top: 0, left: 0, right: 0, height: crop.y }]} />
               <View
                 pointerEvents="none"
@@ -419,12 +430,14 @@ export default function ImageCropModal() {
                 ]}
               />
 
-              {([
-                ['tl', crop.x, crop.y],
-                ['tr', crop.x + crop.width, crop.y],
-                ['bl', crop.x, crop.y + crop.height],
-                ['br', crop.x + crop.width, crop.y + crop.height],
-              ] as const).map(([key, cx, cy]) => (
+              {(
+                [
+                  ['tl', crop.x, crop.y],
+                  ['tr', crop.x + crop.width, crop.y],
+                  ['bl', crop.x, crop.y + crop.height],
+                  ['br', crop.x + crop.width, crop.y + crop.height],
+                ] as const
+              ).map(([key, cx, cy]) => (
                 <View
                   key={key}
                   pointerEvents="none"
@@ -452,7 +465,7 @@ export default function ImageCropModal() {
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
               onPress={handleCancel}
-              disabled={processing}
+              disabled={processing || preparing}
               accessibilityRole="button"
               accessibilityLabel="Cancel crop"
             >
@@ -462,7 +475,7 @@ export default function ImageCropModal() {
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
               onPress={handleRetake}
-              disabled={processing}
+              disabled={processing || preparing}
               accessibilityRole="button"
               accessibilityLabel="Retake photo"
             >
@@ -472,7 +485,7 @@ export default function ImageCropModal() {
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
               onPress={handleResetCrop}
-              disabled={processing || !imageBounds}
+              disabled={processing || preparing || !imageBounds}
               accessibilityRole="button"
               accessibilityLabel="Reset crop selection"
             >
@@ -484,7 +497,7 @@ export default function ImageCropModal() {
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
               onPress={handleUseCurrentImage}
-              disabled={processing || !imageUri}
+              disabled={processing || preparing || !pendingUri}
               accessibilityRole="button"
               accessibilityLabel="Keep current image without cropping"
             >
@@ -492,9 +505,14 @@ export default function ImageCropModal() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, styles.btnPrimaryWide, processing && styles.btnDisabled]}
+              style={[
+                styles.btn,
+                styles.btnPrimary,
+                styles.btnPrimaryWide,
+                (processing || preparing) && styles.btnDisabled,
+              ]}
               onPress={handleConfirm}
-              disabled={processing || !crop}
+              disabled={processing || preparing || !crop}
               accessibilityRole="button"
               accessibilityLabel="Use cropped photo"
             >

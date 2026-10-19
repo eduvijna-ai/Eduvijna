@@ -24,9 +24,9 @@ import {
   applyCroppedJpegToCameraPage,
   extractRawContent,
   fetchBookPageImage,
+  cameraSelectedPagesFingerprint,
   generateFromBook,
   generateMultimodalAssessmentFromDocument,
-  generateStrictQuizFromContent,
   getLocalPageUri,
   isPdfAsset,
   MAX_QUIZ_PAGES,
@@ -37,10 +37,9 @@ import {
   removeCameraPage,
   resolveServerBook,
   restoreCameraPageOriginal,
-  runBatchOcrOnImages,
-  aggregateOcrText,
   saveImagePagesAsLibraryBook,
   sanitizeCameraDocumentTitle,
+  waitForLibraryBookReady,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureDocumentImage } from '@core/services/documentCameraCapture';
@@ -54,7 +53,6 @@ import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi'
 import FullScreenImagePreview from '@core/components/FullScreenImagePreview';
 import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 import { useUserStore } from '@core/store/user.store';
-import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import DocumentAssessmentInlinePreview from '../../components/document-assessment/DocumentAssessmentInlinePreview';
 import DocumentAssessmentActionBar, {
@@ -67,26 +65,42 @@ import type { DocumentWorkspacePage } from '@core/types/documentAssessmentWorksp
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
 
+const MATHPIX_USER_MESSAGE =
+  'Text extraction from handwritten images is temporarily unavailable. Document Assessment camera pages use the library upload path instead — try Generate again, or use From Books.';
+
+const toUserFacingDocumentError = (raw: string, fallback: string): string => {
+  const text = String(raw || '').trim();
+  if (!text) return fallback;
+  if (/mathpix|MATHPIX_API_KEY|ENABLE_MATHPIX|OCR service is not enabled/i.test(text)) {
+    return MATHPIX_USER_MESSAGE;
+  }
+  return text;
+};
+
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  if (detail && typeof detail === 'object') {
+  let raw = '';
+  if (typeof detail === 'string' && detail.trim()) {
+    raw = detail;
+  } else if (detail && typeof detail === 'object') {
     if (typeof detail.message === 'string' && detail.message.trim()) {
       const extra = Array.isArray(detail.details)
         ? detail.details.join(', ')
         : typeof detail.details === 'string'
           ? detail.details
           : '';
-      return extra ? `${detail.message} (${extra})` : detail.message;
+      raw = extra ? `${detail.message} (${extra})` : detail.message;
+    } else {
+      try {
+        raw = JSON.stringify(detail);
+      } catch {
+        raw = '';
+      }
     }
-    try {
-      return JSON.stringify(detail);
-    } catch {
-      return fallback;
-    }
+  } else if (typeof err?.message === 'string' && err.message.trim()) {
+    raw = err.message;
   }
-  if (typeof err?.message === 'string' && err.message.trim()) return err.message;
-  return fallback;
+  return toUserFacingDocumentError(raw, fallback);
 };
 
 const defaultCameraLessonTitle = (book: DocumentUploadBook): string =>
@@ -149,6 +163,17 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
   const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
   const requestedImages = useRef<Set<string>>(new Set());
+  const generateInFlightRef = useRef(false);
+  /** Cached library upload for camera Document Assessment (invalidated on source edits). */
+  const uploadedCameraSourceRef = useRef<{
+    docId: string;
+    fingerprint: string;
+    pageCount: number;
+  } | null>(null);
+
+  const invalidateUploadedCameraSource = useCallback(() => {
+    uploadedCameraSourceRef.current = null;
+  }, []);
 
   const totalPages = resolvedPageCount ?? bookState?.totalPages ?? 1;
   const docId = bookState?.docId;
@@ -362,6 +387,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       );
       const next = { ...bookState, pages: nextPages };
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPreviewImages((prev) => ({ ...prev, [page]: result.uri }));
       setThumbImages((prev) => ({ ...prev, [page]: result.uri }));
     } catch (e: any) {
@@ -388,6 +414,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       );
       const next = { ...bookState, pages: nextPages };
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPreviewImages((prev) => ({ ...prev, [page]: restored.fileUri }));
       setThumbImages((prev) => ({
         ...prev,
@@ -424,6 +451,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
       const next = appendCameraPage(bookState, newPage);
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
@@ -481,6 +509,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
       const next = mergeCameraSessionPages(bookState, pages);
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
@@ -518,6 +547,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                   : new Set(next.pages?.map((p) => p.pageNumber) || [1]);
 
               await persistBook(next);
+              invalidateUploadedCameraSource();
               setSelectedPages(nextSelected);
               setPage((current) => {
                 if (current === pageNumber) {
@@ -539,31 +569,64 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     );
   };
 
-  const extractCameraTextForSelectedPages = async (): Promise<string> => {
+  /**
+   * Document Assessment (camera/gallery): selected current images → combined PDF
+   * → study-materials upload → generateFromBook with remapped pages 1..N.
+   * Does not use Mathpix / batch-ocr (Handwritten path stays separate).
+   */
+  const ensureCameraLibrarySource = async (): Promise<{
+    docId: string;
+    serverPageNumbers: number[];
+    selectedPageObjs: NonNullable<DocumentUploadBook['pages']>;
+  }> => {
     if (!bookState?.isCameraSession || !bookState.pages?.length) {
       throw new Error('No camera pages available.');
     }
-
-    const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
-    if (pageNumbers.length === 0) {
+    const selectedPageObjs = bookState.pages
+      .filter((p) => selectedPages.has(p.pageNumber))
+      .sort((a, b) => a.pageNumber - b.pageNumber);
+    if (selectedPageObjs.length === 0) {
       throw new Error('Please select at least one page.');
     }
 
-    const imagesToOcr = bookState.pages
-      .filter((p) => selectedPages.has(p.pageNumber))
-      .map((p) => ({ uri: p.fileUri, name: p.fileName, type: p.mimeType }));
-
-    const ocrData = await runBatchOcrOnImages(imagesToOcr);
-    if (!ocrData.success || !ocrData.files?.length) {
-      throw new Error(ocrData.message || 'Text extraction failed.');
+    const fingerprint = cameraSelectedPagesFingerprint(selectedPageObjs);
+    const cached = uploadedCameraSourceRef.current;
+    if (cached && cached.fingerprint === fingerprint && cached.docId) {
+      const serverPageNumbers = selectedPageObjs.map((_, idx) => idx + 1);
+      return { docId: cached.docId, serverPageNumbers, selectedPageObjs };
     }
 
-    const extracted = aggregateOcrText(ocrData.files);
-    if (!extracted.trim() || extracted.trim().length < 10) {
-      throw new Error('Could not extract readable text. Try clearer photos or different pages.');
+    setProcessingStatus('Uploading selected pages to document library…');
+    const uploaded = await saveImagePagesAsLibraryBook({
+      imageUris: selectedPageObjs.map((p) => p.fileUri),
+      mimeTypes: selectedPageObjs.map((p) => p.mimeType || 'image/jpeg'),
+      title: bookState.title || defaultCameraLessonTitle(bookState),
+      gradeLevel: resolvedClass,
+      subject: resolvedSubject,
+      lessonTitle: resolvedLesson || bookState.title || defaultCameraLessonTitle(bookState),
+    });
+    if (!uploaded.docId) {
+      throw new Error('Upload succeeded but no document id was returned. Please try again.');
     }
 
-    return extracted;
+    setProcessingStatus('Processing uploaded document…');
+    const ready = await waitForLibraryBookReady({
+      docId: uploaded.docId,
+      expectedPages: selectedPageObjs.length,
+    });
+    const pageCount = Math.max(selectedPageObjs.length, ready.totalPages || selectedPageObjs.length);
+    uploadedCameraSourceRef.current = {
+      docId: ready.docId || uploaded.docId,
+      fingerprint,
+      pageCount,
+    };
+    // PDF contains only selected images in display order → remap to 1..N.
+    const serverPageNumbers = selectedPageObjs.map((_, idx) => idx + 1);
+    return {
+      docId: ready.docId || uploaded.docId,
+      serverPageNumbers,
+      selectedPageObjs,
+    };
   };
 
   const goBackHome = () => {
@@ -571,6 +634,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   const handleGenerateQuiz = async () => {
+    if (generateInFlightRef.current) return;
+
     const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
     const useServerBook =
       !!bookState?.docId && isPdfAsset(bookState.originalName, bookState.mimeType) && !isCameraSession;
@@ -585,6 +650,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    generateInFlightRef.current = true;
     try {
       setError('');
       setLoadingQuiz(true);
@@ -597,21 +663,26 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         answer: string;
         explanation: string | null;
       }> = [];
-      let cameraOcrText = '';
 
       let libraryDocId: string | undefined;
+      let cameraServerPages: number[] | undefined;
 
       if (isCameraSession) {
-        setProcessingStatus('Extracting text from images…');
-        cameraOcrText = await extractCameraTextForSelectedPages();
+        const source = await ensureCameraLibrarySource();
+        libraryDocId = source.docId;
+        cameraServerPages = source.serverPageNumbers;
         setProcessingStatus('Generating assessment…');
-        // Camera Step 2: omit optional class/subject/lesson (controls removed).
-        const content = buildStrictQuizContent({
-          difficulty,
+        const result = await generateFromBook({
+          docId: source.docId,
+          pageNumbers: source.serverPageNumbers,
           questionCount,
-          ocrText: cameraOcrText,
+          difficulty,
+          subject: resolvedSubject,
+          gradeLevel: resolvedClass,
+          lessonTitle: resolvedLesson,
+          additionalInstructions,
         });
-        questions = await generateStrictQuizFromContent(content);
+        questions = result.questions;
       } else if (useServerBook && bookState.docId) {
         const result = await generateFromBook({
           docId: bookState.docId,
@@ -654,30 +725,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         return;
       }
 
-      // After a successful quiz: combine selected gallery/camera pages into one PDF
-      // and persist to Document Library (web Upload Book parity).
-      if (isCameraSession) {
-        const selectedPageObjs = (bookState.pages || [])
-          .filter((p) => selectedPages.has(p.pageNumber))
-          .sort((a, b) => a.pageNumber - b.pageNumber);
-        if (selectedPageObjs.length > 0) {
-          setProcessingStatus('Saving combined PDF to document library…');
-          try {
-            const uploaded = await saveImagePagesAsLibraryBook({
-              imageUris: selectedPageObjs.map((p) => p.fileUri),
-              mimeTypes: selectedPageObjs.map((p) => p.mimeType || 'image/jpeg'),
-              title: bookState.title || defaultCameraLessonTitle(bookState),
-              gradeLevel: resolvedClass,
-              subject: resolvedSubject,
-              lessonTitle: resolvedLesson || bookState.title || defaultCameraLessonTitle(bookState),
-            });
-            libraryDocId = uploaded.docId || undefined;
-          } catch {
-            // Quiz still proceeds if library save fails.
-          }
-        }
-      }
-
       await saveUserAssessment({
         title: bookState.title || bookState.originalName,
         subject: resolvedSubject,
@@ -718,10 +765,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             level: difficulty,
             lesson: resolvedLesson,
             count: questionCount,
-            selectedPages: pageNumbers,
+            selectedPages: isCameraSession ? cameraServerPages || pageNumbers : pageNumbers,
             isCameraSession,
-            ocrText: isCameraSession ? cameraOcrText : undefined,
-            itext: isCameraSession ? cameraOcrText : undefined,
             docId: useServerBook ? bookState.docId : libraryDocId,
             useServerBook: !!useServerBook || !!libraryDocId,
             fileUri: !isCameraSession && !useServerBook ? bookState.fileUri : undefined,
@@ -749,25 +794,37 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
     } finally {
+      generateInFlightRef.current = false;
       setLoadingQuiz(false);
       setProcessingStatus('');
     }
   };
 
   const handleGenerateWorksheet = async () => {
+    if (generateInFlightRef.current) return;
     if (selectedPages.size === 0) {
       setError('Please select at least one page before generating worksheet.');
       return;
     }
 
+    generateInFlightRef.current = true;
     try {
       setError('');
       setLoadingWorksheet(true);
 
       let rawContent = '';
       if (isCameraSession) {
-        setProcessingStatus('Extracting text from images…');
-        rawContent = await extractCameraTextForSelectedPages();
+        const source = await ensureCameraLibrarySource();
+        setProcessingStatus('Extracting text from uploaded pages…');
+        rawContent = await extractRawContent({
+          docId: source.docId,
+          pageNumbers: source.serverPageNumbers,
+        });
+        if (!rawContent.trim()) {
+          throw new Error(
+            'Could not extract text from the uploaded pages. Try clearer photos or fewer pages.',
+          );
+        }
         setProcessingStatus('Generating worksheet…');
       } else if (bookState?.docId) {
         rawContent = await extractRawContent({
@@ -826,6 +883,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
     } finally {
+      generateInFlightRef.current = false;
       setLoadingWorksheet(false);
       setProcessingStatus('');
     }
