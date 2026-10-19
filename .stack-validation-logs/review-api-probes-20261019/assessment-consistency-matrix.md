@@ -1,6 +1,6 @@
 # Assessment consistency matrix (focused audit)
 
-**Product SHA:** (filled at handoff)  
+**Product SHA:** `ce3fb54f9111c6aa11cd1c5df36e722c06aaabb7`  
 **API:** `https://dev-api.eduvijna.com`  
 **Physical device checks:** pending (not executed)
 
