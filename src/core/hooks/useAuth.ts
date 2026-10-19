@@ -391,6 +391,14 @@ export function useAuth(): UseAuthReturn {
       const accountKey = currentUser?.id != null ? String(currentUser.id) : null;
       await resetNotificationGuardBestEffort(accountKey);
 
+      // Detach device→account push association before credentials are cleared.
+      try {
+        const { PushNotificationService } = await import('../services/PushNotificationService');
+        await PushNotificationService.detachAccountAssociation();
+      } catch {
+        // best-effort; logout must continue
+      }
+
       await AuthAPI.logout({ credentialEpoch: outgoingCredentialEpoch });
 
       commit.run(() => {
@@ -403,6 +411,12 @@ export function useAuth(): UseAuthReturn {
       await resetNotificationGuardBestEffort(null);
     } catch (err) {
       console.error('Logout API failed:', err);
+      try {
+        const { PushNotificationService } = await import('../services/PushNotificationService');
+        await PushNotificationService.detachAccountAssociation();
+      } catch {
+        // best-effort
+      }
       commit.run(() => {
         useTeacherDashboardStore.getState().reset();
         resetStudentAssignmentDashboardStore(null);

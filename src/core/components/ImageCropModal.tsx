@@ -39,6 +39,7 @@ import {
   pagePointToStageLocal,
   type CropRect,
 } from '../utils/imageCropGeometry';
+import { isNearlyFullCrop, normalizeQuarterTurns } from '../utils/imageCropEditorOps';
 
 const MIN_CROP_PX = 48;
 const HANDLE_SIZE = 28;
@@ -90,13 +91,35 @@ async function applyCrop(
   };
 }
 
+async function rotateWorkingBitmap(
+  uri: string,
+  degrees: 90 | -90,
+): Promise<{ uri: string; width: number; height: number }> {
+  const context = ImageManipulator.manipulate(uri);
+  context.rotate(degrees);
+  const image = await context.renderAsync();
+  const result = await image.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
+  const width = result.width || image.width;
+  const height = result.height || image.height;
+  context.release();
+  image.release();
+  return { uri: result.uri, width, height };
+}
+
 export default function ImageCropModal() {
   const insets = useSafeAreaInsets();
   const [pendingUri, setPendingUri] = useState<string | null>(getPendingCropUri());
+  /** EXIF-baked bytes at session open — Restore target (untouched by user rotate/crop). */
+  const [sessionOriginalUri, setSessionOriginalUri] = useState<string | null>(null);
+  const [sessionOriginalSize, setSessionOriginalSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [crop, setCrop] = useState<CropRect | null>(null);
+  const [quarterTurns, setQuarterTurns] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState('');
@@ -107,7 +130,6 @@ export default function ImageCropModal() {
   const startCropRef = useRef<CropRect | null>(null);
   const stageRef = useRef<View | null>(null);
   const stageWindowOriginRef = useRef({ x: 0, y: 0 });
-
   useEffect(() => {
     return subscribeCropSession(() => {
       setPendingUri(getPendingCropUri());
@@ -121,34 +143,42 @@ export default function ImageCropModal() {
     setCrop(null);
     cropRef.current = null;
     setImageUri(null);
+    setSessionOriginalUri(null);
+    setSessionOriginalSize(null);
+    setQuarterTurns(0);
 
     if (!pendingUri) return undefined;
 
     (async () => {
       setPreparing(true);
       try {
+        // EXIF bake once at open — separate from explicit user rotation.
         const baked = await bakeExifOrientation(pendingUri, {
           originalName: getPendingCropSuggestedFileName(),
         });
         if (cancelled) return;
         const uri = baked.uri;
-        const width = baked.width;
-        const height = baked.height;
-        if (width && height) {
-          setNaturalSize({ width, height });
-        } else {
+        let width = baked.width;
+        let height = baked.height;
+        if (!width || !height) {
           await new Promise<void>((resolve, reject) => {
             Image.getSize(
               uri,
               (w, h) => {
-                if (!cancelled) setNaturalSize({ width: w, height: h });
+                width = w;
+                height = h;
                 resolve();
               },
               reject,
             );
           });
         }
-        if (!cancelled) setImageUri(uri);
+        if (cancelled) return;
+        const size = { width: width || 1, height: height || 1 };
+        setSessionOriginalUri(uri);
+        setSessionOriginalSize(size);
+        setNaturalSize(size);
+        setImageUri(uri);
       } catch {
         if (!cancelled) setError('Could not load image for cropping.');
       } finally {
@@ -292,36 +322,98 @@ export default function ImageCropModal() {
     [applyDrag, refreshStageWindowOrigin],
   );
 
+  const busy = processing || preparing;
+
   const handleCancel = () => {
-    if (processing || preparing) return;
+    if (busy) return;
     resolveCropSession({ kind: 'cancelled' });
   };
 
   const handleRetake = () => {
-    if (processing || preparing) return;
+    if (busy) return;
     resolveCropSession({ kind: 'retake' });
   };
 
+  /** Reset = full-frame crop selection on the current working image (not pixel restore). */
   const handleResetCrop = () => {
-    if (processing || preparing || !imageBounds) return;
+    if (busy || !imageBounds) return;
     const next = defaultCropRect(imageBounds);
     setCrop(next);
     cropRef.current = next;
   };
 
-  const handleConfirm = async () => {
-    if (processing || preparing || !imageUri || !naturalSize || !imageBounds || !crop) return;
+  /** Restore = session-open EXIF-baked original (before user rotate/crop in this editor). */
+  const handleRestoreSessionOriginal = () => {
+    if (busy || !sessionOriginalUri || !sessionOriginalSize) return;
+    setImageUri(sessionOriginalUri);
+    setNaturalSize(sessionOriginalSize);
+    setQuarterTurns(0);
+    setError('');
+  };
+
+  const handleRotate = async (direction: 'left' | 'right') => {
+    if (busy || !imageUri || !naturalSize || !imageBounds || !crop) return;
     setProcessing(true);
     setError('');
     try {
-      const cropped = await applyCrop(imageUri, naturalSize, imageBounds, crop);
+      let sourceUri = imageUri;
+      let sourceNatural = naturalSize;
+      // Commit an in-progress crop before rotating so crop→rotate keeps selected content.
+      if (!isNearlyFullCrop(crop, imageBounds)) {
+        const committed = await applyCrop(imageUri, naturalSize, imageBounds, crop);
+        sourceUri = committed.uri;
+        sourceNatural = { width: committed.width, height: committed.height };
+      }
+      const degrees = direction === 'left' ? -90 : 90;
+      const rotated = await rotateWorkingBitmap(sourceUri, degrees as 90 | -90);
+      setImageUri(rotated.uri);
+      setNaturalSize({ width: rotated.width, height: rotated.height });
+      setQuarterTurns((t) =>
+        normalizeQuarterTurns(t + (direction === 'left' ? -1 : 1)),
+      );
+      // imageBounds effect will reset crop to Fit on the new dimensions.
+    } catch {
+      setError('Failed to rotate image. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const workingDiffersFromSession =
+    !!sessionOriginalUri &&
+    !!imageUri &&
+    (imageUri !== sessionOriginalUri || normalizeQuarterTurns(quarterTurns) !== 0);
+
+  const handleConfirm = async () => {
+    if (busy || !imageUri || !naturalSize || !imageBounds || !crop) return;
+    setProcessing(true);
+    setError('');
+    try {
+      const needsCrop = !isNearlyFullCrop(crop, imageBounds);
+      const output = needsCrop
+        ? await applyCrop(imageUri, naturalSize, imageBounds, crop)
+        : workingDiffersFromSession
+          ? { uri: imageUri, width: naturalSize.width, height: naturalSize.height }
+          : null;
+
+      if (!output) {
+        // No edits — keep current input bytes (caller MIME preserved).
+        resolveCropSession({
+          kind: 'unchanged',
+          uri: sessionOriginalUri || imageUri,
+          width: sessionOriginalSize?.width || naturalSize.width,
+          height: sessionOriginalSize?.height || naturalSize.height,
+        });
+        return;
+      }
+
       resolveCropSession({
         kind: 'cropped',
-        uri: cropped.uri,
+        uri: output.uri,
         mimeType: 'image/jpeg',
         fileName: cropFileNameFromBase(getPendingCropSuggestedFileName(), 'page'),
-        width: cropped.width,
-        height: cropped.height,
+        width: output.width,
+        height: output.height,
       });
     } catch {
       setError('Failed to crop image. Please try again.');
@@ -331,18 +423,26 @@ export default function ImageCropModal() {
   };
 
   /**
-   * Keep the current input bytes without cropping.
-   * Does not restore a pre-crop original — callers own that via Restore.
+   * Keep the current working bytes (including rotations) without further crop.
    */
   const handleUseCurrentImage = () => {
-    if (processing || preparing || !pendingUri) return;
-    // Prefer baked URI when available so downstream dimensions match pixels.
-    const uri = imageUri || pendingUri;
+    if (busy || !imageUri) return;
+    if (workingDiffersFromSession) {
+      resolveCropSession({
+        kind: 'cropped',
+        uri: imageUri,
+        mimeType: 'image/jpeg',
+        fileName: cropFileNameFromBase(getPendingCropSuggestedFileName(), 'page'),
+        width: naturalSize?.width || 0,
+        height: naturalSize?.height || 0,
+      });
+      return;
+    }
     resolveCropSession({
       kind: 'unchanged',
-      uri,
-      width: naturalSize?.width,
-      height: naturalSize?.height,
+      uri: sessionOriginalUri || imageUri,
+      width: sessionOriginalSize?.width || naturalSize?.width,
+      height: sessionOriginalSize?.height || naturalSize?.height,
     });
   };
 
@@ -357,10 +457,10 @@ export default function ImageCropModal() {
     >
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Crop photo</Text>
+          <Text style={styles.title}>Edit photo</Text>
           <Text style={styles.subtitle}>
-            Optional — keep the current image unchanged, or drag corners to crop. Restore original is
-            on the previous screen.
+            Rotate or crop. Reset restores the full-frame selection; Restore recovers this session’s
+            original. Page Restore on the previous screen recovers the capture original.
           </Text>
         </View>
 
@@ -464,10 +564,49 @@ export default function ImageCropModal() {
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
-              onPress={handleCancel}
-              disabled={processing || preparing}
+              onPress={() => void handleRotate('left')}
+              disabled={busy || !imageUri}
               accessibilityRole="button"
-              accessibilityLabel="Cancel crop"
+              accessibilityLabel="Rotate left 90 degrees"
+            >
+              <Text style={styles.btnGhostText}>Rotate L</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={() => void handleRotate('right')}
+              disabled={busy || !imageUri}
+              accessibilityRole="button"
+              accessibilityLabel="Rotate right 90 degrees"
+            >
+              <Text style={styles.btnGhostText}>Rotate R</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleResetCrop}
+              disabled={busy || !imageBounds}
+              accessibilityRole="button"
+              accessibilityLabel="Reset crop selection to full frame"
+            >
+              <Text style={styles.btnGhostText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleRestoreSessionOriginal}
+              disabled={busy || !sessionOriginalUri || !workingDiffersFromSession}
+              accessibilityRole="button"
+              accessibilityLabel="Restore session original image"
+            >
+              <Text style={styles.btnGhostText}>Restore</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost]}
+              onPress={handleCancel}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel edit"
             >
               <Text style={styles.btnGhostText}>Cancel</Text>
             </TouchableOpacity>
@@ -475,7 +614,7 @@ export default function ImageCropModal() {
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
               onPress={handleRetake}
-              disabled={processing || preparing}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Retake photo"
             >
@@ -484,37 +623,20 @@ export default function ImageCropModal() {
 
             <TouchableOpacity
               style={[styles.btn, styles.btnGhost]}
-              onPress={handleResetCrop}
-              disabled={processing || preparing || !imageBounds}
-              accessibilityRole="button"
-              accessibilityLabel="Reset crop selection"
-            >
-              <Text style={styles.btnGhostText}>Reset</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnGhost]}
               onPress={handleUseCurrentImage}
-              disabled={processing || preparing || !pendingUri}
+              disabled={busy || !imageUri}
               accessibilityRole="button"
-              accessibilityLabel="Keep current image without cropping"
+              accessibilityLabel="Keep current image"
             >
-              <Text style={styles.btnGhostText}>Keep current</Text>
+              <Text style={styles.btnGhostText}>Keep</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[
-                styles.btn,
-                styles.btnPrimary,
-                styles.btnPrimaryWide,
-                (processing || preparing) && styles.btnDisabled,
-              ]}
+              style={[styles.btn, styles.btnPrimary, styles.btnPrimaryWide, busy && styles.btnDisabled]}
               onPress={handleConfirm}
-              disabled={processing || preparing || !crop}
+              disabled={busy || !crop}
               accessibilityRole="button"
-              accessibilityLabel="Use cropped photo"
+              accessibilityLabel="Apply crop and use photo"
             >
               {processing ? (
                 <ActivityIndicator color="#FFFFFF" />

@@ -31,6 +31,11 @@ import {
   shouldClearPendingOnAuthTransition,
 } from './src/core/navigation/mobilePendingOpenQuiz';
 import {
+  canProcessPendingNotificationIntent,
+  pendingIntentKey,
+  type PendingNotificationIntent,
+} from './src/core/navigation/pendingNotificationIntent';
+import {
   clearStoredOpenQuizPending,
   readStoredOpenQuizPending,
   writeStoredOpenQuizPending,
@@ -92,11 +97,15 @@ function AppContent() {
   const [navigationParams, setNavigationParams] = useState<any>({});
   const webNavStackRef = useRef<Array<{ screen: WebShellScreen; params: any }>>([]);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null); // For post-login resume
+  const [pendingNotificationIntent, setPendingNotificationIntent] =
+    useState<PendingNotificationIntent | null>(null);
   const [lastProcessedSessionId, setLastProcessedSessionId] = useState<string | null>(null); // Prevent double execution
   const [lastProcessedTime, setLastProcessedTime] = useState<number>(0); // Debounce guard
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
   const processedNotifications = useRef<Set<string>>(new Set());
+  const initialNotificationResponseHandled = useRef(false);
+  const notificationResumeInFlightRef = useRef<string | null>(null);
   const initialDeepLinkProcessed = useRef<boolean>(false);
   const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
@@ -172,6 +181,8 @@ function AppContent() {
       setMobileNavigationReady(false);
       resetInitialDeepLinkCache();
       clearPendingOpenQuiz('explicit_logout');
+      setPendingNotificationIntent(null);
+      notificationResumeInFlightRef.current = null;
     }
     wasAuthenticatedRef.current = isAuthenticated;
   }, [isAuthenticated, clearPendingOpenQuiz]);
@@ -270,28 +281,26 @@ function AppContent() {
 
   // Sync push status after successful login (defer so navigation can mount first)
   useEffect(() => {
-    if (!isMobile || !isAuthenticated) return;
+    if (!isMobile || !isAuthenticated || !user?.id) return;
 
     const timer = setTimeout(() => {
-      PushNotificationService.syncStatusAfterLogin().catch((error) => {
+      PushNotificationService.syncStatusAfterLogin(user.id).catch((error) => {
         console.error('❌ Failed to sync push status after login:', error);
       });
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [isMobile, isAuthenticated]);
+  }, [isMobile, isAuthenticated, user?.id]);
 
-  // Set up notification listeners to receive notifications
+  // Set up notification listeners + cold-start initial response
   useEffect(() => {
     if (!isMobile) return;
 
-    // Listen for notifications received while app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener(_notification => {
-      // Notification will auto-display due to setNotificationHandler in PushNotificationService
-    });
+    const navReady = navigationRef.isReady() && mobileNavigationReady;
 
-    // Listen for user tapping on notifications
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(async response => {
+    const dispatchNotificationResponse = async (
+      response: Notifications.NotificationResponse,
+    ) => {
       const notificationId = response.notification.request.identifier;
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
       const { handleAppPushNotificationResponse } = await import(
@@ -304,6 +313,8 @@ function AppContent() {
         user,
         processedIds: processedNotifications.current,
         setPendingSessionId,
+        setPendingNotificationIntent,
+        navigationReady: navReady,
         navigation: {
           navigate: (screen, params) => {
             if (navigationRef.current) {
@@ -312,7 +323,27 @@ function AppContent() {
           },
         },
       });
+    };
+
+    // Listen for notifications received while app is in foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener(_notification => {
+      // Notification will auto-display due to setNotificationHandler in PushNotificationService
     });
+
+    // Listen for user tapping on notifications (foreground / background)
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      void dispatchNotificationResponse(response);
+    });
+
+    // Terminated → tap: platform initial response (once per app process)
+    if (!initialNotificationResponseHandled.current) {
+      initialNotificationResponseHandled.current = true;
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (response) {
+          void dispatchNotificationResponse(response);
+        }
+      });
+    }
 
     return () => {
       if (notificationListener.current) {
@@ -322,7 +353,7 @@ function AppContent() {
         responseListener.current.remove();
       }
     };
-  }, [isMobile, isAuthenticated, user]); // Include auth state to handle login changes
+  }, [isMobile, isAuthenticated, user, mobileNavigationReady]); // Include auth + nav readiness
 
   const resumePendingOpenQuiz = React.useCallback(
     async (sessionId: string, quizId?: string) => {
@@ -440,6 +471,76 @@ function AppContent() {
     setPendingSessionId(null);
     resumePendingOpenQuiz(sessionId, quizId);
   }, [isMobile, isAuthenticated, pendingSessionId, user, resumePendingOpenQuiz]);
+
+  // Resume full notification intent after auth + NavigationContainer readiness
+  useEffect(() => {
+    if (!isMobile || !pendingNotificationIntent) return;
+
+    const intent = canProcessPendingNotificationIntent({
+      isAuthenticated,
+      hasUser: !!user,
+      navigationReady: navigationRef.isReady(),
+      navigationContainerReady: mobileNavigationReady,
+      intent: pendingNotificationIntent,
+      inFlightKey: notificationResumeInFlightRef.current,
+    });
+    if (!intent) return;
+
+    const key = pendingIntentKey(intent);
+    notificationResumeInFlightRef.current = key;
+    setPendingNotificationIntent(null);
+    // Avoid double-open via session-only resume for the same tap.
+    if (intent.sessionId && pendingSessionId === intent.sessionId) {
+      setPendingSessionId(null);
+    }
+
+    void (async () => {
+      try {
+        const { handleAppPushNotificationResponse } = await import(
+          './src/core/services/appPushNotificationResponse'
+        );
+        const resumeId = `resume:${key}`;
+        await handleAppPushNotificationResponse({
+          notificationId: resumeId,
+          data: {
+            type: intent.type,
+            session_id: intent.sessionId ?? undefined,
+            quiz_id: intent.quizId ?? undefined,
+            student_id: intent.studentId ?? undefined,
+            classroom_id: intent.classroomId ?? undefined,
+            attempt_id: intent.attemptId ?? undefined,
+            quiz_title: intent.quizTitle ?? undefined,
+            student_name: intent.studentName ?? undefined,
+          },
+          isAuthenticated: true,
+          user,
+          processedIds: processedNotifications.current,
+          setPendingSessionId,
+          setPendingNotificationIntent,
+          navigationReady: true,
+          navigation: {
+            navigate: (screen, params) => {
+              if (navigationRef.isReady()) {
+                (navigationRef.current as any).navigate(screen, params);
+              }
+            },
+          },
+        });
+      } catch (error) {
+        console.error('❌ Pending notification intent resume failed:', error);
+        setPendingNotificationIntent(intent);
+      } finally {
+        notificationResumeInFlightRef.current = null;
+      }
+    })();
+  }, [
+    isMobile,
+    isAuthenticated,
+    user,
+    pendingNotificationIntent,
+    mobileNavigationReady,
+    pendingSessionId,
+  ]);
 
   // Set up auth error navigation callback
   useEffect(() => {

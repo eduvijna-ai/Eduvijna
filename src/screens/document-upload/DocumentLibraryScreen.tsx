@@ -5,7 +5,7 @@
  * Server-backed library of uploaded books (study materials) so documents are
  * shared across devices/web rather than living only in local AsyncStorage.
  *   - Search + grade/subject filter chips
- *   - Upload a book with full metadata (title, grade, subject, lesson)
+ *   - Upload a book with required Book Name (optional Class/Subject/Lesson removed)
  *   - Delete a book
  *   - Tap a book to open BookPageViewerScreen (select pages -> generate)
  *
@@ -42,7 +42,6 @@ import {
   type ServerBook,
   type BookFilterOptions,
 } from '@core/services/documentUploadApi';
-import QuizFormFields from '../../components/QuizFormFields';
 
 /** Lazily-loaded page-1 cover thumbnail for a library book. */
 function BookCover({ docId, fallbackColor, iconBg }: { docId: string; fallbackColor: string; iconBg: string }) {
@@ -114,17 +113,6 @@ export default function DocumentLibraryScreen({ navigation }: any) {
     file?: File | Blob;
   } | null>(null);
   const [uTitle, setUTitle] = useState('');
-  const [uClassId, setUClassId] = useState('');
-  const [uSubjectId, setUSubjectId] = useState('');
-  const [uLesson, setULesson] = useState('');
-  const libraryClasses = useMemo(
-    () => filters.grade_levels.map((g) => ({ id: g, name: g, label: g, value: g })),
-    [filters.grade_levels],
-  );
-  const librarySubjects = useMemo(
-    () => filters.subjects.map((s) => ({ id: s, name: s, label: s, value: s })),
-    [filters.subjects],
-  );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
@@ -246,15 +234,16 @@ export default function DocumentLibraryScreen({ navigation }: any) {
     setUploading(true);
     setUploadError('');
     try {
+      // Omit optional Class/Subject/Lesson — API accepts empty strings (web parity).
       const created = await uploadBookWithMetadata({
         fileUri: uploadFile.uri,
         fileName: uploadFile.name,
         mimeType: uploadFile.mimeType,
         file: uploadFile.file,
         title: uTitle.trim(),
-        gradeLevel: uClassId,
-        subject: uSubjectId,
-        lessonTitle: uLesson.trim(),
+        gradeLevel: '',
+        subject: '',
+        lessonTitle: '',
       });
       setBooks((prev) => [created, ...prev]);
       try {
@@ -267,9 +256,6 @@ export default function DocumentLibraryScreen({ navigation }: any) {
       setUploadVisible(false);
       setUploadFile(null);
       setUTitle('');
-      setUClassId('');
-      setUSubjectId('');
-      setULesson('');
     } catch (e: any) {
       setUploadError(normalizeErrorMessage(e, 'Upload failed. Please try again.'));
     } finally {
@@ -456,28 +442,6 @@ export default function DocumentLibraryScreen({ navigation }: any) {
                 onChangeText={setUTitle}
                 placeholder="e.g. Physics Chapter 3"
                 placeholderTextColor={colors.textSecondary}
-              />
-
-              <QuizFormFields
-                compact
-                fieldsRequired={false}
-                localSearchOnly
-                showClass
-                classValue={uClassId}
-                onClassChange={setUClassId}
-                classes={libraryClasses}
-                showSubject
-                subjectValue={uSubjectId}
-                onSubjectChange={setUSubjectId}
-                subjects={librarySubjects}
-                showLesson
-                lessonValue={uLesson}
-                onLessonChange={setULesson}
-                lessonPlaceholder="e.g. Optics"
-                lessonLabel="Lesson"
-                showAdditionalInstructions={false}
-                showDifficultyLevel={false}
-                showQuestionCount={false}
               />
 
               {!!uploadError && <Text style={styles.modalError}>{uploadError}</Text>}

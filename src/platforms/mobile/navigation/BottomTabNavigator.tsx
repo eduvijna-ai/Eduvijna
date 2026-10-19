@@ -3,7 +3,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -613,15 +614,27 @@ function BottomTabNavigator() {
   const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
-  const pushPromptCheckedUserId = React.useRef<number | null>(null);
+  const pushPromptCheckedUserId = React.useRef<string | number | null>(null);
+  const pushPromptTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPushPromptTimer = React.useCallback(() => {
+    if (pushPromptTimerRef.current) {
+      clearTimeout(pushPromptTimerRef.current);
+      pushPromptTimerRef.current = null;
+    }
+  }, []);
 
   /**
-   * Check if we should show push notification prompt after login
+   * Check if we should show push notification prompt after login (all supported roles).
    */
   useEffect(() => {
+    let cancelled = false;
+
     const checkPushPrompt = async () => {
+      clearPushPromptTimer();
+      setShowPushPrompt(false);
+
       if (!user?.id) {
-        setShowPushPrompt(false);
         pushPromptCheckedUserId.current = null;
         return;
       }
@@ -632,14 +645,20 @@ function BottomTabNavigator() {
       pushPromptCheckedUserId.current = user.id;
 
       try {
-        await PushNotificationService.syncStatusAfterLogin();
+        await PushNotificationService.syncStatusAfterLogin(user.id);
+        if (cancelled) return;
 
         const status = await PushNotificationService.getPushStatus();
-        const recentlyDismissed = await PushNotificationService.wasPromptRecentlyDismissed();
+        const recentlyDismissed = await PushNotificationService.wasPromptRecentlyDismissed(user.id);
+        if (cancelled) return;
 
+        // All authenticated roles: offer enablement when this account is not registered.
+        // Enable path respects OS denial (settings) and does not spam the native dialog.
         if (!status.isEnabled && status.isSupported && !recentlyDismissed) {
-          setTimeout(() => {
-            setShowPushPrompt(true);
+          pushPromptTimerRef.current = setTimeout(() => {
+            if (!cancelled) {
+              setShowPushPrompt(true);
+            }
           }, 1500);
         }
       } catch (error) {
@@ -648,7 +667,12 @@ function BottomTabNavigator() {
     };
 
     checkPushPrompt();
-  }, [user?.id]);
+
+    return () => {
+      cancelled = true;
+      clearPushPromptTimer();
+    };
+  }, [user?.id, clearPushPromptTimer]);
 
   /**
    * Handle user clicking "Enable" on push prompt
@@ -660,10 +684,28 @@ function BottomTabNavigator() {
       const result = await PushNotificationService.enablePushNotifications();
       
       if (result.success) {
+        if (user?.id != null) {
+          await AsyncStorage.setItem('pushRegisteredUserId', String(user.id));
+        }
         setShowPushPrompt(false);
         Alert.alert('Success', result.message);
       } else {
-        Alert.alert('Error', result.message);
+        const needsSettings =
+          typeof result.message === 'string' &&
+          result.message.toLowerCase().includes('settings');
+        if (needsSettings) {
+          Alert.alert('Notifications', result.message, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                void Linking.openSettings();
+              },
+            },
+          ]);
+        } else {
+          Alert.alert('Error', result.message);
+        }
       }
     } catch (error: any) {
       console.error('Error enabling push:', error);
@@ -677,7 +719,7 @@ function BottomTabNavigator() {
    * Handle user clicking "Later" on push prompt
    */
   const handleDismissPushPrompt = async () => {
-    await PushNotificationService.dismissPrompt();
+    await PushNotificationService.dismissPrompt(user?.id);
     setShowPushPrompt(false);
   };
 

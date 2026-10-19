@@ -22,6 +22,7 @@ import {
 export type NotificationType =
   | 'quiz_assigned'
   | 'quiz_graded'
+  | 'quiz_completed'
   | 'classroom_invite'
   | 'announcement'
   | 'general';

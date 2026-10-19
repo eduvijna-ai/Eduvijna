@@ -16,6 +16,7 @@ import {
   Image,
   Modal,
   Switch,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingSpinner from '../../../components/LoadingSpinner';
@@ -193,6 +194,10 @@ export default function Profile({ navigation }: any) {
           } catch (fcmError) {
             console.warn('Could not generate FCM token:', fcmError);
           }
+
+          if (authUser?.id != null) {
+            await AsyncStorage.setItem('pushRegisteredUserId', String(authUser.id));
+          }
           
           // Simple success message
           Alert.alert('Success', 'Push notifications enabled successfully!');
@@ -205,7 +210,22 @@ export default function Profile({ navigation }: any) {
             },
           }));
         } else {
-          Alert.alert('Error', result.message);
+          const needsSettings =
+            typeof result.message === 'string' &&
+            result.message.toLowerCase().includes('settings');
+          if (needsSettings) {
+            Alert.alert('Notifications', result.message, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  void Linking.openSettings();
+                },
+              },
+            ]);
+          } else {
+            Alert.alert('Error', result.message);
+          }
         }
       } else {
         const result = await PushNotificationService.disablePushNotifications();

@@ -107,19 +107,96 @@ describe('handleAppPushNotificationResponse', () => {
     expect(Alert.alert).toHaveBeenCalled();
   });
 
-  it('queues session when unauthenticated for non-graded notifications', async () => {
+  it('queues full intent when unauthenticated', async () => {
     const setPending = jest.fn();
+    const setIntent = jest.fn();
     await handleAppPushNotificationResponse({
       notificationId: 'n4',
-      data: { type: 'quiz_assigned', session_id: 'sess-1' },
+      data: { type: 'quiz_assigned', session_id: 'sess-1', quiz_id: 3 },
       isAuthenticated: false,
       user: null,
       processedIds: processed,
       navigation,
       setPendingSessionId: setPending,
+      setPendingNotificationIntent: setIntent,
     });
 
     expect(setPending).toHaveBeenCalledWith('sess-1');
+    expect(setIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'quiz_assigned', sessionId: 'sess-1', quizId: '3' }),
+    );
     expect(mockOpenQuiz).not.toHaveBeenCalled();
+  });
+
+  it('routes quiz_completed to instructor teacher-view results', async () => {
+    await handleAppPushNotificationResponse({
+      notificationId: 'n5',
+      data: {
+        type: 'quiz_completed',
+        quiz_id: 9,
+        session_id: 'sess-9',
+        classroom_id: 'class-9',
+        student_id: 'student-1',
+        attempt_id: 77,
+        student_name: 'Ada',
+        quiz_title: 'Optics',
+      },
+      isAuthenticated: true,
+      user: { id: 'teacher-1', role: 'instructor' },
+      processedIds: processed,
+      navigation,
+      setPendingSessionId: jest.fn(),
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith(
+      'QuizResultsScreen',
+      expect.objectContaining({
+        quizId: '9',
+        studentId: 'student-1',
+        attemptId: '77',
+        isTeacherView: true,
+      }),
+    );
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+  });
+
+  it('does not force students through instructor completion destination', async () => {
+    await handleAppPushNotificationResponse({
+      notificationId: 'n6',
+      data: {
+        type: 'quiz_completed',
+        quiz_id: 9,
+        student_id: 'student-1',
+        session_id: 'sess-9',
+      },
+      isAuthenticated: true,
+      user: { id: 'student-1', role: 'student' },
+      processedIds: processed,
+      navigation,
+      setPendingSessionId: jest.fn(),
+    });
+
+    expect(navigation.navigate).toHaveBeenCalledWith('Assessments');
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+  });
+
+  it('opens assigned quiz for students via handleOpenQuiz', async () => {
+    mockOpenQuiz.mockResolvedValue(undefined as any);
+    await handleAppPushNotificationResponse({
+      notificationId: 'n7',
+      data: { type: 'QUIZ_ASSIGNED', session_id: 'sess-1' },
+      isAuthenticated: true,
+      user: { id: 'student-1', role: 'student' },
+      processedIds: processed,
+      navigation,
+      setPendingSessionId: jest.fn(),
+    });
+    expect(mockOpenQuiz).toHaveBeenCalledWith(
+      'sess-1',
+      'notification',
+      expect.anything(),
+      expect.anything(),
+      expect.any(Function),
+    );
   });
 });
