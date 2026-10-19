@@ -160,7 +160,7 @@ export const aggregateClassOverview = (
         active_assignment_count: 0,
         upcoming_assignment_count: 0,
         expired_assignment_count: 0,
-        avg_score: 0,
+        avg_score: null,
         highest_score: null,
         lowest_score: null,
         completion_rate: 0,
@@ -271,7 +271,7 @@ export const aggregateClassOverview = (
       });
     });
 
-    classData.avg_score = scoreCount > 0 ? totalScore / scoreCount : 0;
+    classData.avg_score = scoreCount > 0 ? totalScore / scoreCount : null;
     classData.highest_score = highestScore;
     classData.lowest_score = lowestScore;
   });

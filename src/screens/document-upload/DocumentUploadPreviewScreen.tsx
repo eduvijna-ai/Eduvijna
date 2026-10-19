@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
-  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -58,21 +56,16 @@ import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles
 import { useUserStore } from '@core/store/user.store';
 import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
-import QuizFormFields from '../../components/QuizFormFields';
-import {
-  matchDropdownItem,
-  useSchoolClassSubjectDropdowns,
-} from '@core/hooks/useSchoolClassSubjectDropdowns';
+import DocumentAssessmentInlinePreview from '../../components/document-assessment/DocumentAssessmentInlinePreview';
+import DocumentAssessmentActionBar, {
+  type DocumentWorkspaceAction,
+} from '../../components/document-assessment/DocumentAssessmentActionBar';
+import DocumentAssessmentPageStrip from '../../components/document-assessment/DocumentAssessmentPageStrip';
+import DocumentAssessmentGenerationSettings from '../../components/document-assessment/DocumentAssessmentGenerationSettings';
+import type { DocumentWorkspacePage } from '@core/types/documentAssessmentWorkspace';
 
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
-
-const QUESTION_OPTIONS = [5, 10, 15, 20] as const;
-const DIFFICULTY_OPTIONS = [
-  { key: 'easy', label: 'Easy' },
-  { key: 'medium', label: 'Medium' },
-  { key: 'hard', label: 'Hard' },
-] as const;
 
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
@@ -128,27 +121,17 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const isCameraSession = bookState?.isCameraSession === true;
 
   const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState(100);
-  const [classId, setClassId] = useState(restoredForm?.classId ?? '');
-  const [subjectId, setSubjectId] = useState(restoredForm?.subjectId ?? '');
-  const {
-    classes,
-    subjects,
-    isLoadingClasses,
-    isLoadingSubjects,
-    classLabel,
-    subjectLabel,
-  } = useSchoolClassSubjectDropdowns(classId);
-  const [lesson, setLesson] = useState(
-    restoredForm?.lesson ?? route?.params?.presetLesson ?? '',
-  );
+  /** Internal book metadata for APIs only — not shown in generation UI. */
+  const [classId, setClassId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [lesson, setLesson] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
     restoredForm?.difficulty ?? route?.params?.presetDifficulty ?? 'medium',
   );
   const [questionCount, setQuestionCount] = useState<number>(
     restoredForm?.questionCount ?? route?.params?.presetQuestionCount ?? 5,
   );
-  const [additionalInstructions, setAdditionalInstructions] = useState(
+  const [additionalInstructions] = useState(
     String(route?.params?.presetInstructions ?? readDocumentWorkspacePreset(route)?.additionalInstructions ?? ''),
   );
   const [selectedPages, setSelectedPages] = useState<Set<number>>(
@@ -212,9 +195,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    if (restored.classId !== undefined) setClassId(restored.classId);
-    if (restored.subjectId !== undefined) setSubjectId(restored.subjectId);
-    if (restored.lesson !== undefined) setLesson(restored.lesson);
+    // Ignore restored class/subject/lesson — generation UI no longer exposes them.
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
     }
@@ -222,11 +203,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   useEffect(() => {
     if (!bookState) return;
-    setLesson((prev) => {
-      if (prev && sanitizeCameraDocumentTitle(prev) === prev) return prev;
-      if (isCameraSession) return defaultCameraLessonTitle(bookState);
-      return sanitizeCameraDocumentTitle(bookState.title || bookState.originalName);
-    });
+    setLesson(defaultCameraLessonTitle(bookState));
     if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
     }
@@ -245,23 +222,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     navigation.setParams?.({ book: withIdentity });
   }, [navigation]);
 
-  useEffect(() => {
-    if (classId || !classes.length) return;
-    const preset = restoredForm?.classId || restoredForm?.classValue || route?.params?.presetClass;
-    const match = matchDropdownItem(classes, preset);
-    if (match) setClassId(match.id);
-  }, [classes, classId, restoredForm?.classId, restoredForm?.classValue, route?.params?.presetClass]);
-
-  useEffect(() => {
-    if (subjectId || !subjects.length) return;
-    const preset = restoredForm?.subjectId || restoredForm?.subject || route?.params?.presetSubject;
-    const match = matchDropdownItem(subjects, preset);
-    if (match) setSubjectId(match.id);
-  }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, route?.params?.presetSubject]);
-
-  const resolvedClass = classLabel;
-  const resolvedSubject = subjectLabel(subjectId);
-  const resolvedLesson = lesson.trim();
+  // Generation UI no longer exposes Class/Subject/Lesson — keep optional API
+  // fields empty unless book/library metadata already provides them.
+  const resolvedClass = '';
+  const resolvedSubject = '';
+  const resolvedLesson = lesson.trim() || (bookState ? defaultCameraLessonTitle(bookState) : '');
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
     const book = bookOverride ?? bookState;
@@ -358,13 +323,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     };
   }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
 
-  // Camera Step 2 no longer exposes Class/Subject/Lesson — clear any restored stale values.
+  // Document workspace generation UI omits Class/Subject/Lesson — never submit stale selections.
   useEffect(() => {
-    if (!isCameraSession) return;
     setClassId('');
     setSubjectId('');
-    setLesson('');
-  }, [isCameraSession]);
+  }, [isCameraSession, bookState?.id]);
 
   const handleCropCurrentPage = async () => {
     if (!bookState?.isCameraSession) return;
@@ -868,11 +831,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   };
 
-  // Reset inline zoom/pan when the focused page changes.
-  useEffect(() => {
-    setZoom(100);
-  }, [page]);
-
   if (!bookState) {
     return (
       <View style={styles.centerEmpty}>
@@ -902,19 +860,41 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   const pageList = pageItems(totalPages);
-  const cameraPageFileUri = bookState?.pages?.find((p) => p.pageNumber === page)?.fileUri;
-  // Prefer full-resolution page source for main preview / OCR; never a cover-cropped thumb.
+  const focusedCameraPage = bookState?.pages?.find((p) => p.pageNumber === page);
+  const cameraPageFileUri = focusedCameraPage?.fileUri;
   const previewUri =
     cameraPageFileUri ||
     previewImages[page] ||
     thumbImages[page] ||
     getLocalPageUri(bookState, page);
-  const showImageFallback = !previewUri && !loadingImages;
 
   const openFullPreview = (uri?: string | null) => {
     if (!uri) return;
     setFullPreviewUri(uri);
   };
+
+  const workspacePages: DocumentWorkspacePage[] = pageList.map((p) => {
+    const cam = bookState?.pages?.find((pg) => pg.pageNumber === p);
+    return {
+      pageId: cam?.pageId || `${bookState.id}:${p}`,
+      pageNumber: p,
+      uri: cam?.fileUri || previewImages[p] || thumbImages[p] || getLocalPageUri(bookState, p),
+      thumbnailUri: cam?.thumbnailUri || thumbImages[p] || cam?.fileUri || previewImages[p],
+      fileName: cam?.fileName,
+      mimeType: cam?.mimeType,
+      width: cam?.width,
+      height: cam?.height,
+      editable: isCameraSession,
+    };
+  });
+
+  const imageVersionKey = focusedCameraPage
+    ? `${focusedCameraPage.fileUri}|${focusedCameraPage.width || 0}x${focusedCameraPage.height || 0}`
+    : previewUri || '';
+
+  const canRestoreFocused =
+    !!focusedCameraPage?.original &&
+    focusedCameraPage.fileUri !== focusedCameraPage.original.fileUri;
 
   const toggleSelectAll = () => {
     setError('');
@@ -922,342 +902,161 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setSelectedPages(new Set());
       return;
     }
-    // "Select All" is capped at the first MAX_QUIZ_PAGES pages (web parity).
     setSelectedPages(new Set(pageList.slice(0, MAX_QUIZ_PAGES)));
   };
 
+  const workspaceActions = [
+    ...(isCameraSession
+      ? [
+          {
+            key: 'gallery',
+            label: 'Gallery',
+            icon: 'images-outline' as const,
+            onPress: handleAddGalleryPages,
+            disabled: capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS,
+            loading: capturingPage,
+          },
+          {
+            key: 'add',
+            label: `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`,
+            icon: 'camera-outline' as const,
+            onPress: handleAddCameraPage,
+            disabled: capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS,
+            loading: capturingPage,
+          },
+          {
+            key: 'crop',
+            label: 'Crop',
+            icon: 'crop-outline' as const,
+            onPress: handleCropCurrentPage,
+            disabled: capturingPage || !(bookState.pages?.length),
+            testID: 'document-preview-crop-page',
+            accessibilityLabel: 'Crop selected page',
+          },
+          {
+            key: 'restore',
+            label: 'Restore',
+            icon: 'refresh-outline' as const,
+            onPress: handleRestoreCurrentPageOriginal,
+            disabled: capturingPage || !canRestoreFocused,
+            testID: 'document-preview-restore-page',
+            accessibilityLabel: 'Restore original full-frame page',
+          },
+        ]
+      : []),
+    {
+      key: 'clear',
+      label: selectedPages.size > 0 ? 'Clear' : 'Select All',
+      icon: (selectedPages.size > 0 ? 'close-outline' : 'checkbox-outline') as DocumentWorkspaceAction['icon'],
+      onPress: toggleSelectAll,
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <Ionicons name="document-text" size={20} color="#DC2626" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.summaryTitle} numberOfLines={1}>{bookState.title || bookState.originalName}</Text>
+            <Text style={styles.summaryTitle} numberOfLines={1}>
+              {bookState.title || bookState.originalName}
+            </Text>
             <Text style={styles.summaryMeta} numberOfLines={1}>
-              Pages: {totalPages}{isCameraSession ? ' · Camera session' : ''}{bookState.originalName ? ` · ${bookState.originalName}` : ''}
+              Pages: {totalPages}
+              {isCameraSession ? ' · Camera session' : ''}
+              {bookState.originalName ? ` · ${bookState.originalName}` : ''}
             </Text>
           </View>
         </View>
 
-        <View style={styles.toolbar}>
-          <View style={styles.pageNav}>
-            <TouchableOpacity
-              style={[styles.navBtn, page <= 1 && styles.navBtnDisabled]}
-              onPress={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              <Ionicons name="chevron-back" size={16} color={page <= 1 ? colors.textSecondary : colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.pageNavText}>Page {page} of {totalPages}</Text>
-            <TouchableOpacity
-              style={[styles.navBtn, page >= totalPages && styles.navBtnDisabled]}
-              onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              <Ionicons name="chevron-forward" size={16} color={page >= totalPages ? colors.textSecondary : colors.text} />
-            </TouchableOpacity>
-          </View>
+        <DocumentAssessmentInlinePreview
+          pageNumber={page}
+          totalPages={totalPages}
+          uri={previewUri}
+          loading={loadingImages}
+          colors={colors}
+          onOpenFullscreen={openFullPreview}
+          onPageChange={setPage}
+          imageVersionKey={imageVersionKey}
+        />
 
-          <View style={styles.zoomRow}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setZoom((z) => Math.max(60, z - 20))}>
-              <Ionicons name="remove" size={16} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.zoomText}>{zoom}%</Text>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setZoom((z) => Math.min(200, z + 20))}>
-              <Ionicons name="add" size={16} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <ScrollView
-          style={styles.previewWrap}
-          contentContainerStyle={[
-            styles.previewScrollContent,
-            previewUri
-              ? {
-                  // Enlarge layout bounds (not transform-only) so zoomed content stays scrollable.
-                  width: Math.max(
-                    Dimensions.get('window').width - 48,
-                    (Dimensions.get('window').width - 48) * (zoom / 100),
-                  ),
-                  height: Math.max(300, 300 * (zoom / 100)),
-                }
-              : null,
-          ]}
-          horizontal={zoom > 100}
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={zoom > 100}
-          showsVerticalScrollIndicator={zoom > 100}
-        >
-          {previewUri ? (
-            <TouchableOpacity
-              activeOpacity={0.95}
-              onPress={() => openFullPreview(previewUri)}
-              accessibilityRole="imagebutton"
-              accessibilityLabel="Open full-screen page preview"
-            >
-              <Image
-                source={{ uri: previewUri }}
-                style={{
-                  width: (Dimensions.get('window').width - 48) * (zoom / 100),
-                  height: 300 * (zoom / 100),
-                }}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-          ) : showImageFallback ? (
-            <View style={styles.previewPlaceholder}>
-              {loadingImages ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
-              )}
-              <Text style={styles.previewPlaceholderText}>
-                {loadingImages ? 'Loading page preview…' : `Page ${page} preview unavailable`}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.previewPlaceholder}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.previewPlaceholderText}>Loading page {page}…</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        <View style={styles.selectionBar}>
-          <Text style={styles.thumbHint} numberOfLines={2}>
-            {isCameraSession
+        <DocumentAssessmentActionBar
+          hint={
+            isCameraSession
               ? `Tap image or thumbnail for full-screen preview. Use ✓ to select and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
-              : `Tap image or thumbnail for full-screen preview; use ✓ to include pages (max ${MAX_QUIZ_PAGES})`}
-          </Text>
-          <View style={styles.selectionMetaRow}>
-            <Text style={styles.selectionCount}>
-              Selected: {selectedPages.size} / {Math.min(MAX_QUIZ_PAGES, totalPages)} (max {MAX_QUIZ_PAGES})
-            </Text>
-            <View style={styles.selectionActions}>
-              {isCameraSession && (
-                <>
-                  <TouchableOpacity
-                    style={[
-                      styles.compactActionBtn,
-                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
-                    ]}
-                    onPress={handleAddGalleryPages}
-                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
-                  >
-                    {capturingPage ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Ionicons name="images-outline" size={14} color={colors.primary} />
-                    )}
-                    <Text style={styles.compactActionText}>Gallery</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.compactActionBtn,
-                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
-                    ]}
-                    onPress={handleAddCameraPage}
-                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
-                  >
-                    {capturingPage ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Ionicons name="camera-outline" size={14} color={colors.primary} />
-                    )}
-                    <Text style={styles.compactActionText}>
-                      {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="document-preview-crop-page"
-                    accessibilityRole="button"
-                    accessibilityLabel="Crop selected page"
-                    style={[styles.compactActionBtn, capturingPage && styles.disabled]}
-                    onPress={handleCropCurrentPage}
-                    disabled={capturingPage || !(bookState.pages?.length)}
-                  >
-                    <Ionicons name="crop-outline" size={14} color={colors.primary} />
-                    <Text style={styles.compactActionText}>Crop</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="document-preview-restore-page"
-                    accessibilityRole="button"
-                    accessibilityLabel="Restore original full-frame page"
-                    style={[
-                      styles.compactActionBtn,
-                      (capturingPage ||
-                        !bookState.pages?.find((p) => p.pageNumber === page)?.original ||
-                        bookState.pages?.find((p) => p.pageNumber === page)?.fileUri ===
-                          bookState.pages?.find((p) => p.pageNumber === page)?.original?.fileUri) &&
-                        styles.disabled,
-                    ]}
-                    onPress={handleRestoreCurrentPageOriginal}
-                    disabled={
-                      capturingPage ||
-                      !bookState.pages?.find((p) => p.pageNumber === page)?.original ||
-                      bookState.pages?.find((p) => p.pageNumber === page)?.fileUri ===
-                        bookState.pages?.find((p) => p.pageNumber === page)?.original?.fileUri
-                    }
-                  >
-                    <Ionicons name="refresh-outline" size={14} color={colors.primary} />
-                    <Text style={styles.compactActionText}>Restore</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
-                <Text style={styles.selectAllText}>{selectedPages.size > 0 ? 'Clear' : 'Select All'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+              : `Tap image or thumbnail for full-screen preview; use ✓ to include pages (max ${MAX_QUIZ_PAGES}).`
+          }
+          selectionLabel={`Selected: ${selectedPages.size} / ${Math.min(MAX_QUIZ_PAGES, totalPages)} (max ${MAX_QUIZ_PAGES})`}
+          actions={workspaceActions}
+          colors={colors}
+        />
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
-          {pageList.map((p) => {
-            const isSelected = selectedPages.has(p);
-            return (
-              <View key={p} style={[styles.thumbItem, p === page && styles.thumbActive, isSelected && styles.thumbSelected]}>
-                <TouchableOpacity style={styles.selectCheck} onPress={() => togglePageSelection(p)}>
-                  <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={isSelected ? '#0E7490' : '#94A3B8'} />
-                </TouchableOpacity>
-                {isCameraSession && (
-                  <TouchableOpacity
-                    style={styles.removeThumbBtn}
-                    onPress={() => handleRemoveCameraPage(p)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="close-circle" size={16} color="#DC2626" />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  onPress={() => {
-                    setPage(p);
-                    const thumbUri =
-                      bookState?.pages?.find((pg) => pg.pageNumber === p)?.fileUri ||
-                      previewImages[p] ||
-                      thumbImages[p] ||
-                      getLocalPageUri(bookState, p);
-                    openFullPreview(thumbUri);
-                  }}
-                  accessibilityRole="imagebutton"
-                  accessibilityLabel={`Open page ${p} full-screen preview`}
-                >
-                  {thumbImages[p] ? (
-                    <Image source={{ uri: thumbImages[p] }} style={styles.thumbImage} resizeMode="contain" />
-                  ) : (
-                    <View style={styles.thumbPlaceholder}>
-                      <Text style={styles.thumbPlaceholderText}>{p}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                <Text style={[styles.thumbText, p === page && styles.thumbTextActive, isSelected && styles.thumbTextSelected]}>{p}</Text>
-              </View>
-            );
-          })}
-        </ScrollView>
+        <DocumentAssessmentPageStrip
+          pages={workspacePages}
+          focusedPageNumber={page}
+          selectedPageNumbers={selectedPages}
+          colors={colors}
+          canRemove={isCameraSession}
+          onFocusPage={setPage}
+          onToggleSelect={togglePageSelection}
+          onRemove={isCameraSession ? handleRemoveCameraPage : undefined}
+          onOpenFullscreen={openFullPreview}
+        />
 
-        <View style={styles.generatorCard}>
-          <Text style={styles.sectionTitle}>
-            {isCameraSession ? 'Step 2 · Generate Quiz' : 'Step 3 · Generate Quiz'}
-          </Text>
-          <Text style={styles.sectionSub}>
-            {isCameraSession
+        <DocumentAssessmentGenerationSettings
+          title={isCameraSession ? 'Step 2 · Generate Quiz' : 'Step 2 · Generate Quiz'}
+          subtitle={
+            isCameraSession
               ? 'Configure options, then generate — text is extracted from selected pages and a combined PDF is saved to the document library'
-              : 'Configure options, then generate from selected pages'}
-          </Text>
+              : 'Configure options, then generate from selected pages'
+          }
+          difficulty={difficulty}
+          questionCount={questionCount}
+          onDifficultyChange={setDifficulty}
+          onQuestionCountChange={setQuestionCount}
+          colors={colors}
+          disabled={loadingQuiz || loadingWorksheet}
+        />
 
-          {!isCameraSession ? (
-            <QuizFormFields
-              compact
-              fieldsRequired={false}
-              localSearchOnly
-              showClass
-              classValue={classId}
-              onClassChange={setClassId}
-              classes={classes}
-              isLoadingClasses={isLoadingClasses}
-              classError={!classId && error.includes('class') ? error : ''}
-              showSubject
-              subjectValue={subjectId}
-              onSubjectChange={setSubjectId}
-              subjects={subjects}
-              isLoadingSubjects={isLoadingSubjects}
-              subjectError={!subjectId && error.includes('subject') ? error : ''}
-              showLesson
-              lessonValue={lesson}
-              onLessonChange={setLesson}
-              lessonPlaceholder="e.g., Photosynthesis"
-              lessonLabel="Lesson / Topic"
-              showAdditionalInstructions={false}
-              showDifficultyLevel={false}
-              showQuestionCount={false}
-            />
-          ) : null}
-
-          <Text style={styles.label}>Difficulty Level</Text>
-          <View style={styles.pillRow}>
-            {DIFFICULTY_OPTIONS.map((option) => {
-              const active = difficulty === option.key;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[styles.pillBtn, active && styles.pillBtnActive]}
-                  onPress={() => setDifficulty(option.key)}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{option.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
+        {!!error && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
+        )}
 
-          <Text style={styles.label}>Number of Questions</Text>
-          <View style={styles.pillRow}>
-            {QUESTION_OPTIONS.map((count) => {
-              const active = questionCount === count;
-              return (
-                <TouchableOpacity
-                  key={count}
-                  style={[styles.pillBtn, active && styles.pillBtnActive]}
-                  onPress={() => setQuestionCount(count)}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{count}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {!!error && (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle" size={16} color="#B91C1C" />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
+        <TouchableOpacity
+          style={[styles.primaryAction, (loadingQuiz || selectedPages.size === 0) && styles.disabled]}
+          onPress={handleGenerateQuiz}
+          disabled={loadingQuiz || selectedPages.size === 0}
+        >
+          {loadingQuiz ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="flash-outline" size={16} color="#fff" />
           )}
-
-          <TouchableOpacity
-            style={[
-              styles.primaryAction,
-              (loadingQuiz || selectedPages.size === 0) && styles.disabled,
-            ]}
-            onPress={handleGenerateQuiz}
-            disabled={loadingQuiz || selectedPages.size === 0}
-          >
-            {loadingQuiz ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="flash-outline" size={16} color="#fff" />}
-            <Text style={styles.primaryActionText}>
-              {loadingQuiz ? (processingStatus || 'Generating assessment…') : 'Generate Assessment'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={styles.primaryActionText}>
+            {loadingQuiz ? processingStatus || 'Generating assessment…' : 'Generate Assessment'}
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.worksheetBtn, loadingWorksheet && styles.disabled]}
           onPress={handleGenerateWorksheet}
           disabled={loadingWorksheet}
         >
-          {loadingWorksheet ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
+          {loadingWorksheet ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+          )}
           <Text style={styles.worksheetBtnText}>
-            {loadingWorksheet ? (processingStatus || 'Generating worksheet…') : 'Generate Worksheet'}
+            {loadingWorksheet ? processingStatus || 'Generating worksheet…' : 'Generate Worksheet'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -1274,7 +1073,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 const makeStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 12, gap: 10, paddingBottom: 24 },
+    content: { padding: 12, gap: 8, paddingBottom: 24 },
 
     summaryCard: {
       flexDirection: 'row',

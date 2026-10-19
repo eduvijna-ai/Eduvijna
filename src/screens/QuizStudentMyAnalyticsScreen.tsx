@@ -29,6 +29,8 @@ import {
   generateQuizSummary,
 } from '../core/services/quizAnalyticsApi';
 import { loadQuizAnalyticsRowsCoalesced } from '../core/services/quizAnalyticsPagination';
+import { mergeAssessmentClassroomInventoryWithMetrics } from '../core/services/assessmentClassroomAnalytics';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import type { ClassOverview, QuizListItem } from '../core/types/quizAnalytics.types';
 import {
   generateStudentKPITiles,
@@ -60,6 +62,10 @@ export default function QuizStudentMyAnalyticsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const defaultDates = getDefaultDateRange();
+  const {
+    classrooms: assessmentClassrooms,
+    refresh: refreshClassrooms,
+  } = useAssessmentClassrooms();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,10 +128,10 @@ export default function QuizStudentMyAnalyticsScreen() {
     void fetchData();
   }, [fetchData]);
 
-  const classOverviews = useMemo(
-    () => aggregateClassOverview(rawData, { mode: 'student' }),
-    [rawData],
-  );
+  const classOverviews = useMemo(() => {
+    const metrics = aggregateClassOverview(rawData, { mode: 'student' });
+    return mergeAssessmentClassroomInventoryWithMetrics(assessmentClassrooms, metrics);
+  }, [rawData, assessmentClassrooms]);
   const kpiTiles = useMemo(() => generateStudentKPITiles(rawData), [rawData]);
 
   const filteredQuizzes = useMemo(() => {
@@ -209,9 +215,9 @@ export default function QuizStudentMyAnalyticsScreen() {
         },
         { navigation },
       );
-    } catch (viewErr) {
+    } catch (viewErr: unknown) {
       if (isAssignedQuizRecoveryProbeError(viewErr)) {
-        setError(viewErr.message);
+        setError((viewErr as { message: string }).message);
       } else {
         setError('Could not open results. Please try again.');
       }
@@ -243,7 +249,11 @@ export default function QuizStudentMyAnalyticsScreen() {
         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
       </View>
       <View style={styles.metricsRow}>
-        <MetricPill label="Avg" value={`${Math.round(cls.avg_score)}%`} color={scoreColor(cls.avg_score)} />
+        <MetricPill
+          label="Avg"
+          value={cls.avg_score == null ? '—' : `${Math.round(cls.avg_score)}%`}
+          color={scoreColor(cls.avg_score)}
+        />
         <MetricPill label="Completed" value={String(cls.completed_count)} color="#059669" />
         <MetricPill label="Pending" value={String(cls.pending_count)} color="#d97706" />
       </View>
@@ -335,7 +345,10 @@ export default function QuizStudentMyAnalyticsScreen() {
         onEndChange={setEndDate}
         onApply={handleApplyDates}
         onClear={handleClearDates}
-        onRefresh={() => fetchData(true)}
+        onRefresh={() => {
+          void refreshClassrooms();
+          void fetchData(true);
+        }}
         loading={refreshing}
         colors={{ ...colors, background: colors.background }}
       />
@@ -347,7 +360,16 @@ export default function QuizStudentMyAnalyticsScreen() {
       ) : null}
 
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} colors={[colors.primary]} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void refreshClassrooms();
+              void fetchData(true);
+            }}
+            colors={[colors.primary]}
+          />
+        }
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
@@ -390,7 +412,13 @@ export default function QuizStudentMyAnalyticsScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>{selectedClassName}</Text>
             <AnalyticsStatusChips summary={statusSummary} active={statusFilter} onChange={setStatusFilter} colors={colors} />
-            {paginatedQuizzes.map(renderQuizRow)}
+            {paginatedQuizzes.length === 0 ? (
+              <Text style={[styles.cardSub, { color: colors.textSecondary, marginVertical: 12 }]}>
+                No assessments in this class for the selected date range.
+              </Text>
+            ) : (
+              paginatedQuizzes.map(renderQuizRow)
+            )}
             <AnalyticsPagination page={page} totalPages={totalQuizPages} onPageChange={setPage} colors={colors} />
           </>
         )}

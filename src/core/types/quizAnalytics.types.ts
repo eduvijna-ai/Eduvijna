@@ -199,7 +199,8 @@ export interface ClassOverview {
   active_assignment_count?: number;
   upcoming_assignment_count?: number;
   expired_assignment_count?: number;
-  avg_score: number;
+  /** Null when no numeric scores exist for completed attempts (do not fabricate 0%). */
+  avg_score: number | null;
   highest_score: number | null;
   lowest_score: number | null;
   completion_rate: number; // percentage

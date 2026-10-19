@@ -22,7 +22,7 @@ export function emptyClassOverviewForClassroom(
     active_assignment_count: 0,
     upcoming_assignment_count: 0,
     expired_assignment_count: 0,
-    avg_score: 0,
+    avg_score: null,
     highest_score: null,
     lowest_score: null,
     completion_rate: 0,

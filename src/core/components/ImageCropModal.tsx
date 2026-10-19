@@ -27,6 +27,7 @@ import {
   resolveCropSession,
   subscribeCropSession,
 } from '../services/imageCropSession';
+import { mapCropRectToSourcePixels } from '../utils/imageCropGeometry';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -101,18 +102,7 @@ async function applyCrop(
   bounds: Rect,
   crop: Rect,
 ): Promise<{ uri: string; width: number; height: number }> {
-  const scaleX = natural.width / bounds.width;
-  const scaleY = natural.height / bounds.height;
-
-  let originX = Math.round((crop.x - bounds.x) * scaleX);
-  let originY = Math.round((crop.y - bounds.y) * scaleY);
-  let width = Math.round(crop.width * scaleX);
-  let height = Math.round(crop.height * scaleY);
-
-  originX = clamp(originX, 0, natural.width - 1);
-  originY = clamp(originY, 0, natural.height - 1);
-  width = clamp(width, 1, natural.width - originX);
-  height = clamp(height, 1, natural.height - originY);
+  const { originX, originY, width, height } = mapCropRectToSourcePixels(natural, bounds, crop);
 
   const context = ImageManipulator.manipulate(uri);
   context.crop({ originX, originY, width, height });
