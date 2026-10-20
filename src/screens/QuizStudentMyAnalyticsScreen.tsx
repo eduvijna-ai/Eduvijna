@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import AnalyticsKPIGrid from '../components/analytics/AnalyticsKPIGrid';
 import AnalyticsDateFilter from '../components/analytics/AnalyticsDateFilter';
@@ -22,47 +23,60 @@ import AnalyticsPagination from '../components/analytics/AnalyticsPagination';
 import AnalyticsStatusChips, { type StatusFilterKey } from '../components/analytics/AnalyticsStatusChips';
 import QuizAttemptDetailModal from '../components/analytics/QuizAttemptDetailModal';
 import {
-  getQuizAnalytics,
   aggregateClassOverview,
   extractStatusSummary,
   generateInsights,
   generateQuizSummary,
 } from '../core/services/quizAnalyticsApi';
+import { loadQuizAnalyticsRowsCoalesced } from '../core/services/quizAnalyticsPagination';
+import { mergeAssessmentClassroomInventoryWithMetrics } from '../core/services/assessmentClassroomAnalytics';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 import type { ClassOverview, QuizListItem } from '../core/types/quizAnalytics.types';
 import {
   generateStudentKPITiles,
   getDefaultDateRange,
   formatDate,
-  formatDuration,
   scoreColor,
 } from '../core/utils/analyticsUiUtils';
+import { isAnalyticsAllTime } from '../core/utils/analyticsDateState';
+import {
+  isAssignedQuizRecoveryProbeError,
+} from '../core/services/assignedQuizRecovery.service';
+import {
+  executeStudentAssignedQuizViewResults,
+} from '../core/services/assessmentQuizStart.service';
+import {
+  classifyStudentAnalyticsAttemptStatus,
+  scoreForStudentAnalyticsDisplay,
+  studentAnalyticsMatchesStatusFilter,
+} from '../core/utils/studentAnalyticsClassification';
 
 type DrillLevel = 'overview' | 'class';
 
 const ITEMS_PER_PAGE = 10;
-
-function getStudentQuizStatus(quiz: QuizListItem): string {
-  if (quiz.best_score !== null || quiz.latest_score !== null) return 'completed';
-  if (quiz.availability_status === 'expired') return 'missed';
-  if (quiz.availability_status === 'active') return 'pending';
-  return quiz.availability_status || 'pending';
-}
 
 export default function QuizStudentMyAnalyticsScreen() {
   const { theme } = useTheme();
   const { colors } = theme;
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
   const defaultDates = getDefaultDateRange();
+  const {
+    classrooms: assessmentClassrooms,
+    refresh: refreshClassrooms,
+  } = useAssessmentClassrooms();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rawData, setRawData] = useState<QuizListItem[]>([]);
-  const [startDate, setStartDate] = useState(defaultDates.from);
-  const [endDate, setEndDate] = useState(defaultDates.to);
-  const [appliedStart, setAppliedStart] = useState(defaultDates.from);
-  const [appliedEnd, setAppliedEnd] = useState(defaultDates.to);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [appliedStart, setAppliedStart] = useState('');
+  const [appliedEnd, setAppliedEnd] = useState('');
+  const hasMetricsRef = React.useRef(false);
+  const metricsGenerationRef = React.useRef(0);
   const [drillLevel, setDrillLevel] = useState<DrillLevel>('overview');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassName, setSelectedClassName] = useState('');
@@ -76,43 +90,54 @@ export default function QuizStudentMyAnalyticsScreen() {
     logData: null as string | null,
     submittedAt: null as string | null,
   });
+  const [viewingQuizId, setViewingQuizId] = useState<number | null>(null);
 
   const fetchData = useCallback(async (isRefresh = false) => {
+    const generation = ++metricsGenerationRef.current;
+    const blocking = !isRefresh && !hasMetricsRef.current;
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
+    else if (blocking) setLoading(true);
     try {
-      const res = await getQuizAnalytics({
+      const allTime = isAnalyticsAllTime(appliedStart, appliedEnd);
+      const outcome = await loadQuizAnalyticsRowsCoalesced({
         view_type: 'student_total_details',
-        limit: 100,
-        offset: 0,
-        created_from: appliedStart,
-        created_to: appliedEnd,
+        ...(allTime
+          ? {}
+          : { created_from: appliedStart, created_to: appliedEnd }),
       });
-      setRawData(res.data ?? []);
+      if (generation !== metricsGenerationRef.current) return;
+      if (outcome.kind === 'incomplete') {
+        setError(`Incomplete analytics fetch (${outcome.reason}).`);
+        if (!hasMetricsRef.current) setRawData([]);
+        return;
+      }
+      setRawData(outcome.rows);
+      hasMetricsRef.current = true;
+      setError(null);
     } catch (err: any) {
+      if (generation !== metricsGenerationRef.current) return;
       setError(err?.message || 'Failed to load analytics');
     } finally {
+      if (generation !== metricsGenerationRef.current) return;
       setLoading(false);
       setRefreshing(false);
     }
   }, [appliedStart, appliedEnd]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData]);
 
-  const classOverviews = useMemo(() => aggregateClassOverview(rawData), [rawData]);
+  const classOverviews = useMemo(() => {
+    const metrics = aggregateClassOverview(rawData, { mode: 'student' });
+    return mergeAssessmentClassroomInventoryWithMetrics(assessmentClassrooms, metrics);
+  }, [rawData, assessmentClassrooms]);
   const kpiTiles = useMemo(() => generateStudentKPITiles(rawData), [rawData]);
 
   const filteredQuizzes = useMemo(() => {
     let items = selectedClass ? rawData.filter((q) => q.classroom_id === selectedClass) : rawData;
     if (statusFilter && statusFilter !== 'total') {
-      items = items.filter((q) => {
-        const st = getStudentQuizStatus(q);
-        if (statusFilter === 'active') return q.availability_status === 'active';
-        return st === statusFilter;
-      });
+      items = items.filter((q) => studentAnalyticsMatchesStatusFilter(q, statusFilter));
     }
     return items;
   }, [rawData, selectedClass, statusFilter]);
@@ -134,17 +159,25 @@ export default function QuizStudentMyAnalyticsScreen() {
   const paginatedQuizzes = filteredQuizzes.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const handleApplyDates = () => {
-    setAppliedStart(startDate);
-    setAppliedEnd(endDate);
+    if (!String(startDate || '').trim() && !String(endDate || '').trim()) {
+      setAppliedStart('');
+      setAppliedEnd('');
+    } else {
+      const from = String(startDate || '').trim() || defaultDates.from;
+      const to = String(endDate || '').trim() || defaultDates.to;
+      setStartDate(from);
+      setEndDate(to);
+      setAppliedStart(from);
+      setAppliedEnd(to);
+    }
     setPage(1);
   };
 
   const handleClearDates = () => {
-    const d = getDefaultDateRange();
-    setStartDate(d.from);
-    setEndDate(d.to);
-    setAppliedStart(d.from);
-    setAppliedEnd(d.to);
+    setStartDate('');
+    setEndDate('');
+    setAppliedStart('');
+    setAppliedEnd('');
     setPage(1);
   };
 
@@ -155,6 +188,42 @@ export default function QuizStudentMyAnalyticsScreen() {
       sessionId: quiz.session_id,
       classroomId: quiz.classroom_id,
     });
+  };
+
+  const handleViewResults = async (quiz: QuizListItem) => {
+    if (!user?.id || !quiz.session_id) {
+      setPopup({
+        visible: true,
+        quizName: quiz.quiz_name,
+        score: quiz.best_score ?? quiz.latest_score ?? quiz.score,
+        timeSpent: quiz.time_spent_seconds,
+        logData: quiz.log_data,
+        submittedAt: quiz.submitted_at,
+      });
+      return;
+    }
+
+    setViewingQuizId(quiz.quiz_id);
+    try {
+      await executeStudentAssignedQuizViewResults(
+        {
+          studentId: String(user.id),
+          quizId: quiz.quiz_id,
+          sessionId: quiz.session_id,
+          classroomId: quiz.classroom_id,
+          quizName: quiz.quiz_name,
+        },
+        { navigation },
+      );
+    } catch (viewErr: unknown) {
+      if (isAssignedQuizRecoveryProbeError(viewErr)) {
+        setError((viewErr as { message: string }).message);
+      } else {
+        setError('Could not open results. Please try again.');
+      }
+    } finally {
+      setViewingQuizId(null);
+    }
   };
 
   const renderClassCard = (cls: ClassOverview) => (
@@ -180,16 +249,20 @@ export default function QuizStudentMyAnalyticsScreen() {
         <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
       </View>
       <View style={styles.metricsRow}>
-        <MetricPill label="Avg" value={`${Math.round(cls.avg_score)}%`} color={scoreColor(cls.avg_score)} />
-        <MetricPill label="Done" value={String(cls.completed_count)} color="#059669" />
+        <MetricPill
+          label="Avg"
+          value={cls.avg_score == null ? '—' : `${Math.round(cls.avg_score)}%`}
+          color={scoreColor(cls.avg_score)}
+        />
+        <MetricPill label="Completed" value={String(cls.completed_count)} color="#059669" />
         <MetricPill label="Pending" value={String(cls.pending_count)} color="#d97706" />
       </View>
     </TouchableOpacity>
   );
 
   const renderQuizRow = (quiz: QuizListItem) => {
-    const status = getStudentQuizStatus(quiz);
-    const score = quiz.best_score ?? quiz.latest_score ?? quiz.score;
+    const status = classifyStudentAnalyticsAttemptStatus(quiz);
+    const score = scoreForStudentAnalyticsDisplay(quiz);
     const summary = generateQuizSummary({
       quiz_id: quiz.quiz_id,
       quiz_name: quiz.quiz_name,
@@ -204,8 +277,11 @@ export default function QuizStudentMyAnalyticsScreen() {
       summary: '',
     });
 
-    const canStart = status === 'pending' && quiz.availability_status === 'active' && quiz.session_id;
-    const canView = status === 'completed' && quiz.log_data;
+    const canStart =
+      (status === 'pending' || status === 'in_progress') &&
+      quiz.availability_status === 'active' &&
+      quiz.session_id;
+    const canView = status === 'completed' && (quiz.log_data || quiz.session_id);
 
     return (
       <View key={quiz.quiz_id} style={[styles.quizRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -223,18 +299,14 @@ export default function QuizStudentMyAnalyticsScreen() {
           {canView ? (
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: colors.primary }]}
-              onPress={() =>
-                setPopup({
-                  visible: true,
-                  quizName: quiz.quiz_name,
-                  score,
-                  timeSpent: quiz.time_spent_seconds,
-                  logData: quiz.log_data,
-                  submittedAt: quiz.submitted_at,
-                })
-              }
+              onPress={() => handleViewResults(quiz)}
+              disabled={viewingQuizId === quiz.quiz_id}
             >
-              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View</Text>
+              {viewingQuizId === quiz.quiz_id ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>View</Text>
+              )}
             </TouchableOpacity>
           ) : null}
           {canStart ? (
@@ -273,7 +345,10 @@ export default function QuizStudentMyAnalyticsScreen() {
         onEndChange={setEndDate}
         onApply={handleApplyDates}
         onClear={handleClearDates}
-        onRefresh={() => fetchData(true)}
+        onRefresh={() => {
+          void refreshClassrooms();
+          void fetchData(true);
+        }}
         loading={refreshing}
         colors={{ ...colors, background: colors.background }}
       />
@@ -285,7 +360,16 @@ export default function QuizStudentMyAnalyticsScreen() {
       ) : null}
 
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchData(true)} colors={[colors.primary]} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              void refreshClassrooms();
+              void fetchData(true);
+            }}
+            colors={[colors.primary]}
+          />
+        }
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
@@ -328,7 +412,13 @@ export default function QuizStudentMyAnalyticsScreen() {
           <>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>{selectedClassName}</Text>
             <AnalyticsStatusChips summary={statusSummary} active={statusFilter} onChange={setStatusFilter} colors={colors} />
-            {paginatedQuizzes.map(renderQuizRow)}
+            {paginatedQuizzes.length === 0 ? (
+              <Text style={[styles.cardSub, { color: colors.textSecondary, marginVertical: 12 }]}>
+                No assessments in this class for the selected date range.
+              </Text>
+            ) : (
+              paginatedQuizzes.map(renderQuizRow)
+            )}
             <AnalyticsPagination page={page} totalPages={totalQuizPages} onPageChange={setPage} colors={colors} />
           </>
         )}

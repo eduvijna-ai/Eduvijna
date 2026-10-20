@@ -184,8 +184,8 @@ function LoginScreen({ navigation }: { navigation: any }) {
       const response = await loginUser(email, password);
       
       // Save tokens
-      await TokenStorage.setAccessToken(response.access_token);
-      await TokenStorage.setRefreshToken(response.refresh_token);
+      await TokenStorage.storeAccessToken(response.access_token);
+      await TokenStorage.storeRefreshToken(response.refresh_token);
       
       // Navigate to dashboard
       navigation.reset({

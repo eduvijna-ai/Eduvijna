@@ -1,0 +1,68 @@
+{
+  "tracedAt": "2026-10-12T03:24:20.639Z",
+  "fixture": {
+    "quizId": 479,
+    "classroomId": "class_4d82c60e",
+    "sessionId": "a6882262-5c50-4cf5-a4a8-dc8786862916",
+    "studentId": "70",
+    "attemptId": 207
+  },
+  "listQuery": {
+    "created_from": "2026-08-01",
+    "created_to": "2026-10-13",
+    "view_type": "all"
+  },
+  "assignmentsSameQuizClass": [
+    {
+      "session_id": "a6882262-5c50-4cf5-a4a8-dc8786862916",
+      "quiz_name": "MAT_Mathematics_maths_20260827_1303",
+      "availability_status": "expired",
+      "completed_count": 1,
+      "pending_count": 2,
+      "attempt_count": "json_string"
+    }
+  ],
+  "targetAssignmentFound": true,
+  "selectedAssignmentMatchesTarget": true,
+  "rawStudentAttempt": {
+    "score": 60,
+    "status": "completed",
+    "attempt_id": 207,
+    "avatar_url": null,
+    "started_at": "2026-08-27T07:34:23.016+00:00",
+    "student_id": "70",
+    "completed_at": "2026-08-27T07:34:24.463+00:00",
+    "attempt_number": 1,
+    "student_fullname": "Aarya",
+    "student_username": "demo_aarya",
+    "time_spent_seconds": 0,
+    "submission": {
+      "submitted_at": "2026-08-27T07:34:24.463+00:00",
+      "submission_id": 100,
+      "has_log_data": true,
+      "log_data_bytes": 4091
+    },
+    "has_top_level_log_data": false
+  },
+  "rawExtract": {
+    "log_data": "{\"assessment_type\": \"worksheet\", \"worksheet_answers\": {\"Section_A_MCQ\": [{\"id\": 1, \"answer\": \"B\"}, {\"id\": 3, \"answer\": \"C\"}, {\"id\": 4, \"answer\": \"C\"}, {\"id\": 5, \"answer\": \"A\"}, {\"id\": 6, \"answer\": \"\"}, {\"id\": 21, \"answer\": \"\"}], \"Section_B_Fill_in_the_Blank\": [{\"id\": 22, \"answer\": \"\"}], \"Section_C_True_False\": [{\"id\": 2, \"answer\": \"True\"}, {\"id\": 7, \"answer\": \"True\"}, {\"id\": 8, \"answer\": \"True\"}, {\"id\": 9, \"answer\": \"True\"}, {\"id\": 10, \"answer\": \"False\"}, {\"id\": 23, \"answer\": \"False\"}], \"Section_D_Short_Questions\": [{\"id\": 11, \"answer\": \"\"}, {\"id\": 12, \"answer\": \"\"}, {\"id\": 13, \"answer\": \"\"}, {\"id\": 14, \"answer\": \"\"}, {\"id\": 15, \"answer\": \"\"}, {\"id\": 16, \"answer\": \"\"}, {\"id\": 17, \"answer\": \"\"}, {\"id\": 18, \"answer\": \"\"}, {\"id\": 19, \"answer\": \"\"}, {\"id\": 20, \"answer\": \"\"}, {\"id\": 24, \"answer\": \"\"}, {\"id\": 25, \"answer\": \"\"}]}, \"topic\": \"Mathematics \\u2014 maths\", \"started_at\": \"2026-08-27T07:34:24.463Z\", \"time_spent_seconds\": 0, \"attempt_id\": 207, \"client\": {\"ua\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0\"}, \"evaluation\": {\"success\": true, \"results\": [{\"id\": 1, \"section\": \"Section_A_MCQ\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct answer.\"}, {\"id\": 3, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is A.\"}, {\"id\": 4, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is A.\"}, {\"id\": 5, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is C.\"}, {\"id\": 2, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 7, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 8, \"section\": \"Section_C_True_False\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The statement is false.\"}, {\"id\": 9, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 10, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 23, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}], \"totalMarks\": 6.0, \"maxMarks\": 10.0, \"percentage\": 60.0, \"message\": \"Worksheet evaluated successfully\", \"processing_time_ms\": 3796.5784072875977}, \"results\": [{\"id\": 1, \"section\": \"Section_A_MCQ\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct answer.\"}, {\"id\": 3, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is A.\"}, {\"id\": 4, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is A.\"}, {\"id\": 5, \"section\": \"Section_A_MCQ\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The correct answer is C.\"}, {\"id\": 2, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 7, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 8, \"section\": \"Section_C_True_False\", \"isCorrect\": false, \"marksObtained\": 0.0, \"maxMarks\": 1.0, \"feedback\": \"Incorrect. The statement is false.\"}, {\"id\": 9, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 10, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}, {\"id\": 23, \"section\": \"Section_C_True_False\", \"isCorrect\": true, \"marksObtained\": 1.0, \"maxMarks\": 1.0, \"feedback\": \"Correct.\"}], \"totalMarks\": 6.0, \"maxMarks\": 10.0}",
+    "logSource": "submission",
+    "log_data_redacted": true,
+    "log_data_bytes": 4091
+  },
+  "rawCanOpen": true,
+  "normalisedRow": {
+    "status": "completed",
+    "derivedStatus": "completed",
+    "score": 60,
+    "attempt_id": "207",
+    "canViewSavedResult": true,
+    "logSource": "submission"
+  },
+  "attendedQuiz": {
+    "httpStatus": 200,
+    "score": 60,
+    "has_items": true,
+    "log_present": true
+  }
+}

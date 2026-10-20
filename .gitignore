@@ -1,5 +1,8 @@
 node_modules/
 .expo/
+.expo-export-check/
+android/
+ios/
 dist/
 npm-debug.*
 *.jks
@@ -11,6 +14,9 @@ npm-debug.*
 web-build/
 .env
 .env.local
+.dev-api-credentials.local.json
+.engineering-physical-device.local.json
+.dev-api-submission-matrix-run/
 
 # macOS
 .DS_Store

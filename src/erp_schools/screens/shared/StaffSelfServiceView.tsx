@@ -184,17 +184,23 @@ function mapSelfProfile(
 function mapSlot(raw: Record<string, unknown>, index: number): TeacherTimetableSlot {
   return {
     id: pickString(raw.id, `slot-${index}`),
-    templateId: pickNumber(raw.template_id),
-    dayOfWeek: pickNumber(raw.day_of_week),
-    periodNumber: pickNumber(raw.period_number, index + 1),
-    startTime: pickString(raw.start_time),
-    endTime: pickString(raw.end_time),
-    subjectName: pickString(raw.subject_name, raw.slot_type, 'Period'),
-    className: pickString(raw.class_name),
-    sectionName: pickString(raw.section_name),
-    room: pickString(raw.room),
-    slotType: pickString(raw.slot_type, 'lecture'),
-    teacherName: pickString(raw.teacher_name),
+    templateId: pickNumber(raw.template_id, raw.templateId),
+    dayOfWeek: pickNumber(raw.day_of_week, raw.dayOfWeek),
+    periodNumber: pickNumber(
+      raw.period_number,
+      raw.periodNumber,
+      raw.period_no,
+      raw.period,
+      index + 1,
+    ),
+    startTime: pickString(raw.start_time, raw.startTime, raw.from_time),
+    endTime: pickString(raw.end_time, raw.endTime, raw.to_time),
+    subjectName: pickString(raw.subject_name, raw.subjectName, raw.subject, raw.slot_type, 'Period'),
+    className: pickString(raw.class_name, raw.className),
+    sectionName: pickString(raw.section_name, raw.sectionName),
+    room: pickString(raw.room, raw.room_name, raw.roomName),
+    slotType: pickString(raw.slot_type, raw.slotType, 'lecture'),
+    teacherName: pickString(raw.teacher_name, raw.teacherName),
   };
 }
 
@@ -711,7 +717,7 @@ export default function StaffSelfServiceView({ classRows = [] }: StaffSelfServic
             </View>
             <SurfaceCard padded={false}>
               <ReadRow icon="male-female-outline" label="Gender" value={dash(profile.gender)} />
-              <ReadRow icon="cake-outline" label="Date of Birth" value={dob} />
+              <ReadRow icon="cafe-outline" label="Date of Birth" value={dob} />
               <ReadRow icon="mail-outline" label="Email" value={dash(profile.email)} />
               <ReadRow icon="call-outline" label="Phone" value={dash(profile.phone)} />
               <ReadRow icon="calendar-outline" label="Joining Date" value={joining} />

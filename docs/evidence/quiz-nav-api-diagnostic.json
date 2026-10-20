@@ -1,0 +1,301 @@
+{
+  "user": {
+    "role": "instructor",
+    "username_redacted": "dem***"
+  },
+  "navRecords": [
+    {
+      "id": 142,
+      "route_path": "/erp/tabs/dashboard",
+      "component_name": "dashboard",
+      "label": "Dashboard",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 143,
+      "route_path": "/erp/tabs/students",
+      "component_name": "students",
+      "label": "Class Overview",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 144,
+      "route_path": "/erp/tabs/attendance",
+      "component_name": "attendance",
+      "label": "Attendance",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 145,
+      "route_path": "/erp/tabs/notices",
+      "component_name": "notices",
+      "label": "Notices",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 146,
+      "route_path": "/erp/tabs/admissions",
+      "component_name": "admissions",
+      "label": "Front Office",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 147,
+      "route_path": "/erp/tabs/exams",
+      "component_name": "exams",
+      "label": "Exams",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 148,
+      "route_path": "/erp/tabs/timetable",
+      "component_name": "timetable",
+      "label": "Timetable",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 149,
+      "route_path": "/erp/tabs/fees",
+      "component_name": "fees",
+      "label": "Fees",
+      "role_id": 3,
+      "school_id": 7,
+      "role": null,
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "erp_tabs",
+      "is_active": true
+    },
+    {
+      "id": 170,
+      "route_path": "/image-quiz",
+      "component_name": "ImageQuizPage",
+      "label": "Image",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 171,
+      "route_path": "/pdf-extraction",
+      "component_name": "PDFExtractionDashboard",
+      "label": "Exam Paper Process",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "student",
+        "instructor",
+        "admin"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 172,
+      "route_path": "/web-quiz",
+      "component_name": "WebQuizPage",
+      "label": "AI Assessment",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 174,
+      "route_path": "/analytics",
+      "component_name": "AnalyticsPage",
+      "label": "Teacher Analytics",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher"
+      ],
+      "nav_section": "Analytics",
+      "is_active": true
+    },
+    {
+      "id": 184,
+      "route_path": "/eduask",
+      "component_name": "EduAsk Blog",
+      "label": "EduAsk Blog",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher",
+        "student"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 179,
+      "route_path": "/doc-image-extraction",
+      "component_name": "DocImageExtraction",
+      "label": "Handwritten",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 180,
+      "route_path": "/chat",
+      "component_name": "Chat",
+      "label": "Vijna Assistant Chat",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher",
+        "student"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 183,
+      "route_path": "/quiz",
+      "component_name": "Timer Quiz",
+      "label": "AI Timer Quiz",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 178,
+      "route_path": "/document-quiz",
+      "component_name": "DocumentQuizPage",
+      "label": "Document",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor",
+        "teacher"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 169,
+      "route_path": "/handwritten",
+      "component_name": "Handwritten",
+      "label": "AI Assessment Platform",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 176,
+      "route_path": "/youtube-quiz",
+      "component_name": "YouTubeQuizPage",
+      "label": "YouTube",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "instructor"
+      ],
+      "nav_section": "assessment_types",
+      "is_active": true
+    },
+    {
+      "id": 168,
+      "route_path": "/erp",
+      "component_name": "ERPManagement",
+      "label": "School ERP",
+      "role_id": 3,
+      "school_id": 7,
+      "role": "instructor",
+      "roles_allowed": [
+        "admin"
+      ],
+      "nav_section": "main_nav",
+      "is_active": true
+    }
+  ],
+  "documentRow178Present": true,
+  "handwrittenRow169Present": true
+}

@@ -1,0 +1,25 @@
+{
+  "probedAt": "2026-10-18T15:49:26.057Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "student": {
+    "view_type_class_wise_students": {
+      "status": 200,
+      "rows": 0,
+      "note": "Empty under student auth — do not adopt for student inventory"
+    },
+    "view_type_classes": {
+      "status": 200,
+      "rows": 5,
+      "note": "Authorized student classroom inventory"
+    }
+  },
+  "teacher": {
+    "view_type_class_wise_students": {
+      "note": "Authoritative for Home KPI / ClassesList / assessment selectors; includes zero-assignment e.g. 10A-Science"
+    }
+  },
+  "sharedAbstraction": {
+    "teacherSource": "class_wise_students",
+    "studentSource": "classes"
+  }
+}

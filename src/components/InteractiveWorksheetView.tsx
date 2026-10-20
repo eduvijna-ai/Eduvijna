@@ -12,7 +12,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import MathRenderer from './MathRenderer';
+import EducationalContent from './EducationalContent';
 import WorksheetMcqCard from './WorksheetMcqCard';
 import { evaluateWorksheet, updateAssessmentResponses } from '../core/services/sharedApi';
 import {
@@ -183,11 +183,11 @@ export default function InteractiveWorksheetView({
     return (
       <View style={styles.answerKeyBox}>
         <Text style={styles.answerKeyLabel}>{label}: </Text>
-        <MathRenderer text={value} colors={colors} />
+        <EducationalContent content={value} />
         {explanation ? (
           <View style={styles.explanationRow}>
             <Text style={styles.answerKeyLabel}>Explanation: </Text>
-            <MathRenderer text={explanation} colors={colors} />
+            <EducationalContent content={explanation} />
           </View>
         ) : null}
       </View>
@@ -303,7 +303,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
+              <EducationalContent content={`Q${idx + 1}. ${q.question}`} />
               {renderTextInput('Section_B_Fill_in_the_Blank', q.id, 44, 'Type your answer')}
               {renderResultBadge('Section_B_Fill_in_the_Blank', q.id)}
               {renderAnswerKey('Answer', answer?.correctAnswer || '', explanation?.explanation)}
@@ -337,7 +337,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
+              <EducationalContent content={`Q${idx + 1}. ${q.question}`} />
               <View style={styles.optionsWrap}>
                 {renderRadioOption('Section_C_True_False', q.id, 'True', 'True', selected)}
                 {renderRadioOption('Section_C_True_False', q.id, 'False', 'False', selected)}
@@ -373,7 +373,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
+              <EducationalContent content={`Q${idx + 1}. ${q.question}`} />
               {renderTextInput('Section_D_Short_Questions', q.id, 70, 'Type your short answer…')}
               {renderResultBadge('Section_D_Short_Questions', q.id)}
               {renderAnswerKey('Model Answer', answer?.modelAnswer || '', explanation?.explanation)}
@@ -406,7 +406,7 @@ export default function InteractiveWorksheetView({
                 },
               ]}
             >
-              <MathRenderer text={`Q${idx + 1}. ${q.question}`} colors={colors} />
+              <EducationalContent content={`Q${idx + 1}. ${q.question}`} />
               {renderTextInput('Section_F_Long_Questions', q.id, 120, 'Type your detailed answer…')}
               {renderResultBadge('Section_F_Long_Questions', q.id)}
               {renderAnswerKey('Model Answer', answer?.modelAnswer || '', explanation?.explanation)}
@@ -425,7 +425,7 @@ export default function InteractiveWorksheetView({
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Section E: Match the Following</Text>
         {ws.Section_E_Matching?.Instructions ? (
           <View style={styles.instructionsWrap}>
-            <MathRenderer text={ws.Section_E_Matching.Instructions} colors={colors} />
+            <EducationalContent content={ws.Section_E_Matching.Instructions} />
           </View>
         ) : null}
         <View style={[styles.matchTable, { borderColor: colors.border }]}>
@@ -442,10 +442,10 @@ export default function InteractiveWorksheetView({
               ]}
             >
               <View style={styles.matchCell}>
-                <MathRenderer text={pair.term || pair.left || ''} colors={colors} />
+                <EducationalContent content={pair.term || pair.left || ''} />
               </View>
               <View style={styles.matchCell}>
-                <MathRenderer text={pair.definition || pair.right || ''} colors={colors} />
+                <EducationalContent content={pair.definition || pair.right || ''} />
               </View>
             </View>
           ))}

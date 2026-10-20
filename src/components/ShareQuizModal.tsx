@@ -9,13 +9,19 @@ import {
   TextInput,
   Alert,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ModalDropdownField from './ModalDropdownField';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import { apiClient, API_BASE_URL } from '@core/api/config';
-import { fetchTeacherClassrooms } from '@core/services/dashboardApi';
+import {
+  buildAssessmentClassroomScopeFromUser,
+  useAssessmentClassroomsStore,
+} from '@core/store/assessmentClassrooms.store';
+import { useUserStore } from '@core/store/user.store';
 import { createQuizAssignment, createClassroomQuiz } from '../core/services/quizzes';
 import { getAccessToken } from '@core/services/tokenStorage';
 import { fullScreenModalOverlay, getFullScreenModalProps } from './fullScreenModal';
@@ -102,6 +108,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = theme.colors;
+  const insets = useSafeAreaInsets();
   const {user} = useAuth();
   const isWorksheet = assessmentType === 'worksheet';
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -223,38 +230,32 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
         setClassrooms([]);
         return;
       }
-      
-      try {
-        // Use dashboardApi service to fetch classrooms
-        const response = await fetchTeacherClassrooms();
-        const classroomList = response.data || [];
-        console.log('📚 Fetched classrooms:', classroomList.map((c: any) => ({
-          id: c.classroom_id,
-          name: c.classroom_name,
-          total_count: c.total_count,
-          student_count: c.student_count,
-          students_length: c.students?.length || 0,
-        })));
-        
-        // Classrooms already have parsed students from fetchTeacherClassrooms
-        const normalizedClassrooms: Classroom[] = classroomList.map((c: any) => ({
-          classroom_id: c.classroom_id,
-          classroom_name: c.classroom_name,
-          total_count: c.total_count || c.student_count || c.students?.length || 0,
-          students: c.students || [],
-        }));
-        setClassrooms(normalizedClassrooms);
-        if (normalizedClassrooms.length > 0) {
-          setSelectedClassroom(normalizedClassrooms[0].classroom_id);
-        }
-      } catch (apiError) {
-        // API endpoint might not exist - set empty classrooms and continue
-        console.warn('Could not fetch classrooms - API may not be available:', apiError);
+
+      const schoolId = useUserStore.getState().schoolId;
+      const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+      if (!scope) {
         setClassrooms([]);
+        return;
+      }
+
+      await useAssessmentClassroomsStore.getState().ensureLoaded(scope);
+      const inventory = useAssessmentClassroomsStore.getState().classrooms;
+      const normalizedClassrooms: Classroom[] = inventory.map((c) => ({
+        classroom_id: c.classroom_id,
+        classroom_name: c.classroom_name,
+        total_count: c.total_count || c.student_count || c.students?.length || 0,
+        students: (c.students as any[]) || [],
+      }));
+      setClassrooms(normalizedClassrooms);
+      if (normalizedClassrooms.length > 0 && !selectedClassroom) {
+        setSelectedClassroom(normalizedClassrooms[0].classroom_id);
       }
     } catch (error) {
       console.error('Error in fetchClassrooms:', error);
-      setClassrooms([]);
+      // Preserve prior selection list on failure — do not flash empty if we already had data.
+      if (classrooms.length === 0) {
+        setClassrooms([]);
+      }
     }
   };
 
@@ -664,7 +665,20 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
   return (
     <Modal visible={visible} onRequestClose={onClose} {...getFullScreenModalProps('fade')}>
       <View style={[fullScreenModalOverlay, styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.55)' }]}>
-        <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ width: '100%', alignItems: 'center', maxHeight: '92%' }}
+        >
+        <View
+          style={[
+            styles.modalContainer,
+            {
+              backgroundColor: colors.card,
+              marginBottom: Math.max(insets.bottom, 8),
+              maxHeight: '90%',
+            },
+          ]}
+        >
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               🔗 Share {isWorksheet ? 'Worksheet' : 'Assessment'}
@@ -673,7 +687,12 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
               <Text style={[styles.closeButtonText, { color: colors.text }]}>✕</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             <View style={styles.formGroup}>
               <Text style={[styles.label, { color: colors.text }]}>
                 {isWorksheet ? 'Worksheet' : 'Quiz'} Topic (Read-only)
@@ -877,6 +896,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAvoidingView>
 
         {/* Start Date/Time Picker Modal */}
         {showStartPicker && (
@@ -987,7 +1007,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
 
 const styles = StyleSheet.create({
   modalOverlay: { justifyContent: 'center', alignItems: 'center' },
-  modalContainer: {width: '90%', maxHeight: '85%', borderRadius: 16, overflow: 'hidden'},
+  modalContainer: {width: '92%', maxHeight: '90%', borderRadius: 16, overflow: 'hidden'},
   modalHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1},
   modalTitle: {fontSize: 20, fontWeight: '700'},
   closeButton: {width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center'},

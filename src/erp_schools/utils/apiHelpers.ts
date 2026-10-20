@@ -83,6 +83,8 @@ export function pickString(...vals: unknown[]): string {
 
 export function pickNumber(...vals: unknown[]): number {
   for (const v of vals) {
+    // Skip null/'' so callers can supply real defaults (Number(null)===0 otherwise).
+    if (v === null || v === undefined || v === '') continue;
     const n = Number(v);
     if (Number.isFinite(n)) return n;
   }

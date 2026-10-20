@@ -3,6 +3,8 @@
  * and when restoring saved assessments. Prevents crashes from malformed API payloads.
  */
 
+import { resolveCorrectOptionIndex } from './optionIdentity';
+
 export interface SanitizedQuizQuestion {
   id: string;
   question: string;
@@ -10,8 +12,16 @@ export interface SanitizedQuizQuestion {
   correctAnswer: string;
   answer: string;
   explanation: string | null;
+  verification_level?: string;
+  original_item_index?: number;
+  slot_id?: string;
   /** Set when options were shuffled/normalized at generation time (web parity). */
   optionsNormalized?: boolean;
+  correctOptionIndex?: number;
+  optionOrder?: number[];
+  originalOptions?: string[];
+  gradingFrozen?: boolean;
+  attendedIsCorrect?: boolean | null;
 }
 
 /** Unwrap nested { quiz: { question, options, answer } } history format. */
@@ -49,8 +59,18 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
 
   if (!question || options.length === 0) return null;
 
+  const rawCorrect = String(raw.correctAnswer ?? raw.answer ?? '').trim();
+  const correctOptionIndex =
+    typeof raw.correctOptionIndex === 'number'
+      ? raw.correctOptionIndex
+      : resolveCorrectOptionIndex(rawCorrect, options);
+  if (correctOptionIndex == null || correctOptionIndex < 0 || correctOptionIndex >= options.length) {
+    if (typeof raw.attendedIsCorrect !== 'boolean' && !rawCorrect) return null;
+  }
   const correct =
-    String(raw.correctAnswer ?? raw.answer ?? 'A').trim() || 'A';
+    correctOptionIndex != null && correctOptionIndex >= 0 && correctOptionIndex < options.length
+      ? options[correctOptionIndex]
+      : rawCorrect;
 
   return {
     id: String(raw.id ?? `q-${idx}`),
@@ -58,6 +78,19 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
     options,
     correctAnswer: correct,
     answer: correct,
+    correctOptionIndex:
+      correctOptionIndex != null && correctOptionIndex >= 0 && correctOptionIndex < options.length
+        ? correctOptionIndex
+        : undefined,
+    optionOrder: Array.isArray(raw.optionOrder) ? raw.optionOrder : undefined,
+    originalOptions: Array.isArray(raw.originalOptions) ? raw.originalOptions : undefined,
+    gradingFrozen: raw.gradingFrozen === true || raw.isHistoricalResult === true,
+    attendedIsCorrect:
+      typeof raw.attendedIsCorrect === 'boolean'
+        ? raw.attendedIsCorrect
+        : typeof raw.is_correct === 'boolean'
+          ? raw.is_correct
+          : null,
     explanation:
       typeof raw.explanation === 'string'
         ? raw.explanation
@@ -65,6 +98,11 @@ export function sanitizeQuizQuestion(item: any, idx: number): SanitizedQuizQuest
           ? String(raw.explanation)
           : null,
     optionsNormalized: raw.optionsNormalized === true,
+    verification_level:
+      typeof raw.verification_level === 'string' ? raw.verification_level : undefined,
+    original_item_index:
+      typeof raw.original_item_index === 'number' ? raw.original_item_index : undefined,
+    slot_id: typeof raw.slot_id === 'string' ? raw.slot_id : undefined,
   };
 }
 

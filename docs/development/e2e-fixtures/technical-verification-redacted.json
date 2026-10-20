@@ -1,0 +1,334 @@
+{
+  "verifiedAt": "2026-10-10T18:37:26.844Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "accounts": [
+    {
+      "accountLabel": "admin",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "admin",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "role": "admin",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 184,
+              "limit": 5,
+              "offset": 0,
+              "view_type": "summary"
+            },
+            "rowCount": 5,
+            "sampleFields": [
+              {
+                "classroom_id": "ref:c6ec6d85",
+                "classroom_name": "[redacted]",
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 1
+              },
+              {
+                "classroom_id": "ref:be1a55e7",
+                "classroom_name": "[redacted]",
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 29,
+              "limit": 50,
+              "offset": 0,
+              "view_type": "class_wise_students"
+            },
+            "rowCount": 34,
+            "sampleFields": [
+              {
+                "classroom_id": "ref:eb1c5a92",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              },
+              {
+                "classroom_id": "ref:2da792e4",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": []
+    },
+    {
+      "accountLabel": "instructor",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "instructor",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "role": "instructor",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 33,
+              "limit": 5,
+              "offset": 0,
+              "view_type": "summary"
+            },
+            "rowCount": 5,
+            "sampleFields": [
+              {
+                "classroom_id": "ref:c6ec6d85",
+                "classroom_name": "[redacted]",
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 1
+              },
+              {
+                "classroom_id": "ref:be1a55e7",
+                "classroom_name": "[redacted]",
+                "availability_status": "active",
+                "has_time_limit": false,
+                "quiz_status": "not_started",
+                "student_status": "not_started",
+                "question_count": 1
+              }
+            ]
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 4,
+              "limit": 50,
+              "offset": 0,
+              "view_type": "class_wise_students"
+            },
+            "rowCount": 6,
+            "sampleFields": [
+              {
+                "classroom_id": "ref:2a740144",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              },
+              {
+                "classroom_id": "ref:c6ec6d85",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              }
+            ]
+          }
+        }
+      ],
+      "limitations": []
+    },
+    {
+      "accountLabel": "student",
+      "auth": {
+        "contract": "POST /api/v1/auth/login",
+        "role": "student",
+        "identityConfirmed": true
+      },
+      "checks": [
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "role": "student",
+            "is_active": true,
+            "is_verified": true
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "success": true,
+            "check_type": "pending",
+            "rowCount": 23,
+            "sampleFields": [
+              {
+                "status": null,
+                "quiz_id": "ref:d238c12b",
+                "session_id": "ref:6b27ea24",
+                "has_time_limit": true,
+                "availability": "active"
+              },
+              {
+                "status": null,
+                "quiz_id": "ref:d238c154",
+                "session_id": "ref:dc6f44a6",
+                "has_time_limit": true,
+                "availability": "active"
+              }
+            ]
+          },
+          "rowCount": 23
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "success": true,
+            "check_type": "completed",
+            "rowCount": 0,
+            "sampleFields": []
+          },
+          "rowCount": 0
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "meta": {
+              "total_count": 5,
+              "limit": 50,
+              "offset": 0,
+              "view_type": "classes"
+            },
+            "rowCount": 5,
+            "sampleFields": [
+              {
+                "classroom_id": "ref:be1a55e7",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              },
+              {
+                "classroom_id": "ref:064b7f7e",
+                "classroom_name": "[redacted]",
+                "availability_status": null,
+                "has_time_limit": null,
+                "quiz_status": null,
+                "student_status": null,
+                "question_count": null
+              }
+            ]
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "rowCount": 23,
+          "fixtureSessionVisible": true,
+          "data": {
+            "success": true,
+            "check_type": "pending",
+            "rowCount": 23,
+            "sampleFields": [
+              {
+                "status": null,
+                "quiz_id": "ref:d238c12b",
+                "session_id": "ref:6b27ea24",
+                "has_time_limit": true,
+                "availability": "active"
+              },
+              {
+                "status": null,
+                "quiz_id": "ref:d238c154",
+                "session_id": "ref:dc6f44a6",
+                "has_time_limit": true,
+                "availability": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "[redacted]",
+          "data": {
+            "quiz_id": "ref:d2396dcb",
+            "session_id": "ref:422f04f0",
+            "source": "run_fixture"
+          }
+        },
+        {
+          "name": "[redacted]",
+          "status": 200,
+          "data": {
+            "length": 0
+          },
+          "executedBecauseCheckRecordHadRows": true
+        },
+        {
+          "name": "[redacted]",
+          "status": 404,
+          "data": {},
+          "executedBecauseCheckRecordHadRows": true
+        }
+      ],
+      "limitations": []
+    }
+  ],
+  "submissionParityExecuted": false,
+  "notes": [
+    "Output is redacted; no tokens, credentials, or personal profile fields.",
+    "Probe targets are chosen from raw check-record payloads before summarization."
+  ],
+  "runFixture": {
+    "topic": "[redacted]",
+    "quizId": "ref:d2396dcb",
+    "sessionId": "ref:422f04f0",
+    "classroomId": "ref:c6ec6d85"
+  },
+  "fixtureCleanup": {
+    "ok": false,
+    "skipped": true,
+    "limitation": "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
+  },
+  "overallStatus": "passed"
+}

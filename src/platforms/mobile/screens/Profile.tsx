@@ -16,6 +16,7 @@ import {
   Image,
   Modal,
   Switch,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingSpinner from '../../../components/LoadingSpinner';
@@ -25,6 +26,8 @@ import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
+import type { UserProfile } from '@core/types';
+import { getDisplayName } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
 
 export default function Profile({ navigation }: any) {
@@ -191,6 +194,10 @@ export default function Profile({ navigation }: any) {
           } catch (fcmError) {
             console.warn('Could not generate FCM token:', fcmError);
           }
+
+          if (authUser?.id != null) {
+            await AsyncStorage.setItem('pushRegisteredUserId', String(authUser.id));
+          }
           
           // Simple success message
           Alert.alert('Success', 'Push notifications enabled successfully!');
@@ -203,7 +210,22 @@ export default function Profile({ navigation }: any) {
             },
           }));
         } else {
-          Alert.alert('Error', result.message);
+          const needsSettings =
+            typeof result.message === 'string' &&
+            result.message.toLowerCase().includes('settings');
+          if (needsSettings) {
+            Alert.alert('Notifications', result.message, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  void Linking.openSettings();
+                },
+              },
+            ]);
+          } else {
+            Alert.alert('Error', result.message);
+          }
         }
       } else {
         const result = await PushNotificationService.disablePushNotifications();
@@ -407,7 +429,9 @@ export default function Profile({ navigation }: any) {
               <View style={[styles.statusDot, { backgroundColor: '#4CAF50', borderColor: colors.cardBackground }]} />
             </View>
 
-            <Text style={[styles.userName, { color: colors.text }]}>{formData.full_name || formData.username || 'User'}</Text>
+            <Text style={[styles.userName, { color: colors.text }]}>
+              {getDisplayName(formData as UserProfile) || 'User'}
+            </Text>
 
             <View style={[styles.roleChip, { backgroundColor: isDark ? colors.primary + '20' : '#E8F4F8' }]}>
               <Text style={styles.roleIcon}>{getRoleIcon(formData.role)}</Text>

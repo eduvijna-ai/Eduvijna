@@ -28,11 +28,11 @@ export const QUIZ_NAV_TO_SCREEN: Record<string, string> = {
   // By route_path
   '/web-quiz':               'CreateAIQuizScreen',
   '/quiz':                   'CreateAIQuizScreen',
-  '/document-quiz':          'CreateDocumentQuizScreen',
+  '/document-quiz':          'DocumentUploadHomeScreen',
   '/ai-assessment':          'CreateAIQuizScreen',
   '/ai':                     'CreateAIQuizScreen',
-  '/document':               'CreateDocumentQuizScreen',
-  '/document-assessment':    'CreateDocumentQuizScreen',
+  '/document':               'DocumentUploadHomeScreen',
+  '/document-assessment':    'DocumentUploadHomeScreen',
   '/document-upload':        'DocumentUploadHomeScreen',
   '/handwritten':            'CreateHandwrittenQuizScreen',
   '/handwritten-assessment': 'CreateHandwrittenQuizScreen',
@@ -54,10 +54,13 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
   'WebQuiz':                     'CreateAIQuizScreen',
   'Quiz':                        'CreateAIQuizScreen',
   'AITimer':                     'CreateAIQuizScreen',
-  'CreateDocumentQuizScreen':    'CreateDocumentQuizScreen',
+  'CreateDocumentQuizScreen':    'DocumentUploadHomeScreen',
   'DocumentUploadHomeScreen':    'DocumentUploadHomeScreen',
-  'DocumentQuiz':                'CreateDocumentQuizScreen',
+  'DocumentQuiz':                'DocumentUploadHomeScreen',
+  'DocumentQuizPage':            'DocumentUploadHomeScreen',
   'HandwrittenWorkspace':        'CreateHandwrittenQuizScreen',
+  'Handwritten':                 'CreateHandwrittenQuizScreen',
+  'DocImageExtraction':          'CreateHandwrittenQuizScreen',
   'CreateHandwrittenQuizScreen': 'CreateHandwrittenQuizScreen',
   'CreateImageQuizScreen':       'CreateImageQuizScreen',
   'ImageQuizPage':               'CreateImageQuizScreen',
@@ -73,8 +76,8 @@ export const QUIZ_COMPONENT_TO_SCREEN: Record<string, string> = {
 /** Default tile appearance per RN screen name */
 export const SCREEN_DEFAULTS: Record<string, { color: string; bg: string; icon: string; label: string; subtitle: string }> = {
   CreateAIQuizScreen:          { color: '#0891B2', bg: '#E3F2FD', icon: 'bulb',         label: 'AI Assessment',  subtitle: 'Topic-based' },
-  CreateDocumentQuizScreen:    { color: '#DC2626', bg: '#FFE5F1', icon: 'document',     label: 'Document',       subtitle: 'PDF/Text' },
-  DocumentUploadHomeScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'folder-open',  label: 'Document Upload', subtitle: 'New module' },
+  CreateDocumentQuizScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'document',     label: 'Document',       subtitle: 'Upload & books' },
+  DocumentUploadHomeScreen:    { color: '#0F766E', bg: '#ECFEFF', icon: 'folder-open',  label: 'Document',       subtitle: 'Upload & books' },
   CreateHandwrittenQuizScreen: { color: '#7C3AED', bg: '#F3E5F5', icon: 'create',       label: 'Handwritten',    subtitle: 'Notes/Paper' },
   CreateImageQuizScreen:       { color: '#D97706', bg: '#FFF3E0', icon: 'image',        label: 'Image',          subtitle: 'Photo/PDF' },
   CreateYouTubeQuizScreen:     { color: '#059669', bg: '#E8F5E9', icon: 'logo-youtube', label: 'YouTube',        subtitle: 'Video-based' },
@@ -159,9 +162,13 @@ function resolveNavItem(item: QuizNavItem): ResolvedNavItem | null {
   };
 }
 
+export type QuizNavItemsFetchStatus = 'loading' | 'ready' | 'error';
+
 export interface UseQuizNavItemsReturn {
   items: ResolvedNavItem[];
   loading: boolean;
+  /** `ready` = successful API response (may be empty); `error` = request failed (offline fallback allowed). */
+  fetchStatus: QuizNavItemsFetchStatus;
   error: string | null;
   refetch: () => void;
 }
@@ -193,21 +200,22 @@ export function useQuizNavItems(): UseQuizNavItemsReturn {
     return [];
   });
   const [loading, setLoading] = useState(items.length === 0);
+  const [fetchStatus, setFetchStatus] = useState<QuizNavItemsFetchStatus>(
+    items.length > 0 ? 'ready' : 'loading',
+  );
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
 
   const fetch = async () => {
     if (!mounted.current) return;
     setLoading(true);
+    setFetchStatus('loading');
     setError(null);
     try {
       // Reuse an in-flight fetch if one is already running for the same role
       if (!fetchPromise || cachedRole !== role) {
         cachedRole = role;
-        fetchPromise = quizNavItemsApi.getForRole(role).catch(() => {
-          // If the endpoint returns an error, fall back to empty so defaults apply
-          return [] as QuizNavItem[];
-        });
+        fetchPromise = quizNavItemsApi.getForRole(role);
       }
       const raw = await fetchPromise;
       fetchPromise = null;
@@ -221,8 +229,13 @@ export function useQuizNavItems(): UseQuizNavItemsReturn {
         .sort((a, b) => a.display_order - b.display_order);
 
       setItems(dedupeByScreen(resolved));
+      setFetchStatus('ready');
     } catch (e: any) {
-      if (mounted.current) setError(e?.message ?? 'Failed to load assessment tabs');
+      if (mounted.current) {
+        setError(e?.message ?? 'Failed to load assessment tabs');
+        setFetchStatus('error');
+        setItems([]);
+      }
     } finally {
       if (mounted.current) setLoading(false);
     }
@@ -235,12 +248,19 @@ export function useQuizNavItems(): UseQuizNavItemsReturn {
       fetch();
     } else {
       setLoading(false);
+      setFetchStatus('ready');
     }
     return () => { mounted.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
-  return { items, loading, error, refetch: fetch };
+  return { items, loading, fetchStatus, error, refetch: fetch };
+}
+
+/** Returns whether the signed-in role may open a generation screen from API nav items. */
+export function isQuizNavScreenAllowed(screen: string, items: ResolvedNavItem[]): boolean {
+  if (!screen) return false;
+  return items.some((item) => item.screen === screen);
 }
 
 /** Clear the module-level cache (call on logout) */

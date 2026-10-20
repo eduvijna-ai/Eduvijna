@@ -1,0 +1,23 @@
+{
+  "role": "instructor",
+  "pass": true,
+  "diagnosis": {
+    "focusEvents": true,
+    "onChangeTextEmailLength": 12,
+    "onChangeTextPasswordLength": 8,
+    "submitHandlerFired": true,
+    "inAppLoginResult": "ok",
+    "apiLoginFromHost": "ok",
+    "boundary": "automation_password_clipboard_pollution_fixed_via_input_text_and_ime_go"
+  },
+  "milestonesRedacted": [
+    "login_form_ready",
+    "fields_located",
+    "inputs_populated",
+    "api_login_probe_ok",
+    "submit_tapped_password_ime_go",
+    "login_result_ok",
+    "authenticated_shell"
+  ],
+  "note": "Normal form login only (no acceptance file). Android automation uses adb input text + IME go; push overlay dismissed post-login."
+}

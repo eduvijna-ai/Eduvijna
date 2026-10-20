@@ -42,6 +42,32 @@ const TABS = [
 
 const PER_PAGE = 25;
 
+function resolvePeriodNumber(item: Record<string, unknown>): number | null {
+  for (const key of ['period_number', 'periodNumber', 'period_no', 'period'] as const) {
+    const raw = item[key];
+    if (raw === null || raw === undefined || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+function listRowTitle(activeTab: string, item: Record<string, unknown>): string {
+  if (activeTab === 'templates') {
+    const name = String(item.template_name ?? item.name ?? '').trim();
+    if (name) return name;
+    const className = String(item.class_name ?? '').trim();
+    return className ? `Template · ${className}` : `Template #${item.id ?? '—'}`;
+  }
+  const day =
+    DAYS.find((d) => d.value === String(item.day_of_week ?? item.dayOfWeek))?.label ?? '';
+  const period = resolvePeriodNumber(item);
+  const periodLabel = period != null ? `P${period}` : 'P—';
+  const subject = String(item.subject_name ?? item.subjectName ?? item.slot_type ?? '').trim();
+  if (subject) return `${day} ${periodLabel} · ${subject}`.trim();
+  return `${day} ${periodLabel}`.trim() || periodLabel;
+}
+
 function useCrud(apiModule: any, baseParams: Record<string, any>) {
   const [items, setItems] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -131,8 +157,16 @@ export default function TimetableScreen() {
           section.items.map((item: any) => (
             <ListRow
               key={item.id}
-              title={item.name ?? `${DAYS.find((d) => d.value === String(item.day_of_week))?.label ?? ''} P${item.period_number}`}
-              subtitle={[item.slot_type, item.start_time, item.end_time, item.room].filter(Boolean).join(' · ')}
+              title={listRowTitle(activeTab, item)}
+              subtitle={
+                activeTab === 'templates'
+                  ? [item.class_name, item.section_name, item.effective_from, item.effective_to]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : [item.slot_type, item.start_time, item.end_time, item.room]
+                      .filter(Boolean)
+                      .join(' · ')
+              }
               onEdit={isAdmin ? () => section.openEdit(item) : undefined}
               onDelete={isAdmin ? () => section.remove(item.id) : undefined}
             />
@@ -146,7 +180,13 @@ export default function TimetableScreen() {
       {activeTab === 'templates' && (
         <FormModal visible={templates.showModal} title={templates.editingId ? 'Edit Template' : 'New Template'} onClose={() => templates.setShowModal(false)} onSave={templates.save} saving={templates.saving}>
           <FormField label="Template Name" required>
-            <StyledInput value={templates.form.name ?? ''} onChangeText={(v) => templates.setForm((f: any) => ({ ...f, name: v }))} placeholder="e.g. Class 10A Schedule" />
+            <StyledInput
+              value={templates.form.template_name ?? templates.form.name ?? ''}
+              onChangeText={(v) =>
+                templates.setForm((f: any) => ({ ...f, template_name: v, name: v }))
+              }
+              placeholder="e.g. Class 10A Schedule"
+            />
           </FormField>
           <FormField label="Effective From">
             <StyledInput value={templates.form.effective_from ?? ''} onChangeText={(v) => templates.setForm((f: any) => ({ ...f, effective_from: v }))} placeholder="YYYY-MM-DD" />

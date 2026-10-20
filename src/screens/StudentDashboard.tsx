@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,27 @@ import { useAuth } from '@core/hooks/useAuth';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { FONT_FAMILY } from '../theme/fonts';
 import { useDashboardStore } from '@core/store/dashboard.store';
-import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
+import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
+import {
+  getStudentDashboardListEpoch,
+} from '@core/services/studentDashboardRefresh.service';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
   ParsedQuiz,
-  DashboardStats,
   getDisplayName,
 } from '@core/types';
-import { isStudentQuizActive } from '../utils/quizFilters';
+import { isStudentQuizActive, isStudentQuizUpcoming } from '../utils/quizFilters';
+import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import {
+  useStudentAssignmentDashboardStats,
+  useStudentAssignmentDashboardStore,
+} from '@core/store/studentAssignmentDashboard.store';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import {
+  executeStudentAssignedQuizViewResults,
+  isAssignedQuizLoadError,
+} from '@core/services/assessmentQuizStart.service';
+import { isAssignedQuizRecoveryProbeError } from '@core/services/assignedQuizRecovery.service';
 import QuizGenerationGrid from '@components/QuizGenerationGrid';
 
 interface Props {
@@ -61,18 +74,49 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<DashboardStats>({
-    total_quizzes: 0,
-    completed_count: 0,
-    pending_count: 0,
-    missed_count: 0,
-    average_score: 0,
-    total_time_spent: 0,
-    total_questions_attempted: 0,
-    total_classes: 0,
-  });
-  const [allQuizzes, setAllQuizzes] = useState<ParsedQuiz[]>([]);
+  const stats = useStudentAssignmentDashboardStats();
+  // Authoritative classroom inventory (view_type=classes) — same source as ClassesList.
+  // Never fall back to quiz-derived stats.total_classes (misses zero-assessment classrooms).
+  const {
+    count: authorizedClassroomCount,
+    loading: classroomsLoading,
+    unavailable: classroomsUnavailable,
+    inventoryKnown: classroomsKnown,
+    refresh: refreshClassrooms,
+  } = useAssessmentClassrooms();
+  const classroomCountDisplay = classroomsKnown
+    ? String(authorizedClassroomCount)
+    : classroomsLoading
+      ? '…'
+      : classroomsUnavailable
+        ? '—'
+        : '…';
+  const rawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const classificationNow = useStudentAssignmentDashboardStore((s) => s.classificationNow);
+  const bumpClassificationNow = useStudentAssignmentDashboardStore((s) => s.bumpClassificationNow);
   const [selectedClassroom] = useState<string>('ALL');
+  const [loadingRecentQuizId, setLoadingRecentQuizId] = useState<number | null>(null);
+  const dashboardLoadInFlightRef = React.useRef<{
+    key: string;
+    promise: Promise<void>;
+  } | null>(null);
+  const lastDashboardLoadAtRef = React.useRef(0);
+  const lastDashboardStudentIdRef = React.useRef<string | null>(null);
+  const lastDashboardEpochRef = React.useRef(getStudentDashboardListEpoch());
+  const loadOwnerRef = React.useRef(0);
+
+  useStudentAssignmentBoundaryClock(rawQuizzes as any, bumpClassificationNow);
+
+  // Subscribe to stable fields; the derived getter returns a new array each time.
+  const classifiedQuizzes = useMemo(
+    () => useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes() as unknown as ParsedQuiz[],
+    [rawQuizzes, classificationNow],
+  );
+
+  useEffect(() => {
+    const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+    setQuizzes(classified as any, classified.length);
+  }, [classificationNow, rawQuizzes, setQuizzes]);
 
   const isWeb = width >= 768;
   const isTablet = width >= 600 && width < 1024;
@@ -85,210 +129,110 @@ export default function StudentDashboard({ navigation, route }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student dashboard data
-  const fetchDashboardData = useCallback(async () => {
-    if (!isAuthenticated || !user) {
-      console.log('⚠️ User not authenticated, skipping dashboard fetch');
-      setLoading(false);
-      return;
-    }
+  // Fetch student dashboard data — coalesce identical in-flight; force supersedes via store generation.
+  const fetchDashboardData = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (!isAuthenticated || !user) {
+        console.log('⚠️ User not authenticated, skipping dashboard fetch');
+        setLoading(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
+      const studentId = String(user.id);
+      const force = opts?.force === true;
+      const requestKey = `student:${studentId}`;
+      const listEpoch = getStudentDashboardListEpoch();
+      const now = Date.now();
 
-      // Fetch quizzes using the check-record endpoint
-      // status: null → pending   |   status: "completed" → completed
-      const response = await fetchQuizCheckRecord(user.id, 'pending');
+      if (
+        !force &&
+        lastDashboardStudentIdRef.current === studentId &&
+        lastDashboardEpochRef.current === listEpoch &&
+        now - lastDashboardLoadAtRef.current < 8_000 &&
+        useStudentAssignmentDashboardStore.getState().rawQuizzes.length > 0
+      ) {
+        setLoading(false);
+        return;
+      }
 
-      const data = (response.result || []).map(checkRecordToQuiz);
-      
-      // DEBUG: Log sample data to verify structure
-      if (data.length > 0) {
-        console.log('📊 Student Quiz Data Sample:', {
-          totalQuizzes: data.length,
-          firstQuiz: {
-            quiz_id: data[0].quiz_id,
-            quiz_name: data[0].quiz_name,
-            session_id: data[0].session_id,
-            classroom_id: data[0].classroom_id,
-            classroom_name: data[0].classroom_name,
-            student_status: data[0].student_status,
-            question_count: data[0].question_count,
-            dataTypes: {
-              quiz_name: typeof data[0].quiz_name,
-              classroom_name: typeof data[0].classroom_name,
-              question_count: typeof data[0].question_count,
-            }
+      const inflight = dashboardLoadInFlightRef.current;
+      if (inflight && inflight.key === requestKey) {
+        // Coalesce identical request (including force): share ownership of loading UI.
+        await inflight.promise;
+        return;
+      }
+
+      const owner = ++loadOwnerRef.current;
+      const run = (async () => {
+        try {
+          if (owner === loadOwnerRef.current) {
+            setLoading(true);
           }
-        });
-      }
 
-      if (data.length > 0) {
-        // Data is already in StudentQuiz format - map to ParsedQuiz with type safety
-        const allParsed: ParsedQuiz[] = data.map((quiz: any) => {
-          // Ensure required fields have proper types and defaults
-          const now = new Date();
-          const dueDate = quiz.due_date ? new Date(quiz.due_date) : null;
-          const isOverdue = dueDate ? now > dueDate : false;
-          const daysUntilDue = dueDate ? Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : undefined;
+          const loadGeneration =
+            useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+          const { quizzes: parsed } = await loadStudentDashboardQuizzes(studentId);
 
-          return {
-            // Core quiz info - ensure proper types
-            quiz_id: Number(quiz.quiz_id) || 0,
-            class_id: String(quiz.classroom_id || quiz.class_id || ''),
-            classroom_name: String(quiz.classroom_name || 'Unknown Class'),
-            quiz_name: String(quiz.quiz_name || 'Untitled Quiz'),
-            
-            // Status & scoring
-            status: (quiz.student_status || 'pending') as 'pending' | 'completed' | 'missed',
-            score: typeof quiz.score === 'number' ? quiz.score : null,
-            correct_answers: typeof quiz.score === 'number' ? Math.round((quiz.score / 100) * (quiz.question_count || 0)) : 0,
-            
-            // Dates - ensure strings
-            end_time: String(quiz.end_time || quiz.due_date || new Date().toISOString()),
-            created_at: String(quiz.created_at || quiz.assigned_at || new Date().toISOString()),
-            completed_at: quiz.completed_at ? String(quiz.completed_at) : null,
-            started_at: quiz.started_at ? String(quiz.started_at) : null,
-            
-            // Timing
-            time_spent_seconds: typeof quiz.time_spent_seconds === 'number' ? quiz.time_spent_seconds : null,
-            attempt_number: typeof quiz.attempt_number === 'number' ? quiz.attempt_number : null,
-            
-            // Computed fields
-            question_count: Number(quiz.question_count) || 0,
-            is_overdue: isOverdue,
-            days_until_due: daysUntilDue,
-            
-            // Extra fields for UI (these extend ParsedQuiz)
-            session_id: String(quiz.session_id || ''),
-            attempt_id: quiz.attempt_id ? String(quiz.attempt_id) : null,
-            log_data: quiz.log_data,
-            availability_status: quiz.availability_status || 'active',
-            duration: typeof quiz.duration === 'number' ? quiz.duration : null,
-            start_time: quiz.start_time || quiz.assigned_at,
-            topic: String(quiz.topic || ''),
-            subject: String(quiz.subject || ''),
-            due_date: quiz.due_date || quiz.end_time,
-            assigned_at: quiz.assigned_at || quiz.created_at,
-            has_time_limit: Boolean(quiz.has_time_limit),
-            attempts_allowed: typeof quiz.attempts_allowed === 'number' ? quiz.attempts_allowed : null,
-          } as any; // Cast to any since ParsedQuiz doesn't include all extended fields
-        });
-
-        // Deduplicate quizzes - keep the latest attempt for each unique quiz_id + session_id combination
-        const quizMap = new Map<string, any>();
-        allParsed.forEach(quiz => {
-          const key = `${quiz.quiz_id}_${(quiz as any).session_id}`;
-          const existing = quizMap.get(key);
-          
-          if (!existing) {
-            quizMap.set(key, quiz);
-          } else {
-            // Keep the one with latest attempt or completed status
-            const currentDate = new Date(quiz.created_at).getTime();
-            const existingDate = new Date(existing.created_at).getTime();
-            
-            // Prioritize: completed > in_progress > pending, then by date
-            const shouldReplace = 
-              (quiz.status === 'completed' && existing.status !== 'completed') ||
-              (quiz.status === existing.status && currentDate > existingDate) ||
-              (quiz.attempt_number && existing.attempt_number && quiz.attempt_number > existing.attempt_number);
-            
-            if (shouldReplace) {
-              quizMap.set(key, quiz);
-            }
+          const committed = useStudentAssignmentDashboardStore
+            .getState()
+            .commitLoad(studentId, loadGeneration, parsed as any);
+          if (!committed) {
+            return;
           }
-        });
 
-        const parsed = Array.from(quizMap.values());
+          lastDashboardLoadAtRef.current = Date.now();
+          lastDashboardStudentIdRef.current = studentId;
+          lastDashboardEpochRef.current = getStudentDashboardListEpoch();
 
-        console.log('📊 Quiz Processing:', {
-          totalFromAPI: allParsed.length,
-          afterDeduplication: parsed.length,
-          deduplicated: allParsed.length - parsed.length
-        });
+          if (parsed.length === 0) {
+            setQuizzes([], 0);
+          }
+        } catch (error: any) {
+          console.error('❌ Error fetching student dashboard:', {
+            message: error?.message,
+            status: error?.response?.status,
+            data: error?.response?.data,
+            url: error?.config?.url,
+          });
+          if (owner === loadOwnerRef.current && !refreshing) {
+            Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
+          }
+        } finally {
+          if (owner === loadOwnerRef.current) {
+            setLoading(false);
+          }
+        }
+      })();
 
-        // Calculate stats
-        const completed = parsed.filter(q => q.status === 'completed');
-        
-        // Pending quizzes: Use common filter utility
-        const pending = parsed.filter(isStudentQuizActive);
-        
-        const missed = parsed.filter(q => q.status === 'missed');
-
-        const scores = completed.filter(q => q.score !== null && q.score !== undefined).map(q => q.score!);
-        const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-        const totalTime = completed.reduce((sum, q) => sum + (q.time_spent_seconds || 0), 0);
-
-        // Calculate total unique classes - handle potential undefined values
-        const uniqueClasses = new Set(parsed.map(q => q.class_id).filter(id => id && id !== ''));
-        const totalClasses = uniqueClasses.size;
-
-        setStats({
-          total_quizzes: parsed.length, // Use parsed.length instead of data.length
-          completed_count: completed.length,
-          pending_count: pending.length,
-          missed_count: missed.length,
-          average_score: Math.round(avgScore),
-          total_time_spent: totalTime,
-          total_questions_attempted: parsed.reduce((sum, q) => sum + (q.question_count || 0), 0),
-          total_classes: totalClasses,
-        });
-
-        setAllQuizzes(parsed);
-        
-        // Store parsed quizzes in dashboard store for ClassesList to reuse
-        setQuizzes(parsed as any, parsed.length);
-        console.log('✅ Stored', parsed.length, 'quizzes in dashboard store');
-        console.log('📈 Stats:', {
-          total: parsed.length,
-          completed: completed.length,
-          pending: pending.length,
-          missed: missed.length,
-          avgScore: Math.round(avgScore),
-        });
-      } else {
-        // No data
-        setStats({
-          total_quizzes: 0,
-          completed_count: 0,
-          pending_count: 0,
-          missed_count: 0,
-          average_score: 0,
-          total_time_spent: 0,
-          total_questions_attempted: 0,
-          total_classes: 0,
-        });
-        setAllQuizzes([]);
+      dashboardLoadInFlightRef.current = { key: requestKey, promise: run };
+      try {
+        await run;
+      } finally {
+        if (dashboardLoadInFlightRef.current?.promise === run) {
+          dashboardLoadInFlightRef.current = null;
+        }
       }
-    } catch (error: any) {
-      console.error('❌ Error fetching student dashboard:', {
-        message: error?.message,
-        status: error?.response?.status,
-        data: error?.response?.data,
-        url: error?.config?.url,
-      });
-      if (!refreshing) {
-        Alert.alert('Error', 'Failed to load dashboard data. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user, selectedClassroom, refreshing]);
+    },
+    [isAuthenticated, user, refreshing],
+  );
 
-  // Fetch on mount. On mobile, tab/stack screens also refetch via NativeFocusRefetch below.
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      fetchDashboardData();
-    }
-  }, [fetchDashboardData]);
+    void fetchDashboardData({ force: true });
+  }, [isAuthenticated, user?.id]);
 
-  // Refresh handler
+  // Refresh: inventory + dashboard once each; no quiz-derived classroom fallback.
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDashboardData();
+    void (async () => {
+      try {
+        await Promise.all([
+          refreshClassrooms(),
+          fetchDashboardData({ force: true }),
+        ]);
+      } finally {
+        setRefreshing(false);
+      }
+    })();
   };
 
   // Time ago formatter
@@ -319,10 +263,10 @@ export default function StudentDashboard({ navigation, route }: Props) {
 
   // Filter quizzes by status
   // Pending quizzes: Use common filter utility for consistency
-  const pendingQuizzes = allQuizzes.filter(isStudentQuizActive);
-  
-  const upcomingQuizzes = allQuizzes.filter(q => (q as any).availability_status === 'available_soon');
-  const completedQuizzes = allQuizzes
+  const pendingQuizzes = classifiedQuizzes.filter(isStudentQuizActive);
+
+  const upcomingQuizzes = classifiedQuizzes.filter(isStudentQuizUpcoming);
+  const completedQuizzes = classifiedQuizzes
     .filter(q => q.status === 'completed')
     .sort((a, b) => {
       // Sort by completion date, most recent first
@@ -331,8 +275,45 @@ export default function StudentDashboard({ navigation, route }: Props) {
       return dateB - dateA;
     });
 
+  const handleRecentCompletionPress = async (quiz: ParsedQuiz) => {
+    const sessionId = (quiz as { session_id?: string }).session_id;
+    if (!user?.id || !sessionId) {
+      Alert.alert('Unavailable', 'This result is missing assignment session context.');
+      return;
+    }
+    setLoadingRecentQuizId(quiz.quiz_id);
+    try {
+      await executeStudentAssignedQuizViewResults(
+        {
+          studentId: String(user.id),
+          quizId: quiz.quiz_id,
+          sessionId: String(sessionId),
+          classroomId: String(
+            (quiz as { classroom_id?: string }).classroom_id || quiz.class_id || '',
+          ),
+          attemptData: quiz as unknown as Record<string, unknown>,
+          quizName: quiz.quiz_name,
+        },
+        { navigation },
+      );
+    } catch (error) {
+      if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
+        Alert.alert(
+          'Connection Error',
+          'Could not verify your saved submission. Please check your connection and try again.',
+        );
+      } else {
+        Alert.alert('Error', 'Could not open results. Please try again.');
+      }
+    } finally {
+      setLoadingRecentQuizId(null);
+    }
+  };
+
   const focusRefetch =
-    Platform.OS !== 'web' ? <NativeFocusRefetch onFocus={fetchDashboardData} /> : null;
+    Platform.OS !== 'web' ? (
+      <NativeFocusRefetch onFocus={() => void fetchDashboardData()} />
+    ) : null;
 
   // Authentication check - show message if not authenticated
   if (!isAuthenticated) {
@@ -354,7 +335,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
   }
 
   // Loading state
-  if (loading && allQuizzes.length === 0) {
+  if (loading && classifiedQuizzes.length === 0) {
     return (
       <>
         {focusRefetch}
@@ -420,7 +401,7 @@ export default function StudentDashboard({ navigation, route }: Props) {
             ]}
           >
             {[
-              { label: 'Classes', value: stats.total_classes || 0, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
+              { label: 'Classes', value: classroomCountDisplay, icon: 'school-outline' as const, accent: theme.colors.tintOrange, fg: theme.colors.onTintOrange, onPress: () => navigation?.navigate('ClassesList') },
               { label: 'Quizzes', value: stats.total_quizzes, icon: 'document-text-outline' as const, accent: theme.colors.tintBlue, fg: theme.colors.onTintBlue, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'all' }) },
               { label: 'Completed', value: stats.completed_count, icon: 'checkmark-done-outline' as const, accent: theme.colors.tintGreen, fg: theme.colors.onTintGreen, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
               { label: 'Avg Score', value: `${stats.average_score}%`, icon: 'trophy-outline' as const, accent: theme.colors.tintPurple, fg: theme.colors.onTintPurple, onPress: () => navigation?.navigate('Assessments', { filterStatus: 'completed' }) },
@@ -558,7 +539,10 @@ export default function StudentDashboard({ navigation, route }: Props) {
                   const sc = quiz.score ?? 0;
                   const scoreColor = sc >= 75 ? theme.colors.success : sc >= 50 ? theme.colors.warning : theme.colors.danger;
                   const scoreText = quiz.score !== null ? `${quiz.score}%` : 'N/A';
-                  const correctText = quiz.correct_answers !== undefined ? `${quiz.correct_answers}/${quiz.question_count}` : '';
+                  const correctText =
+                    quiz.correct_answers !== undefined
+                      ? `${quiz.correct_answers}/${quiz.question_count}`
+                      : '';
 
                   return (
                     <TouchableOpacity
@@ -570,11 +554,8 @@ export default function StudentDashboard({ navigation, route }: Props) {
                           borderBottomColor: theme.colors.border,
                         },
                       ]}
-                      onPress={() => navigation?.navigate('QuizResultsScreen', {
-                        quizId: quiz.quiz_id,
-                        quizName: quiz.quiz_name,
-                        isTeacherView: true,
-                      })}
+                      onPress={() => handleRecentCompletionPress(quiz)}
+                      disabled={loadingRecentQuizId === quiz.quiz_id}
                       activeOpacity={0.7}
                       accessibilityRole="button"
                       accessibilityLabel={`${quiz.quiz_name}, score ${scoreText}`}

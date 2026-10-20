@@ -1,0 +1,91 @@
+{
+  "verifiedAt": "2026-10-10T18:36:50.721Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "quizReactDeployedReference": "31ae140f50ccc79079cdfc8c28f2d03b60fde7",
+  "steps": [
+    {
+      "step": "login_instructor_student",
+      "status": "passed"
+    },
+    {
+      "step": "from_books_list_files",
+      "status": "passed",
+      "httpStatus": 200,
+      "fileCount": 10
+    },
+    {
+      "step": "from_books_generate_assessment",
+      "status": "passed",
+      "httpStatus": 200,
+      "questionCount": 1,
+      "source": "generate-from-book"
+    },
+    {
+      "step": "from_books_save_history",
+      "status": "passed",
+      "httpStatus": 201,
+      "savedId": "present"
+    },
+    {
+      "step": "from_books_reopen_history",
+      "status": "passed",
+      "httpStatus": 200
+    },
+    {
+      "step": "from_books_worksheet_generate",
+      "status": "passed",
+      "httpStatus": 200
+    },
+    {
+      "step": "classroom_share_assessment",
+      "status": "passed",
+      "httpStatus": 200,
+      "linkageOk": true
+    },
+    {
+      "step": "student_visibility_pending",
+      "status": "passed",
+      "httpStatus": 200,
+      "rowCount": 22
+    },
+    {
+      "step": "upload_multimodal_generate",
+      "status": "passed",
+      "httpStatus": 200,
+      "questionCount": 1,
+      "totalQuestionsField": 1,
+      "data": {
+        "success": true,
+        "request_id": "91f7e443-a0cf-4e96-87d3-1090bd5b9c2e",
+        "questions": "[redacted]",
+        "total_questions": 1,
+        "processing_time_seconds": 3.02,
+        "raw_content": "[omitted-blob]",
+        "pipeline_stages": {
+          "files_ingested": 1,
+          "blocks_extracted": 1,
+          "concepts_normalized": 2
+        }
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "name": "[redacted]",
+      "passed": true
+    },
+    {
+      "name": "[redacted]",
+      "passed": true,
+      "questionCount": 1
+    }
+  ],
+  "limitations": [],
+  "verificationInstructions": [
+    "Use authorized dev-api accounts only; disposable uploads and sharequiz rows.",
+    "From Books optional string fields must remain empty-string payloads, not null.",
+    "Quiz-React deployed reference is read-only parity context; no Quiz-React mutations.",
+    "Failed assertions and steps must fail overall status and exit code."
+  ],
+  "status": "passed"
+}

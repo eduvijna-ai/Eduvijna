@@ -22,8 +22,10 @@ import { useDropdowns } from '../context/DropdownContext';
 import MathRenderer from '../components/MathRenderer';
 import useNotifications from '@core/hooks/useNotifications';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 
 export default function CreateImageQuizScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateImageQuizScreen', navigation);
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();

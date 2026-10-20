@@ -11,14 +11,27 @@ import {
   fetchTeacherDashboardSummary,
   fetchTeacherQuizzes,
 } from '../services/dashboardApi';
+import {
+  loadAssessmentClassrooms,
+  mapClassWiseStudentsToClassrooms,
+  resolveAuthoritativeClassroomCount,
+} from '../services/assessmentClassrooms.service';
+import {
+  buildAssessmentClassroomScopeFromUser,
+  useAssessmentClassroomsStore,
+} from './assessmentClassrooms.store';
 import { getPendingCropUri, subscribeCropSession } from '../services/imageCropSession';
+import * as TokenStorage from '../services/tokenStorage';
 import type {
   TeacherQuiz,
   TeacherDashboardStats,
   WeakStudent,
   Classroom,
-  Instructor,
 } from '../types/quiz.types';
+import { useUserStore } from './user.store';
+
+// Re-export for existing tests / callers — implementation lives in assessmentClassrooms.service.
+export { mapClassWiseStudentsToClassrooms, resolveAuthoritativeClassroomCount };
 
 export interface Student {
   student_id: number;
@@ -41,6 +54,8 @@ interface TeacherDashboardState {
   // State
   loading: boolean;
   error: string | null;
+  /** True when class_wise_students failed; prior classrooms/count preserved when available. */
+  classroomsUnavailable: boolean;
   lastFetched: number | null;
   isInitialized: boolean;
   
@@ -273,6 +288,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
   uniqueStudents: [],
   loading: false,
   error: null,
+  classroomsUnavailable: false,
   lastFetched: null,
   isInitialized: false,
   studentListsCache: {},
@@ -303,61 +319,72 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       return;
     }
 
+    const accessToken = await TokenStorage.getAccessToken();
+    if (!accessToken) {
+      return;
+    }
+
     set({ loading: true, error: null });
 
     try {
-      // SINGLE API CALL with view_type=summary
       const response = await fetchTeacherDashboardSummary({
         view_type: 'summary',
         limit: 1000,
         offset: 0,
       });
 
-      // console.log('✅ Teacher dashboard loaded:', {
-      //   quizzes: response.data.length,
-      //   total: response.meta?.total_count || 0,
-      //   sampleQuiz: response.data[0],
-      // });
-
-      // Extract classrooms
-      const uniqueClassrooms = new Map<string, Classroom>();
-      response.data.forEach((quiz) => {
-        if (quiz.classroom_id && quiz.classroom_name) {
-          let instructorData: Instructor;
-          if (quiz.instructor) {
-            try {
-              instructorData = typeof quiz.instructor === 'string' 
-                ? JSON.parse(quiz.instructor) 
-                : quiz.instructor;
-            } catch {
-              instructorData = {
-                instructor_id: '0',
-                instructor_username: 'unknown',
-                instructor_fullname: 'Unknown Instructor',
-                instructor_avatar_url: null,
-              };
-            }
-          } else {
-            instructorData = {
-              instructor_id: '0',
-              instructor_username: 'unknown',
-              instructor_fullname: 'Unknown Instructor',
-              instructor_avatar_url: null,
-            };
-          }
-
-          uniqueClassrooms.set(quiz.classroom_id, {
-            classroom_id: quiz.classroom_id,
-            classroom_name: quiz.classroom_name,
-            instructor: instructorData,
-            total_students: quiz.total_students || 0,
-          });
+      // Same classroom source as ClassesList (shared assessment inventory).
+      let classroomsList = state.classrooms;
+      let classroomCount = state.stats.total_classes;
+      let classroomsUnavailable = false;
+      try {
+        const user = useUserStore.getState().user;
+        const schoolId = useUserStore.getState().schoolId;
+        const scope = buildAssessmentClassroomScopeFromUser(user, schoolId);
+        if (!scope) {
+          throw new Error('assessment_classrooms_missing_scope');
         }
-      });
+        const classroomResult = await loadAssessmentClassrooms(scope, {
+          getCurrentScope: () =>
+            buildAssessmentClassroomScopeFromUser(
+              useUserStore.getState().user,
+              useUserStore.getState().schoolId,
+            ),
+        });
+        if (classroomResult.kind === 'ok') {
+          classroomsList = classroomResult.classrooms;
+          classroomCount = resolveAuthoritativeClassroomCount({
+            uniqueClassrooms: classroomResult.count,
+          });
+          classroomsUnavailable = false;
+          useAssessmentClassroomsStore.setState({
+            scopeKey: classroomResult.scopeKey,
+            classrooms: classroomResult.classrooms,
+            count: classroomResult.count,
+            source: classroomResult.source,
+            loading: false,
+            unavailable: false,
+            error: null,
+            lastFetched: Date.now(),
+            contractNote: null,
+          });
+        } else if (classroomResult.prior?.length) {
+          classroomsList = classroomResult.prior;
+          classroomCount = classroomResult.prior.length;
+          classroomsUnavailable = true;
+        } else {
+          classroomsUnavailable = true;
+        }
+      } catch (classroomErr) {
+        console.error('Teacher classrooms fetch failed; preserving prior count:', classroomErr);
+        classroomsUnavailable = true;
+        // Keep prior classroomsList / classroomCount; do not report zero.
+      }
 
-      const classroomsList = Array.from(uniqueClassrooms.values());
-      
-      const calculatedStats = calculateStats(response.data, classroomsList);
+      const calculatedStats = {
+        ...calculateStats(response.data, classroomsList),
+        total_classes: classroomCount,
+      };
       
       // Fetch all students data for weak students calculation
       let weak: WeakStudent[] = [];
@@ -384,7 +411,10 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
         lastFetched: Date.now(),
         isInitialized: true,
         loading: false,
-        error: null,
+        error: classroomsUnavailable
+          ? 'Classroom list temporarily unavailable. Showing last known class count.'
+          : null,
+        classroomsUnavailable,
       });
 
     } catch (err) {
@@ -415,11 +445,14 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
    * Refresh - clears cache and reloads
    */
   refresh: async () => {
-    set({ 
+    // Preserve classrooms/count across refresh so a classroom fetch failure
+    // cannot flash zero after a successful prior load.
+    set({
       allQuizzes: [],
       isInitialized: false,
       lastFetched: null,
       studentListsCache: {},
+      classroomsUnavailable: false,
     });
     await get().loadDashboard();
   },
@@ -508,6 +541,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
    * Reset store (for logout)
    */
   reset: () => {
+    useAssessmentClassroomsStore.getState().reset();
     set({
       allQuizzes: [],
       classrooms: [],
@@ -516,6 +550,7 @@ export const useTeacherDashboardStore = create<TeacherDashboardState>((set, get)
       uniqueStudents: [],
       loading: false,
       error: null,
+      classroomsUnavailable: false,
       lastFetched: null,
       isInitialized: false,
       studentListsCache: {},

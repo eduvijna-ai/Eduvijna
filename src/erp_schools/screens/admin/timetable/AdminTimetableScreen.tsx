@@ -465,7 +465,9 @@ function WeeklyPanel({
           const accent = accentColors(theme.colors, slotTypeAccent(s.slotType));
           return (
             <SurfaceCard key={s.id} style={[styles.card, { borderLeftWidth: 4, borderLeftColor: accent.fg }]}>
-              <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>{s.subjectName}</Text>
+              <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
+                {s.periodNumber > 0 ? `P${s.periodNumber}` : 'P—'} · {s.subjectName}
+              </Text>
               <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
                 {s.className} · {s.sectionName}
               </Text>

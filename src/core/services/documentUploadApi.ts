@@ -2,6 +2,27 @@ import { apiClient, API_BASE_URL } from '../api/config';
 import * as TokenStorage from '../services/tokenStorage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { combineImagesToPdf } from './documentImageUtils';
+import { appendDocumentUploadPart } from '../utils/documentUploadMultipart';
+
+type DocumentUploadFilePart = {
+  fileUri: string;
+  fileName: string;
+  mimeType?: string;
+  file?: File | Blob;
+};
+
+function appendDocumentUploadFile(
+  formData: FormData,
+  fieldName: string,
+  part: DocumentUploadFilePart,
+): void {
+  appendDocumentUploadPart(formData, fieldName, {
+    uri: part.fileUri,
+    name: part.fileName,
+    mimeType: part.mimeType,
+    file: part.file,
+  });
+}
 
 export type DocumentUploadDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -27,12 +48,96 @@ export const DOCUMENT_FILE_MIME_TYPES = [
 
 export type BookPageImageSize = 'mini' | 'thumbnail' | 'medium' | 'full';
 
-export interface DocumentCameraPage {
-  pageNumber: number;
+/** Full capture snapshot retained so Crop can be reversed without losing MIME/dims. */
+export type DocumentCameraPageOriginal = {
   fileUri: string;
   fileName: string;
   mimeType: string;
   thumbnailUri?: string;
+  width?: number;
+  height?: number;
+};
+
+export interface DocumentCameraPage {
+  pageNumber: number;
+  /** Stable identity across renumber / reorder — never use array index for originals. */
+  pageId: string;
+  fileUri: string;
+  fileName: string;
+  mimeType: string;
+  thumbnailUri?: string;
+  width?: number;
+  height?: number;
+  /** First capture/import bytes + metadata; Restore returns to this. */
+  original?: DocumentCameraPageOriginal;
+}
+
+export function newCameraPageId(): string {
+  return `page-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Ensure pageId + original snapshot exist (idempotent). */
+export function normalizeCameraPage(
+  page: Omit<DocumentCameraPage, 'pageId' | 'original'> &
+    Partial<Pick<DocumentCameraPage, 'pageId' | 'original'>>,
+): DocumentCameraPage {
+  const pageId = page.pageId || newCameraPageId();
+  const original: DocumentCameraPageOriginal = page.original ?? {
+    fileUri: page.fileUri,
+    fileName: page.fileName,
+    mimeType: page.mimeType,
+    thumbnailUri: page.thumbnailUri || page.fileUri,
+    width: page.width,
+    height: page.height,
+  };
+  return {
+    pageNumber: page.pageNumber,
+    pageId,
+    fileUri: page.fileUri,
+    fileName: page.fileName,
+    mimeType: page.mimeType,
+    thumbnailUri: page.thumbnailUri || page.fileUri,
+    width: page.width,
+    height: page.height,
+    original,
+  };
+}
+
+export function restoreCameraPageOriginal(page: DocumentCameraPage): DocumentCameraPage {
+  const original = page.original;
+  if (!original) return page;
+  return {
+    ...page,
+    fileUri: original.fileUri,
+    fileName: original.fileName,
+    mimeType: original.mimeType,
+    thumbnailUri: original.thumbnailUri || original.fileUri,
+    width: original.width,
+    height: original.height,
+    original,
+  };
+}
+
+export function applyCroppedJpegToCameraPage(
+  page: DocumentCameraPage,
+  cropped: {
+    uri: string;
+    fileName: string;
+    mimeType: 'image/jpeg';
+    width: number;
+    height: number;
+  },
+): DocumentCameraPage {
+  const base = normalizeCameraPage(page);
+  return {
+    ...base,
+    fileUri: cropped.uri,
+    thumbnailUri: cropped.uri,
+    fileName: cropped.fileName,
+    mimeType: cropped.mimeType,
+    width: cropped.width,
+    height: cropped.height,
+  };
 }
 
 export interface DocumentUploadBook {
@@ -99,31 +204,33 @@ export function sanitizeCameraDocumentTitle(raw?: string): string {
 export function getLocalPageUri(book: DocumentUploadBook | null | undefined, pageNumber: number): string | undefined {
   if (!book) return undefined;
   const fromPages = book.pages?.find((p) => p.pageNumber === pageNumber);
-  if (fromPages) return fromPages.thumbnailUri || fromPages.fileUri;
-  if (pageNumber === 1) return book.thumbnailUri || book.fileUri;
+  // Prefer full page file over any derived thumbnail (upload/OCR must not use cropped thumbs).
+  if (fromPages) return fromPages.fileUri || fromPages.thumbnailUri;
+  if (pageNumber === 1) return book.fileUri || book.thumbnailUri;
   return undefined;
 }
 
 export function createCameraSessionBook(firstPage: DocumentCameraPage, title?: string): DocumentUploadBook {
   const now = new Date().toISOString();
-  const sessionTitle = sanitizeCameraDocumentTitle(title || firstPage.fileName);
+  const normalized = normalizeCameraPage(firstPage);
+  const sessionTitle = sanitizeCameraDocumentTitle(title || normalized.fileName);
   return {
     id: `camera-${Date.now()}`,
     title: sessionTitle,
-    originalName: firstPage.fileName,
+    originalName: normalized.fileName,
     totalPages: 1,
-    pages: [firstPage],
+    pages: [normalized],
     isCameraSession: true,
-    mimeType: 'image/jpeg',
-    thumbnailUri: firstPage.thumbnailUri || firstPage.fileUri,
-    fileUri: firstPage.fileUri,
+    mimeType: normalized.mimeType || 'image/jpeg',
+    thumbnailUri: normalized.thumbnailUri || normalized.fileUri,
+    fileUri: normalized.fileUri,
     createdAt: now,
     ocrExtracted: false,
   };
 }
 
 export function appendCameraPage(book: DocumentUploadBook, page: DocumentCameraPage): DocumentUploadBook {
-  const pages = [...(book.pages || []), page].map((p, index) => ({
+  const pages = [...(book.pages || []), normalizeCameraPage(page)].map((p, index) => ({
     ...p,
     pageNumber: index + 1,
   }));
@@ -176,10 +283,13 @@ export function removeCameraPage(book: DocumentUploadBook, pageNumber: number): 
   const pages = (book.pages || []).filter((p) => p.pageNumber !== pageNumber);
   if (pages.length === 0) return null;
 
-  const renumbered = pages.map((p, index) => ({
-    ...p,
-    pageNumber: index + 1,
-  }));
+  // Renumber display order only — pageId + original travel with each page.
+  const renumbered = pages.map((p, index) =>
+    normalizeCameraPage({
+      ...p,
+      pageNumber: index + 1,
+    }),
+  );
 
   return {
     ...book,
@@ -221,11 +331,16 @@ export function aggregateOcrText(files: BatchOCRFileResult[]): string {
 }
 
 export async function runBatchOcrOnImages(
-  images: Array<{ uri: string; name: string; type: string }>,
+  images: Array<{ uri: string; name: string; type: string; file?: File | Blob }>,
 ): Promise<BatchOCRResponse> {
   const formData = new FormData();
   images.forEach((img) => {
-    formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
+    appendDocumentUploadFile(formData, 'files', {
+      fileUri: img.uri,
+      fileName: img.name,
+      mimeType: img.type,
+      file: img.file,
+    });
   });
 
   const response = await apiClient.post<BatchOCRResponse>('/api/v1/batch-ocr-upload', formData, {
@@ -383,6 +498,9 @@ export async function regenerateDocumentUploadQuiz(
       gradeLevel: params.grade || currentQuiz.class || '',
       lessonTitle: params.lesson || currentQuiz.lesson || '',
     });
+    if (!result.questions.length) {
+      throw new Error('generate_from_book_zero_questions');
+    }
     return {
       id: currentQuiz.id,
       title: currentQuiz.title,
@@ -432,6 +550,8 @@ export interface GenerateMultimodalParams {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  /** Web document picker File/Blob (preserved for multipart boundaries). */
+  file?: File | Blob;
   questionCount: number;
   difficulty: DocumentUploadDifficulty;
   language?: string;
@@ -439,6 +559,7 @@ export interface GenerateMultimodalParams {
   gradeLevel?: string;
   lessonTitle?: string;
   selectedPages?: number[];
+  additionalInstructions?: string;
 }
 
 // Web parity (HandwrittenWorkspace.difficultyToApi): easy → '2', medium → 'mixed', hard → '6'.
@@ -687,17 +808,19 @@ export async function uploadDocumentToRag(params: {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  file?: File | Blob;
   gradeLevel?: string;
   subject?: string;
   lessonTitle?: string;
   forceOcr?: boolean;
 }): Promise<Partial<DocumentUploadBook>> {
   const formData = new FormData();
-  formData.append('file', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'file', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('auto_embed', 'true');
   formData.append('force_ocr', params.forceOcr ? 'true' : 'false');
 
@@ -805,6 +928,73 @@ export async function saveImagePagesAsLibraryBook(params: {
   });
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Poll the document library until an uploaded book reports enough pages
+ * (or a terminal processing status). Used after camera PDF upload before
+ * generateFromBook.
+ */
+export async function waitForLibraryBookReady(params: {
+  docId: string;
+  expectedPages: number;
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<ServerBook> {
+  const expected = Math.max(1, params.expectedPages);
+  const timeoutMs = params.timeoutMs ?? 90000;
+  const pollMs = params.pollMs ?? 1500;
+  const started = Date.now();
+  let last: ServerBook | null = null;
+
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const books = await listServerBooks();
+      const match = books.find((b) => String(b.docId) === String(params.docId));
+      if (match) {
+        last = match;
+        const status = String(match.processingStatus || '').toLowerCase();
+        if (match.totalPages >= expected || status === 'completed' || status === 'ready') {
+          return match;
+        }
+        if (status === 'failed' || status === 'error') {
+          throw new Error('Document processing failed on the server. Please try again.');
+        }
+      }
+    } catch (err: any) {
+      if (typeof err?.message === 'string' && err.message.includes('processing failed')) {
+        throw err;
+      }
+      // Transient list failures — keep polling until timeout.
+    }
+    await sleepMs(pollMs);
+  }
+
+  if (last && last.totalPages >= 1) {
+    return last;
+  }
+  throw new Error(
+    'Document is still processing. Please wait a moment and try Generate again.',
+  );
+}
+
+/**
+ * Fingerprint for camera selected pages — invalidates cached library uploads
+ * after crop / restore / add / remove / selection changes.
+ */
+export function cameraSelectedPagesFingerprint(
+  pages: Array<{ pageId?: string; pageNumber: number; fileUri: string; width?: number; height?: number }>,
+): string {
+  return pages
+    .map(
+      (p) =>
+        `${p.pageId || p.pageNumber}|${p.fileUri}|${p.width || 0}x${p.height || 0}`,
+    )
+    .join(';;');
+}
+
 /**
  * Upload a book to the server library with full metadata.
  * POST /api/v1/study-materials/books/upload
@@ -813,6 +1003,7 @@ export async function uploadBookWithMetadata(params: {
   fileUri: string;
   fileName: string;
   mimeType?: string;
+  file?: File | Blob;
   title: string;
   gradeLevel?: string;
   subject?: string;
@@ -820,11 +1011,12 @@ export async function uploadBookWithMetadata(params: {
   subLesson?: string;
 }): Promise<ServerBook> {
   const formData = new FormData();
-  formData.append('file', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'file', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('title', params.title.trim());
   formData.append('grade_level', (params.gradeLevel || '').trim());
   formData.append('subject', (params.subject || '').trim());
@@ -896,6 +1088,7 @@ export async function generateFromBook(params: {
   subject?: string;
   gradeLevel?: string;
   lessonTitle?: string;
+  additionalInstructions?: string;
 }): Promise<{
   questions: Array<{
     id: string;
@@ -921,6 +1114,7 @@ export async function generateFromBook(params: {
     subject: params.subject || '',
     grade_level: params.gradeLevel || '',
     lesson_title: params.lessonTitle || '',
+    additional_instructions: (params.additionalInstructions || '').trim(),
   };
 
   const response = await apiClient.post('/api/v1/study-materials/generate-from-book', body, {
@@ -976,17 +1170,21 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
   raw: any;
 }> {
   const formData = new FormData();
-  formData.append('files', {
-    uri: params.fileUri,
-    name: params.fileName,
-    type: params.mimeType || 'application/octet-stream',
-  } as any);
+  appendDocumentUploadFile(formData, 'files', {
+    fileUri: params.fileUri,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+    file: params.file,
+  });
   formData.append('question_count', String(Math.max(1, Math.min(30, params.questionCount))));
   formData.append('difficulty', toDifficultyPayload(params.difficulty));
   formData.append('language', params.language || 'English');
   formData.append('subject', params.subject || 'General');
   formData.append('grade_level', params.gradeLevel || 'Class 10');
   formData.append('lesson_title', params.lessonTitle || 'Document Assessment');
+  if (params.additionalInstructions?.trim()) {
+    formData.append('additional_instructions', params.additionalInstructions.trim());
+  }
   if (Array.isArray(params.selectedPages) && params.selectedPages.length > 0) {
     const cleaned = Array.from(
       new Set(

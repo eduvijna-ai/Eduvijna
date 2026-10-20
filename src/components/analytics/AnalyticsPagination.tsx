@@ -7,13 +7,23 @@ interface Props {
   totalPages: number;
   onPageChange: (page: number) => void;
   colors: { primary: string; border: string; text: string; textSecondary: string; card: string };
+  /** Disambiguates multiple pagers on one screen (e.g. quiz list vs summary). */
+  scope?: 'class' | 'quiz' | 'summary' | 'attempt';
 }
 
-export default function AnalyticsPagination({ page, totalPages, onPageChange, colors }: Props) {
+export default function AnalyticsPagination({
+  page,
+  totalPages,
+  onPageChange,
+  colors,
+  scope = 'class',
+}: Props) {
+  const infoTestId = `analytics-${scope}-pagination-info`;
+  const nextTestId = `analytics-${scope}-pagination-next`;
   if (totalPages <= 1) return null;
 
   return (
-    <View style={styles.row}>
+    <View style={styles.row} collapsable={false}>
       <TouchableOpacity
         style={[styles.btn, { borderColor: colors.border, backgroundColor: colors.card }, page === 1 && styles.disabled]}
         onPress={() => onPageChange(Math.max(1, page - 1))}
@@ -22,10 +32,18 @@ export default function AnalyticsPagination({ page, totalPages, onPageChange, co
         <Ionicons name="chevron-back" size={16} color={page === 1 ? colors.textSecondary : colors.primary} />
         <Text style={[styles.btnText, { color: page === 1 ? colors.textSecondary : colors.primary }]}>Previous</Text>
       </TouchableOpacity>
-      <Text style={[styles.info, { color: colors.textSecondary }]}>
+      <Text
+        testID={infoTestId}
+        accessibilityLabel={`Analytics ${scope} page ${page} of ${totalPages}`}
+        accessible
+        style={[styles.info, { color: colors.textSecondary }]}
+      >
         Page {page} of {totalPages}
       </Text>
       <TouchableOpacity
+        testID={nextTestId}
+        accessibilityRole="button"
+        accessibilityLabel={`Next ${scope} page`}
         style={[styles.btn, { borderColor: colors.border, backgroundColor: colors.card }, page === totalPages && styles.disabled]}
         onPress={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}

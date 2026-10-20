@@ -13,6 +13,7 @@ import { fetchTeacherDashboardSummary, fetchTeacherQuizzes } from '@core/service
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { DateRangeFilter, FilterSection, ClassroomFilter } from '../components/FilterComponents';
 import { DateFilterType } from '../utils/dateFilters';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
 
 interface Props {
   route: any;
@@ -116,6 +117,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
   });
   const [selectedClassroom, setSelectedClassroom] = useState<string>('all');
   const [classrooms, setClassrooms] = useState<Array<{ classroom_id: string; classroom_name: string }>>([]);
+  const { options: assessmentClassroomOptions } = useAssessmentClassrooms();
   const [displayCount, setDisplayCount] = useState(10);
 
   // Set initial classroom filter from navigation params
@@ -210,20 +212,8 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
         offset: 0,
       });
 
-      // Extract ALL unique classrooms from the complete dataset (before filtering)
-      const uniqueClassrooms = new Map<string, string>();
-      response.data.forEach((item: any) => {
-        if (item.classroom_id) {
-          const classroomName = item.classroom_name || `Class ${item.classroom_id.replace('class_', '').toUpperCase()}`;
-          uniqueClassrooms.set(item.classroom_id, classroomName);
-        }
-      });
-
-      const classroomsList = Array.from(uniqueClassrooms.entries()).map(([id, name]) => ({
-        classroom_id: id,
-        classroom_name: name,
-      }));
-      setClassrooms(classroomsList);
+      // Classroom dropdown comes from shared inventory (separate effect).
+      // Metric rows still come from quiz APIs; filter by selected classroom_id.
 
       // Extract unique quizzes from the complete dataset for quiz filter dropdown
       const uniqueQuizzes = new Map<number, string>();
@@ -447,7 +437,21 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       setLoading(false);
       setRefreshing(false);
     }
-  }, [studentId, selectedClassroom, dateFilter, dateRangeStart.getTime(), dateRangeEnd.getTime(), classroomId]);
+  }, [
+    studentId,
+    selectedClassroom,
+    dateFilter,
+    dateRangeStart.getTime(),
+    dateRangeEnd.getTime(),
+    classroomId,
+  ]);
+
+  // Inventory options update independently — never re-trigger metrics fetch.
+  useEffect(() => {
+    if (assessmentClassroomOptions.length > 0) {
+      setClassrooms(assessmentClassroomOptions);
+    }
+  }, [assessmentClassroomOptions]);
 
   // Load analytics when dependencies change
   useEffect(() => {
@@ -457,7 +461,13 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
       console.warn('⚠️ StudentAnalytics: No studentId, skipping loadAnalytics');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId, selectedClassroom, dateFilter, dateRangeStart.getTime(), dateRangeEnd.getTime()]);
+  }, [
+    studentId,
+    selectedClassroom,
+    dateFilter,
+    dateRangeStart.getTime(),
+    dateRangeEnd.getTime(),
+  ]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -804,6 +814,7 @@ export default function StudentAnalyticsScreen({ route, navigation, onNavigate }
                 }
                 const params = {
                   quizId: attempt.quiz_id,
+                  sessionId: (attempt as { session_id?: string }).session_id,
                   attemptId: attempt.attempt_id,
                   studentId: studentId,
                   studentName: studentName,

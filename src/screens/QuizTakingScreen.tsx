@@ -16,28 +16,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { 
-  findOrCreateAttempt,
-  updateQuizAttempt, 
   generateAIQuiz,
   updateAssessmentResponses,
   generateWorksheet,
   saveUserAssessment,
   getQuizExplanation,
 } from '../core/services/sharedApi';
+import { submitAssignedQuiz } from '../core/services/assignedQuizSubmission.service';
+import { refreshStudentAssignmentDashboard } from '../core/services/studentDashboardRefresh.service';
+import { fetchPersistedQuizResult } from '../core/services/quizResultRetrieval.service';
 import { useUserStore } from '../core/store/user.store';
-import { clearCacheEntry } from '../core/services/cacheService';
 import QuizExplanationAccordion from '../components/QuizExplanationAccordion';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import GenerateWorksheetModal from '../components/GenerateWorksheetModal';
 import LoadingSpinner from '../components/LoadingSpinner';
-import MathRenderer from '../components/MathRenderer';
+import EducationalContent from '../components/EducationalContent';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
 import {
   isQuizAnswerCorrect,
   isOptionTheCorrectAnswer,
   normalizeDocumentQuizQuestions,
   normalizeSelectedAnswer,
+  computeLocalQuizResults,
   reconcileResultsWithExplanations,
   withAuthoritativeCorrectAnswer,
   type PlayableQuizQuestion,
@@ -116,6 +117,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     classroomId: routeClassroomId,
     showShareButton,
     showActionButtons,
+    submissionRecovery,
   } = routeParams;
   const source = routeParams?.source;
   /** Wrapper screens (e.g. DocumentUploadQuizScreen) hide the stack header. */
@@ -148,6 +150,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     const workspaceMode = routeParams?.workspaceMode === 'handwritten' ? 'handwritten' : 'document';
 
     const goToWorkspaceSetup = () => {
+      if (Platform.OS === 'web') {
+        navigation.navigate('DocumentUploadHomeScreen');
+        return;
+      }
       navigation.navigate('AssessmentWorkspaceScreen', {
         mode: workspaceMode,
         centerTab: 'preview',
@@ -266,7 +272,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   
   const [quiz, setQuiz] = useState<QuizData | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>(
+    () => submissionRecovery?.selectedAnswers ?? {},
+  );
   const [showResults, setShowResults] = useState(false);
 
   // Pre-fill previously saved answers exactly once when restoring from history.
@@ -310,7 +318,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [authoritativeCorrectAnswers, setAuthoritativeCorrectAnswers] = useState<Record<number, string>>({});
   const [timeRemaining, setTimeRemaining] = useState(1800);
   const [quizStarted, setQuizStarted] = useState(true);
-  const [quizStartTime] = useState(new Date().toISOString());
+  const [quizStartTime] = useState(
+    () => submissionRecovery?.startedAtIso ?? new Date().toISOString(),
+  );
   const [isLoading, setIsLoading] = useState(!quizSource);
   const [submitting, setSubmitting] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -355,6 +365,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     ) &&
     !showActionButtons 
   );
+
+  const isImmutableRecoveryRetry = submissionRecovery?.mode === 'immutable_retry';
 
   // Extract session and classroom IDs for submission (used in backend submission logic)
   const normalizedSessionId = quizSource?.sessionId || quiz?.session_id || null;
@@ -464,7 +476,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       setQuiz(loadedQuiz);
       setTimeRemaining((quizSource.duration || 30) * 60);
       setCurrentQuestionIndex(0);
-      setSelectedAnswers({});
+      if (submissionRecovery?.selectedAnswers) {
+        setSelectedAnswers(submissionRecovery.selectedAnswers);
+      } else {
+        setSelectedAnswers({});
+      }
       setShowResults(false);
       setQuestionResults({});
       setAuthoritativeCorrectAnswers({});
@@ -480,7 +496,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       // No quiz data provided
       setIsLoading(false);
     }
-  }, [quizSource]); // Re-run only when quiz payload changes — not isAssignedQuiz (avoids reset loops)
+  }, [quizSource, submissionRecovery?.selectedAnswers]); // Re-run only when quiz payload changes — not isAssignedQuiz (avoids reset loops)
 
   // Timer countdown
   useEffect(() => {
@@ -810,6 +826,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleSelectAnswer = (optionIndex: number) => {
+    if (isImmutableRecoveryRetry) {
+      return;
+    }
     const option = currentQuestion.options[optionIndex];
     setSelectedAnswers({
       ...selectedAnswers,
@@ -830,6 +849,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   };
 
   const handleSubmitQuiz = async () => {
+    if (isImmutableRecoveryRetry) {
+      submitQuiz();
+      return;
+    }
+
     const unanswered = totalQuestions - Object.keys(selectedAnswers).length;
     
     if (unanswered > 0) {
@@ -856,21 +880,39 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setSubmitting(true);
     
     try {
-      const reconciled = await reconcileResultsWithExplanations(
-        quiz.questions,
-        selectedAnswers,
-        async ({ questionId, questionText, options, selectedAnswer }) =>
-          getQuizExplanation({
-            question_id: questionId,
-            question_text: questionText,
-            options,
-            selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
-          }),
-      );
+      const localGrading = computeLocalQuizResults(quiz.questions, selectedAnswers);
+      let results = localGrading.questionResults;
+      let authoritativeCorrect = localGrading.authoritativeCorrectAnswers;
 
-      const results = reconciled.questionResults;
+      try {
+        const reconciled = await reconcileResultsWithExplanations(
+          quiz.questions,
+          selectedAnswers,
+          async ({ questionId, questionText, options, selectedAnswer }) =>
+            getQuizExplanation({
+              question_id: questionId,
+              question_text: questionText,
+              options,
+              selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
+            }),
+        );
+        results = reconciled.questionResults;
+        authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
+      } catch {
+        // Explanation failures are tolerable; persist local/authoritative grading below.
+      }
+
+      const questionsForPersistence = quiz.questions.map((question, index) => {
+        const resolved = authoritativeCorrect[index];
+        if (!resolved) return question;
+        return {
+          ...question,
+          correctAnswer: resolved,
+          answer: resolved,
+        };
+      });
+
       const correctCount = Object.values(results).filter(Boolean).length;
-      setAuthoritativeCorrectAnswers(reconciled.authoritativeCorrectAnswers);
 
       const score = Math.round((correctCount / totalQuestions) * 100);
       const completedAt = new Date().toISOString();
@@ -923,74 +965,59 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         });
 
         try {
-          // Convert selectedAnswers to letter format for log_data
-          const answersAsLetters: Record<number, string> = {};
-          Object.keys(selectedAnswers).forEach((index) => {
-            const questionIndex = parseInt(index);
-            const selectedOption = selectedAnswers[questionIndex];
-            const question = quiz.questions[questionIndex];
-            if (question && selectedOption) {
-              const optionIndex = question.options.indexOf(selectedOption);
-              answersAsLetters[questionIndex] = ['A', 'B', 'C', 'D'][optionIndex] || '';
-            }
+          const submissionResult = await submitAssignedQuiz({
+            quizId: quiz.quiz_id,
+            studentId: String(user.id),
+            sessionId,
+            questions: questionsForPersistence,
+            selectedAnswers,
+            startedAtIso: quizStartTime,
+            scorePercent: score,
+            questionCount: totalQuestions,
+            questionResults: results,
+            classroomId,
           });
-
-          // Use sessionId as the primary class identifier for all API calls
-          // (matches web OpenQuizPage which uses session_id from the URL as class_id).
-          // The user confirmed: quiz-attempts API uses session_id (UUID) as class_id.
-          // const apiClassId = sessionId || classroomId;
-          const apiClassId = sessionId;
-
-          // Step 1: Ensure attempt exists (create if not; reuse if already started)
-          // Mirrors web's ensureAttempt() which guards against duplicate 409 errors.
-          console.log('📤 Ensuring quiz attempt exists:', {
-            quiz_id: quiz.quiz_id,
-            student_id: user.id,
-            class_id: apiClassId,
-            started_at: quizStartTime,
-          });
-
-          const attemptId = await findOrCreateAttempt({
-            quiz_id: quiz.quiz_id,
-            student_id: String(user.id),
-            class_id: apiClassId,
-            started_at: quizStartTime,
-          });
-
-          console.log('✅ Attempt ID:', attemptId);
-
-          // Mark attempt as completed.
-          // NOTE: createQuizSubmission is intentionally NOT called here.
-          // The backend's POST quiz-submissions endpoint creates a NEW quiz_attempts
-          // record as a side-effect (started_at=submitted_at, attempt_number=max+1).
-          // That 'started' record gets picked up by findOrCreateAttempt on the next
-          // submission, creating a chain of duplicate records (1→2→3...).
-          // Using only findOrCreateAttempt + updateQuizAttempt gives exactly 1 record.
-          if (attemptId) {
-            try {
-              await updateQuizAttempt(attemptId, {
-                score,
-                status: 'completed',
-                completed_at: completedAt,
-                time_spent_seconds: timeSpent,
+          if (submissionResult.alreadySubmitted && submissionResult.persistedResult) {
+            const saved = submissionResult.persistedResult;
+            const total = saved.quizData.questions.length;
+            navigation.replace('QuizResultsScreen', {
+              quizId: quiz.quiz_id,
+              sessionId,
+              studentId: String(user.id),
+              quizData: saved.quizData,
+              userAnswers: saved.userAnswers,
+              score: saved.score,
+              totalQuestions: total,
+              isTeacherView: false,
+            });
+            setSubmitting(false);
+            return;
+          }
+          if (!submissionResult.alreadySubmitted) {
+            const persisted = await fetchPersistedQuizResult({
+              quizId: quiz.quiz_id,
+              sessionId,
+              studentId: String(user.id),
+              isTeacherView: false,
+            });
+            if (persisted.status === 'ready') {
+              const total = persisted.quizData.questions.length;
+              navigation.replace('QuizResultsScreen', {
+                quizId: quiz.quiz_id,
+                sessionId,
+                studentId: String(user.id),
+                quizData: persisted.quizData,
+                userAnswers: persisted.userAnswers,
+                score: persisted.score,
+                totalQuestions: total,
+                isTeacherView: false,
               });
-              console.log('✅ Assessment attempt marked completed');
-            } catch (updateError: any) {
-              console.warn('⚠️ Could not update attempt status:', updateError?.message);
+              setSubmitting(false);
+              return;
             }
+            console.log('✅ Quiz submission successful');
+            void refreshStudentAssignmentDashboard(String(user.id)).catch(() => undefined);
           }
-
-          console.log('✅ Quiz submission successful');
-
-          // Step 4: Invalidate student_quizzes cache so the quiz leaves Pending list
-          await clearCacheEntry('student_quizzes_all_100_0');
-          if (classroomId) {
-            await clearCacheEntry(`student_quizzes_${classroomId}_100_0`);
-          }
-          if (sessionId) {
-            await clearCacheEntry(`student_quizzes_${sessionId}_100_0`);
-          }
-          console.log('✅ Student quizzes cache invalidated');
         } catch (submitError: any) {
           console.error('❌ Quiz submission failed:', submitError);
           console.error('Error details:', {
@@ -1011,7 +1038,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         console.log('ℹ️ Self-Generated Assessment - skipping backend submission');
       }
 
-      // Store results and show them inline
+      setAuthoritativeCorrectAnswers(authoritativeCorrect);
       setQuestionResults(results);
       setShowResults(true);
       setCurrentQuestionIndex(0);
@@ -1245,6 +1272,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {!showResults && isImmutableRecoveryRetry && (
+        <View
+          style={[
+            styles.recoveryBanner,
+            { backgroundColor: colors.primary + '18', borderColor: colors.primary },
+          ]}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+          <Text style={[styles.recoveryBannerText, { color: colors.text }]}>
+            Your answers are saved on this device but were not confirmed on the server. Review them
+            below (read-only), then tap Retry save submission.
+          </Text>
+        </View>
+      )}
+
       {!showResults && (
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.headerTop}>
@@ -1280,7 +1322,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
           </View>
 
           <View style={styles.questionText}>
-            <MathRenderer text={currentQuestion.question} colors={colors} />
+            <EducationalContent content={currentQuestion.question} />
           </View>
 
           <View style={styles.optionsContainer}>
@@ -1301,8 +1343,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     isCorrectAnswer && { backgroundColor: '#E8F5E9', borderColor: '#4CAF50', borderWidth: 2 },
                     isWrongSelection && { backgroundColor: '#FFEBEE', borderColor: '#F44336', borderWidth: 2 }
                   ]}
-                  onPress={() => !showResults && handleSelectAnswer(index)}
-                  disabled={showResults}
+                  onPress={() =>
+                    !showResults && !isImmutableRecoveryRetry && handleSelectAnswer(index)
+                  }
+                  disabled={showResults || isImmutableRecoveryRetry}
                 >
                   <View style={[
                     styles.optionBullet,
@@ -1320,7 +1364,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                   <View style={styles.optionText}>
-                    <MathRenderer text={option} colors={colors} />
+                    <EducationalContent content={option} />
                   </View>
                   {!showResults && isSelected && (
                     <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
@@ -1440,7 +1484,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                 {submitting ? <LoadingSpinner size={20} /> : (
                   <>
                     <Ionicons name="checkmark-done" size={20} color="#fff" />
-                    <Text style={[styles.navButtonText, { color: '#fff' }]}>Submit</Text>
+                    <Text style={[styles.navButtonText, { color: '#fff' }]}>
+                      {isImmutableRecoveryRetry ? 'Retry save submission' : 'Submit'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1497,6 +1543,21 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  recoveryBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  recoveryBannerText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
   container: { flex: 1 },
   backButton: {
     flexDirection: 'row',

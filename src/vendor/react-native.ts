@@ -1,6 +1,6 @@
 /**
  * App-level react-native shim — applies Poppins to every Text / TextInput.
- * Babel aliases `react-native` → this file for app source only.
+ * Metro aliases app-source `react-native` imports to this file.
  */
 
 import * as React from 'react';

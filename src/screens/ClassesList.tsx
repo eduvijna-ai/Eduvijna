@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { fetchTeacherQuizzes, fetchTeacherClassrooms } from '@core/services/dashboardApi';
+import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
 import { useDashboardStore } from '@core/store/dashboard.store';
 import { Classroom } from '@core/types/quiz.types';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import { teacherAvailabilityTabMatch } from '@core/utils/statusContracts';
 import { 
   isStudentQuizActive, 
   isStudentQuizUpcoming,
@@ -46,74 +48,67 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [classes, setClasses] = useState<ClassData[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
   
   // Get dashboard data from store (already loaded by StudentDashboard)
   const { quizzes: storedQuizzes } = useDashboardStore();
+  const {
+    classrooms: assessmentClassrooms,
+    unavailable: classroomsUnavailable,
+    error: classroomsError,
+    refresh: refreshAssessmentClassrooms,
+  } = useAssessmentClassrooms();
   
   // Determine if user is a student
   const isStudent = user?.role === 'student';
+  const inventoryKey = assessmentClassrooms.map((c) => c.classroom_id).join(',');
+  const teacherQuizzesCacheRef = React.useRef<any[] | null>(null);
+  const loadGenerationRef = React.useRef(0);
 
   // Responsive layout detection
   const isWeb = width > 768;
 
   useEffect(() => {
-    loadClasses();
-  }, []);
+    void loadClasses({ forceQuizzes: false });
+    // inventoryKey: only re-enhance when classroom identity set changes (not array identity churn).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventoryKey, storedQuizzes, isStudent]);
 
-  const loadClasses = async () => {
-    setLoading(true);
+  const loadClasses = async (opts?: { forceQuizzes?: boolean }) => {
+    const generation = ++loadGenerationRef.current;
+    const hasVisibleContent = classes.length > 0;
+    // Keep rendered list during inventory/metrics refresh — only block when empty.
+    if (!hasVisibleContent) {
+      setLoading(true);
+    }
+    setListError(null);
     try {
       let fetchedClasses: any[] = [];
       let allQuizzes: any[] = [];
       
+      // Shared authorized inventory (teacher: class_wise_students; student: classes).
+      // Includes zero-assignment classrooms; never derive the list from quizzes alone.
+      fetchedClasses = assessmentClassrooms.map((c) => ({ ...c }));
+
+      if (classroomsUnavailable && fetchedClasses.length === 0) {
+        setListError(classroomsError || 'Classroom list temporarily unavailable.');
+        if (generation === loadGenerationRef.current) setLoading(false);
+        return;
+      }
+
       if (isStudent) {
-        // For students: Reuse dashboard data from store (already loaded by StudentDashboard)
-        
-        if (storedQuizzes.length === 0) {
-          console.warn('⚠️ No data in store. StudentDashboard should load data first.');
-          setLoading(false);
-          return;
-        }
-        
-        // Aggregate classes from stored quiz data
-        const classMap = new Map<string, any>();
-        
-        storedQuizzes.forEach((quiz: any) => {
-          const classId = quiz.classroom_id || quiz.class_id;
-          // Use classroom_id as the name if classroom_name looks like a quiz name
-          // Quiz names typically have underscores and dates, classroom names are cleaner
-          let className = quiz.classroom_name || classId || 'Unknown Class';
-          
-          // Aggregate by classroom_id
-          if (classId && !classMap.has(classId)) {
-            classMap.set(classId, {
-              classroom_id: classId,
-              classroom_name: className,
-              instructor: quiz.instructor ? quiz.instructor : undefined,
-              quizzes: [],
-            });
-          }
-          
-          if (classId) {
-            const classData = classMap.get(classId);
-            classData.quizzes.push(quiz);
-          }
-        });
-        
-        fetchedClasses = Array.from(classMap.values());
         allQuizzes = storedQuizzes;
+      } else if (!opts?.forceQuizzes && teacherQuizzesCacheRef.current) {
+        allQuizzes = teacherQuizzesCacheRef.current;
       } else {
-        // For teachers: Get instructor's classes
-        const classesResponse = await fetchTeacherClassrooms();
-        fetchedClasses = classesResponse.data || [];
-        
         // Get all quizzes for the instructor with complete attempt data
         // Use view_type='all' to get detailed student statuses (completed, pending, missed)
         const quizzesResult = await fetchTeacherQuizzes({
           view_type: 'all',
           limit: 1000,
         });
-        
+        if (generation !== loadGenerationRef.current) return;
+        teacherQuizzesCacheRef.current = quizzesResult.data;
         allQuizzes = quizzesResult.data;
       }
       
@@ -157,10 +152,16 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
           completedQuizzes = filterCompletedQuizzes(classQuizzes).length;
           expiredQuizzes = filterMissedQuizzes(classQuizzes).length;
         } else {
-          // For teachers: count by availability status
-          activeQuizzes = classQuizzes.filter(q => q.availability_status === 'active').length;
-          expiredQuizzes = classQuizzes.filter(q => q.availability_status === 'expired').length;
-          upcomingQuizzes = classQuizzes.filter(q => q.availability_status === 'available_soon').length;
+          // Teachers: assignment availability counts (same axis as Assessments tabs).
+          activeQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'active'),
+          ).length;
+          expiredQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'expired'),
+          ).length;
+          upcomingQuizzes = classQuizzes.filter((q) =>
+            teacherAvailabilityTabMatch(q.availability_status, 'available_soon'),
+          ).length;
         }
         
         // Calculate performance metrics
@@ -255,18 +256,22 @@ export default function ClassesList({ navigation, onNavigate }: Props) {
         };
       });
       
+      if (generation !== loadGenerationRef.current) return;
       setClasses(enhancedClasses);
     } catch (error) {
       console.error('Error loading classes:', error);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadClasses();
+    await refreshAssessmentClassrooms();
+    await loadClasses({ forceQuizzes: true });
   };
 
   const handleClassPress = (classItem: ClassData) => {

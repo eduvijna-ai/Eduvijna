@@ -8,7 +8,9 @@ import {
   TextInput,
   Modal,
   Image,
+  Platform,
 } from 'react-native';
+import DocumentUploadHomeScreen from './document-upload/DocumentUploadHomeScreen';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Formik, type FormikHelpers, type FormikProps } from 'formik';
 import * as Yup from 'yup';
@@ -26,7 +28,7 @@ import { useDropdowns } from '../context/DropdownContext';
 import ShareQuizModal from '../components/ShareQuizModal';
 import ShareOptionsModal from '../components/ShareOptionsModal';
 import { useTheme } from '@context/ThemeContext';
-import MathRenderer from '../components/MathRenderer';
+import EducationalContent from '../components/EducationalContent';
 import useNotifications from '@core/hooks/useNotifications';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
@@ -65,13 +67,14 @@ interface Props {
   };
 }
 
-export default function CreateDocumentQuizScreen({ navigation: propNavigation, route }: Props = {}) {
+function LegacyCreateDocumentQuizScreen({ navigation: propNavigation, route }: Props = {}) {
   const navigation = {
     navigate: () => {},
     goBack: () => {},
     addListener: () => () => {},
     ...(propNavigation || {}),
   };
+
   const { theme } = useTheme();
   const { refreshAfterQuizGenerated } = useNotifications();
   const { classes, subjects } = useDropdowns();
@@ -1600,7 +1603,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
                     )}
                   </View>
 
-                  <MathRenderer text={String(question.question ?? '')} colors={theme.colors} />
+                  <EducationalContent content={String(question.question ?? '')} />
 
                   <View style={styles.optionsContainer}>
                     {options.map((option: any, optionIndex: number) => {
@@ -1630,7 +1633,7 @@ export default function CreateDocumentQuizScreen({ navigation: propNavigation, r
                             ]}>
                               {optionLetter}
                             </Text>
-                            <MathRenderer text={String(option ?? '')} colors={theme.colors} />
+                            <EducationalContent content={String(option ?? '')} />
                           </View>
                           {allQuestionsVerified && (
                             isCorrectOption ? (
@@ -2928,3 +2931,29 @@ const createStyles = (colors: any) => StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default function CreateDocumentQuizScreen(props: Props = {}) {
+  const mobileRedirected = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      return;
+    }
+    if (mobileRedirected.current || !props.navigation) {
+      return;
+    }
+    mobileRedirected.current = true;
+    const params = props.route?.params ?? {};
+    if (typeof props.navigation.replace === 'function') {
+      props.navigation.replace('DocumentUploadHomeScreen', params);
+      return;
+    }
+    props.navigation.navigate?.('DocumentUploadHomeScreen', params);
+  }, [props.navigation, props.route?.params]);
+
+  if (Platform.OS === 'web') {
+    return <DocumentUploadHomeScreen navigation={props.navigation} route={props.route} />;
+  }
+
+  return <LoadingSpinner />;
+}

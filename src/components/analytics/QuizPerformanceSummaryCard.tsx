@@ -16,6 +16,9 @@ export default function QuizPerformanceSummaryCard({ row, onPress, colors }: Pro
 
   return (
     <TouchableOpacity
+      testID={`analytics-summary-row-${row.quiz_id}-${row.session_id}`}
+      accessibilityRole="button"
+      accessibilityLabel={`Open quiz summary for ${row.quiz_name}`}
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={onPress}
       activeOpacity={0.85}
@@ -30,9 +33,9 @@ export default function QuizPerformanceSummaryCard({ row, onPress, colors }: Pro
 
       <View style={styles.statsGrid}>
         <Stat label="Students" value={String(row.total_students)} />
-        <Stat label="Done" value={String(row.completed)} color="#059669" />
+        <Stat label="Completed" value={String(row.completed)} color="#059669" />
         <Stat label="Pending" value={String(row.pending)} color="#d97706" />
-        <Stat label="Not Done" value={String(row.not_completed)} color="#dc2626" />
+        <Stat label="Not completed" value={String(row.not_completed)} color="#dc2626" />
       </View>
 
       <View style={styles.statsGrid}>

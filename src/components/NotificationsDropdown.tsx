@@ -42,6 +42,8 @@ export default function NotificationsDropdown({
         return 'document-text';
       case 'quiz_graded':
         return 'checkmark-circle';
+      case 'quiz_completed':
+        return 'school';
       case 'classroom_invite':
         return 'people';
       case 'announcement':
@@ -57,6 +59,8 @@ export default function NotificationsDropdown({
         return '#3B82F6';
       case 'quiz_graded':
         return '#10B981';
+      case 'quiz_completed':
+        return '#0EA5E9';
       case 'classroom_invite':
         return '#8B5CF6';
       case 'announcement':

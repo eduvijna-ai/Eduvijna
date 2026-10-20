@@ -1,0 +1,79 @@
+{
+  "verifiedAt": "2026-10-10T18:37:35.118Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "clientApiBaseExpected": "https://dev-api.eduvijna.com",
+  "status": "passed",
+  "serviceUnderTest": "submitAssignedQuiz + quizSubmissionCheckpoint (mobile core)",
+  "steps": [
+    {
+      "step": "load_credentials",
+      "status": "passed"
+    },
+    {
+      "step": "login_accounts",
+      "status": "passed",
+      "roles": [
+        "instructor",
+        "student"
+      ]
+    },
+    {
+      "step": "create_disposable_fixture",
+      "status": "passed",
+      "topic": "[redacted]"
+    },
+    {
+      "step": "phase1_interrupt_checkpoint",
+      "status": "passed",
+      "exitCode": 0,
+      "stdoutTail": "[omitted-blob]",
+      "stderrTail": "[omitted-blob]"
+    },
+    {
+      "step": "phase2_recover_and_persist",
+      "status": "passed",
+      "exitCode": 0,
+      "stdoutTail": "[omitted-blob]",
+      "stderrTail": "[omitted-blob]"
+    },
+    {
+      "step": "cleanup_disposable_fixture",
+      "status": "skipped",
+      "ok": false,
+      "skipped": true,
+      "limitation": "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
+    }
+  ],
+  "limitations": [
+    "No supported dev-api cleanup contract for disposable sharequiz fixtures; rows may remain on dev-api."
+  ],
+  "comparisons": {
+    "recoveryDecoy": {
+      "submittedSelectedAnswer": "3",
+      "submittedScorePercent": 0,
+      "submittedStartedAtIso": "2099-06-01T12:00:00.000Z",
+      "rejectedInFavorOfCheckpoint": true
+    },
+    "checkpointImmutable": {
+      "scorePercent": 100,
+      "selectedAnswer": "4",
+      "startedAt": "2026-10-10T18:37:40.175Z",
+      "finalizedAt": "2026-10-10T18:37:40.508Z",
+      "timeSpentSeconds": 0
+    },
+    "persisted": {
+      "score": 100,
+      "userAnswer": "4",
+      "questionCount": 1
+    },
+    "identityFromAttended": {
+      "quiz_id": "ref:d2396dcc",
+      "session_id": "ref:7156011f",
+      "student_id": "[redacted]"
+    },
+    "limitations": []
+  },
+  "evaluationFailures": [],
+  "executionMode": "orchestrator_with_jest_phase1_phase2",
+  "commandLine": "node scripts/dev-api-submission-matrix.mjs"
+}

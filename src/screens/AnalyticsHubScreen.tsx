@@ -6,11 +6,12 @@ import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '../core/hooks/useAuth';
+import { usesTeacherAssessmentClassroomPath } from '../core/services/assessmentClassrooms.service';
 import QuizTeacherAnalyticsScreen from './QuizTeacherAnalyticsScreen';
 import QuizStudentMyAnalyticsScreen from './QuizStudentMyAnalyticsScreen';
 
 function isTeacherRole(role?: string | null): boolean {
-  return role === 'instructor' || role === 'admin' || role === 'super_admin';
+  return usesTeacherAssessmentClassroomPath(role);
 }
 
 export default function AnalyticsHubScreen() {

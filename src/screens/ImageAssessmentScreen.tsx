@@ -31,6 +31,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
 import useNotifications from '@core/hooks/useNotifications';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import MathRenderer from '../components/MathRenderer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ModalDropdownField from '../components/ModalDropdownField';
@@ -130,6 +131,7 @@ const toOptionLetter = (raw: string, options: string[]): 'A' | 'B' | 'C' | 'D' =
 };
 
 export default function ImageAssessmentScreen({ navigation }: any) {
+  useQuizNavAccessRedirect('CreateImageQuizScreen', navigation);
   const { theme } = useTheme();
   const colors = theme.colors;
   const insets = useSafeAreaInsets();
@@ -313,11 +315,14 @@ export default function ImageAssessmentScreen({ navigation }: any) {
 
       // Persist the analyzed image so it appears in the library (web parity).
       try {
-        const compressedUri = await compressCameraImage(imageUri);
-        const base64 = await fileToBase64(compressedUri);
+        const normalized = await compressCameraImage(imageUri, {
+          originalName: imageName || 'image.jpg',
+          sourceMimeType: imageMime || undefined,
+        });
+        const base64 = await fileToBase64(normalized.uri);
         const saved = await saveImageAssessment({
-          image_name: imageName || 'image.jpg',
-          mime_type: imageMime || 'image/png',
+          image_name: normalized.fileName || imageName || 'image.jpg',
+          mime_type: normalized.mimeType || imageMime || 'image/png',
           image_base64: base64,
           student_level: studentLevel,
           language,

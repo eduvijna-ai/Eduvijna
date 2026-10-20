@@ -20,14 +20,22 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@core/api/config';
+import {
+  needsAccountTokenReconcile,
+  promptDismissedStorageKey,
+  PUSH_ACCOUNT_STORAGE,
+  wasPromptDismissedRecently,
+} from './pushNotificationAccountScope';
 
-// Storage keys
+// Storage keys (device-level token/preference; registration id + prompt are account-aware)
 const STORAGE_KEYS = {
-  FCM_TOKEN: 'fcmDeviceToken',
-  PUSH_ENABLED: 'pushNotificationsEnabled',
-  PUSH_PROMPT_DISMISSED: 'pushPromptDismissedAt',
-  LAST_TOKEN_REGISTERED: 'lastTokenRegistered',
-  TOKEN_ID: 'deviceTokenId', // ID returned from backend after registration
+  FCM_TOKEN: PUSH_ACCOUNT_STORAGE.FCM_TOKEN,
+  PUSH_ENABLED: PUSH_ACCOUNT_STORAGE.PUSH_ENABLED,
+  LAST_TOKEN_REGISTERED: PUSH_ACCOUNT_STORAGE.LAST_TOKEN_REGISTERED,
+  TOKEN_ID: PUSH_ACCOUNT_STORAGE.TOKEN_ID,
+  REGISTERED_USER_ID: PUSH_ACCOUNT_STORAGE.REGISTERED_USER_ID,
+  /** Legacy device-wide key; migrated into per-account keys on read. */
+  PUSH_PROMPT_DISMISSED_LEGACY: 'pushPromptDismissedAt',
 };
 
 // Configure notification handler (for local notifications display)
@@ -199,6 +207,12 @@ async function registerDevice(token: string): Promise<boolean> {
 
     await AsyncStorage.setItem(STORAGE_KEYS.LAST_TOKEN_REGISTERED, token);
     await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'true');
+    if (response.data?.user_id != null) {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.REGISTERED_USER_ID,
+        String(response.data.user_id),
+      );
+    }
 
     console.log('✅ Device registered successfully with Firebase FCM token');
     return true;
@@ -233,38 +247,67 @@ async function registerDevice(token: string): Promise<boolean> {
 }
 
 /**
- * Unregister/disable device from push notifications
+ * Detach this device token from the current authenticated account on the backend.
+ * Keeps OS permission + cached FCM token (device state) so the next account can re-register.
+ */
+async function detachAccountAssociation(): Promise<void> {
+  try {
+    const tokenId = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN_ID);
+    if (tokenId) {
+      try {
+        await apiClient.delete(`/api/notifications/devices/${tokenId}`);
+      } catch (error: any) {
+        // 401/404 are expected after session expiry — still clear local association
+        const status = error?.response?.status;
+        if (status !== 401 && status !== 404) {
+          console.warn('⚠️ detachAccountAssociation delete failed:', error?.message || error);
+        }
+      }
+    }
+  } finally {
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.TOKEN_ID,
+      STORAGE_KEYS.LAST_TOKEN_REGISTERED,
+      STORAGE_KEYS.REGISTERED_USER_ID,
+    ]);
+  }
+}
+
+/**
+ * Unregister/disable device from push notifications (user opted out).
  * Calls API: DELETE /api/notifications/devices/{token_id}
  */
 async function unregisterDevice(): Promise<boolean> {
   try {
     const tokenId = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN_ID);
-    
-    if (!tokenId) {
-      // No token ID, just mark as disabled locally
-      await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'false');
-      await AsyncStorage.removeItem(STORAGE_KEYS.FCM_TOKEN);
-      return true;
+
+    if (tokenId) {
+      await apiClient.delete(`/api/notifications/devices/${tokenId}`);
     }
 
-    await apiClient.delete(`/api/notifications/devices/${tokenId}`);
-    
-    // Clear local storage
+    // Opt-out: clear association + device preference. Keep FCM token cache optional —
+    // clearing forces a fresh token fetch if they re-enable later.
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.TOKEN_ID,
       STORAGE_KEYS.LAST_TOKEN_REGISTERED,
+      STORAGE_KEYS.REGISTERED_USER_ID,
       STORAGE_KEYS.PUSH_ENABLED,
       STORAGE_KEYS.FCM_TOKEN,
     ]);
+    await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'false');
 
-    console.log('✅ Device unregistered and FCM token deleted');
+    console.log('✅ Device unregistered from push notifications');
     return true;
   } catch (error: any) {
     console.error('❌ Failed to unregister device:', error?.response?.data || error?.message);
-    
-    // Even if backend fails, disable locally
+
     await AsyncStorage.setItem(STORAGE_KEYS.PUSH_ENABLED, 'false');
-    
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.TOKEN_ID,
+      STORAGE_KEYS.LAST_TOKEN_REGISTERED,
+      STORAGE_KEYS.REGISTERED_USER_ID,
+    ]);
+
     throw new Error(error?.response?.data?.message || 'Failed to disable push notifications');
   }
 }
@@ -438,20 +481,50 @@ async function handleTokenRefresh(): Promise<void> {
 }
 
 /**
- * Sync push status after login
- * Re-registers if token changed or user was previously enabled
+ * Sync push status after login / account switch.
+ * Reconciles an existing device token onto the authenticated account —
+ * presence of a local token alone is not proof it is registered for this user.
  */
-async function syncStatusAfterLogin(): Promise<void> {
+async function syncStatusAfterLogin(userId?: string | number | null): Promise<void> {
   try {
     const status = await getPushStatus();
-    
-    // If previously enabled but token missing, try to re-register
-    if (status.isEnabled && !status.hasToken && status.isSupported) {
-      console.log('🔄 Re-registering push notifications after login...');
-      const result = await enablePushNotifications();
-      if (!result.success) {
-        console.log('⚠️ Failed to re-register:', result.message);
-      }
+    if (!status.isSupported) {
+      return;
+    }
+
+    const registeredUserId = await AsyncStorage.getItem(STORAGE_KEYS.REGISTERED_USER_ID);
+    const lastRegistered = await AsyncStorage.getItem(STORAGE_KEYS.LAST_TOKEN_REGISTERED);
+    const currentToken = await AsyncStorage.getItem(STORAGE_KEYS.FCM_TOKEN);
+
+    const shouldReconcile = needsAccountTokenReconcile({
+      isSupported: status.isSupported,
+      hasPermission: status.hasPermission,
+      pushEnabledLocally: status.isEnabled,
+      hasToken: status.hasToken,
+      registeredUserId,
+      currentUserId: userId ?? null,
+      lastRegisteredToken: lastRegistered,
+      currentToken,
+    });
+
+    if (!shouldReconcile) {
+      return;
+    }
+
+    if (!status.hasPermission) {
+      // Do not re-prompt the OS dialog from login sync; Profile / in-app prompt handle enablement.
+      console.log('🔔 Push reconcile skipped — OS permission not granted');
+      return;
+    }
+
+    console.log('🔄 Reconciling push token for authenticated account...');
+    const result = await enablePushNotifications();
+    if (!result.success) {
+      console.log('⚠️ Failed to reconcile push registration:', result.message);
+      return;
+    }
+    if (userId != null) {
+      await AsyncStorage.setItem(STORAGE_KEYS.REGISTERED_USER_ID, String(userId));
     }
   } catch (error) {
     console.error('❌ Error syncing push status:', error);
@@ -495,31 +568,37 @@ async function initializeOnAppLaunch(): Promise<void> {
 }
 
 /**
- * Check if push prompt was recently dismissed
+ * Check if push prompt was recently dismissed for this account.
  */
-async function wasPromptRecentlyDismissed(): Promise<boolean> {
+async function wasPromptRecentlyDismissed(userId?: string | number | null): Promise<boolean> {
   try {
-    const dismissedAt = await AsyncStorage.getItem(STORAGE_KEYS.PUSH_PROMPT_DISMISSED);
-    
-    if (!dismissedAt) {
+    if (userId == null) {
       return false;
     }
-
-    const dismissedTime = new Date(dismissedAt).getTime();
-    const now = new Date().getTime();
-    const hoursSinceDismissed = (now - dismissedTime) / (1000 * 60 * 60);
-
-    return hoursSinceDismissed < 24;
-  } catch (error) {
+    const key = promptDismissedStorageKey(userId);
+    let dismissedAt = await AsyncStorage.getItem(key);
+    if (!dismissedAt) {
+      // One-time migration from legacy device-wide dismissal — do not suppress other accounts.
+      dismissedAt = await AsyncStorage.getItem(STORAGE_KEYS.PUSH_PROMPT_DISMISSED_LEGACY);
+      if (dismissedAt) {
+        await AsyncStorage.setItem(key, dismissedAt);
+        await AsyncStorage.removeItem(STORAGE_KEYS.PUSH_PROMPT_DISMISSED_LEGACY);
+      }
+    }
+    return wasPromptDismissedRecently(dismissedAt, Date.now());
+  } catch {
     return false;
   }
 }
 
 /**
- * Mark push prompt as dismissed
+ * Mark push prompt as dismissed for this account only.
  */
-async function dismissPrompt(): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEYS.PUSH_PROMPT_DISMISSED, new Date().toISOString());
+async function dismissPrompt(userId?: string | number | null): Promise<void> {
+  if (userId == null) {
+    return;
+  }
+  await AsyncStorage.setItem(promptDismissedStorageKey(userId), new Date().toISOString());
 }
 
 /**
@@ -554,6 +633,7 @@ export const PushNotificationService = {
   getToken,
   registerDevice,
   unregisterDevice,
+  detachAccountAssociation,
   
   // High-level flows
   enablePushNotifications,

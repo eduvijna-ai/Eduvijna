@@ -20,6 +20,12 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { fetchTeacherQuizzes } from '@core/services/dashboardApi';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
+import {
+  resolveStudentListMode,
+  type StudentListMode,
+  STUDENT_LIST_MODE_PARAM,
+} from '@core/types/studentListNavigation.types';
 
 interface Props {
   navigation?: any;
@@ -31,6 +37,8 @@ interface QuizAttempt {
   student_id: string;
   student_fullname: string;
   student_username?: string;
+  session_id?: string | null;
+  class_id?: string | null;
   score: number | null;
   status: string | null;
   attempt_id: number | null;
@@ -62,6 +70,12 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   const quizName = route?.params?.quizName;
   const classroomId = route?.params?.classroomId;
   const classroomName = route?.params?.classroomName;
+  const assignmentSessionId = route?.params?.sessionId;
+  const listMode: StudentListMode = resolveStudentListMode({
+    listMode: route?.params?.[STUDENT_LIST_MODE_PARAM] ?? route?.params?.listMode,
+    quizId,
+  });
+  const isQuizAssignmentList = listMode === 'quiz_assignment' && quizId != null;
 
   const fetchQuizStudents = useCallback(async () => {
     try {
@@ -73,17 +87,34 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
       });
       
       if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
-        const quiz = response.data[0];
-        
+        const quiz = response.data.find((row: { quiz_id?: number; session_id?: string }) => {
+          if (Number(row.quiz_id) !== Number(quizId)) return false;
+          if (assignmentSessionId && String(row.session_id) !== String(assignmentSessionId)) {
+            return false;
+          }
+          return true;
+        });
+
+        if (!quiz) {
+          setStudents([]);
+          return;
+        }
+
         if (quiz.attempts) {
           const attempts = typeof quiz.attempts === 'string'
             ? JSON.parse(quiz.attempts)
             : quiz.attempts;
           
           if (Array.isArray(attempts)) {
-            // Filter to only show students who have attempted (score is not null)
-            // Or show all students with pending status
-            setStudents(attempts);
+            const parentSessionId = quiz.session_id ?? assignmentSessionId;
+            const parentClassroomId = quiz.classroom_id;
+            setStudents(
+              attempts.map((attempt: QuizAttempt) => ({
+                ...attempt,
+                session_id: attempt.session_id ?? parentSessionId ?? null,
+                class_id: attempt.class_id ?? parentClassroomId ?? null,
+              })),
+            );
           }
         }
       }
@@ -92,7 +123,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [quizId]);
+  }, [quizId, assignmentSessionId]);
 
   const fetchClassroomStudents = useCallback(async () => {
     try {
@@ -210,7 +241,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
           return (b.score || 0) - (a.score || 0);
         case 'completion':
           // For classroom view, sort by completion rate
-          if (classroomId) {
+          if (!isQuizAssignmentList) {
             const rateA = (a.completed_quizzes || 0) / (a.total_quizzes || 1);
             const rateB = (b.completed_quizzes || 0) / (b.total_quizzes || 1);
             return rateB - rateA;
@@ -245,8 +276,7 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
   }, [quizId, classroomId, fetchQuizStudents, fetchClassroomStudents]);
 
   const handleStudentPress = useCallback((student: QuizAttempt) => {
-    // Check if this is classroom view - navigate to student analytics
-    if (classroomId) {
+    if (!isQuizAssignmentList) {
       if (navigation) {
         navigation.navigate('StudentAnalytics', {
           studentId: student.student_id,
@@ -271,28 +301,32 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
     }
     
     // Navigate to quiz results screen to show student's answers
-    if (navigation) {
-      navigation.navigate('QuizResultsScreen', {
-        quizId: quizId,
-        attemptId: student.attempt_id,
-        studentId: student.student_id,
-        studentName: student.student_fullname,
-        score: student.score,
-        quizName: quizName,
-        isTeacherView: true, // Flag to indicate teacher viewing student attempt
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizResultsScreen', {
-        quizId: quizId,
-        attemptId: student.attempt_id,
-        studentId: student.student_id,
-        studentName: student.student_fullname,
-        score: student.score,
-        quizName: quizName,
-        isTeacherView: true,
-      });
+    const resultParams = {
+      quizId: quizId,
+      attemptId: student.attempt_id,
+      studentId: student.student_id,
+      studentName: student.student_fullname,
+      score: student.score,
+      quizName: quizName,
+      sessionId: student.session_id || assignmentSessionId,
+      classroomId: student.class_id || classroomId,
+      isTeacherView: true,
+    };
+    if (onNavigate) {
+      onNavigate('QuizResultsScreen', resultParams);
+    } else {
+      navigateRootStack('QuizResultsScreen', resultParams);
     }
-  }, [classroomId, classroomName, navigation, onNavigate, quizId, quizName]);
+  }, [
+    assignmentSessionId,
+    classroomId,
+    classroomName,
+    isQuizAssignmentList,
+    navigation,
+    onNavigate,
+    quizId,
+    quizName,
+  ]);
 
   const getPerformanceColor = useCallback((score: number) => {
     if (score >= 80) return theme.colors.success;
@@ -328,6 +362,8 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
         onPress={() => handleStudentPress(item)}
         activeOpacity={0.7}
         disabled={!isClassroomView && isPending}
+        testID={`student-row-${item.student_id}`}
+        accessibilityLabel={`student-row-${item.student_id}-session-${assignmentSessionId ?? 'na'}`}
       >
         <View style={[styles.avatar, { backgroundColor: theme.colors.primary + '20' }]}>
           <Text style={[styles.avatarText, { color: theme.colors.primary }]}>
@@ -409,8 +445,21 @@ export default function StudentList({ navigation, route, onNavigate }: Props) {
             size={20} 
             color={theme.colors.primary} 
           />
-          <Text style={[styles.quizHeaderText, { color: theme.colors.text }]}>
-            {quizId ? `Students for: ${quizName}` : `Students in: ${classroomName}`}
+          <Text
+            style={[styles.quizHeaderText, { color: theme.colors.text }]}
+            accessibilityLabel={
+              quizId && classroomName
+                ? `Students for ${quizName} in ${classroomName}`
+                : quizId
+                  ? `Students for ${quizName}`
+                  : `Students in ${classroomName}`
+            }
+          >
+            {quizId
+              ? classroomName
+                ? `Students for: ${quizName} · ${classroomName}`
+                : `Students for: ${quizName}`
+              : `Students in: ${classroomName}`}
           </Text>
         </View>
       ) : null}

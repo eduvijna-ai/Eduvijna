@@ -9,7 +9,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,19 +28,16 @@ import {
   type DocumentUploadDifficulty,
 } from '@core/services/documentUploadApi';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
-import QuizFormFields from '../../components/QuizFormFields';
-import {
-  matchDropdownItem,
-  useSchoolClassSubjectDropdowns,
-} from '@core/hooks/useSchoolClassSubjectDropdowns';
+import FullScreenImagePreview from '@core/components/FullScreenImagePreview';
+import DocumentAssessmentInlinePreview from '../../components/document-assessment/DocumentAssessmentInlinePreview';
+import DocumentAssessmentActionBar, {
+  type DocumentWorkspaceAction,
+} from '../../components/document-assessment/DocumentAssessmentActionBar';
+import DocumentAssessmentPageStrip from '../../components/document-assessment/DocumentAssessmentPageStrip';
+import DocumentAssessmentGenerationSettings from '../../components/document-assessment/DocumentAssessmentGenerationSettings';
+import type { DocumentWorkspacePage } from '@core/types/documentAssessmentWorkspace';
 
 const MAX_PAGES = MAX_QUIZ_PAGES;
-const DIFFICULTIES: Array<{ key: DocumentUploadDifficulty; label: string }> = [
-  { key: 'easy', label: 'Easy' },
-  { key: 'medium', label: 'Medium' },
-  { key: 'hard', label: 'Hard' },
-];
-const COUNT_OPTIONS = [5, 10, 15, 20];
 
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
@@ -78,19 +74,10 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
     restoredForm?.difficulty || 'medium',
   );
   const [questionCount, setQuestionCount] = useState(restoredForm?.questionCount ?? 10);
-  const [classId, setClassId] = useState(restoredForm?.classId ?? '');
-  const [subjectId, setSubjectId] = useState(restoredForm?.subjectId ?? '');
-  const {
-    classes,
-    subjects,
-    isLoadingClasses,
-    isLoadingSubjects,
-    classLabel,
-    subjectLabel,
-  } = useSchoolClassSubjectDropdowns(classId);
-  const [lesson, setLesson] = useState(
-    restoredForm?.lesson ?? book?.lessonTitle ?? book?.title ?? '',
-  );
+  /** Library book metadata for APIs only — not shown in generation UI. */
+  const resolvedGrade = String(book?.gradeLevel || '').trim();
+  const resolvedSubject = String(book?.subject || '').trim();
+  const lesson = String(book?.lessonTitle || book?.title || '').trim();
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [generatingWorksheet, setGeneratingWorksheet] = useState(false);
   const [error, setError] = useState('');
@@ -98,37 +85,17 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   const [previewImages, setPreviewImages] = useState<Record<number, string>>({});
   const [loadingImages, setLoadingImages] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
-  const [zoom, setZoom] = useState(100);
+  const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
   const requestedImages = useRef<Set<string>>(new Set());
 
   const docId = book?.docId;
   const totalPagesRaw = Math.max(1, book?.totalPages || 1);
 
   useEffect(() => {
-    if (classId || !classes.length) return;
-    const preset = restoredForm?.classId || restoredForm?.grade || book?.gradeLevel;
-    const match = matchDropdownItem(classes, preset);
-    if (match) setClassId(match.id);
-  }, [classes, classId, restoredForm?.classId, restoredForm?.grade, book?.gradeLevel]);
-
-  useEffect(() => {
-    if (subjectId || !subjects.length) return;
-    const preset = restoredForm?.subjectId || restoredForm?.subject || book?.subject;
-    const match = matchDropdownItem(subjects, preset);
-    if (match) setSubjectId(match.id);
-  }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, book?.subject]);
-
-  const resolvedGrade = classLabel;
-  const resolvedSubject = subjectLabel(subjectId);
-
-  useEffect(() => {
     const restored = route.params?.previewFormState;
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    if (restored.classId !== undefined) setClassId(restored.classId);
-    if (restored.subjectId !== undefined) setSubjectId(restored.subjectId);
-    if (restored.lesson !== undefined) setLesson(restored.lesson);
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
     }
@@ -279,9 +246,7 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           difficulty,
           questionCount,
           subject: resolvedSubject,
-          subjectId,
           grade: resolvedGrade,
-          classId,
           lesson: resolvedLesson,
         },
       });
@@ -353,11 +318,21 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   };
 
   const busy = generatingQuiz || generatingWorksheet;
+  const previewUri = previewImages[previewPage] || thumbImages[previewPage];
+  const workspacePages: DocumentWorkspacePage[] = pageList.map((p) => ({
+    pageId: `${book.docId}:${p}`,
+    pageNumber: p,
+    uri: previewImages[p] || thumbImages[p],
+    thumbnailUri: thumbImages[p] || previewImages[p],
+    editable: false,
+  }));
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: Math.max(28, insets.bottom + 16) }}>
-        {/* Book header */}
+      <ScrollView
+        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: Math.max(28, insets.bottom + 16) }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.bookHeader}>
           <View style={[styles.bookIcon, { backgroundColor: colors.primary + '15' }]}>
             <Ionicons name="book" size={24} color={colors.primary} />
@@ -368,175 +343,58 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Focused page preview (+ zoom, same as Document Upload assessment preview) */}
-        <View style={styles.previewToolbar}>
-          <View style={styles.pageNavRow}>
-            <TouchableOpacity
-              style={[styles.navBtn, previewPage <= 1 && styles.navBtnDisabled]}
-              onPress={() => setPreviewPage((p) => Math.max(1, p - 1))}
-              disabled={previewPage <= 1 || busy}
-            >
-              <Ionicons
-                name="chevron-back"
-                size={16}
-                color={previewPage <= 1 ? colors.textSecondary : colors.text}
-              />
-            </TouchableOpacity>
-            <Text style={styles.pageNavText}>
-              Page {previewPage} of {totalPages}
-            </Text>
-            <TouchableOpacity
-              style={[styles.navBtn, previewPage >= totalPages && styles.navBtnDisabled]}
-              onPress={() => setPreviewPage((p) => Math.min(totalPages, p + 1))}
-              disabled={previewPage >= totalPages || busy}
-            >
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={previewPage >= totalPages ? colors.textSecondary : colors.text}
-              />
-            </TouchableOpacity>
-          </View>
+        <DocumentAssessmentInlinePreview
+          pageNumber={previewPage}
+          totalPages={totalPages}
+          uri={previewUri}
+          loading={loadingImages}
+          colors={colors}
+          onOpenFullscreen={(uri) => setFullPreviewUri(uri)}
+          onPageChange={setPreviewPage}
+          imageVersionKey={previewUri || ''}
+        />
 
-          <View style={styles.zoomRow}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setZoom((z) => Math.max(60, z - 20))}
-              disabled={busy}
-            >
-              <Ionicons name="remove" size={16} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.zoomText}>{zoom}%</Text>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setZoom((z) => Math.min(200, z + 20))}
-              disabled={busy}
-            >
-              <Ionicons name="add" size={16} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <DocumentAssessmentActionBar
+          hint={`Tap image or thumbnail for full-screen preview. Use ✓ to include pages (max ${MAX_PAGES}).`}
+          selectionLabel={`Selected: ${selectedPages.size} / ${Math.min(MAX_PAGES, totalPages)} (max ${MAX_PAGES})`}
+          actions={[
+            {
+              key: 'clear',
+              label: selectedPages.size > 0 ? 'Clear' : 'Select All',
+              icon: (selectedPages.size > 0
+                ? 'close-outline'
+                : 'checkbox-outline') as DocumentWorkspaceAction['icon'],
+              onPress: () => {
+                setError('');
+                if (selectedPages.size > 0) setSelectedPages(new Set());
+                else setSelectedPages(new Set(pageList.slice(0, MAX_PAGES)));
+              },
+              disabled: busy,
+            },
+          ]}
+          colors={colors}
+        />
 
-        <View style={styles.previewWrap}>
-          {previewImages[previewPage] || thumbImages[previewPage] ? (
-            <Image
-              source={{ uri: previewImages[previewPage] || thumbImages[previewPage] }}
-              style={[styles.previewImage, { transform: [{ scale: zoom / 100 }] }]}
-              resizeMode="contain"
-            />
-          ) : (
-            <View style={styles.previewPlaceholder}>
-              {loadingImages ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="document-text-outline" size={36} color={colors.textSecondary} />
-              )}
-              <Text style={styles.previewPlaceholderText}>
-                {loadingImages ? `Loading page ${previewPage}…` : `Page ${previewPage} preview unavailable`}
-              </Text>
-            </View>
-          )}
-        </View>
+        <DocumentAssessmentPageStrip
+          pages={workspacePages}
+          focusedPageNumber={previewPage}
+          selectedPageNumbers={selectedPages}
+          colors={colors}
+          canRemove={false}
+          onFocusPage={setPreviewPage}
+          onToggleSelect={togglePage}
+          onOpenFullscreen={(uri) => setFullPreviewUri(uri)}
+        />
 
-        {/* Page selection */}
-        <Text style={styles.sectionTitle}>Select Pages</Text>
-        <Text style={styles.sectionHint}>Tap a page to preview, tick the badge to include it. Choose up to {MAX_PAGES} pages ({selectedPages.size} selected)</Text>
-        <View style={styles.pageGrid}>
-          {pageList.map((p) => {
-            const active = selectedPages.has(p);
-            const focused = previewPage === p;
-            const thumb = thumbImages[p];
-            return (
-              <TouchableOpacity
-                key={p}
-                style={[
-                  styles.pageTile,
-                  focused && { borderColor: colors.primary, borderWidth: 2 },
-                  active && !thumb && { backgroundColor: colors.primary, borderColor: colors.primary },
-                ]}
-                onPress={() => {
-                  setPreviewPage(p);
-                  togglePage(p);
-                }}
-                disabled={busy}
-              >
-                {thumb ? (
-                  <Image source={{ uri: thumb }} style={styles.pageThumb} resizeMode="cover" />
-                ) : (
-                  <Text style={[styles.pageTileText, active && { color: '#fff' }]}>{p}</Text>
-                )}
-                <View style={styles.pageNumBadge}>
-                  <Text style={styles.pageNumBadgeText}>{p}</Text>
-                </View>
-                {active && (
-                  <View style={styles.pageCheck}>
-                    <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Difficulty */}
-        <Text style={styles.sectionTitle}>Difficulty</Text>
-        <View style={styles.segmentRow}>
-          {DIFFICULTIES.map((d) => {
-            const active = difficulty === d.key;
-            return (
-              <TouchableOpacity
-                key={d.key}
-                style={[styles.segment, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => setDifficulty(d.key)}
-                disabled={busy}
-              >
-                <Text style={[styles.segmentText, active && { color: '#fff' }]}>{d.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Question count */}
-        <Text style={styles.sectionTitle}>Number of Questions</Text>
-        <View style={styles.segmentRow}>
-          {COUNT_OPTIONS.map((c) => {
-            const active = questionCount === c;
-            return (
-              <TouchableOpacity
-                key={c}
-                style={[styles.segment, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                onPress={() => setQuestionCount(c)}
-                disabled={busy}
-              >
-                <Text style={[styles.segmentText, active && { color: '#fff' }]}>{c}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={styles.sectionTitle}>Details</Text>
-        <QuizFormFields
-          compact
-          fieldsRequired={false}
-          localSearchOnly
-          showClass
-          classValue={classId}
-          onClassChange={setClassId}
-          classes={classes}
-          isLoadingClasses={isLoadingClasses}
-          showSubject
-          subjectValue={subjectId}
-          onSubjectChange={setSubjectId}
-          subjects={subjects}
-          isLoadingSubjects={isLoadingSubjects}
-          showLesson
-          lessonValue={lesson}
-          onLessonChange={setLesson}
-          lessonPlaceholder="e.g. Reflection of Light"
-          lessonLabel="Lesson"
-          showAdditionalInstructions={false}
-          showDifficultyLevel={false}
-          showQuestionCount={false}
+        <DocumentAssessmentGenerationSettings
+          title="Step 2 · Generate Quiz"
+          subtitle="Configure options, then generate from selected library pages"
+          difficulty={difficulty}
+          questionCount={questionCount}
+          onDifficultyChange={setDifficulty}
+          onQuestionCountChange={setQuestionCount}
+          colors={colors}
+          disabled={busy}
         />
 
         {!!error && (
@@ -546,7 +404,6 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* Actions */}
         <TouchableOpacity
           style={[styles.primaryBtn, busy && styles.disabledBtn]}
           onPress={handleGenerateQuiz}
@@ -579,6 +436,12 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
           )}
         </TouchableOpacity>
       </ScrollView>
+      <FullScreenImagePreview
+        visible={!!fullPreviewUri}
+        uri={fullPreviewUri}
+        title={`Page ${previewPage}`}
+        onClose={() => setFullPreviewUri(null)}
+      />
     </View>
   );
 }
@@ -596,8 +459,8 @@ const makeStyles = (colors: any) =>
       borderRadius: 14,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
-      padding: 14,
-      marginBottom: 18,
+      padding: 12,
+      marginBottom: 0,
     },
     bookIcon: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     bookTitle: { fontSize: 16, fontWeight: '700', color: colors.text },

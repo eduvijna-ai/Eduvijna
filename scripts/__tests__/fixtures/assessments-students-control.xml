@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy rotation="0">
+  <node bounds="[40,900][1000,980]" class="android.view.ViewGroup" package="com.eduvijna.app" clickable="true"
+    resource-id="com.eduvijna.app:id/assessment-open-students-479-a6882262-5c50-4cf5-a4a8-dc8786862916"
+    content-desc="View students for MAT Mathematics in Grade 8" text=""/>
+</hierarchy>

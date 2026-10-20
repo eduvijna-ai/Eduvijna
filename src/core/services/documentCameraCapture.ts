@@ -1,16 +1,27 @@
 /**
- * Shared camera → free-form crop → compress pipeline for Document / Handwritten.
+ * Shared camera → (optional crop) → EXIF-normalize + aspect-preserving compress
+ * pipeline for Document / Handwritten.
+ *
+ * Capture preserves the full frame unless the caller opens the cropper and the
+ * user explicitly crops. Gallery picks skip crop entirely.
  */
 
 import * as ImagePicker from 'expo-image-picker';
-import { compressCameraImage } from './documentImageUtils';
+import {
+  bakeExifOrientation,
+  compressCameraImage,
+  type NormalizedDocumentImage,
+} from './documentImageUtils';
 import { openImageCropper } from './imageCropSession';
+import { inferMimeFromNameOrUri } from '../utils/documentImageGeometry';
 
 export type CapturedDocumentImage = {
   uri: string;
   name: string;
   mimeType: string;
   fileSize?: number;
+  convertedToJpeg: boolean;
+  sourceUri?: string;
 };
 
 async function launchCameraOrFallback(): Promise<ImagePicker.ImagePickerResult> {
@@ -18,10 +29,10 @@ async function launchCameraOrFallback(): Promise<ImagePicker.ImagePickerResult> 
     return await ImagePicker.launchCameraAsync({
       allowsEditing: false,
       quality: 1,
+      exif: true,
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
     });
   } catch {
-    // Web / environments without a camera API: fall back to library picker.
     return ImagePicker.launchImageLibraryAsync({
       allowsEditing: false,
       quality: 1,
@@ -30,18 +41,59 @@ async function launchCameraOrFallback(): Promise<ImagePicker.ImagePickerResult> 
   }
 }
 
+function toCaptured(
+  normalized: NormalizedDocumentImage,
+  fallbackName: string,
+  fileSize?: number,
+): CapturedDocumentImage {
+  return {
+    uri: normalized.uri,
+    sourceUri: normalized.uri,
+    name: normalized.fileName || fallbackName,
+    mimeType: normalized.mimeType,
+    convertedToJpeg: normalized.convertedToJpeg,
+    fileSize,
+  };
+}
+
 /**
- * Opens the camera, then the free-form crop UI, then compresses.
- * Returns null if the user cancels camera or crop.
- * Retake loops until cancel or a confirmed crop.
+ * Opens the camera and saves the complete frame (EXIF-normalized + compressed when possible).
+ * MIME/filename always match actual bytes (never claim JPEG if conversion failed).
  */
-export async function captureAndCropDocumentImage(): Promise<CapturedDocumentImage | null> {
+export async function captureDocumentImage(): Promise<CapturedDocumentImage | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (permission.status !== 'granted') {
     throw new Error('Camera permission is required to capture document pages.');
   }
 
-  // Loop: capture → crop; retake continues until cancel or confirm.
+  const cameraResult = await launchCameraOrFallback();
+  if (cameraResult.canceled || !cameraResult.assets?.length) {
+    return null;
+  }
+
+  const captured = cameraResult.assets[0];
+  const sourceMime =
+    captured.mimeType ||
+    inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+  const normalized = await compressCameraImage(captured.uri, {
+    originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+    sourceMimeType: sourceMime,
+  });
+  return toCaptured(normalized, captured.fileName || `camera-${Date.now()}.jpg`, captured.fileSize);
+}
+
+export async function captureAndCropDocumentImage(opts?: {
+  offerCrop?: boolean;
+}): Promise<CapturedDocumentImage | null> {
+  if (!opts?.offerCrop) {
+    return captureDocumentImage();
+  }
+
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (permission.status !== 'granted') {
+    throw new Error('Camera permission is required to capture document pages.');
+  }
+
   for (;;) {
     const cameraResult = await launchCameraOrFallback();
     if (cameraResult.canceled || !cameraResult.assets?.length) {
@@ -49,21 +101,39 @@ export async function captureAndCropDocumentImage(): Promise<CapturedDocumentIma
     }
 
     const captured = cameraResult.assets[0];
-    const cropResult = await openImageCropper(captured.uri);
+    const sourceMime =
+      captured.mimeType ||
+      inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
+    // Bake EXIF before crop so Image.getSize and manipulator crop share one buffer.
+    const oriented = await bakeExifOrientation(captured.uri, {
+      originalName: captured.fileName || `camera-${Date.now()}.jpg`,
+      sourceMimeType: sourceMime,
+    });
 
-    if (cropResult === 'cancelled') {
+    const cropResult = await openImageCropper(oriented.uri, {
+      suggestedFileName: oriented.fileName || captured.fileName || undefined,
+    });
+
+    if (cropResult.kind === 'cancelled') {
       return null;
     }
-    if (cropResult === 'retake') {
+    if (cropResult.kind === 'retake') {
       continue;
     }
 
-    const compressedUri = await compressCameraImage(cropResult.uri);
-    return {
-      uri: compressedUri,
-      name: captured.fileName || `camera-${Date.now()}.jpg`,
-      mimeType: 'image/jpeg',
-      fileSize: captured.fileSize,
-    };
+    const cropMime =
+      cropResult.kind === 'cropped'
+        ? cropResult.mimeType
+        : oriented.mimeType || sourceMime;
+    const sourceUri = cropResult.uri;
+    const originalName =
+      cropResult.kind === 'cropped'
+        ? cropResult.fileName
+        : oriented.fileName || captured.fileName || `camera-${Date.now()}.jpg`;
+    const normalized = await compressCameraImage(sourceUri, {
+      originalName,
+      sourceMimeType: cropMime,
+    });
+    return toCaptured(normalized, originalName, captured.fileSize);
   }
 }

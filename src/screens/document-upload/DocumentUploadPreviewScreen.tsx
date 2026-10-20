@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,78 +10,97 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useDocumentScreenFocusEffect } from '@core/hooks/useDocumentScreenFocusEffect';
+import {
+  readDocumentWorkspacePreset,
+  withDocumentWorkspaceParams,
+} from '@core/utils/documentWorkspaceParams';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@context/ThemeContext';
 import {
   DocumentUploadBook,
   appendCameraPage,
+  applyCroppedJpegToCameraPage,
   extractRawContent,
   fetchBookPageImage,
+  cameraSelectedPagesFingerprint,
   generateFromBook,
   generateMultimodalAssessmentFromDocument,
-  generateStrictQuizFromContent,
   getLocalPageUri,
   isPdfAsset,
   MAX_QUIZ_PAGES,
   MAX_IMAGE_UPLOADS,
   mergeCameraSessionPages,
+  normalizeCameraPage,
   remapPageSelectionAfterDelete,
   removeCameraPage,
   resolveServerBook,
-  runBatchOcrOnImages,
-  aggregateOcrText,
+  restoreCameraPageOriginal,
   saveImagePagesAsLibraryBook,
   sanitizeCameraDocumentTitle,
+  waitForLibraryBookReady,
 } from '@core/services/documentUploadApi';
 import { compressCameraImage } from '@core/services/documentImageUtils';
-import { captureAndCropDocumentImage } from '@core/services/documentCameraCapture';
+import { captureDocumentImage } from '@core/services/documentCameraCapture';
+import { openImageCropper } from '@core/services/imageCropSession';
 import {
   getDocumentUploadBookById,
   upsertDocumentUploadBook,
   removeDocumentUploadBook,
 } from '@core/services/documentUploadStorage';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
+import FullScreenImagePreview from '@core/components/FullScreenImagePreview';
+import { getDocumentUploadFile } from '@core/services/documentUploadSessionFiles';
 import { useUserStore } from '@core/store/user.store';
-import { buildStrictQuizContent } from '../CreateHandwrittenQuizScreen';
 import { sanitizeQuizQuestions } from '@core/utils/quizQuestionUtils';
-import QuizFormFields from '../../components/QuizFormFields';
-import {
-  matchDropdownItem,
-  useSchoolClassSubjectDropdowns,
-} from '@core/hooks/useSchoolClassSubjectDropdowns';
+import DocumentAssessmentInlinePreview from '../../components/document-assessment/DocumentAssessmentInlinePreview';
+import DocumentAssessmentActionBar, {
+  type DocumentWorkspaceAction,
+} from '../../components/document-assessment/DocumentAssessmentActionBar';
+import DocumentAssessmentPageStrip from '../../components/document-assessment/DocumentAssessmentPageStrip';
+import DocumentAssessmentGenerationSettings from '../../components/document-assessment/DocumentAssessmentGenerationSettings';
+import type { DocumentWorkspacePage } from '@core/types/documentAssessmentWorkspace';
 
 const pageItems = (totalPages: number) =>
   Array.from({ length: Math.max(1, totalPages || 1) }, (_, i) => i + 1);
 
-const QUESTION_OPTIONS = [5, 10, 15, 20] as const;
-const DIFFICULTY_OPTIONS = [
-  { key: 'easy', label: 'Easy' },
-  { key: 'medium', label: 'Medium' },
-  { key: 'hard', label: 'Hard' },
-] as const;
+const MATHPIX_USER_MESSAGE =
+  'Text extraction from handwritten images is temporarily unavailable. Document Assessment camera pages use the library upload path instead — try Generate again, or use From Books.';
+
+const toUserFacingDocumentError = (raw: string, fallback: string): string => {
+  const text = String(raw || '').trim();
+  if (!text) return fallback;
+  if (/mathpix|MATHPIX_API_KEY|ENABLE_MATHPIX|OCR service is not enabled/i.test(text)) {
+    return MATHPIX_USER_MESSAGE;
+  }
+  return text;
+};
 
 const normalizeErrorMessage = (err: any, fallback: string): string => {
   const detail = err?.response?.data?.detail;
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  if (detail && typeof detail === 'object') {
+  let raw = '';
+  if (typeof detail === 'string' && detail.trim()) {
+    raw = detail;
+  } else if (detail && typeof detail === 'object') {
     if (typeof detail.message === 'string' && detail.message.trim()) {
       const extra = Array.isArray(detail.details)
         ? detail.details.join(', ')
         : typeof detail.details === 'string'
           ? detail.details
           : '';
-      return extra ? `${detail.message} (${extra})` : detail.message;
+      raw = extra ? `${detail.message} (${extra})` : detail.message;
+    } else {
+      try {
+        raw = JSON.stringify(detail);
+      } catch {
+        raw = '';
+      }
     }
-    try {
-      return JSON.stringify(detail);
-    } catch {
-      return fallback;
-    }
+  } else if (typeof err?.message === 'string' && err.message.trim()) {
+    raw = err.message;
   }
-  if (typeof err?.message === 'string' && err.message.trim()) return err.message;
-  return fallback;
+  return toUserFacingDocumentError(raw, fallback);
 };
 
 const defaultCameraLessonTitle = (book: DocumentUploadBook): string =>
@@ -117,25 +135,18 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const isCameraSession = bookState?.isCameraSession === true;
 
   const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState(100);
-  const [classId, setClassId] = useState(restoredForm?.classId ?? '');
-  const [subjectId, setSubjectId] = useState(restoredForm?.subjectId ?? '');
-  const {
-    classes,
-    subjects,
-    isLoadingClasses,
-    isLoadingSubjects,
-    classLabel,
-    subjectLabel,
-  } = useSchoolClassSubjectDropdowns(classId);
-  const [lesson, setLesson] = useState(
-    restoredForm?.lesson ?? route?.params?.presetLesson ?? '',
-  );
+  /** Internal book metadata for APIs only — not shown in generation UI. */
+  const [classId, setClassId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [lesson, setLesson] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
     restoredForm?.difficulty ?? route?.params?.presetDifficulty ?? 'medium',
   );
   const [questionCount, setQuestionCount] = useState<number>(
     restoredForm?.questionCount ?? route?.params?.presetQuestionCount ?? 5,
+  );
+  const [additionalInstructions] = useState(
+    String(route?.params?.presetInstructions ?? readDocumentWorkspacePreset(route)?.additionalInstructions ?? ''),
   );
   const [selectedPages, setSelectedPages] = useState<Set<number>>(
     () => new Set(restoredForm?.selectedPages?.length ? restoredForm.selectedPages : [1]),
@@ -150,7 +161,19 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [loadingImages, setLoadingImages] = useState(false);
   const [resolvedPageCount, setResolvedPageCount] = useState<number | null>(null);
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
+  const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
   const requestedImages = useRef<Set<string>>(new Set());
+  const generateInFlightRef = useRef(false);
+  /** Cached library upload for camera Document Assessment (invalidated on source edits). */
+  const uploadedCameraSourceRef = useRef<{
+    docId: string;
+    fingerprint: string;
+    pageCount: number;
+  } | null>(null);
+
+  const invalidateUploadedCameraSource = useCallback(() => {
+    uploadedCameraSourceRef.current = null;
+  }, []);
 
   const totalPages = resolvedPageCount ?? bookState?.totalPages ?? 1;
   const docId = bookState?.docId;
@@ -174,7 +197,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     void applyBookFromStorageOrParams(route?.params?.book);
   }, [route?.params?.book, applyBookFromStorageOrParams]);
 
-  useFocusEffect(
+  useDocumentScreenFocusEffect(
     useCallback(() => {
       const incoming = route?.params?.book as DocumentUploadBook | undefined;
       if (!incoming?.isCameraSession || !incoming.id) return undefined;
@@ -197,9 +220,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    if (restored.classId !== undefined) setClassId(restored.classId);
-    if (restored.subjectId !== undefined) setSubjectId(restored.subjectId);
-    if (restored.lesson !== undefined) setLesson(restored.lesson);
+    // Ignore restored class/subject/lesson — generation UI no longer exposes them.
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
     }
@@ -207,39 +228,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   useEffect(() => {
     if (!bookState) return;
-    setLesson((prev) => {
-      if (prev && sanitizeCameraDocumentTitle(prev) === prev) return prev;
-      if (isCameraSession) return defaultCameraLessonTitle(bookState);
-      return sanitizeCameraDocumentTitle(bookState.title || bookState.originalName);
-    });
+    setLesson(defaultCameraLessonTitle(bookState));
     if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
     }
   }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState]);
 
   const persistBook = useCallback(async (next: DocumentUploadBook) => {
-    setBookState(next);
-    await upsertDocumentUploadBook(next);
-    navigation.setParams?.({ book: next });
+    const withIdentity =
+      next.isCameraSession && next.pages?.length
+        ? {
+            ...next,
+            pages: next.pages.map((p) => normalizeCameraPage(p)),
+          }
+        : next;
+    setBookState(withIdentity);
+    await upsertDocumentUploadBook(withIdentity);
+    navigation.setParams?.({ book: withIdentity });
   }, [navigation]);
 
-  useEffect(() => {
-    if (classId || !classes.length) return;
-    const preset = restoredForm?.classId || restoredForm?.classValue || route?.params?.presetClass;
-    const match = matchDropdownItem(classes, preset);
-    if (match) setClassId(match.id);
-  }, [classes, classId, restoredForm?.classId, restoredForm?.classValue, route?.params?.presetClass]);
-
-  useEffect(() => {
-    if (subjectId || !subjects.length) return;
-    const preset = restoredForm?.subjectId || restoredForm?.subject || route?.params?.presetSubject;
-    const match = matchDropdownItem(subjects, preset);
-    if (match) setSubjectId(match.id);
-  }, [subjects, subjectId, restoredForm?.subjectId, restoredForm?.subject, route?.params?.presetSubject]);
-
-  const resolvedClass = classLabel;
-  const resolvedSubject = subjectLabel(subjectId);
-  const resolvedLesson = lesson.trim();
+  // Generation UI no longer exposes Class/Subject/Lesson — keep optional API
+  // fields empty unless book/library metadata already provides them.
+  const resolvedClass = '';
+  const resolvedSubject = '';
+  const resolvedLesson = lesson.trim() || (bookState ? defaultCameraLessonTitle(bookState) : '');
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
     const book = bookOverride ?? bookState;
@@ -336,6 +348,85 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     };
   }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
 
+  // Document workspace generation UI omits Class/Subject/Lesson — never submit stale selections.
+  useEffect(() => {
+    setClassId('');
+    setSubjectId('');
+  }, [isCameraSession, bookState?.id]);
+
+  const handleCropCurrentPage = async () => {
+    if (!bookState?.isCameraSession) return;
+    const current = bookState.pages?.find((p) => p.pageNumber === page);
+    const sourceUri = current?.fileUri || getLocalPageUri(bookState, page);
+    if (!current || !sourceUri) {
+      setError('No image available to crop for this page.');
+      return;
+    }
+    try {
+      setError('');
+      setCapturingPage(true);
+      const result = await openImageCropper(sourceUri, {
+        suggestedFileName: current.fileName,
+      });
+      if (result.kind === 'cancelled' || result.kind === 'retake') return;
+      if (result.kind === 'unchanged') {
+        // Keep current bytes/MIME — do not relabel as JPEG and do not claim Restore.
+        return;
+      }
+      const targetPageId = current.pageId;
+      const nextPages = (bookState.pages || []).map((p) =>
+        p.pageId === targetPageId
+          ? applyCroppedJpegToCameraPage(p, {
+              uri: result.uri,
+              fileName: result.fileName,
+              mimeType: result.mimeType,
+              width: result.width,
+              height: result.height,
+            })
+          : p,
+      );
+      const next = { ...bookState, pages: nextPages };
+      await persistBook(next);
+      invalidateUploadedCameraSource();
+      setPreviewImages((prev) => ({ ...prev, [page]: result.uri }));
+      setThumbImages((prev) => ({ ...prev, [page]: result.uri }));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
+  const handleRestoreCurrentPageOriginal = async () => {
+    if (!bookState?.isCameraSession) return;
+    const current = bookState.pages?.find((p) => p.pageNumber === page);
+    if (!current?.original) {
+      setError('No original image available to restore for this page.');
+      return;
+    }
+    try {
+      setError('');
+      setCapturingPage(true);
+      const targetPageId = current.pageId;
+      const restored = restoreCameraPageOriginal(current);
+      const nextPages = (bookState.pages || []).map((p) =>
+        p.pageId === targetPageId ? restored : p,
+      );
+      const next = { ...bookState, pages: nextPages };
+      await persistBook(next);
+      invalidateUploadedCameraSource();
+      setPreviewImages((prev) => ({ ...prev, [page]: restored.fileUri }));
+      setThumbImages((prev) => ({
+        ...prev,
+        [page]: restored.thumbnailUri || restored.fileUri,
+      }));
+    } catch (e: any) {
+      setError(normalizeErrorMessage(e, 'Failed to restore original page.'));
+    } finally {
+      setCapturingPage(false);
+    }
+  };
+
   const handleAddCameraPage = async () => {
     if (!bookState?.isCameraSession) return;
     if ((bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) {
@@ -347,19 +438,20 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setError('');
       setCapturingPage(true);
 
-      const captured = await captureAndCropDocumentImage();
+      const captured = await captureDocumentImage();
       if (!captured) return;
 
-      const newPage = {
+      const newPage = normalizeCameraPage({
         pageNumber: (bookState.pages?.length || 0) + 1,
         fileUri: captured.uri,
         fileName: captured.name,
         mimeType: captured.mimeType || 'image/jpeg',
         thumbnailUri: captured.uri,
-      };
+      });
 
       const next = appendCameraPage(bookState, newPage);
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
@@ -400,18 +492,24 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       const pages = [];
       for (let i = 0; i < galleryResult.assets.length; i += 1) {
         const asset = galleryResult.assets[i];
-        const compressedUri = await compressCameraImage(asset.uri);
-        pages.push({
-          pageNumber: existingCount + i + 1,
-          fileUri: compressedUri,
-          fileName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
-          mimeType: asset.mimeType || 'image/jpeg',
-          thumbnailUri: compressedUri,
+        const normalized = await compressCameraImage(asset.uri, {
+          originalName: asset.fileName || `gallery-${Date.now()}-${i}.jpg`,
+          sourceMimeType: asset.mimeType,
         });
+        pages.push(
+          normalizeCameraPage({
+            pageNumber: existingCount + i + 1,
+            fileUri: normalized.uri,
+            fileName: normalized.fileName,
+            mimeType: normalized.mimeType,
+            thumbnailUri: normalized.uri,
+          }),
+        );
       }
 
       const next = mergeCameraSessionPages(bookState, pages);
       await persistBook(next);
+      invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
@@ -449,6 +547,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                   : new Set(next.pages?.map((p) => p.pageNumber) || [1]);
 
               await persistBook(next);
+              invalidateUploadedCameraSource();
               setSelectedPages(nextSelected);
               setPage((current) => {
                 if (current === pageNumber) {
@@ -470,31 +569,64 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     );
   };
 
-  const extractCameraTextForSelectedPages = async (): Promise<string> => {
+  /**
+   * Document Assessment (camera/gallery): selected current images → combined PDF
+   * → study-materials upload → generateFromBook with remapped pages 1..N.
+   * Does not use Mathpix / batch-ocr (Handwritten path stays separate).
+   */
+  const ensureCameraLibrarySource = async (): Promise<{
+    docId: string;
+    serverPageNumbers: number[];
+    selectedPageObjs: NonNullable<DocumentUploadBook['pages']>;
+  }> => {
     if (!bookState?.isCameraSession || !bookState.pages?.length) {
       throw new Error('No camera pages available.');
     }
-
-    const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
-    if (pageNumbers.length === 0) {
+    const selectedPageObjs = bookState.pages
+      .filter((p) => selectedPages.has(p.pageNumber))
+      .sort((a, b) => a.pageNumber - b.pageNumber);
+    if (selectedPageObjs.length === 0) {
       throw new Error('Please select at least one page.');
     }
 
-    const imagesToOcr = bookState.pages
-      .filter((p) => selectedPages.has(p.pageNumber))
-      .map((p) => ({ uri: p.fileUri, name: p.fileName, type: p.mimeType }));
-
-    const ocrData = await runBatchOcrOnImages(imagesToOcr);
-    if (!ocrData.success || !ocrData.files?.length) {
-      throw new Error(ocrData.message || 'Text extraction failed.');
+    const fingerprint = cameraSelectedPagesFingerprint(selectedPageObjs);
+    const cached = uploadedCameraSourceRef.current;
+    if (cached && cached.fingerprint === fingerprint && cached.docId) {
+      const serverPageNumbers = selectedPageObjs.map((_, idx) => idx + 1);
+      return { docId: cached.docId, serverPageNumbers, selectedPageObjs };
     }
 
-    const extracted = aggregateOcrText(ocrData.files);
-    if (!extracted.trim() || extracted.trim().length < 10) {
-      throw new Error('Could not extract readable text. Try clearer photos or different pages.');
+    setProcessingStatus('Uploading selected pages to document library…');
+    const uploaded = await saveImagePagesAsLibraryBook({
+      imageUris: selectedPageObjs.map((p) => p.fileUri),
+      mimeTypes: selectedPageObjs.map((p) => p.mimeType || 'image/jpeg'),
+      title: bookState.title || defaultCameraLessonTitle(bookState),
+      gradeLevel: resolvedClass,
+      subject: resolvedSubject,
+      lessonTitle: resolvedLesson || bookState.title || defaultCameraLessonTitle(bookState),
+    });
+    if (!uploaded.docId) {
+      throw new Error('Upload succeeded but no document id was returned. Please try again.');
     }
 
-    return extracted;
+    setProcessingStatus('Processing uploaded document…');
+    const ready = await waitForLibraryBookReady({
+      docId: uploaded.docId,
+      expectedPages: selectedPageObjs.length,
+    });
+    const pageCount = Math.max(selectedPageObjs.length, ready.totalPages || selectedPageObjs.length);
+    uploadedCameraSourceRef.current = {
+      docId: ready.docId || uploaded.docId,
+      fingerprint,
+      pageCount,
+    };
+    // PDF contains only selected images in display order → remap to 1..N.
+    const serverPageNumbers = selectedPageObjs.map((_, idx) => idx + 1);
+    return {
+      docId: ready.docId || uploaded.docId,
+      serverPageNumbers,
+      selectedPageObjs,
+    };
   };
 
   const goBackHome = () => {
@@ -502,6 +634,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   const handleGenerateQuiz = async () => {
+    if (generateInFlightRef.current) return;
+
     const pageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
     const useServerBook =
       !!bookState?.docId && isPdfAsset(bookState.originalName, bookState.mimeType) && !isCameraSession;
@@ -516,6 +650,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    generateInFlightRef.current = true;
     try {
       setError('');
       setLoadingQuiz(true);
@@ -528,23 +663,26 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         answer: string;
         explanation: string | null;
       }> = [];
-      let cameraOcrText = '';
 
       let libraryDocId: string | undefined;
+      let cameraServerPages: number[] | undefined;
 
       if (isCameraSession) {
-        setProcessingStatus('Extracting text from images…');
-        cameraOcrText = await extractCameraTextForSelectedPages();
+        const source = await ensureCameraLibrarySource();
+        libraryDocId = source.docId;
+        cameraServerPages = source.serverPageNumbers;
         setProcessingStatus('Generating assessment…');
-        const content = buildStrictQuizContent({
-          classValue: resolvedClass,
-          subject: resolvedSubject,
-          lesson: resolvedLesson,
-          difficulty,
+        const result = await generateFromBook({
+          docId: source.docId,
+          pageNumbers: source.serverPageNumbers,
           questionCount,
-          ocrText: cameraOcrText,
+          difficulty,
+          subject: resolvedSubject,
+          gradeLevel: resolvedClass,
+          lessonTitle: resolvedLesson,
+          additionalInstructions,
         });
-        questions = await generateStrictQuizFromContent(content);
+        questions = result.questions;
       } else if (useServerBook && bookState.docId) {
         const result = await generateFromBook({
           docId: bookState.docId,
@@ -554,13 +692,16 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           subject: resolvedSubject,
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
+          additionalInstructions,
         });
         questions = result.questions;
       } else if (bookState?.fileUri) {
+        const uploadFile = getDocumentUploadFile(bookState.id);
         const result = await generateMultimodalAssessmentFromDocument({
           fileUri: bookState.fileUri,
           fileName: bookState.originalName || 'document.pdf',
           mimeType: bookState.mimeType || 'application/pdf',
+          file: uploadFile,
           questionCount,
           difficulty,
           language: 'English',
@@ -568,6 +709,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           gradeLevel: resolvedClass,
           lessonTitle: resolvedLesson,
           selectedPages: pageNumbers,
+          additionalInstructions,
         });
         questions = result.quizData.questions;
       }
@@ -583,30 +725,6 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         return;
       }
 
-      // After a successful quiz: combine selected gallery/camera pages into one PDF
-      // and persist to Document Library (web Upload Book parity).
-      if (isCameraSession) {
-        const selectedPageObjs = (bookState.pages || [])
-          .filter((p) => selectedPages.has(p.pageNumber))
-          .sort((a, b) => a.pageNumber - b.pageNumber);
-        if (selectedPageObjs.length > 0) {
-          setProcessingStatus('Saving combined PDF to document library…');
-          try {
-            const uploaded = await saveImagePagesAsLibraryBook({
-              imageUris: selectedPageObjs.map((p) => p.fileUri),
-              mimeTypes: selectedPageObjs.map((p) => p.mimeType || 'image/jpeg'),
-              title: bookState.title || defaultCameraLessonTitle(bookState),
-              gradeLevel: resolvedClass,
-              subject: resolvedSubject,
-              lessonTitle: resolvedLesson || bookState.title || defaultCameraLessonTitle(bookState),
-            });
-            libraryDocId = uploaded.docId || undefined;
-          } catch {
-            // Quiz still proceeds if library save fails.
-          }
-        }
-      }
-
       await saveUserAssessment({
         title: bookState.title || bookState.originalName,
         subject: resolvedSubject,
@@ -614,7 +732,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         level: difficulty,
         lesson: resolvedLesson,
         assessment_type: 'web-quiz',
-        source: assessmentSource === 'Handwritten' ? 'Handwritten' : 'Document',
+        source:
+          assessmentSource === 'Handwritten' ? 'Handwritten' : 'Doc-File-Assessment',
         school_id: schoolId,
         questions: questions.map((q) => ({
           quiz: {
@@ -627,7 +746,9 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         })),
       });
 
-      navigation.navigate('DocumentUploadQuizScreen', {
+      navigation.navigate(
+        'DocumentUploadQuizScreen',
+        withDocumentWorkspaceParams(route, {
         quizData: {
           id: libraryDocId || bookState.docId || bookState.id,
           title: bookState.title || bookState.originalName,
@@ -644,10 +765,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             level: difficulty,
             lesson: resolvedLesson,
             count: questionCount,
-            selectedPages: pageNumbers,
+            selectedPages: isCameraSession ? cameraServerPages || pageNumbers : pageNumbers,
             isCameraSession,
-            ocrText: isCameraSession ? cameraOcrText : undefined,
-            itext: isCameraSession ? cameraOcrText : undefined,
             docId: useServerBook ? bookState.docId : libraryDocId,
             useServerBook: !!useServerBook || !!libraryDocId,
             fileUri: !isCameraSession && !useServerBook ? bookState.fileUri : undefined,
@@ -670,29 +789,42 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         workspaceMode: assessmentSource === 'Handwritten' ? 'handwritten' : 'document',
         showShareButton: true,
         showActionButtons: true,
-      });
+      }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate quiz.'));
     } finally {
+      generateInFlightRef.current = false;
       setLoadingQuiz(false);
       setProcessingStatus('');
     }
   };
 
   const handleGenerateWorksheet = async () => {
+    if (generateInFlightRef.current) return;
     if (selectedPages.size === 0) {
       setError('Please select at least one page before generating worksheet.');
       return;
     }
 
+    generateInFlightRef.current = true;
     try {
       setError('');
       setLoadingWorksheet(true);
 
       let rawContent = '';
       if (isCameraSession) {
-        setProcessingStatus('Extracting text from images…');
-        rawContent = await extractCameraTextForSelectedPages();
+        const source = await ensureCameraLibrarySource();
+        setProcessingStatus('Extracting text from uploaded pages…');
+        rawContent = await extractRawContent({
+          docId: source.docId,
+          pageNumbers: source.serverPageNumbers,
+        });
+        if (!rawContent.trim()) {
+          throw new Error(
+            'Could not extract text from the uploaded pages. Try clearer photos or fewer pages.',
+          );
+        }
         setProcessingStatus('Generating worksheet…');
       } else if (bookState?.docId) {
         rawContent = await extractRawContent({
@@ -725,7 +857,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
           level: wsData.Metadata?.Difficulty || difficulty,
           lesson: wsData.Metadata?.Lesson || bookState?.title,
           assessment_type: 'worksheet',
-          source: 'Doc-Worksheet',
+          source: 'Doc-File-Worksheet',
           school_id: schoolId,
           questions: [
             {
@@ -740,14 +872,18 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         });
       }
 
-      navigation.navigate('WorksheetScreen', {
-        worksheetData: worksheet,
-        title: `${bookState?.title || 'Document'} Worksheet`,
-        selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
-      });
+      navigation.navigate(
+        'WorksheetScreen',
+        withDocumentWorkspaceParams(route, {
+          worksheetData: worksheet,
+          title: `${bookState?.title || 'Document'} Worksheet`,
+          selectedPages: Array.from(selectedPages).sort((a, b) => a - b),
+        }),
+      );
     } catch (e: any) {
       setError(normalizeErrorMessage(e, 'Failed to generate worksheet.'));
     } finally {
+      generateInFlightRef.current = false;
       setLoadingWorksheet(false);
       setProcessingStatus('');
     }
@@ -782,8 +918,41 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   };
 
   const pageList = pageItems(totalPages);
-  const previewUri = previewImages[page] || thumbImages[page] || getLocalPageUri(bookState, page);
-  const showImageFallback = !previewUri && !loadingImages;
+  const focusedCameraPage = bookState?.pages?.find((p) => p.pageNumber === page);
+  const cameraPageFileUri = focusedCameraPage?.fileUri;
+  const previewUri =
+    cameraPageFileUri ||
+    previewImages[page] ||
+    thumbImages[page] ||
+    getLocalPageUri(bookState, page);
+
+  const openFullPreview = (uri?: string | null) => {
+    if (!uri) return;
+    setFullPreviewUri(uri);
+  };
+
+  const workspacePages: DocumentWorkspacePage[] = pageList.map((p) => {
+    const cam = bookState?.pages?.find((pg) => pg.pageNumber === p);
+    return {
+      pageId: cam?.pageId || `${bookState.id}:${p}`,
+      pageNumber: p,
+      uri: cam?.fileUri || previewImages[p] || thumbImages[p] || getLocalPageUri(bookState, p),
+      thumbnailUri: cam?.thumbnailUri || thumbImages[p] || cam?.fileUri || previewImages[p],
+      fileName: cam?.fileName,
+      mimeType: cam?.mimeType,
+      width: cam?.width,
+      height: cam?.height,
+      editable: isCameraSession,
+    };
+  });
+
+  const imageVersionKey = focusedCameraPage
+    ? `${focusedCameraPage.fileUri}|${focusedCameraPage.width || 0}x${focusedCameraPage.height || 0}`
+    : previewUri || '';
+
+  const canRestoreFocused =
+    !!focusedCameraPage?.original &&
+    focusedCameraPage.fileUri !== focusedCameraPage.original.fileUri;
 
   const toggleSelectAll = () => {
     setError('');
@@ -791,268 +960,170 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       setSelectedPages(new Set());
       return;
     }
-    // "Select All" is capped at the first MAX_QUIZ_PAGES pages (web parity).
     setSelectedPages(new Set(pageList.slice(0, MAX_QUIZ_PAGES)));
   };
 
+  const workspaceActions = [
+    ...(isCameraSession
+      ? [
+          {
+            key: 'gallery',
+            label: 'Gallery',
+            icon: 'images-outline' as const,
+            onPress: handleAddGalleryPages,
+            disabled: capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS,
+            loading: capturingPage,
+          },
+          {
+            key: 'add',
+            label: `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`,
+            icon: 'camera-outline' as const,
+            onPress: handleAddCameraPage,
+            disabled: capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS,
+            loading: capturingPage,
+          },
+          {
+            key: 'crop',
+            label: 'Crop',
+            icon: 'crop-outline' as const,
+            onPress: handleCropCurrentPage,
+            disabled: capturingPage || !(bookState.pages?.length),
+            testID: 'document-preview-crop-page',
+            accessibilityLabel: 'Crop selected page',
+          },
+          {
+            key: 'restore',
+            label: 'Restore',
+            icon: 'refresh-outline' as const,
+            onPress: handleRestoreCurrentPageOriginal,
+            disabled: capturingPage || !canRestoreFocused,
+            testID: 'document-preview-restore-page',
+            accessibilityLabel: 'Restore original full-frame page',
+          },
+        ]
+      : []),
+    {
+      key: 'clear',
+      label: selectedPages.size > 0 ? 'Clear' : 'Select All',
+      icon: (selectedPages.size > 0 ? 'close-outline' : 'checkbox-outline') as DocumentWorkspaceAction['icon'],
+      onPress: toggleSelectAll,
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPad }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.summaryCard}>
           <View style={styles.summaryIcon}>
             <Ionicons name="document-text" size={20} color="#DC2626" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.summaryTitle} numberOfLines={1}>{bookState.title || bookState.originalName}</Text>
+            <Text style={styles.summaryTitle} numberOfLines={1}>
+              {bookState.title || bookState.originalName}
+            </Text>
             <Text style={styles.summaryMeta} numberOfLines={1}>
-              Pages: {totalPages}{isCameraSession ? ' · Camera session' : ''}{bookState.originalName ? ` · ${bookState.originalName}` : ''}
+              Pages: {totalPages}
+              {isCameraSession ? ' · Camera session' : ''}
+              {bookState.originalName ? ` · ${bookState.originalName}` : ''}
             </Text>
           </View>
         </View>
 
-        <View style={styles.toolbar}>
-          <View style={styles.pageNav}>
-            <TouchableOpacity
-              style={[styles.navBtn, page <= 1 && styles.navBtnDisabled]}
-              onPress={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              <Ionicons name="chevron-back" size={16} color={page <= 1 ? colors.textSecondary : colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.pageNavText}>Page {page} of {totalPages}</Text>
-            <TouchableOpacity
-              style={[styles.navBtn, page >= totalPages && styles.navBtnDisabled]}
-              onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
-              <Ionicons name="chevron-forward" size={16} color={page >= totalPages ? colors.textSecondary : colors.text} />
-            </TouchableOpacity>
-          </View>
+        <DocumentAssessmentInlinePreview
+          pageNumber={page}
+          totalPages={totalPages}
+          uri={previewUri}
+          loading={loadingImages}
+          colors={colors}
+          onOpenFullscreen={openFullPreview}
+          onPageChange={setPage}
+          imageVersionKey={imageVersionKey}
+        />
 
-          <View style={styles.zoomRow}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setZoom((z) => Math.max(60, z - 20))}>
-              <Ionicons name="remove" size={16} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.zoomText}>{zoom}%</Text>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setZoom((z) => Math.min(200, z + 20))}>
-              <Ionicons name="add" size={16} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <DocumentAssessmentActionBar
+          hint={
+            isCameraSession
+              ? `Tap image or thumbnail for full-screen preview. Use ✓ to select and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
+              : `Tap image or thumbnail for full-screen preview; use ✓ to include pages (max ${MAX_QUIZ_PAGES}).`
+          }
+          selectionLabel={`Selected: ${selectedPages.size} / ${Math.min(MAX_QUIZ_PAGES, totalPages)} (max ${MAX_QUIZ_PAGES})`}
+          actions={workspaceActions}
+          colors={colors}
+        />
 
-        <View style={styles.previewWrap}>
-          {previewUri ? (
-            <Image
-              source={{ uri: previewUri }}
-              style={[styles.previewImage, { transform: [{ scale: zoom / 100 }] }]}
-              resizeMode="contain"
-            />
-          ) : showImageFallback ? (
-            <View style={styles.previewPlaceholder}>
-              {loadingImages ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
-              )}
-              <Text style={styles.previewPlaceholderText}>
-                {loadingImages ? 'Loading page preview…' : `Page ${page} preview unavailable`}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.previewPlaceholder}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.previewPlaceholderText}>Loading page {page}…</Text>
-            </View>
-          )}
-        </View>
+        <DocumentAssessmentPageStrip
+          pages={workspacePages}
+          focusedPageNumber={page}
+          selectedPageNumbers={selectedPages}
+          colors={colors}
+          canRemove={isCameraSession}
+          onFocusPage={setPage}
+          onToggleSelect={togglePageSelection}
+          onRemove={isCameraSession ? handleRemoveCameraPage : undefined}
+          onOpenFullscreen={openFullPreview}
+        />
 
-        <View style={styles.selectionBar}>
-          <Text style={styles.thumbHint} numberOfLines={2}>
-            {isCameraSession
-              ? `Tap thumbnails to preview. Use ✓ to select pages and ✗ to remove (max ${MAX_IMAGE_UPLOADS}).`
-              : `Tap thumbnails to preview, use the check icon to include pages (max ${MAX_QUIZ_PAGES})`}
-          </Text>
-          <View style={styles.selectionMetaRow}>
-            <Text style={styles.selectionCount}>
-              Selected: {selectedPages.size} / {Math.min(MAX_QUIZ_PAGES, totalPages)} (max {MAX_QUIZ_PAGES})
-            </Text>
-            <View style={styles.selectionActions}>
-              {isCameraSession && (
-                <>
-                  <TouchableOpacity
-                    style={[
-                      styles.compactActionBtn,
-                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
-                    ]}
-                    onPress={handleAddGalleryPages}
-                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
-                  >
-                    {capturingPage ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Ionicons name="images-outline" size={14} color={colors.primary} />
-                    )}
-                    <Text style={styles.compactActionText}>Gallery</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.compactActionBtn,
-                      (capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS) && styles.disabled,
-                    ]}
-                    onPress={handleAddCameraPage}
-                    disabled={capturingPage || (bookState.pages?.length || 0) >= MAX_IMAGE_UPLOADS}
-                  >
-                    {capturingPage ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Ionicons name="camera-outline" size={14} color={colors.primary} />
-                    )}
-                    <Text style={styles.compactActionText}>
-                      {capturingPage ? '…' : `Add (${bookState.pages?.length || 0}/${MAX_IMAGE_UPLOADS})`}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              <TouchableOpacity style={styles.selectAllBtn} onPress={toggleSelectAll}>
-                <Text style={styles.selectAllText}>{selectedPages.size > 0 ? 'Clear' : 'Select All'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
-          {pageList.map((p) => {
-            const isSelected = selectedPages.has(p);
-            return (
-              <View key={p} style={[styles.thumbItem, p === page && styles.thumbActive, isSelected && styles.thumbSelected]}>
-                <TouchableOpacity style={styles.selectCheck} onPress={() => togglePageSelection(p)}>
-                  <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={isSelected ? '#0E7490' : '#94A3B8'} />
-                </TouchableOpacity>
-                {isCameraSession && (
-                  <TouchableOpacity
-                    style={styles.removeThumbBtn}
-                    onPress={() => handleRemoveCameraPage(p)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="close-circle" size={16} color="#DC2626" />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={() => setPage(p)}>
-                  {thumbImages[p] ? (
-                    <Image source={{ uri: thumbImages[p] }} style={styles.thumbImage} />
-                  ) : (
-                    <View style={styles.thumbPlaceholder}>
-                      <Text style={styles.thumbPlaceholderText}>{p}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                <Text style={[styles.thumbText, p === page && styles.thumbTextActive, isSelected && styles.thumbTextSelected]}>{p}</Text>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.generatorCard}>
-          <Text style={styles.sectionTitle}>
-            {isCameraSession ? 'Step 2 · Generate Quiz' : 'Step 3 · Generate Quiz'}
-          </Text>
-          <Text style={styles.sectionSub}>
-            {isCameraSession
+        <DocumentAssessmentGenerationSettings
+          title={isCameraSession ? 'Step 2 · Generate Quiz' : 'Step 2 · Generate Quiz'}
+          subtitle={
+            isCameraSession
               ? 'Configure options, then generate — text is extracted from selected pages and a combined PDF is saved to the document library'
-              : 'Configure options, then generate from selected pages'}
-          </Text>
+              : 'Configure options, then generate from selected pages'
+          }
+          difficulty={difficulty}
+          questionCount={questionCount}
+          onDifficultyChange={setDifficulty}
+          onQuestionCountChange={setQuestionCount}
+          colors={colors}
+          disabled={loadingQuiz || loadingWorksheet}
+        />
 
-          <QuizFormFields
-            compact
-            fieldsRequired={false}
-            localSearchOnly
-            showClass
-            classValue={classId}
-            onClassChange={setClassId}
-            classes={classes}
-            isLoadingClasses={isLoadingClasses}
-            classError={!classId && error.includes('class') ? error : ''}
-            showSubject
-            subjectValue={subjectId}
-            onSubjectChange={setSubjectId}
-            subjects={subjects}
-            isLoadingSubjects={isLoadingSubjects}
-            subjectError={!subjectId && error.includes('subject') ? error : ''}
-            showLesson
-            lessonValue={lesson}
-            onLessonChange={setLesson}
-            lessonPlaceholder="e.g., Photosynthesis"
-            lessonLabel="Lesson / Topic"
-            showAdditionalInstructions={false}
-            showDifficultyLevel={false}
-            showQuestionCount={false}
-          />
-
-          <Text style={styles.label}>Difficulty Level</Text>
-          <View style={styles.pillRow}>
-            {DIFFICULTY_OPTIONS.map((option) => {
-              const active = difficulty === option.key;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[styles.pillBtn, active && styles.pillBtnActive]}
-                  onPress={() => setDifficulty(option.key)}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{option.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
+        {!!error && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
+        )}
 
-          <Text style={styles.label}>Number of Questions</Text>
-          <View style={styles.pillRow}>
-            {QUESTION_OPTIONS.map((count) => {
-              const active = questionCount === count;
-              return (
-                <TouchableOpacity
-                  key={count}
-                  style={[styles.pillBtn, active && styles.pillBtnActive]}
-                  onPress={() => setQuestionCount(count)}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{count}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {!!error && (
-            <View style={styles.errorBox}>
-              <Ionicons name="alert-circle" size={16} color="#B91C1C" />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
+        <TouchableOpacity
+          style={[styles.primaryAction, (loadingQuiz || selectedPages.size === 0) && styles.disabled]}
+          onPress={handleGenerateQuiz}
+          disabled={loadingQuiz || selectedPages.size === 0}
+        >
+          {loadingQuiz ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="flash-outline" size={16} color="#fff" />
           )}
-
-          <TouchableOpacity
-            style={[
-              styles.primaryAction,
-              (loadingQuiz || selectedPages.size === 0) && styles.disabled,
-            ]}
-            onPress={handleGenerateQuiz}
-            disabled={loadingQuiz || selectedPages.size === 0}
-          >
-            {loadingQuiz ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="flash-outline" size={16} color="#fff" />}
-            <Text style={styles.primaryActionText}>
-              {loadingQuiz ? (processingStatus || 'Generating assessment…') : 'Generate Assessment'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={styles.primaryActionText}>
+            {loadingQuiz ? processingStatus || 'Generating assessment…' : 'Generate Assessment'}
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.worksheetBtn, loadingWorksheet && styles.disabled]}
           onPress={handleGenerateWorksheet}
           disabled={loadingWorksheet}
         >
-          {loadingWorksheet ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
+          {loadingWorksheet ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+          )}
           <Text style={styles.worksheetBtnText}>
-            {loadingWorksheet ? (processingStatus || 'Generating worksheet…') : 'Generate Worksheet'}
+            {loadingWorksheet ? processingStatus || 'Generating worksheet…' : 'Generate Worksheet'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      <FullScreenImagePreview
+        visible={!!fullPreviewUri}
+        uri={fullPreviewUri}
+        title={`Page ${page}`}
+        onClose={() => setFullPreviewUri(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1060,7 +1131,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 const makeStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: 12, gap: 10, paddingBottom: 24 },
+    content: { padding: 12, gap: 8, paddingBottom: 24 },
 
     summaryCard: {
       flexDirection: 'row',
@@ -1124,13 +1195,12 @@ const makeStyles = (colors: any) =>
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.inputBackground,
-      overflow: 'hidden',
+    },
+    previewScrollContent: {
+      flexGrow: 1,
+      minHeight: 318,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    previewImage: {
-      width: '100%',
-      height: '100%',
     },
     previewPlaceholder: {
       flex: 1,

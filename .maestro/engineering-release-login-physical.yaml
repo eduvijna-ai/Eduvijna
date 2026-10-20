@@ -1,0 +1,28 @@
+appId: com.eduvijna.app
+---
+# Host script launches the app on OPPO (launchApp alone is unreliable on some OEM builds).
+- extendedWaitUntil:
+    visible:
+      id: "login-email-input"
+    timeout: 120000
+- tapOn:
+    id: "login-email-input"
+- inputText: ${LOGIN_EMAIL}
+- tapOn:
+    id: "login-password-input"
+- inputText: ${LOGIN_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    notVisible:
+      id: "login-email-input"
+    timeout: 120000
+- runFlow:
+    when:
+      visible: "Maybe Later"
+    commands:
+      - tapOn: "Maybe Later"
+- extendedWaitUntil:
+    visible: "Demo School"
+    timeout: 120000

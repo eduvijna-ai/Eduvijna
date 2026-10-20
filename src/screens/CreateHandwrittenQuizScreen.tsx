@@ -23,21 +23,69 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
+import { useQuizNavAccessRedirect } from '@core/hooks/useQuizNavAccessRedirect';
 import { apiClient } from '../core/api/config';
 import { saveUserAssessment } from '../core/services/sharedApi';
-import { MAX_IMAGE_UPLOADS } from '../core/services/documentUploadApi';
-import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
+import {
+  MAX_IMAGE_UPLOADS,
+  runBatchOcrOnImages,
+  aggregateOcrText,
+} from '../core/services/documentUploadApi';
+import { captureDocumentImage } from '../core/services/documentCameraCapture';
+import { normalizeAndCompressImage } from '../core/services/documentImageUtils';
+import { openImageCropper } from '../core/services/imageCropSession';
+import FullScreenImagePreview from '../core/components/FullScreenImagePreview';
 import { useUserStore } from '../core/store/user.store';
 import useNotifications from '@core/hooks/useNotifications';
 import { normalizeDocumentQuizQuestions } from '@core/utils/answerMappingUtils';
 
-interface PickedImage {
+interface PickedImageOriginal {
   uri: string;
   name: string;
   type: string;
+  width?: number;
+  height?: number;
+}
+
+interface PickedImage {
+  id: string;
+  uri: string;
+  name: string;
+  type: string;
+  width?: number;
+  height?: number;
+  original: PickedImageOriginal;
+}
+
+function newPickedImageId(): string {
+  return `hw-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function makePickedImage(params: {
+  uri: string;
+  name: string;
+  type: string;
+  width?: number;
+  height?: number;
+}): PickedImage {
+  const original: PickedImageOriginal = {
+    uri: params.uri,
+    name: params.name,
+    type: params.type,
+    width: params.width,
+    height: params.height,
+  };
+  return {
+    id: newPickedImageId(),
+    uri: params.uri,
+    name: params.name,
+    type: params.type,
+    width: params.width,
+    height: params.height,
+    original,
+  };
 }
 
 interface WorkspacePreset {
@@ -47,31 +95,6 @@ interface WorkspacePreset {
   difficulty?: 'easy' | 'medium' | 'hard' | '';
   questionCount?: number;
   additionalInstructions?: string;
-}
-
-interface BatchOCRPageResult {
-  page_number: number;
-  status: string;
-  text?: string;
-  latex?: string;
-}
-
-interface BatchOCRFileResult {
-  filename: string;
-  file_id: string;
-  file_type: string;
-  total_pages: number;
-  status: string;
-  pages: BatchOCRPageResult[];
-}
-
-interface BatchOCRResponse {
-  success: boolean;
-  message: string;
-  files: BatchOCRFileResult[];
-  total_files: number;
-  successful_files: number;
-  total_pages_processed: number;
 }
 
 interface StrictQuizQuestion {
@@ -104,37 +127,6 @@ const FLOW_STEPS = [
   'Generate assessment and start the quiz',
 ] as const;
 
-async function compressImage(uri: string): Promise<string> {
-  try {
-    const context = ImageManipulator.manipulate(uri);
-    context.resize({ width: 1500 });
-    const image = await context.renderAsync();
-    const result = await image.saveAsync({ compress: 0.6, format: SaveFormat.JPEG });
-    context.release();
-    image.release();
-    return result.uri;
-  } catch {
-    return uri;
-  }
-}
-
-function aggregateOcrText(files: BatchOCRFileResult[]): string {
-  const parts: string[] = [];
-  for (const file of files) {
-    if (file.status === 'success' || file.status === 'partial_success') {
-      for (const page of file.pages) {
-        if (page.status === 'success' && page.text && page.text.trim()) {
-          parts.push(page.text.trim());
-        }
-        if (page.latex && page.latex.trim()) {
-          parts.push(page.latex.trim());
-        }
-      }
-    }
-  }
-  return parts.join('\n\n');
-}
-
 /** Web parity (DocImageExtraction): prepend metadata to OCR text for generate-strict. */
 export function buildStrictQuizContent(params: {
   classValue?: string;
@@ -163,6 +155,7 @@ export function buildStrictQuizContent(params: {
 }
 
 export default function CreateHandwrittenQuizScreen({ navigation, route }: any) {
+  useQuizNavAccessRedirect('CreateHandwrittenQuizScreen', navigation);
   const { theme } = useTheme();
   const { colors } = theme;
   const { refreshAfterQuizGenerated } = useNotifications();
@@ -173,6 +166,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const workspacePreset = route?.params?.workspacePreset as WorkspacePreset | undefined;
 
   const [pickedImages, setPickedImages] = useState<PickedImage[]>([]);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('capture');
   const [extractedOcrText, setExtractedOcrText] = useState('');
   const [classValue, setClassValue] = useState('');
@@ -184,6 +178,8 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<ProcessingStep | null>(null);
   const [error, setError] = useState('');
+  const [errorDiagnostic, setErrorDiagnostic] = useState('');
+  const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
 
   useEffect(() => {
     requestPermissions();
@@ -231,12 +227,18 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       if (!result.canceled && result.assets) {
         const newImages: PickedImage[] = await Promise.all(
           result.assets.map(async (asset, idx) => {
-            const compressedUri = await compressImage(asset.uri);
-            return {
-              uri: compressedUri,
-              name: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
-              type: 'image/jpeg',
-            };
+            // Full frame preserved; EXIF baked once; aspect-preserving resize (web parity JPEG).
+            const normalized = await normalizeAndCompressImage(asset.uri, {
+              maxEdge: 1600,
+              compress: 0.75,
+              originalName: asset.fileName || `hw_${Date.now()}_${idx}.jpg`,
+              sourceMimeType: asset.mimeType,
+            });
+            return makePickedImage({
+              uri: normalized.uri,
+              name: normalized.fileName,
+              type: normalized.mimeType,
+            });
           }),
         );
         const combined = [...pickedImages, ...newImages].slice(0, MAX_IMAGE_UPLOADS);
@@ -244,6 +246,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         }
         setPickedImages(combined);
+        setSelectedImageId(combined[combined.length - 1]?.id ?? null);
         setError('');
       }
     } catch {
@@ -257,21 +260,97 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         Alert.alert('Limit Reached', `Maximum ${MAX_IMAGE_UPLOADS} images allowed.`);
         return;
       }
-      const captured = await captureAndCropDocumentImage();
+      const captured = await captureDocumentImage();
       if (!captured) return;
-      // Helper already cropped + compressed — do not compress again.
-      setPickedImages((prev) => [
-        ...prev,
-        { uri: captured.uri, name: captured.name, type: captured.mimeType || 'image/jpeg' },
-      ]);
+      // Full frame already EXIF-normalized + compressed — do not compress again.
+      setPickedImages((prev) => {
+        const added = makePickedImage({
+          uri: captured.uri,
+          name: captured.name,
+          type: captured.mimeType || 'image/jpeg',
+        });
+        const next = [...prev, added];
+        setSelectedImageId(added.id);
+        return next;
+      });
       setError('');
+      setErrorDiagnostic('');
     } catch {
       Alert.alert('Error', 'Failed to open camera. Please try again.');
     }
   };
 
-  const handleRemoveImage = (index: number) => {
-    setPickedImages((prev) => prev.filter((_, i) => i !== index));
+  const handleRemoveImage = (imageId: string) => {
+    setPickedImages((prev) => {
+      const next = prev.filter((p) => p.id !== imageId);
+      setSelectedImageId((sel) => {
+        if (sel && next.some((p) => p.id === sel)) return sel;
+        return next[next.length - 1]?.id ?? null;
+      });
+      return next;
+    });
+  };
+
+  const selectedImage =
+    pickedImages.find((p) => p.id === selectedImageId) || pickedImages[pickedImages.length - 1] || null;
+  const selectedImageCanRestore =
+    !!selectedImage?.original && selectedImage.uri !== selectedImage.original.uri;
+
+  const handleCropSelectedImage = async () => {
+    const img = selectedImage;
+    if (!img?.uri) {
+      Alert.alert('Crop', 'Select an image first.');
+      return;
+    }
+    try {
+      const result = await openImageCropper(img.uri, { suggestedFileName: img.name });
+      if (result.kind === 'cancelled' || result.kind === 'retake') return;
+      if (result.kind === 'unchanged') {
+        // Keep current MIME/filename — do not relabel PNG/HEIC as JPEG.
+        return;
+      }
+      const targetId = img.id;
+      setPickedImages((prev) =>
+        prev.map((p) =>
+          p.id === targetId
+            ? {
+                ...p,
+                uri: result.uri,
+                name: result.fileName,
+                type: result.mimeType,
+                width: result.width,
+                height: result.height,
+                original: p.original,
+              }
+            : p,
+        ),
+      );
+      setError('');
+    } catch {
+      Alert.alert('Crop', 'Failed to crop image. Please try again.');
+    }
+  };
+
+  const handleRestoreOriginalImage = () => {
+    const img = selectedImage;
+    if (!img?.original) return;
+    const targetId = img.id;
+    const original = img.original;
+    setPickedImages((prev) =>
+      prev.map((p) =>
+        p.id === targetId
+          ? {
+              ...p,
+              uri: original.uri,
+              name: original.name,
+              type: original.type,
+              width: original.width,
+              height: original.height,
+              original,
+            }
+          : p,
+      ),
+    );
   };
 
   const handleRunOcr = async () => {
@@ -283,20 +362,17 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     setIsProcessing(true);
     setProcessingStep('ocr');
     setError('');
+    setErrorDiagnostic('');
 
     try {
-      const formData = new FormData();
-      pickedImages.forEach((img) => {
-        formData.append('files', { uri: img.uri, type: img.type, name: img.name } as any);
-      });
-
-      const ocrResponse = await apiClient.post<BatchOCRResponse>(
-        '/api/v1/batch-ocr-upload',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+      // Same contract as web HandwrittenWorkspace: POST /batch-ocr-upload field `files`.
+      const ocrData = await runBatchOcrOnImages(
+        pickedImages.map((img) => ({
+          uri: img.uri,
+          name: img.name,
+          type: img.type || 'image/jpeg',
+        })),
       );
-
-      const ocrData = ocrResponse.data;
       if (!ocrData.success || !ocrData.files?.length) {
         throw new Error(ocrData.message || 'OCR processing failed. No output received.');
       }
@@ -311,7 +387,12 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
       setExtractedOcrText(ocrText);
       setFlowPhase('configure');
     } catch (err: any) {
-      setError(formatError(err));
+      const { userMessage, diagnostic } = formatError(err);
+      setError(userMessage);
+      setErrorDiagnostic(diagnostic);
+      if (diagnostic) {
+        console.warn('[handwritten]', diagnostic);
+      }
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
@@ -327,6 +408,7 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     setIsProcessing(true);
     setProcessingStep('generate');
     setError('');
+    setErrorDiagnostic('');
 
     const resolvedClass = classValue.trim() || 'General';
     const resolvedSubject = subject.trim() || 'Handwritten';
@@ -343,9 +425,10 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
     });
 
     try {
+      // Web HandwrittenWorkspace: generate-strict with content + language.
       const quizResponse = await apiClient.post<StrictQuizResponse>(
         '/api/v1/quiz/generate-strict',
-        { content },
+        { content, language: 'English' },
         { timeout: 90000 },
       );
 
@@ -414,43 +497,106 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
         showActionButtons: true,
       });
     } catch (err: any) {
-      setError(formatError(err));
+      const { userMessage, diagnostic } = formatError(err);
+      setError(userMessage);
+      setErrorDiagnostic(diagnostic);
+      if (diagnostic) {
+        console.warn('[handwritten]', diagnostic);
+      }
     } finally {
       setIsProcessing(false);
       setProcessingStep(null);
     }
   };
 
-  const formatError = (err: any): string => {
-    if (err?.response?.status === 413) {
-      return 'Images are too large to upload. Please try with fewer or smaller images.';
-    }
-    return (
+  const formatError = (err: any): { userMessage: string; diagnostic: string } => {
+    const status = err?.response?.status;
+    const detail =
       err?.response?.data?.detail ||
       err?.response?.data?.message ||
       err?.message ||
-      'Failed to process your images. Please try again.'
-    );
+      'Failed to process your images. Please try again.';
+    const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    if (status === 413) {
+      return {
+        userMessage: 'Images are too large to upload. Please try with fewer or smaller images.',
+        diagnostic: `HTTP 413 · batch-ocr-upload / generate-strict`,
+      };
+    }
+    if (status === 503 && /Mathpix|OCR/i.test(detailStr)) {
+      return {
+        userMessage:
+          'Text extraction is temporarily unavailable. Your images and form values were kept — try again shortly, or contact your school administrator if this continues.',
+        diagnostic: `HTTP 503 · ${detailStr.slice(0, 180)}`,
+      };
+    }
+    // Prefer a short actionable message; keep API paths/providers out of user-facing copy.
+    const sanitizedUser =
+      typeof detailStr === 'string' && !/\/api\/v1|Mathpix|ENABLE_/i.test(detailStr)
+        ? detailStr
+        : status
+          ? `Something went wrong while processing your pages (error ${status}). Your images and form values were kept — please try again.`
+          : 'Something went wrong while processing your pages. Your images and form values were kept — please try again.';
+    return {
+      userMessage: sanitizedUser,
+      diagnostic: status
+        ? `HTTP ${status} · ${String(err?.config?.url || err?.response?.config?.url || 'handwritten').slice(0, 120)} · ${detailStr.slice(0, 160)}`
+        : `client · ${detailStr.slice(0, 160)}`,
+    };
   };
 
   const processingLabel =
     processingStep === 'ocr' ? 'Extracting text from images…' : 'Generating assessment…';
 
-  const renderImageThumbnail = ({ item, index }: { item: PickedImage; index: number }) => (
-    <View style={styles.thumbnailContainer}>
-      <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="cover" />
-      <TouchableOpacity
-        style={styles.removeImageBtn}
-        onPress={() => handleRemoveImage(index)}
-        disabled={isProcessing}
+  const renderImageThumbnail = ({ item, index }: { item: PickedImage; index: number }) => {
+    const isSelected = (selectedImageId ?? pickedImages[pickedImages.length - 1]?.id) === item.id;
+    return (
+      <View
+        style={[
+          styles.thumbnailContainer,
+          isSelected && { borderColor: colors.primary, borderWidth: 2 },
+        ]}
       >
-        <Ionicons name="close-circle" size={22} color="#EF4444" />
-      </TouchableOpacity>
-      <View style={styles.imageIndexBadge}>
-        <Text style={styles.imageIndexText}>{index + 1}</Text>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => setFullPreviewUri(item.uri)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Preview handwritten page ${index + 1} fullscreen`}
+          disabled={isProcessing}
+        >
+          <Image source={{ uri: item.uri }} style={styles.thumbnail} resizeMode="contain" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.selectImageBtn}
+          onPress={() => setSelectedImageId(item.id)}
+          disabled={isProcessing}
+          accessibilityRole="button"
+          accessibilityLabel={`Select page ${index + 1} for crop`}
+          accessibilityState={{ selected: isSelected }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={20}
+            color={isSelected ? colors.primary : '#94A3B8'}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.removeImageBtn}
+          onPress={() => handleRemoveImage(item.id)}
+          disabled={isProcessing}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove page ${index + 1}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="close-circle" size={22} color="#EF4444" />
+        </TouchableOpacity>
+        <View style={styles.imageIndexBadge}>
+          <Text style={styles.imageIndexText}>{index + 1}</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const footerLabel =
     flowPhase === 'capture'
@@ -524,10 +670,45 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           </View>
 
           {pickedImages.length > 0 ? (
+            <View style={styles.uploadButtonRow}>
+              <TouchableOpacity
+                testID="handwritten-crop-selected"
+                accessibilityRole="button"
+                accessibilityLabel="Crop selected page"
+                style={[
+                  styles.uploadButton,
+                  { backgroundColor: colors.primary + '18', borderColor: colors.primary },
+                  isProcessing && styles.uploadButtonDisabled,
+                ]}
+                onPress={handleCropSelectedImage}
+                disabled={isProcessing}
+              >
+                <Ionicons name="crop-outline" size={20} color={colors.primary} />
+                <Text style={[styles.uploadButtonText, { color: colors.primary }]}>Crop</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="handwritten-restore-original"
+                accessibilityRole="button"
+                accessibilityLabel="Restore original full-frame image"
+                style={[
+                  styles.uploadButton,
+                  { backgroundColor: colors.primary + '18', borderColor: colors.primary },
+                  (isProcessing || !selectedImageCanRestore) && styles.uploadButtonDisabled,
+                ]}
+                onPress={handleRestoreOriginalImage}
+                disabled={isProcessing || !selectedImageCanRestore}
+              >
+                <Ionicons name="refresh-outline" size={20} color={colors.primary} />
+                <Text style={[styles.uploadButtonText, { color: colors.primary }]}>Restore</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {pickedImages.length > 0 ? (
             <FlatList
               data={pickedImages}
               renderItem={renderImageThumbnail}
-              keyExtractor={(_, i) => i.toString()}
+              keyExtractor={(item) => item.id}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.thumbnailList}
@@ -700,6 +881,13 @@ export default function CreateHandwrittenQuizScreen({ navigation, route }: any) 
           )}
         </TouchableOpacity>
       </View>
+
+      <FullScreenImagePreview
+        visible={!!fullPreviewUri}
+        uri={fullPreviewUri}
+        title="Handwritten page"
+        onClose={() => setFullPreviewUri(null)}
+      />
     </View>
   );
 }
@@ -789,6 +977,14 @@ function createStyles(colors: any) {
       borderWidth: 1,
       borderColor: 'rgba(0,0,0,0.1)',
     },
+    selectImageBtn: {
+      position: 'absolute',
+      top: -6,
+      left: -6,
+      zIndex: 10,
+      backgroundColor: '#FFF',
+      borderRadius: 11,
+    },
     removeImageBtn: {
       position: 'absolute',
       top: -8,
@@ -841,6 +1037,7 @@ function createStyles(colors: any) {
       backgroundColor: '#FEF2F2',
     },
     errorBannerText: { flex: 1, fontSize: 13, lineHeight: 18, color: '#DC2626' },
+    errorDiagnosticText: { fontSize: 11, lineHeight: 15, color: '#9F1239', opacity: 0.85 },
     footer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
     ctaButton: { height: 54, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     buttonInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },

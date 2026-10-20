@@ -39,38 +39,26 @@ export default function CreateAssessmentModal({
   isDark = false 
 }: CreateAssessmentModalProps) {
   const insets = useSafeAreaInsets();
-  const { items: navItems } = useQuizNavItems();
+  const { items: navItems, loading, fetchStatus } = useQuizNavItems();
 
   const options = useMemo(() => {
-    const base = navItems.length > 0
-      ? navItems
-      : FALLBACK_OPTIONS.map((f) => ({
-      screen: f.screen,
-      label: f.label,
-      subtitle: SCREEN_DEFAULTS[f.screen]?.subtitle ?? '',
-      iconName: f.icon,
-      iconColor: f.iconColor,
-      bgColor: SCREEN_DEFAULTS[f.screen]?.bg ?? '#F1F5F9',
-      display_order: 0,
-      routeParams: (f as any).routeParams,
-    }));
-
-    const hasDocumentUpload = base.some((item) => item.screen === 'DocumentUploadHomeScreen');
-    if (hasDocumentUpload) return base;
-
-    return [
-      ...base,
-      {
-        screen: 'DocumentUploadHomeScreen',
-        label: 'Document Upload',
-        subtitle: 'New module',
-        iconName: 'folder-open',
-        iconColor: '#0F766E',
-        bgColor: '#ECFEFF',
-        display_order: 999,
-      },
-    ];
-  }, [navItems]);
+    if (fetchStatus === 'ready') {
+      return navItems;
+    }
+    if (fetchStatus === 'error') {
+      return FALLBACK_OPTIONS.map((f) => ({
+        screen: f.screen,
+        label: f.label,
+        subtitle: SCREEN_DEFAULTS[f.screen]?.subtitle ?? '',
+        iconName: f.icon,
+        iconColor: f.iconColor,
+        bgColor: SCREEN_DEFAULTS[f.screen]?.bg ?? '#F1F5F9',
+        display_order: 0,
+        routeParams: (f as any).routeParams,
+      }));
+    }
+    return [];
+  }, [navItems, fetchStatus]);
 
   const handleQuizTypePress = (screen: string, routeParams?: Record<string, any>) => {
     onClose();
@@ -120,6 +108,12 @@ export default function CreateAssessmentModal({
         <Text style={[styles.dropdownTitle, { color: theme.colors.text }]}>
           Create Assessment
         </Text>
+
+        {loading && options.length === 0 ? (
+          <Text style={[styles.menuText, { color: theme.colors.textSecondary, paddingVertical: 8 }]}>
+            Loading modules…
+          </Text>
+        ) : null}
         
         {options.map((option, index) => (
           <TouchableOpacity

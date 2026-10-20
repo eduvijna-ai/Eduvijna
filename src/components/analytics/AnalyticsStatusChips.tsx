@@ -22,7 +22,7 @@ interface Props {
 export default function AnalyticsStatusChips({ summary, active, onChange, colors, includeTotal = true }: Props) {
   const chips: ChipDef[] = [
     ...(includeTotal ? [{ key: 'total' as const, label: 'All', value: summary.total ?? 0, color: '#64748b' }] : []),
-    { key: 'completed', label: 'Done', value: summary.completed, color: '#059669' },
+    { key: 'completed', label: 'Completed', value: summary.completed, color: '#059669' },
     { key: 'pending', label: 'Pending', value: summary.pending, color: '#d97706' },
     { key: 'missed', label: 'Missed', value: summary.missed, color: '#dc2626' },
     { key: 'active', label: 'Active', value: summary.active, color: '#2563eb' },

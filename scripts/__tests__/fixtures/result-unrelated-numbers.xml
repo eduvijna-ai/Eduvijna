@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hierarchy rotation="0">
+  <node text="Calendar" bounds="[0,80][1080,160]" package="com.eduvijna.app"/>
+  <node text="10" bounds="[0,300][1080,360]" package="com.eduvijna.app"/>
+  <node text="6" bounds="[0,360][1080,420]" package="com.eduvijna.app"/>
+</hierarchy>

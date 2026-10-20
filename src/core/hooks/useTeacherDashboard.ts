@@ -7,8 +7,10 @@
 
 import { useEffect } from 'react';
 import { useTeacherDashboardStore } from '../store/teacherDashboard.store';
+import { useUserStore } from '../store/user.store';
 
 export function useTeacherDashboard() {
+  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
   const {
     allQuizzes,
     classrooms,
@@ -24,10 +26,12 @@ export function useTeacherDashboard() {
     loadStudentListForClass,
   } = useTeacherDashboardStore();
 
-  // Load on mount - store will skip if already loaded
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
     loadDashboard();
-  }, [loadDashboard]);
+  }, [isAuthenticated, loadDashboard]);
 
   // Derived data
   const recentAssessments = allQuizzes

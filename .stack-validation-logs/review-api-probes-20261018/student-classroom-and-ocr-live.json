@@ -1,0 +1,58 @@
+{
+  "verifiedAt": "2026-10-18T18:32:23.386Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "studentAccount": "demo_aarya",
+  "classroomInventory": {
+    "classes": {
+      "status": 200,
+      "rowCount": 5,
+      "uniqueIds": 5,
+      "ids": [
+        "class_b3261be7",
+        "class_1a2e2a08",
+        "class_4d82c60e",
+        "class_3fc60728",
+        "class_d4cebf82"
+      ],
+      "sample": [
+        {
+          "id": "class_b3261be7",
+          "name": "4A-Telugu"
+        },
+        {
+          "id": "class_1a2e2a08",
+          "name": "4A-English"
+        },
+        {
+          "id": "class_4d82c60e",
+          "name": "4A-Mathematics"
+        }
+      ]
+    },
+    "classWiseStudents": {
+      "status": 200,
+      "rowCount": 0,
+      "uniqueIds": 0,
+      "ids": [],
+      "sample": []
+    },
+    "summaryUniqueClassroomIds": 3
+  },
+  "readableImageOcr": {
+    "file": "edge-markers-portrait.jpg",
+    "bytes": 20957,
+    "mime": "image/jpeg",
+    "field": "files",
+    "status": 503,
+    "elapsedMs": 50,
+    "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+    "correlationId": "8eeb2c690e9278626abbf11db6159800",
+    "mathpixGate": true
+  },
+  "conclusion": {
+    "studentInventorySource": "view_type=classes",
+    "classWiseForStudent": "empty_unauthorized_or_zero",
+    "homeMustUse": "classes unique classroom_id count",
+    "ocr": "BACKEND_MATHPIX_STILL_BLOCKING"
+  }
+}

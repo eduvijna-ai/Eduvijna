@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { getDefaultDateRange } from '../../core/utils/analyticsUiUtils';
+import {
+  formatAnalyticsDateStateAccessibility,
+  isAnalyticsAllTime,
+} from '../../core/utils/analyticsDateState';
 
 interface Props {
   startDate: string;
@@ -38,46 +41,93 @@ export default function AnalyticsDateFilter({
 }: Props) {
   const [showFrom, setShowFrom] = useState(false);
   const [showTo, setShowTo] = useState(false);
-  const defaults = getDefaultDateRange();
-  const isCustom = startDate !== defaults.from || endDate !== defaults.to;
+  const allTime = isAnalyticsAllTime(startDate, endDate);
+  const analyticsDateStateLabel = formatAnalyticsDateStateAccessibility(startDate, endDate);
 
   return (
     <View style={[styles.wrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-      <View style={styles.row}>
-        <TouchableOpacity
-          style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
-          onPress={() => setShowFrom(true)}
+      <Text
+        testID="analytics-date-state"
+        accessibilityLabel={analyticsDateStateLabel}
+        accessible
+        style={styles.dateStateMarker}
+      >
+        {' '}
+      </Text>
+      {allTime ? (
+        <Text
+          testID="analytics-date-all-time-label"
+          accessibilityLabel="Analytics showing all time"
+          style={[styles.allTimeBanner, { color: colors.textSecondary }]}
         >
+          Showing assessments from all dates
+        </Text>
+      ) : null}
+      <View style={styles.row}>
+        <View style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
           <View style={styles.dateTextRow}>
             <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>From</Text>
-            <Text style={[styles.dateValue, { color: colors.text }]} numberOfLines={1}>
-              {startDate || '—'}
-            </Text>
+            <TextInput
+              testID="analytics-date-from-input"
+              accessibilityLabel="Analytics date from"
+              value={startDate}
+              onChangeText={onStartChange}
+              placeholder={allTime ? 'All time' : 'YYYY-MM-DD'}
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.dateInput, { color: colors.text }]}
+              {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
+            />
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
-          onPress={() => setShowTo(true)}
-        >
+          {Platform.OS !== 'web' ? (
+            <TouchableOpacity onPress={() => setShowFrom(true)} accessibilityLabel="Open from date picker">
+              <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <View style={[styles.dateBtn, { borderColor: colors.border, backgroundColor: colors.background }]}>
           <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
           <View style={styles.dateTextRow}>
             <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>To</Text>
-            <Text style={[styles.dateValue, { color: colors.text }]} numberOfLines={1}>
-              {endDate || '—'}
-            </Text>
+            <TextInput
+              testID="analytics-date-to-input"
+              accessibilityLabel="Analytics date to"
+              value={endDate}
+              onChangeText={onEndChange}
+              placeholder={allTime ? 'All time' : 'YYYY-MM-DD'}
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.dateInput, { color: colors.text }]}
+              {...(Platform.OS === 'web' ? ({ type: 'date' } as Record<string, string>) : {})}
+            />
           </View>
-        </TouchableOpacity>
+          {Platform.OS !== 'web' ? (
+            <TouchableOpacity onPress={() => setShowTo(true)} accessibilityLabel="Open to date picker">
+              <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.applyBtn, { backgroundColor: colors.primary }]} onPress={onApply}>
+        <TouchableOpacity
+          testID="analytics-date-apply"
+          accessibilityRole="button"
+          accessibilityLabel="Apply analytics date range"
+          style={[styles.applyBtn, { backgroundColor: colors.primary }]}
+          onPress={onApply}
+        >
           <Text style={styles.applyText}>Apply</Text>
         </TouchableOpacity>
-        {isCustom ? (
-          <TouchableOpacity style={[styles.clearBtn, { borderColor: colors.border }]} onPress={onClear}>
+        {!allTime ? (
+          <TouchableOpacity
+            testID="analytics-date-clear-all-time"
+            accessibilityRole="button"
+            accessibilityLabel="Clear to all time"
+            style={[styles.clearBtn, { borderColor: colors.border }]}
+            onPress={onClear}
+          >
             <Ionicons name="close" size={14} color={colors.textSecondary} />
-            <Text style={[styles.clearText, { color: colors.textSecondary }]}>Clear</Text>
+            <Text style={[styles.clearText, { color: colors.textSecondary }]}>All time</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity style={[styles.iconBtn, { borderColor: colors.border }]} onPress={onRefresh} disabled={loading}>
@@ -112,7 +162,18 @@ export default function AnalyticsDateFilter({
 }
 
 const styles = StyleSheet.create({
+  dateStateMarker: {
+    width: 1,
+    height: 1,
+    fontSize: 1,
+    lineHeight: 1,
+    color: 'transparent',
+    opacity: 0.01,
+    margin: 0,
+    padding: 0,
+  },
   wrap: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, gap: 8 },
+  allTimeBanner: { fontSize: 11, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 8 },
   dateBtn: {
     flex: 1,
@@ -127,6 +188,7 @@ const styles = StyleSheet.create({
   dateTextRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
   dateValue: { flex: 1, fontSize: 12, fontWeight: '700' },
+  dateInput: { flex: 1, fontSize: 12, fontWeight: '700', paddingVertical: 0, minWidth: 96 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   applyBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   applyText: { color: '#fff', fontSize: 13, fontWeight: '700' },

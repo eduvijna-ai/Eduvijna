@@ -3,7 +3,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -19,6 +20,19 @@ import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
+
+type UserWithSchoolFields = {
+  school_name?: string;
+  schoolName?: string;
+  school?: string | { name?: string; school_name?: string };
+  profile?: {
+    school_name?: string;
+    schoolName?: string;
+    school?: string | { name?: string; school_name?: string };
+  };
+  role_id?: number;
+  role?: string;
+};
 
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
@@ -40,9 +54,11 @@ import CreateHandwrittenQuizScreen from '@screens/CreateHandwrittenQuizScreen';
 import AssessmentWorkspaceScreen from '@screens/AssessmentWorkspaceScreen';
 import DocumentUploadHomeScreen from '@screens/document-upload/DocumentUploadHomeScreen';
 import DocumentUploadPreviewScreen from '@screens/document-upload/DocumentUploadPreviewScreen';
+import DocumentCurriculumGeneratedPreviewScreen from '@screens/document-upload/DocumentCurriculumGeneratedPreviewScreen';
 import DocumentUploadHistoryScreen from '@screens/document-upload/DocumentUploadHistoryScreen';
 import DocumentUploadQuizScreen from '@screens/document-upload/DocumentUploadQuizScreen';
 import DocumentLibraryScreen from '@screens/document-upload/DocumentLibraryScreen';
+import DocumentCurriculumFromBooksScreen from '@screens/document-upload/DocumentCurriculumFromBooksScreen';
 import BookPageViewerScreen from '@screens/document-upload/BookPageViewerScreen';
 import QuizTakingScreen from '@screens/QuizTakingScreen';
 import QuizResultsScreen from '@screens/QuizResultsScreen';
@@ -86,16 +102,23 @@ function CustomHeader() {
   const insets = useSafeAreaInsets();
 
   const schoolNameFromProfile = (() => {
+    const profileUser = user as UserWithSchoolFields | null | undefined;
+    const schoolObj =
+      profileUser?.school && typeof profileUser.school === 'object' ? profileUser.school : undefined;
+    const profileSchoolObj =
+      profileUser?.profile?.school && typeof profileUser.profile.school === 'object'
+        ? profileUser.profile.school
+        : undefined;
     const candidates = [
-      (user as any)?.school_name,
-      (user as any)?.schoolName,
-      typeof (user as any)?.school === 'string' ? (user as any)?.school : undefined,
-      (user as any)?.school?.name,
-      (user as any)?.school?.school_name,
-      (user as any)?.profile?.school_name,
-      (user as any)?.profile?.schoolName,
-      (user as any)?.profile?.school?.name,
-      (user as any)?.profile?.school?.school_name,
+      profileUser?.school_name,
+      profileUser?.schoolName,
+      typeof profileUser?.school === 'string' ? profileUser.school : undefined,
+      schoolObj?.name,
+      schoolObj?.school_name,
+      profileUser?.profile?.school_name,
+      profileUser?.profile?.schoolName,
+      profileSchoolObj?.name,
+      profileSchoolObj?.school_name,
     ];
 
     return (
@@ -534,6 +557,15 @@ export default function MobileNavigation() {
         }}
       />
       <Stack.Screen
+        name="DocumentCurriculumGeneratedPreviewScreen"
+        component={DocumentCurriculumGeneratedPreviewScreen as any}
+        options={{
+          headerShown: true,
+          title: 'Generated preview',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
         name="DocumentUploadHistoryScreen"
         component={DocumentUploadHistoryScreen as any}
         options={{
@@ -559,6 +591,11 @@ export default function MobileNavigation() {
         }}
       />
       <Stack.Screen
+        name="DocumentCurriculumFromBooksScreen"
+        component={DocumentCurriculumFromBooksScreen as any}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="BookPageViewerScreen"
         component={BookPageViewerScreen as any}
         options={{
@@ -577,32 +614,51 @@ function BottomTabNavigator() {
   const insets = useSafeAreaInsets();
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [promptLoading, setPromptLoading] = useState(false);
+  const pushPromptCheckedUserId = React.useRef<string | number | null>(null);
+  const pushPromptTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPushPromptTimer = React.useCallback(() => {
+    if (pushPromptTimerRef.current) {
+      clearTimeout(pushPromptTimerRef.current);
+      pushPromptTimerRef.current = null;
+    }
+  }, []);
 
   /**
-   * Check if we should show push notification prompt after login
+   * Check if we should show push notification prompt after login (all supported roles).
    */
   useEffect(() => {
+    let cancelled = false;
+
     const checkPushPrompt = async () => {
-      if (!user) {
-        setShowPushPrompt(false);
+      clearPushPromptTimer();
+      setShowPushPrompt(false);
+
+      if (!user?.id) {
+        pushPromptCheckedUserId.current = null;
         return;
       }
 
+      if (pushPromptCheckedUserId.current === user.id) {
+        return;
+      }
+      pushPromptCheckedUserId.current = user.id;
+
       try {
-        // Sync push status after login
-        await PushNotificationService.syncStatusAfterLogin();
+        await PushNotificationService.syncStatusAfterLogin(user.id);
+        if (cancelled) return;
 
-        // Check if push is enabled
         const status = await PushNotificationService.getPushStatus();
-        
-        // Check if prompt was recently dismissed
-        const recentlyDismissed = await PushNotificationService.wasPromptRecentlyDismissed();
+        const recentlyDismissed = await PushNotificationService.wasPromptRecentlyDismissed(user.id);
+        if (cancelled) return;
 
-        // Show prompt if: push not enabled, supported, and not recently dismissed
+        // All authenticated roles: offer enablement when this account is not registered.
+        // Enable path respects OS denial (settings) and does not spam the native dialog.
         if (!status.isEnabled && status.isSupported && !recentlyDismissed) {
-          // Small delay to let user see the main screen first
-          setTimeout(() => {
-            setShowPushPrompt(true);
+          pushPromptTimerRef.current = setTimeout(() => {
+            if (!cancelled) {
+              setShowPushPrompt(true);
+            }
           }, 1500);
         }
       } catch (error) {
@@ -611,7 +667,12 @@ function BottomTabNavigator() {
     };
 
     checkPushPrompt();
-  }, [user]);
+
+    return () => {
+      cancelled = true;
+      clearPushPromptTimer();
+    };
+  }, [user?.id, clearPushPromptTimer]);
 
   /**
    * Handle user clicking "Enable" on push prompt
@@ -623,10 +684,28 @@ function BottomTabNavigator() {
       const result = await PushNotificationService.enablePushNotifications();
       
       if (result.success) {
+        if (user?.id != null) {
+          await AsyncStorage.setItem('pushRegisteredUserId', String(user.id));
+        }
         setShowPushPrompt(false);
         Alert.alert('Success', result.message);
       } else {
-        Alert.alert('Error', result.message);
+        const needsSettings =
+          typeof result.message === 'string' &&
+          result.message.toLowerCase().includes('settings');
+        if (needsSettings) {
+          Alert.alert('Notifications', result.message, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                void Linking.openSettings();
+              },
+            },
+          ]);
+        } else {
+          Alert.alert('Error', result.message);
+        }
       }
     } catch (error: any) {
       console.error('Error enabling push:', error);
@@ -640,7 +719,7 @@ function BottomTabNavigator() {
    * Handle user clicking "Later" on push prompt
    */
   const handleDismissPushPrompt = async () => {
-    await PushNotificationService.dismissPrompt();
+    await PushNotificationService.dismissPrompt(user?.id);
     setShowPushPrompt(false);
   };
 

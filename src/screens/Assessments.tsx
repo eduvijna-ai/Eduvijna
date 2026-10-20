@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -6,22 +6,48 @@ import {
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
-  useWindowDimensions,
   TextInput,
   StatusBar,
   Modal,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
+import { useAssessmentClassrooms } from '@core/hooks/useAssessmentClassrooms';
+import { usesTeacherAssessmentClassroomPath } from '@core/services/assessmentClassrooms.service';
+import { teacherAvailabilityTabMatch } from '@core/utils/statusContracts';
 import { useTeacherTheme } from '../erp_schools/theme/useTeacherTheme';
 import { useDashboardStore } from '@core/store/dashboard.store';
+import { loadStudentDashboardQuizzes } from '@core/services/studentDashboardData.service';
+import { useStudentAssignmentDashboardStore } from '@core/store/studentAssignmentDashboard.store';
 import { useAuth } from '@core/hooks/useAuth';
-import { checkQuizAttempt, getQuizBySessionId } from '@core/services/sharedApi';
+import {
+  isAssignedQuizRecoveryProbeError,
+} from '@core/services/assignedQuizRecovery.service';
+import {
+  isAssignedQuizLoadError,
+  navigateStudentToQuizTaking,
+  resolveStudentAssignedQuizStart,
+  executeStudentAssignedQuizViewResults,
+} from '@core/services/assessmentQuizStart.service';
 import { ClassroomFilter, DateRangeFilter, FilterSection } from '@components/FilterComponents';
+import { isStudentQuizOngoing } from '../utils/quizFilters';
+import {
+  canStudentResumeAssignment,
+  canStudentStartAssignment,
+} from '../utils/studentAssignmentClassification';
 import { DateFilterType } from '../utils/dateFilters';
+import { useStudentAssignmentBoundaryClock } from '../hooks/useStudentAssignmentBoundaryClock';
+import {
+  buildOpenStudentsAccessibilityLabel,
+  buildQuizAssignmentStudentListParams,
+  type QuizAssignmentListSource,
+} from '@core/types/studentListNavigation.types';
+import { navigate as navigateRootStack } from '@core/services/navigationService';
+import { formatAssessmentsDataStateAccessibility } from '@core/utils/assessmentsDataState';
 
 type FilterTab = 'all' | 'active' | 'available_soon' | 'expired' | 'upcoming' | 'ongoing' | 'completed' | 'missed';
 
@@ -37,6 +63,20 @@ interface Props {
       classroomName?: string;
     };
   };
+}
+
+/** Root stack screens (StudentList, modals) are siblings of Main tabs — tab `navigation` cannot reach them. */
+function navigateFromAssessments(
+  _navigation: Props['navigation'],
+  onNavigate: Props['onNavigate'],
+  screen: string,
+  params?: Record<string, unknown>,
+) {
+  if (onNavigate) {
+    onNavigate(screen, params);
+    return;
+  }
+  navigateRootStack(screen, params);
 }
 
 // Status badge color mapping — ERP Schools semantic colors
@@ -76,7 +116,6 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       error:         t.colors.danger,
     },
   };
-  const { width } = useWindowDimensions();
   const { user } = useAuth();
   
   // Map filterStatus from ClassesList to filter tabs
@@ -116,13 +155,16 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     attemptData: any;
   } | null>(null);
 
-  const isWeb = width > 768;
-  const isTeacher = userRole === 'instructor' || user?.role === 'instructor';
+  const isTeacher =
+    userRole === 'instructor' ||
+    usesTeacherAssessmentClassroomPath(user?.role) ||
+    usesTeacherAssessmentClassroomPath(userRole);
   const isStudent = user?.role === 'student';
 
   // Fetch data based on role
   const teacherData = useTeacherDashboard();
-  const { quizzes: storedQuizzes } = useDashboardStore();
+  const { options: assessmentClassroomOptions } = useAssessmentClassrooms();
+  const { setQuizzes } = useDashboardStore();
 
   const {
     quizzes: teacherQuizzes = [],
@@ -132,13 +174,40 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   } = isTeacher ? teacherData : { quizzes: [], loading: false, error: null, refresh: () => {} };
 
   // For students, use dashboard store data (already loaded by StudentDashboard)
-  const studentQuizzes = isStudent ? storedQuizzes : [];
-  const studentLoading = false;
-  const studentError = null;
-  const studentRefresh = () => {};
+  const [studentRefreshing, setStudentRefreshing] = useState(false);
+  const studentClassified = useStudentAssignmentDashboardStore((s) => s.getClassifiedQuizzes());
+  const studentRawQuizzes = useStudentAssignmentDashboardStore((s) => s.rawQuizzes);
+  const bumpStudentClassificationNow = useStudentAssignmentDashboardStore(
+    (s) => s.bumpClassificationNow,
+  );
+  useStudentAssignmentBoundaryClock(studentRawQuizzes, bumpStudentClassificationNow);
+  const studentQuizzes = isStudent ? studentClassified : [];
 
-  const loading = isTeacher ? teacherLoading : studentLoading;
-  const error = isTeacher ? teacherError : studentError;
+  const studentRefresh = useCallback(async () => {
+    if (!isStudent || !user?.id) return;
+    setStudentRefreshing(true);
+    try {
+      const studentId = String(user.id);
+      const loadGeneration =
+        useStudentAssignmentDashboardStore.getState().beginLoad(studentId);
+      const { quizzes } = await loadStudentDashboardQuizzes(studentId);
+      const committed = useStudentAssignmentDashboardStore
+        .getState()
+        .commitLoad(studentId, loadGeneration, quizzes as any);
+      if (!committed) {
+        return;
+      }
+      const classified = useStudentAssignmentDashboardStore.getState().getClassifiedQuizzes();
+      setQuizzes(classified as any, classified.length);
+    } catch (refreshError) {
+      console.error('Assessments student refresh failed:', refreshError);
+    } finally {
+      setStudentRefreshing(false);
+    }
+  }, [isStudent, user?.id, setQuizzes]);
+
+  const loading = isTeacher ? teacherLoading : studentRefreshing;
+  const error = isTeacher ? teacherError : null;
   const refresh = isTeacher ? teacherRefresh : studentRefresh;
 
   // Filter tabs based on role
@@ -175,18 +244,26 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // Filter assessments - ensure we always have an array
   const allQuizzes = isTeacher ? (teacherQuizzes || []) : (studentQuizzes || []);
   
-  // Extract unique classrooms for filter dropdown
+  // Authorized classroom inventory (includes zero-assignment). Quiz-derived sets omit those.
   const uniqueClassrooms = React.useMemo(() => {
+    // Teacher/instructor always use the shared inventory (may be empty while loading).
+    if (isTeacher || assessmentClassroomOptions.length > 0) {
+      return assessmentClassroomOptions;
+    }
+    // Student cold-start fallback only when shared classes inventory is not yet ready.
     const classroomMap = new Map<string, string>();
     allQuizzes.forEach((quiz: any) => {
-      const classroomId = quiz.classroom_id || quiz.class_id;
-      const classroomName = quiz.classroom_name || quiz.class_name;
-      if (classroomId && classroomName && !classroomMap.has(classroomId)) {
-        classroomMap.set(classroomId, classroomName);
+      const id = quiz.classroom_id || quiz.class_id;
+      const name = quiz.classroom_name || quiz.class_name;
+      if (id && name && !classroomMap.has(String(id))) {
+        classroomMap.set(String(id), String(name));
       }
     });
-    return Array.from(classroomMap.entries()).map(([classroom_id, classroom_name]) => ({ classroom_id, classroom_name }));
-  }, [allQuizzes]);
+    return Array.from(classroomMap.entries()).map(([classroom_id, classroom_name]) => ({
+      classroom_id,
+      classroom_name,
+    }));
+  }, [assessmentClassroomOptions, allQuizzes, isTeacher]);
   
   // First, apply classroom, date, and search filters (not tab filter yet)
   const baseFilteredQuizzes = React.useMemo(() => {
@@ -243,12 +320,18 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   // Calculate tab counts from base filtered quizzes (after classroom, date, search filters)
   const tabCounts = React.useMemo(() => {
     if (isTeacher) {
-      // Teacher tab counts based on availability_status
+      // Teacher tabs = assignment availability (not student-attempt / Pending).
       const counts: Record<FilterTab, number> = {
         all: baseFilteredQuizzes.length,
-        active: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'active').length,
-        available_soon: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'coming soon').length,
-        expired: baseFilteredQuizzes.filter((q: any) => q.availability_status === 'expired').length,
+        active: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'active'),
+        ).length,
+        available_soon: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'available_soon'),
+        ).length,
+        expired: baseFilteredQuizzes.filter((q: any) =>
+          teacherAvailabilityTabMatch(q.availability_status, 'expired'),
+        ).length,
         // Student-only tabs (not used for teachers)
         ongoing: 0,
         upcoming: 0,
@@ -261,7 +344,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       const counts: Record<FilterTab, number> = {
         all: baseFilteredQuizzes.length,
         upcoming: baseFilteredQuizzes.filter((q: any) => q.status === 'available_soon' || q.status === 'pending').length,
-        ongoing: baseFilteredQuizzes.filter((q: any) => q.status === 'pending' && q.availability_status === 'active').length,
+        ongoing: baseFilteredQuizzes.filter(isStudentQuizOngoing).length,
         completed: baseFilteredQuizzes.filter((q: any) => q.status === 'completed').length,
         missed: baseFilteredQuizzes.filter((q: any) => q.status === 'missed').length,
         // Teacher-only tabs (not used for students)
@@ -279,23 +362,29 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
       // Tab filter for teachers
       if (isTeacher) {
         if (selectedTab === 'all') return true;
-        if (selectedTab === 'active') return quiz.availability_status === 'active';
-        if (selectedTab === 'available_soon') return quiz.availability_status === 'coming soon';
-        if (selectedTab === 'expired') return quiz.availability_status === 'expired';
+        if (selectedTab === 'active') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'active');
+        }
+        if (selectedTab === 'available_soon') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'available_soon');
+        }
+        if (selectedTab === 'expired') {
+          return teacherAvailabilityTabMatch(quiz.availability_status, 'expired');
+        }
         return true;
       }
       
       // Tab filter for students
       if (selectedTab === 'all') return true;
       
-      // Upcoming: pending quizzes (not started yet) that are available or coming soon
+      // Upcoming: not yet open (no Start)
       if (selectedTab === 'upcoming') {
-        return quiz.status === 'available_soon' || quiz.status === 'pending';
+        return quiz.status === 'upcoming';
       }
       
-      // Ongoing: quizzes that are in progress (started but not completed)
+      // Ongoing: actionable pending / in-progress within active window
       if (selectedTab === 'ongoing') {
-        return quiz.status === 'pending' && quiz.availability_status === 'active';
+        return isStudentQuizOngoing(quiz);
       }
       
       // Completed: quizzes that have been completed
@@ -312,6 +401,40 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     });
   }, [baseFilteredQuizzes, selectedTab, isTeacher]);
 
+  const assessmentsDataStateLabel = React.useMemo(
+    () =>
+      formatAssessmentsDataStateAccessibility({
+        teacherSourceCount: isTeacher ? allQuizzes.length : 0,
+        baseFilteredCount: baseFilteredQuizzes.length,
+        filteredCount: filteredQuizzes.length,
+        selectedTab,
+        selectedClassroom,
+        selectedDateFilter,
+        loading: Boolean(loading),
+      }),
+    [
+      allQuizzes.length,
+      baseFilteredQuizzes.length,
+      filteredQuizzes.length,
+      isTeacher,
+      loading,
+      selectedClassroom,
+      selectedDateFilter,
+      selectedTab,
+    ],
+  );
+
+  const assessmentsDataStateMarker = (
+    <Text
+      testID="assessments-data-state"
+      accessibilityLabel={assessmentsDataStateLabel}
+      accessible
+      style={styles.dataStateMarker}
+    >
+      {' '}
+    </Text>
+  );
+
   // const handleCreateAssessment = () => {
   //   console.log('Create new assessment');
   //   // TODO: Navigate to create assessment screen
@@ -321,46 +444,74 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
     // Find the quiz data
     const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
     
-    if (navigation) {
-      // Navigate to QuizPreviewScreen to see quiz details/questions
-      navigation.navigate('QuizPreviewScreen', {
-        quizId,
-        quizData: quiz,
-      });
-    } else if (onNavigate) {
-      onNavigate('QuizPreviewScreen', { quizId, quizData: quiz });
-    }
+    navigateFromAssessments(navigation, onNavigate, 'QuizPreviewScreen', {
+      quizId,
+      quizData: quiz,
+    });
   };
 
-  const handleAction = async (action: string, quizId: number, attemptData?: any) => {
+  const handleAction = async (
+    action: string,
+    quizId: number,
+    attemptData?: QuizAssignmentListSource | any,
+  ) => {
     // View quiz students (Teacher)
     if (isTeacher && action === 'view') {
-      const quiz = filteredQuizzes.find((q: any) => q.quiz_id === quizId);
-      if (navigation) {
-        navigation.navigate('StudentList', {
-          quizId,
-          quizName: quiz?.quiz_name || 'Quiz',
-        });
-      } else if (onNavigate) {
-        onNavigate('students', { quizId, quizName: quiz?.quiz_name });
+      const assignment: QuizAssignmentListSource | undefined =
+        attemptData?.quiz_id != null
+          ? attemptData
+          : filteredQuizzes.find((q: any) => {
+              if (Number(q.quiz_id) !== Number(quizId)) return false;
+              if (attemptData?.session_id != null) {
+                return String(q.session_id) === String(attemptData.session_id);
+              }
+              return true;
+            });
+      if (!assignment) {
+        return;
       }
+      const params = buildQuizAssignmentStudentListParams(assignment);
+      navigateFromAssessments(navigation, onNavigate, 'StudentList', params);
       return;
     }
     
-    // Student-specific action: View assessment results
+    // Student-specific action: View assessment results (probe pending recovery first)
     if (!isTeacher && action === 'viewResults' && attemptData) {
-      if (onNavigate) {
-        onNavigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
-        });
-      } else if (navigation) {
-        navigation.navigate('QuizResultsScreen', {
-          quizId,
-          quizName: attemptData.quiz_name,
-          isTeacherView: true,
-        });
+      const correctQuizId = attemptData?.quiz_id || quizId;
+      const correctSessionId = attemptData?.session_id || '';
+      const correctClassroomId = attemptData?.classroom_id || attemptData?.class_id || '';
+      const studentIdForApi =
+        (attemptData?.student_id != null ? attemptData.student_id.toString() : null) ??
+        user?.id?.toString() ??
+        '';
+
+      setLoadingQuizId(correctQuizId);
+      try {
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: studentIdForApi,
+            quizId: correctQuizId,
+            sessionId: correctSessionId,
+            classroomId: correctClassroomId,
+            attemptData,
+            quizName: attemptData?.quiz_name,
+          },
+          { navigation, onNavigate },
+        );
+      } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error) || isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
+        }
+        Alert.alert(
+          'Connection Error',
+          'Could not open results. Please check your connection and try again.',
+        );
+      } finally {
+        setTimeout(() => setLoadingQuizId(null), 1000);
       }
       return;
     }
@@ -382,109 +533,53 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           user?.id?.toString() ??
           '';
 
-        // Check via API whether this student has already completed this quiz.
-        // GET /api/v1/dashboard/quiz-attempts?student_id={student_id}&quiz_id={quiz_id}&class_id={session_id}
-        // NOTE: the API's class_id field maps to session_id (UUID), not classroom_id.
-        const attemptCheck = await checkQuizAttempt(
-          correctQuizId,
-          studentIdForApi,
-          correctSessionId || undefined,
-        );
-
-        console.log('🎯 Attempt check result:', {
-          quiz_id: correctQuizId,
-          student_id: studentIdForApi,
-          session_id: correctSessionId,
-          hasAttempted: attemptCheck.hasAttempted,
-          status: attemptCheck.status,
+        const startResult = await resolveStudentAssignedQuizStart({
+          studentId: studentIdForApi,
+          quizId: correctQuizId,
+          sessionId: correctSessionId,
+          classroomId: correctClassroomId,
+          attemptData,
         });
 
-        if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
-          // Quiz already completed — show modal instead of navigating.
+        if (startResult.kind === 'lookup_failed') {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your quiz status. Please check your connection and try again.',
+          );
+          return;
+        }
+
+        if (startResult.kind === 'already_completed') {
           setCompletedAttemptModal({
-            quizName: attemptData?.quiz_name || 'Quiz',
-            score: attemptCheck.score ?? null,
-            completedAt: attemptCheck.completedAt ?? null,
-            quizId: correctQuizId,
-            attemptData,
+            quizName: startResult.quizName,
+            score: startResult.score,
+            completedAt: startResult.completedAt,
+            quizId: Number(startResult.quizId),
+            attemptData: startResult.attemptData,
           });
           return;
         }
 
-        // Not yet completed — fetch full quiz data (with questions) then navigate.
-        // This mirrors the web (OpenQuizPage) and Notifications screen flow:
-        //   GET /api/v1/quiz?session_id=... → quiz_data.questions.quizzes (filtered to question_count)
-        let quizDataWithQuestions = attemptData;
-        try {
-          const quizResponse = await getQuizBySessionId(correctSessionId);
-          if (quizResponse.success && quizResponse.quiz_data) {
-            const fetchedQuiz = quizResponse.quiz_data;
-            // Limit to the teacher-selected question count (same as web)
-            const questionLimit = fetchedQuiz.question_count || fetchedQuiz.questions.quizzes.length;
-            const questions = fetchedQuiz.questions.quizzes.slice(0, questionLimit).map(
-              (q: any, index: number) => ({
-                id: `q-${index}`,
-                question: q.quiz.question,
-                options: q.quiz.options,
-                correctAnswer: q.quiz.answer,
-                answer: q.answer,
-                explanation: null,
-              })
-            );
-            quizDataWithQuestions = {
-              ...attemptData,
-              id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              quiz_id: fetchedQuiz.quiz_id || attemptData?.quiz_id,
-              session_id: correctSessionId,
-              classroom_id: correctClassroomId,
-              title: fetchedQuiz.topic || attemptData?.quiz_name || 'Assessment',
-              duration: fetchedQuiz.duration || attemptData?.duration || 30,
-              has_time_limit: fetchedQuiz.has_time_limit ?? true,
-              is_public: fetchedQuiz.is_public ?? false,
-              questions,
-            };
-          }
-        } catch (fetchErr) {
-          console.warn('⚠️ Could not fetch quiz questions, navigating with metadata only:', fetchErr);
+        navigateStudentToQuizTaking(navigation, onNavigate, startResult.params);
+      } catch (error) {
+        if (isAssignedQuizRecoveryProbeError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not verify your saved submission. Please check your connection and try again.',
+          );
+          return;
         }
-
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: quizDataWithQuestions,
-            quiz: quizDataWithQuestions,
-            is_public: false,
-          });
+        if (isAssignedQuizLoadError(error)) {
+          Alert.alert(
+            'Connection Error',
+            'Could not load quiz questions. Please check your connection and try again.',
+          );
+          return;
         }
-      } catch {
-        // If the attempt-check fails, proceed to the quiz so the student
-        // is never blocked by a network error.
-        if (navigation) {
-          navigation.navigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-          });
-        } else if (onNavigate) {
-          onNavigate('QuizTakingScreen', {
-            quizId: correctQuizId,
-            sessionId: correctSessionId,
-            classroomId: correctClassroomId,
-            quizData: attemptData,
-            quiz: attemptData,
-            is_public: false,
-          });
-        }
+        Alert.alert(
+          'Connection Error',
+          'Could not start this assessment. Please check your connection and try again.',
+        );
       } finally {
         setTimeout(() => setLoadingQuizId(null), 1000);
       }
@@ -495,6 +590,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (teacherLoading && filteredQuizzes.length === 0) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.loadingContainer}>
           <LoadingSpinner size={60} />
         </View>
@@ -505,6 +601,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
   if (error) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {assessmentsDataStateMarker}
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={64} color={theme.colors.error} />
           <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
@@ -567,19 +664,19 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           ) : null;
         })()}
 
-        {/* Search Bar (Web only) */}
-        {isWeb && (
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
-            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        )}
+        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background }]}>
+          <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+          <TextInput
+            testID="assessments-search-input"
+            accessibilityLabel="Search assessments"
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder="Search"
+            placeholderTextColor={theme.colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {assessmentsDataStateMarker}
+        </View>
 
         {/* Filters Section */}
         <FilterSection defaultCollapsed={false}>
@@ -648,7 +745,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
           >
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#0F766E12', borderColor: '#0F766E30' }]}
-              onPress={() => navigation.navigate('DocumentUploadHomeScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'DocumentUploadHomeScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="folder-open-outline" size={16} color="#0F766E" />
@@ -656,7 +753,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: theme.colors.primary + '12', borderColor: theme.colors.primary + '30' }]}
-              onPress={() => navigation.navigate('RecentAssessmentsScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'RecentAssessmentsScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="time-outline" size={16} color={theme.colors.primary} />
@@ -664,7 +761,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.aiToolBtn, { backgroundColor: '#05996912', borderColor: '#05996930' }]}
-              onPress={() => navigation.navigate('WorksheetScreen')}
+              onPress={() => navigateFromAssessments(navigation, onNavigate, 'WorksheetScreen')}
               activeOpacity={0.75}
             >
               <Ionicons name="document-text-outline" size={16} color="#059669" />
@@ -743,9 +840,12 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                 return null;
               };
               
+              const assignmentKey = `${quiz.quiz_id}-${quiz.session_id ?? 'na'}-${quiz.classroom_id ?? quiz.class_id ?? 'na'}`;
+              const openStudentsTestId = `assessment-open-students-${quiz.quiz_id}-${quiz.session_id ?? 'na'}`;
+
               return (
                 <View
-                  key={quiz.quiz_id}
+                  key={assignmentKey}
                   style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
                 >
                   {/* Card Header */}
@@ -836,11 +936,15 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                             </Text>
                           </View>
                         </View>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.cardRow}
+                          testID={openStudentsTestId}
+                          accessibilityRole="button"
+                          accessibilityLabel={buildOpenStudentsAccessibilityLabel(quiz)}
+                          accessible
                           onPress={(e) => {
                             e.stopPropagation();
-                            handleAction('view', quiz.quiz_id);
+                            handleAction('view', quiz.quiz_id, quiz);
                           }}
                         >
                           <Ionicons name="people-outline" size={16} color={theme.colors.primary} />
@@ -885,7 +989,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                   {!isTeacher && (
                     <View style={styles.cardFooter}>
                       {/* STUDENT LOGIC: Pending quizzes - Start button */}
-                      {quiz.status === 'pending' && (
+                      {canStudentStartAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: theme.colors.primary }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('start', quiz.quiz_id, quiz)}
@@ -901,7 +1005,7 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       )}
                       
                       {/* STUDENT LOGIC: In-progress quizzes - Resume button */}
-                      {quiz.status === 'in_progress' && (
+                      {canStudentResumeAssignment(quiz) && (
                         <TouchableOpacity
                           style={[styles.smallButton, { backgroundColor: '#06B6D4' }, loadingQuizId === quiz.quiz_id && { opacity: 0.6 }]}
                           onPress={() => handleAction('resume', quiz.quiz_id, quiz)}
@@ -919,11 +1023,22 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
                       {/* STUDENT LOGIC: Completed quizzes - View Results button */}
                       {quiz.status === 'completed' && (
                         <TouchableOpacity
-                          style={[styles.smallButton, { backgroundColor: theme.colors.primary }]}
+                          style={[
+                            styles.smallButton,
+                            { backgroundColor: theme.colors.primary },
+                            loadingQuizId === quiz.quiz_id && { opacity: 0.6 },
+                          ]}
                           onPress={() => handleAction('viewResults', quiz.quiz_id, quiz)}
+                          disabled={loadingQuizId === quiz.quiz_id}
                         >
-                          <Ionicons name="document-text" size={14} color="#FFFFFF" />
-                          <Text style={styles.smallButtonText}>Results</Text>
+                          {loadingQuizId === quiz.quiz_id ? (
+                            <LoadingSpinner size={14} />
+                          ) : (
+                            <Ionicons name="document-text" size={14} color="#FFFFFF" />
+                          )}
+                          <Text style={styles.smallButtonText}>
+                            {loadingQuizId === quiz.quiz_id ? 'Loading...' : 'Results'}
+                          </Text>
                         </TouchableOpacity>
                       )}
                       
@@ -949,6 +1064,8 @@ export default function Assessments({ navigation, onNavigate, userRole, route }:
         {displayCount < filteredQuizzes.length && (
           <View style={styles.loadMoreContainer}>
             <TouchableOpacity
+              testID="assessments-load-more"
+              accessibilityLabel="Load more assessments"
               style={[styles.loadMoreButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => setDisplayCount(prev => prev + 10)}
             >
@@ -1141,6 +1258,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  dataStateMarker: {
+    width: 1,
+    height: 1,
+    fontSize: 1,
+    lineHeight: 1,
+    color: 'transparent',
+    opacity: 0.01,
+    margin: 0,
+    padding: 0,
   },
   loadingContainer: {
     flex: 1,

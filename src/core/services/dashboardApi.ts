@@ -11,7 +11,17 @@ import {
   toStudentQuiz,
 } from '../types/quiz.types';
 import { cachedApiCall, CACHE_TTL, clearCacheEntry, isTransientNetworkError } from './cacheService';
+import {
+  buildTeacherDashboardSummaryCacheKey,
+  invalidateTeacherDashboardCaches,
+} from './teacherDashboardCacheInvalidation';
 import { API_BASE_URL } from '../api/config';
+import {
+  coerceQuizAttemptsListResponse,
+  pickCompletedAttemptForScopedList,
+} from './openQuizAttemptResolution';
+import { classifyStudentAssignmentRow } from '../../utils/studentAssignmentClassification';
+import { resolveClassroomDisplayName } from '../../utils/classroomDisplayName';
 // Uncomment below to use mock data when backend is unavailable
 // import {
 //   mockTeacherQuizzes,
@@ -20,6 +30,15 @@ import { API_BASE_URL } from '../api/config';
 // } from './mockDashboardData';
 
 const DASHBOARD_API_URL = `${API_BASE_URL}/api/v1`;
+
+export class TeacherDashboardAuthenticationError extends Error {
+  readonly code = 'TEACHER_DASHBOARD_AUTHENTICATION_REQUIRED';
+
+  constructor() {
+    super('Teacher dashboard requires authentication');
+    this.name = 'TeacherDashboardAuthenticationError';
+  }
+}
 // const USE_MOCK_DATA = false; // Set to true to use mock data
 
 // Helper to build query string from filters
@@ -112,8 +131,11 @@ export async function fetchTeacherDashboardSummary(
     ...filters,
   };
 
-  // Generate cache key based on filters
-  const cacheKey = `teacher_dashboard_summary_${defaultFilters.view_type}_${defaultFilters.limit}_${defaultFilters.offset}`;
+  const cacheKey = buildTeacherDashboardSummaryCacheKey(
+    String(defaultFilters.view_type),
+    defaultFilters.limit ?? 1000,
+    defaultFilters.offset ?? 0,
+  );
 
   // Use cached API call wrapper
   return cachedApiCall(
@@ -135,7 +157,7 @@ export async function fetchTeacherDashboardSummary(
             window.location.href = '/login';
           }
           
-          return { data: [], pagination: { total: 0, limit: 10, offset: 0, hasMore: false } } as any;
+          throw new TeacherDashboardAuthenticationError();
         }
 
         const queryString = buildQueryString(defaultFilters);
@@ -605,8 +627,7 @@ export async function fetchClassroomQuizzesWithAllStatuses(
  * Call this on logout, or when quiz data changes (create, update, delete)
  */
 export async function clearDashboardCache(): Promise<void> {
-  // Clear teacher caches
-  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  await invalidateTeacherDashboardCaches();
   await clearCacheEntry('teacher_classrooms_class_wise_students');
   
   // Note: Individual quiz caches will be cleared by clearAllCache()
@@ -623,9 +644,117 @@ export async function clearQuizCache(classroomId?: string, quizId?: number): Pro
   
   // Since we can't wildcard pattern match easily, clear all quiz-related caches
   // This is safer and ensures consistency
-  await clearCacheEntry('teacher_dashboard_summary_summary_100_0');
+  await invalidateTeacherDashboardCaches();
   
   console.log('✅ Quiz cache cleared');
+}
+
+function quizIdMatchesUntrustedHint(serverQuizId: unknown, hintedQuizId: number): boolean {
+  if (!hintedQuizId || hintedQuizId <= 0) return true;
+  const serverId = Number(serverQuizId);
+  return Number.isFinite(serverId) && serverId === hintedQuizId;
+}
+
+async function fetchCompletedStudentQuizAttemptForSession(
+  studentId: string,
+  quizId: number,
+  sessionId: string,
+): Promise<Record<string, unknown> | null> {
+  const token = await TokenStorage.getAccessToken();
+  if (!token) return null;
+  const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${encodeURIComponent(
+    studentId,
+  )}&quiz_id=${encodeURIComponent(String(quizId))}&class_id=${encodeURIComponent(sessionId)}`;
+  const attemptsResponse = await fetch(attemptsUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!attemptsResponse.ok) return null;
+  const attempts = await attemptsResponse.json();
+  const picked = pickCompletedAttemptForScopedList(
+    coerceQuizAttemptsListResponse(attempts),
+    sessionId,
+  );
+  if (picked.kind !== 'found') {
+    if (picked.kind === 'session_mismatch') {
+      console.warn('quiz-attempts rows contradict requested session scope');
+    }
+    return null;
+  }
+  return picked.attempt as Record<string, unknown>;
+}
+
+async function buildValidationFromCheckRecord(
+  userId: string,
+  sessionId: string,
+): Promise<{
+  exists: boolean;
+  isExpired: boolean;
+  isScheduled: boolean;
+  isAssigned: boolean;
+  isAttempted: boolean;
+  quizData: any | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  attemptData?: any;
+} | null> {
+  const record = await fetchQuizCheckRecordForSession(String(userId), sessionId);
+  if (!record?.quiz_details) return null;
+
+  if (record.student_id != null && String(record.student_id) !== String(userId)) {
+    console.warn('check-record student_id does not match authenticated user');
+    return null;
+  }
+
+  const details = record.quiz_details;
+  const recordSessionId = (details.session_id || sessionId).trim();
+  if (details.session_id && details.session_id.trim() !== sessionId.trim()) {
+    console.warn('check-record session_id does not match requested session');
+    return null;
+  }
+  const classId = record.classid || '';
+  const quizData = {
+    ...details,
+    quiz_id: details.quiz_id,
+    session_id: details.session_id || sessionId,
+    classroom_id: classId,
+    class_id: classId,
+    topic: details.topic,
+    title: details.topic,
+    has_time_limit: details.has_time_limit,
+    is_public: details.is_public,
+    start_time: details.start_time,
+    end_time: details.end_time,
+  };
+
+  const attemptData =
+    record.status === 'completed' && quizData.quiz_id
+      ? await fetchCompletedStudentQuizAttemptForSession(
+          String(userId),
+          Number(quizData.quiz_id),
+          recordSessionId,
+        )
+      : null;
+  const isAttempted = record.status === 'completed' && attemptData != null;
+
+  const now = new Date();
+  const startTime = quizData.start_time ? new Date(quizData.start_time) : null;
+  const endTime = quizData.end_time ? new Date(quizData.end_time) : null;
+
+  return {
+    exists: true,
+    isExpired: endTime ? now > endTime : false,
+    isScheduled: startTime ? now < startTime : false,
+    isAssigned: true,
+    isAttempted,
+    quizData,
+    startTime,
+    endTime,
+    attemptData,
+  };
 }
 
 /**
@@ -648,6 +777,7 @@ export async function fetchQuizDetailsBySessionId(
   startTime: Date | null;
   endTime: Date | null;
   attemptData?: any;
+  fetchFailure?: { httpStatus: number; retryable: boolean };
 }> {
   const defaultResult = {
     exists: false,
@@ -678,6 +808,8 @@ export async function fetchQuizDetailsBySessionId(
       });
     }
 
+    const hintedQuizId = Number.isFinite(Number(quizId)) && Number(quizId) > 0 ? Number(quizId) : 0;
+
     // STEP 1: Fetch quiz data using the same endpoint as OpenQuiz page
     console.log('🔍 Fetching quiz by session_id:', sanitizedSessionId);
     const quizUrl = `${DASHBOARD_API_URL}/quiz?session_id=${sanitizedSessionId}&skip_auth=true`;
@@ -694,6 +826,22 @@ export async function fetchQuizDetailsBySessionId(
       const errorText = await quizResponse.text();
       console.error('Quiz fetch failed:', quizResponse.status, errorText);
       await handleAuthError(quizResponse.status, errorText, 'fetchQuizDetailsBySessionId');
+      const transient = quizResponse.status === 429 || quizResponse.status >= 500;
+      if (userRole === 'student' && !transient) {
+        const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+        if (
+          fromRecord &&
+          quizIdMatchesUntrustedHint(fromRecord.quizData?.quiz_id, hintedQuizId)
+        ) {
+          return fromRecord;
+        }
+      }
+      if (transient) {
+        return {
+          ...defaultResult,
+          fetchFailure: { httpStatus: quizResponse.status, retryable: true },
+        };
+      }
       return defaultResult;
     }
 
@@ -702,6 +850,16 @@ export async function fetchQuizDetailsBySessionId(
     console.log('📦 Raw API response:', JSON.stringify(quizDataResponse).substring(0, 200));
     
     if (!quizDataResponse.quiz_data) {
+      if (userRole === 'student') {
+        const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+        if (
+          fromRecord &&
+          quizIdMatchesUntrustedHint(fromRecord.quizData?.quiz_id, hintedQuizId)
+        ) {
+          console.log('✅ Recovered quiz context from check-record for session:', sanitizedSessionId);
+          return fromRecord;
+        }
+      }
       console.log('❌ No quiz found for session:', sessionId);
       return defaultResult;
     }
@@ -711,6 +869,11 @@ export async function fetchQuizDetailsBySessionId(
     // IMPORTANT: API doesn't return session_id in quiz_data, so we use the sanitized sessionId
     if (!quizData.session_id) {
       quizData.session_id = sanitizedSessionId;
+    }
+
+    if (!quizIdMatchesUntrustedHint(quizData.quiz_id, hintedQuizId)) {
+      console.warn('Untrusted quiz_id hint does not match server quiz for session');
+      return defaultResult;
     }
     
     console.log('✅ Quiz data fetched:', {
@@ -741,42 +904,30 @@ export async function fetchQuizDetailsBySessionId(
 
     if (userRole === 'student' && quizData.quiz_id) {
       console.log('🔍 Checking quiz attempts for student:', userId);
-      
       try {
-        // Use quiz-attempts API to check if student already completed
-        const attemptsUrl = `${DASHBOARD_API_URL}/dashboard/quiz-attempts?student_id=${userId}&quiz_id=${quizData.quiz_id}&class_id=${sanitizedSessionId}`;
-        
-        const attemptsResponse = await fetch(attemptsUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (attemptsResponse.ok) {
-          const attempts = await attemptsResponse.json();
-          console.log('📋 Quiz attempts found:', attempts?.length || 0);
-          
-          if (attempts && Array.isArray(attempts) && attempts.length > 0) {
-            // Check if any attempt is completed
-            const completedAttempt = attempts.find((attempt: any) => attempt.status === 'completed');
-            
-            if (completedAttempt) {
+        const completedAttempt = await fetchCompletedStudentQuizAttemptForSession(
+          String(userId),
+          Number(quizData.quiz_id),
+          sanitizedSessionId,
+        );
+        if (completedAttempt) {
+          isAttempted = true;
+          attemptData = completedAttempt;
+          console.log('✅ Student already completed this quiz for session:', completedAttempt);
+        }
+        if (!isAttempted) {
+          const recordStatus = await fetchQuizCheckRecordStatus(String(userId), sanitizedSessionId);
+          if (recordStatus) {
+            const fromRecord = await buildValidationFromCheckRecord(userId, sanitizedSessionId);
+            if (fromRecord?.isAttempted) {
               isAttempted = true;
-              attemptData = completedAttempt;
-              console.log('✅ Student already completed this quiz:', completedAttempt);
+              attemptData = fromRecord.attemptData ?? attemptData;
             }
-            
-            // If student has any attempt (started or completed), they're assigned
             isAssigned = true;
           }
-        } else {
-          console.log('ℹ️ No attempts found or error checking attempts');
         }
       } catch (attemptsError) {
         console.error('Error checking quiz attempts:', attemptsError);
-        // Don't block - let them proceed even if attempt check fails
       }
     }
 
@@ -825,7 +976,7 @@ export interface CheckRecordQuiz {
     created_at?: string;
     created_by?: string;
     student_level?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -843,30 +994,39 @@ export interface CheckRecordResponse {
  *
  * POST /api/v1/quiz/check-record
  */
-export async function fetchQuizCheckRecord(
-  studentId: string,
-  checkType: 'pending' | 'completed' = 'pending',
-  sessionId: string = '',
-): Promise<CheckRecordResponse> {
+async function postQuizCheckRecord(body: {
+  p_student_id: string;
+  p_session_id: string;
+  p_check_type?: string | null;
+}): Promise<CheckRecordResponse> {
   const token = await TokenStorage.getAccessToken();
   if (!token) {
     await TokenStorage.clearAuthData();
     if (authErrorNavigationCallback) authErrorNavigationCallback();
-    return { success: false, result: [], check_type: checkType, message: 'No token' } as CheckRecordResponse;
+    return {
+      success: false,
+      result: [],
+      check_type: body.p_check_type ?? '',
+      message: 'No token',
+    } as CheckRecordResponse;
   }
 
   const url = `${DASHBOARD_API_URL}/quiz/check-record`;
+  const payload: Record<string, string | null> = {
+    p_student_id: body.p_student_id,
+    p_session_id: body.p_session_id,
+  };
+  if (body.p_check_type !== undefined) {
+    payload.p_check_type = body.p_check_type;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      p_check_type: checkType,
-      p_session_id: sessionId,
-      p_student_id: studentId,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -878,41 +1038,163 @@ export async function fetchQuizCheckRecord(
   return response.json() as Promise<CheckRecordResponse>;
 }
 
+/** Documented status mode — record exists for session + student. */
+export async function fetchQuizCheckRecordStatus(
+  studentId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const res = await postQuizCheckRecord({
+    p_student_id: studentId,
+    p_session_id: sessionId,
+    p_check_type: 'status',
+  });
+  const statusResult = (res as { result?: unknown }).result;
+  return statusResult === true;
+}
+
+/** Documented record fetch — omit p_check_type. */
+export async function fetchQuizCheckRecordForSession(
+  studentId: string,
+  sessionId: string,
+): Promise<CheckRecordQuiz | null> {
+  const res = await postQuizCheckRecord({
+    p_student_id: studentId,
+    p_session_id: sessionId,
+  });
+  const rows = Array.isArray(res.result) ? res.result : [];
+  return rows[0] ?? null;
+}
+
+/**
+ * Legacy list scopes used by student dashboard loader (dev-api bulk pending/completed).
+ * Per-session access should use fetchQuizCheckRecordStatus / fetchQuizCheckRecordForSession.
+ */
+export async function fetchQuizCheckRecord(
+  studentId: string,
+  checkType: 'pending' | 'completed' = 'pending',
+  sessionId: string = '',
+): Promise<CheckRecordResponse> {
+  return postQuizCheckRecord({
+    p_check_type: checkType,
+    p_session_id: sessionId,
+    p_student_id: studentId,
+  });
+}
+
+/**
+ * Authorized classroom labels for the signed-in student (view_type=classes).
+ * Used so check-record rows never fall back to raw `class_*` ids in UI.
+ */
+export async function fetchStudentClassroomNameLookup(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const token = await TokenStorage.getAccessToken();
+  if (!token) {
+    return map;
+  }
+
+  const url = `${DASHBOARD_API_URL}/dashboard/quizzes?view_type=classes&limit=200&offset=0`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    return map;
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    return map;
+  }
+  const rows = Array.isArray(data?.data) ? data.data : [];
+  for (const row of rows) {
+    const name = row.classroom_name || row.name;
+    if (!name) continue;
+    const nameStr = String(name);
+    const ids = [row.classroom_id, row.class_id, row.classid].filter(Boolean).map(String);
+    for (const id of ids) {
+      if (nameStr !== id) {
+        map.set(id, nameStr);
+      }
+    }
+  }
+  return map;
+}
+
 /**
  * Convert a CheckRecordQuiz item to a ParsedQuiz-compatible object used
  * by StudentDashboard and Notifications screens.
  * status: null → 'pending'   |   status: "completed" → 'completed'
  */
-export function checkRecordToQuiz(item: CheckRecordQuiz): any {
+export function checkRecordToQuiz(
+  item: CheckRecordQuiz,
+  options?: { classroomNameLookup?: Map<string, string> },
+): any {
   const d = item.quiz_details;
   const now = new Date();
   const endDate = d.end_time ? new Date(d.end_time) : null;
+  const classId = item.classid;
+  const classroomName = resolveClassroomDisplayName(String(classId || ''), {
+    recordName:
+      (d as { classroom_name?: string }).classroom_name ||
+      (item as { classroom_name?: string }).classroom_name,
+    lookup: options?.classroomNameLookup,
+  });
+  const completedScore =
+    typeof (d as { score?: number }).score === 'number'
+      ? (d as { score?: number }).score
+      : typeof (item as { score?: number }).score === 'number'
+        ? (item as { score?: number }).score
+        : null;
+
+  const recordStatus = item.status === null ? 'pending' : item.status;
+  const classified = classifyStudentAssignmentRow({
+    recordStatus,
+    started_at: (d as { started_at?: string }).started_at || null,
+    start_time: d.start_time,
+    end_time: d.end_time,
+    has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
+    now,
+  });
 
   return {
     quiz_id: d.quiz_id,
     quiz_name: d.topic,
     topic: d.topic,
     session_id: d.session_id,
-    class_id: item.classid,
-    classroom_id: item.classid,
-    classroom_name: item.classid,
+    class_id: classId,
+    classroom_id: classId,
+    classroom_name: classroomName,
     student_id: item.student_id,
-    status: item.status === null ? 'pending' : item.status,
-    score: null,
-    correct_answers: 0,
+    status: classified.status,
+    student_status: classified.student_status,
+    score: item.status === 'completed' ? completedScore : null,
+    correct_answers: undefined,
     question_count: d.question_count,
     time_spent_seconds: null,
     attempt_number: null,
-    completed_at: null,
-    started_at: null,
+    completed_at:
+      item.status === 'completed'
+        ? (d as { completed_at?: string }).completed_at ||
+          (item as { completed_at?: string }).completed_at ||
+          null
+        : null,
+    started_at: (d as { started_at?: string }).started_at || null,
     start_time: d.start_time,
     end_time: d.end_time,
     due_date: d.end_time,
     created_at: d.created_at || d.start_time,
     assigned_at: d.created_at || d.start_time,
-    availability_status: d.is_active && endDate && now <= endDate ? 'active' : 'expired',
+    availability_status: classified.availability_status,
     duration: d.duration,
     has_time_limit: d.has_time_limit,
+    is_active: d.is_active,
     is_overdue: endDate ? now > endDate : false,
     days_until_due: endDate
       ? Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))

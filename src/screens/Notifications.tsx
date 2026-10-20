@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,20 @@ import { Ionicons } from '@expo/vector-icons';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
+import { useErpRole } from '../erp/hooks/useErpRole';
 import { formatDistanceToNow } from 'date-fns';
-import { ParsedQuiz, parseQuizAttempt, QuizAttempt } from '@core/types/dashboard.types';
+import { ParsedQuiz } from '@core/types/dashboard.types';
 import { useTeacherDashboard } from '@core/hooks/useTeacherDashboard';
 import { getQuizBySessionId, checkQuizAttempt } from '@core/services/sharedApi';
-import { isStudentQuizActive } from '../utils/quizFilters';
-import { fetchQuizCheckRecord, checkRecordToQuiz } from '@core/services/dashboardApi';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
+import {
+  canApplyPendingNotificationsResult,
+  invalidatePendingStudentNotificationsLoads,
+  loadPendingStudentNotifications,
+  usesTeacherNotificationsPath,
+  type PendingNotificationsScope,
+} from '@core/services/pendingStudentNotificationsLoad';
+import { useUserStore } from '@core/store/user.store';
 
 interface Props {
   navigation?: any;
@@ -31,17 +39,28 @@ export default function Notifications({ navigation, onNavigate }: Props) {
   const { theme } = useTheme();
   const colors = theme.colors;
   const { user } = useAuth();
+  const { isTeacher: isErpTeacher, isAdmin: isErpAdmin } = useErpRole();
+  const schoolId = useUserStore((s) => s.schoolId);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  
-  const isTeacher = user?.role === 'instructor' || user?.role === 'admin';
-  
+
+  // Canonical ERP helper: instructor | teacher → teacher path; admin → teacher submissions.
+  const isTeacher = isErpTeacher || isErpAdmin || usesTeacherNotificationsPath(user?.role);
+
   // Teacher data from hook
   const teacherData = useTeacherDashboard();
-  
+
   // Student state
   const [studentQuizzes, setStudentQuizzes] = useState<ParsedQuiz[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [classroomLookupWarning, setClassroomLookupWarning] = useState('');
+
+  // Live scope refs — completion handlers read these, not values closed over at request start.
+  const scopeRef = useRef<PendingNotificationsScope | null>(null);
+  scopeRef.current = user
+    ? { userId: String(user.id), schoolId, role: user.role }
+    : null;
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({ window }) => {
@@ -50,46 +69,85 @@ export default function Notifications({ navigation, onNavigate }: Props) {
     return () => subscription?.remove();
   }, []);
 
-  // Fetch student pending quizzes via check-record endpoint
+  // Invalidate pending loads on logout / account / school / role change and unmount.
+  useEffect(() => {
+    mountedRef.current = true;
+    invalidatePendingStudentNotificationsLoads();
+    return () => {
+      mountedRef.current = false;
+      invalidatePendingStudentNotificationsLoads();
+    };
+  }, [user?.id, schoolId, user?.role]);
+
+  // Fetch student pending quizzes via check-record endpoint.
   // status: null → pending (shown here)   |   status: "completed" → not shown
+  // Classroom names: account/school-scoped lookup with failure ≠ empty map.
+  // Note: do NOT depend on `refreshing` — that recreates the callback and duplicates loads.
   const fetchStudentQuizzes = useCallback(async () => {
-    if (!user || isTeacher) return;
-    
-    try {
-      setLoading(true);
-
-      const response = await fetchQuizCheckRecord(user.id, 'pending');
-      const mapped = (response.result || [])
-        .map(checkRecordToQuiz)
-        // Only show quizzes whose status came back as null (pending) and are still within the time window
-        .filter(isStudentQuizActive);
-
-      // Sort by assigned/created date, newest first
-      mapped.sort((a: any, b: any) => {
-        const dateA = new Date(a.assigned_at || a.created_at).getTime();
-        const dateB = new Date(b.assigned_at || b.created_at).getTime();
-        return dateB - dateA;
-      });
-
-      setStudentQuizzes(mapped);
-    } catch (error) {
-      console.error('Failed to load student quizzes:', error);
-      Alert.alert('Error', 'Failed to load notifications');
-    } finally {
+    const scope = scopeRef.current;
+    if (!scope?.userId || usesTeacherNotificationsPath(scope.role)) {
       setLoading(false);
       setRefreshing(false);
+      return;
     }
-  }, [user, isTeacher, refreshing]);
 
-  // Load data on mount
+    setLoading(true);
+    setClassroomLookupWarning('');
+
+    const result = await loadPendingStudentNotifications(scope, {
+      getCurrentScope: () => (mountedRef.current ? scopeRef.current : null),
+    });
+
+    if (!mountedRef.current) return;
+    if (!canApplyPendingNotificationsResult(result, () => scopeRef.current)) {
+      // Stale success/error must not update the new session. Clear spinner only when
+      // no student scope remains (logout / role flip); a live student scope has a newer load.
+      const live = scopeRef.current;
+      if (!live?.userId || usesTeacherNotificationsPath(live.role)) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+      return;
+    }
+
+    if (result.kind === 'error') {
+      console.error('Failed to load student quizzes:', result.error);
+      Alert.alert('Error', 'Failed to load notifications');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    if (result.kind === 'ok') {
+      const { lookupResult, quizzes } = result.data;
+      if (lookupResult.status === 'failed') {
+        setClassroomLookupWarning(
+          lookupResult.priorMap?.size
+            ? 'Classroom names may be outdated. Pull to refresh.'
+            : 'Classroom names could not be loaded. Pull to refresh.',
+        );
+      }
+      setStudentQuizzes(quizzes);
+    }
+
+    setLoading(false);
+    setRefreshing(false);
+  }, []);
+
+  // Load data when role path or teacher hook loading changes (student fetch is stable).
   useEffect(() => {
     if (isTeacher) {
-      // Teacher uses hook data, just set loading false
+      setStudentQuizzes([]);
+      setClassroomLookupWarning('');
       setLoading(teacherData.loading);
+    } else if (!user) {
+      setStudentQuizzes([]);
+      setLoading(false);
+      setRefreshing(false);
     } else {
-      fetchStudentQuizzes();
+      void fetchStudentQuizzes();
     }
-  }, [isTeacher, teacherData.loading, fetchStudentQuizzes]);
+  }, [isTeacher, teacherData.loading, fetchStudentQuizzes, user?.id, schoolId, user]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -170,11 +228,17 @@ export default function Notifications({ navigation, onNavigate }: Props) {
           sessionId,
         );
         if (attemptCheck.hasAttempted && attemptCheck.status === 'completed') {
-          const scoreMsg = attemptCheck.score != null ? `\nYour score: ${attemptCheck.score}%` : '';
-          Alert.alert(
-            'Quiz Already Completed',
-            `You have already completed this quiz.${scoreMsg}`,
-            [{ text: 'OK' }]
+          const classroomId = quiz.class_id || (quiz as any).classroom_id || '';
+          await executeStudentAssignedQuizViewResults(
+            {
+              studentId: studentIdStr,
+              quizId: fetchedQuiz.quiz_id || quiz.quiz_id,
+              sessionId,
+              classroomId: String(classroomId),
+              attemptData: quiz as Record<string, unknown>,
+              quizName: fetchedQuiz.topic || quiz.quiz_name,
+            },
+            { navigation, onNavigate },
           );
           return;
         }
@@ -252,6 +316,13 @@ export default function Notifications({ navigation, onNavigate }: Props) {
           </View>
         </View>
       </View>
+
+      {!isTeacher && !!classroomLookupWarning ? (
+        <View style={styles.lookupWarning}>
+          <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+          <Text style={styles.lookupWarningText}>{classroomLookupWarning}</Text>
+        </View>
+      ) : null}
 
       {/* Notifications List */}
       {notifications.length === 0 ? (
@@ -564,5 +635,21 @@ const styles = StyleSheet.create({
   pendingText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  lookupWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFBEB',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#FCD34D',
+  },
+  lookupWarningText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#92400E',
   },
 });

@@ -1,0 +1,30 @@
+{
+  "purpose": "Acceptance harness scripts committed with integration branch (separate from APK implementation SHA).",
+  "harnessGitSha": "0ffab21",
+  "harnessRevisionChain": [
+    "0ffab21 — initial harness + open-quiz hardening commit",
+    "8b10562 — manifest pointer",
+    "9a714e8 — Windows APK bundle verify",
+    "765c498 — shared dev-api credentials path",
+    "ceee499 — student results navigation params + targeted sequence",
+    "8390347 — executingHarnessHead manifest field",
+    "84fff27 — Maestro via cmd.exe /c on Windows",
+    "7777f22 — skip Maestro when verified student UI session",
+    "899c2e2 — Completed load-more traversal, API student-70 gate, Results tap",
+    "12e0472 — manifest pin executingHarnessHead 899c2e2",
+    "763df8f — signed-out deeplink, notifications route, UI logout harness"
+  ],
+  "executingHarnessHead": "763df8f",
+  "scripts": [
+    "engineering-fixture-readiness-probe.mjs",
+    "engineering-targeted-closure-sequence.mjs",
+    "engineering-installed-sequence-gated.mjs",
+    "engineering-maestro-login-proof.mjs",
+    "engineering-deep-link-smoke.mjs",
+    "engineering-deep-link-signed-out.mjs",
+    "engineering-student-fixture-ui.mjs",
+    "engineering-instructor-fixture-ui.mjs",
+    "engineering-notifications-route-smoke.mjs",
+    "verify-embedded-release-bundle-sha.mjs"
+  ]
+}

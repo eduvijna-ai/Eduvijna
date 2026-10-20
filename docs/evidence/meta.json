@@ -1,0 +1,27 @@
+{
+  "branch": "integration/mobile-founder-acceptance-20261011",
+  "sha": "a077a2e",
+  "pr": 26,
+  "androidLogin": {
+    "instructor": "pass",
+    "student": "pass"
+  },
+  "expoWeb": {
+    "bundlePort": 8082,
+    "loginInstructor": "pass",
+    "loginStudent": "pass"
+  },
+  "analyticsFixtureTrace": {
+    "script": "scripts/analytics-fixture-trace.mjs",
+    "boundary": "ok",
+    "narrowRangeIncludes479": false,
+    "academicYearIncludes479": true
+  },
+  "journeys": {
+    "A_android": "pass_prior",
+    "A_web": "pass_prior",
+    "B_android": "fail_class_or_drill",
+    "B_web": "fail_analytics_hub_timeout"
+  },
+  "updatedAt": "2026-10-12T02:10:00.000Z"
+}

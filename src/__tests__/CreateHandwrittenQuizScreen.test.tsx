@@ -16,7 +16,18 @@
 
 jest.mock('../core/services/documentCameraCapture', () => ({
   __esModule: true,
+  captureDocumentImage: jest.fn(),
   captureAndCropDocumentImage: jest.fn(),
+}));
+
+jest.mock('../core/services/documentImageUtils', () => ({
+  __esModule: true,
+  normalizeAndCompressImage: jest.fn(async (uri: string, opts?: { originalName?: string; sourceMimeType?: string }) => ({
+    uri,
+    fileName: opts?.originalName || 'photo.jpg',
+    mimeType: opts?.sourceMimeType || 'image/jpeg',
+    convertedToJpeg: true,
+  })),
 }));
 
 import React from 'react';
@@ -25,15 +36,15 @@ import { Alert as RNAlert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { apiClient } from '../core/api/config';
 import CreateHandwrittenQuizScreen, { buildStrictQuizContent } from '../screens/CreateHandwrittenQuizScreen';
-import { captureAndCropDocumentImage } from '../core/services/documentCameraCapture';
+import { captureDocumentImage } from '../core/services/documentCameraCapture';
 
 // ── Typed mocks ───────────────────────────────────────────────────────────
 const mockPost = apiClient.post as jest.MockedFunction<typeof apiClient.post>;
 const mockLaunchLibrary = ImagePicker.launchImageLibraryAsync as jest.MockedFunction<
   typeof ImagePicker.launchImageLibraryAsync
 >;
-const mockCaptureAndCrop = captureAndCropDocumentImage as jest.MockedFunction<
-  typeof captureAndCropDocumentImage
+const mockCaptureDocument = captureDocumentImage as jest.MockedFunction<
+  typeof captureDocumentImage
 >;
 const mockRequestCamera = ImagePicker.requestCameraPermissionsAsync as jest.MockedFunction<
   typeof ImagePicker.requestCameraPermissionsAsync
@@ -225,11 +236,12 @@ describe('CreateHandwrittenQuizScreen – image picking from gallery', () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 describe('CreateHandwrittenQuizScreen – camera capture', () => {
-  it('adds a single image from camera after crop', async () => {
-    mockCaptureAndCrop.mockImplementationOnce(async () => ({
-      uri: 'file:///cropped_0.jpg',
+  it('adds a single image from camera (full-frame; crop is optional later)', async () => {
+    mockCaptureDocument.mockImplementationOnce(async () => ({
+      uri: 'file:///camera_0.jpg',
       name: 'camera-0.jpg',
       mimeType: 'image/jpeg',
+      convertedToJpeg: true,
     }));
 
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
@@ -239,13 +251,13 @@ describe('CreateHandwrittenQuizScreen – camera capture', () => {
     });
 
     await waitFor(() => {
-      expect(mockCaptureAndCrop).toHaveBeenCalled();
+      expect(mockCaptureDocument).toHaveBeenCalled();
       expect(getByText(/Step 1 · Upload Images \(1\/5\)/)).toBeTruthy();
     });
   });
 
-  it('does nothing when camera/crop is cancelled', async () => {
-    mockCaptureAndCrop.mockImplementationOnce(async () => null);
+  it('does nothing when camera capture is cancelled', async () => {
+    mockCaptureDocument.mockImplementationOnce(async () => null);
     const { getByText } = render(<CreateHandwrittenQuizScreen navigation={makeNavigation()} />);
 
     await act(async () => {
@@ -253,7 +265,7 @@ describe('CreateHandwrittenQuizScreen – camera capture', () => {
     });
 
     await waitFor(() => {
-      expect(mockCaptureAndCrop).toHaveBeenCalled();
+      expect(mockCaptureDocument).toHaveBeenCalled();
       expect(getByText(/\(0\/5\)/)).toBeTruthy();
     });
   });
@@ -271,7 +283,7 @@ describe('CreateHandwrittenQuizScreen – camera capture', () => {
     // Camera button should be disabled – pressing it should not call capture helper
     fireEvent.press(getByText('Camera'));
     await waitFor(() => {
-      expect(mockCaptureAndCrop).not.toHaveBeenCalled();
+      expect(mockCaptureDocument).not.toHaveBeenCalled();
     });
   });
 });

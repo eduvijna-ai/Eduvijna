@@ -46,6 +46,9 @@ export interface QuizAnswerLog {
   correctAnswer: string; // A, B, C, D
   userAnswer: string | null; // A, B, C, D or null if skipped
   isCorrect: boolean;
+  /** Worksheet text / short-answer rows */
+  isTextAnswer?: boolean;
+  correctAnswerText?: string;
 }
 
 export interface ParsedLogData {
@@ -179,14 +182,25 @@ export interface ClassOverview {
   classroom_id: string;
   classroom_name: string;
   instructor_name?: string;
+  /** Distinct assignment count (quiz_id + session_id + classroom_id). */
   total_quizzes: number;
   total_students: number;
   missed_count: number;
+  /** Student submission completions (cohort completed_count sum) — not availability Active. */
   completed_count: number;
   in_progress_count: number;
+  /**
+   * Class-card contract (web AnalyticsPage): ungated Σ pending_count across
+   * assignments. Drill-down actionable Pending is gated separately in helpers.
+   */
   pending_count: number;
   expired_count: number;
-  avg_score: number;
+  /** Assignment availability buckets — separate from attempt Done/Pending. */
+  active_assignment_count?: number;
+  upcoming_assignment_count?: number;
+  expired_assignment_count?: number;
+  /** Null when no numeric scores exist for completed attempts (do not fabricate 0%). */
+  avg_score: number | null;
   highest_score: number | null;
   lowest_score: number | null;
   completion_rate: number; // percentage
@@ -204,6 +218,8 @@ export interface StatusSummary {
 // Quiz tile for quiz grid layer (instructor/admin only)
 export interface QuizTile {
   quiz_id: number;
+  session_id: string;
+  classroom_id: string;
   quiz_name: string;
   topic: string | null;
   subject: string | null;

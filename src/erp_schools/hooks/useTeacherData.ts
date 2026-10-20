@@ -325,7 +325,15 @@ export function useTeacherData() {
         feeSummaryRaw = null;
       }
 
-      const students = mapTeacherStudents(rosterRaw);
+      const allStudents = mapTeacherStudents(rosterRaw);
+      // Instructor roster is assignment-scoped only. Never broaden to school-wide when
+      // there are no assignments or assignment/overview retrieval produced no class ids.
+      const students =
+        uniqueClassIds.length > 0
+          ? allStudents.filter(
+              (s) => s.classId != null && uniqueClassIds.includes(s.classId),
+            )
+          : [];
       // Weekly grid (all days) vs today's periods (must match today's day_of_week).
       const mineSlots = safeList(scheduleRaw);
       const todayListSlots = safeList(slotsRaw);

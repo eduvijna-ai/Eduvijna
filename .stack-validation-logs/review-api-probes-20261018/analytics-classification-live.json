@@ -1,0 +1,31 @@
+{
+  "api": "https://dev-api.eduvijna.com",
+  "status": 200,
+  "studentUserId": "70",
+  "rowCount": 51,
+  "statusHistogram": {
+    "completed": 25,
+    "pending": 8,
+    "missed": 18
+  },
+  "availabilityHistogram": {
+    "expired": 43,
+    "active": 8
+  },
+  "contractChecks": {
+    "completedWithNullScorePresent": true,
+    "pendingOrInProgressWithNumericScorePresent": false,
+    "completedAfterExpiryPresent": true,
+    "quizStatusFallbackPresent": false,
+    "scoreAloneMustNotCountCompleted": true,
+    "scoreWithoutStatusCount": 0
+  },
+  "sampleCounts": {
+    "completedNullScore": 25,
+    "pendingWithScore": 0,
+    "inProgressWithScore": 0,
+    "completedExpired": 25,
+    "quizStatusFallback": 0,
+    "scoreWithoutStatus": 0
+  }
+}

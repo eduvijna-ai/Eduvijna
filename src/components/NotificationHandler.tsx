@@ -5,15 +5,20 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { buildQuizGradedResultsNavigationParams } from '@core/services/notificationNavigation';
+import { executeStudentAssignedQuizViewResults } from '@core/services/assessmentQuizStart.service';
+import { resolveStudentGradedAssignmentSession } from '@core/services/gradedNotificationRouting.service';
 import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 //import type { Notification } from '@core/api/notifications.api';
 import useNotifications from '@core/hooks/useNotifications';
 import { useAuth } from '@core/hooks/useAuth';
 
+type RootNavigate = { navigate: (screen: string, params?: unknown) => void };
+
 export default function NotificationHandler() {
   const navigation = useNavigation();
-  const navigationRef = useRef(navigation);
+  const navigationRef = useRef<RootNavigate | null>(null);
   const { fetchNotifications } = useNotifications();
   const { user } = useAuth();
 
@@ -24,8 +29,12 @@ export default function NotificationHandler() {
 
   // Update ref when navigation changes
   useEffect(() => {
-    navigationRef.current = navigation;
+    navigationRef.current = navigation as unknown as RootNavigate;
   }, [navigation]);
+
+  const navigateRoot = (screen: string, params?: unknown) => {
+    navigationRef.current?.navigate(screen, params);
+  };
 
   // Handle foreground notifications (display local notification)
   useEffect(() => {
@@ -95,7 +104,7 @@ export default function NotificationHandler() {
         // New quiz assigned - show quiz preview/ready to start screen
         if (quizId) {
           console.log('➡️ Navigating to Quiz Ready to Start:', quizId);
-          (navigationRef.current as any).navigate('QuizPreviewScreen', {
+          navigateRoot('QuizPreviewScreen', {
             quizId,
             sessionId,
             quizTitle,
@@ -103,27 +112,65 @@ export default function NotificationHandler() {
         }
         break;
 
-      case 'quiz_graded':
-        // Quiz graded - show results
-        if (quizId) {
-          console.log('➡️ Navigating to QuizResultsScreen:', quizId);
-          (navigationRef.current as any).navigate('QuizResultsScreen', {
-            quizId,
-            studentId,
+      case 'quiz_graded': {
+        void (async () => {
+          let resolvedSessionId = sessionId;
+          let resolvedClassroomId =
+            (data?.classroom_id as string | undefined) || (data?.classroomId as string | undefined);
+          const student = studentId ?? user?.id;
+          if (!resolvedSessionId && quizId && student) {
+            const resolution = await resolveStudentGradedAssignmentSession(String(student), quizId);
+            if (resolution.kind === 'ambiguous') {
+              console.log('➡️ Ambiguous graded quiz assignment; opening Assessments');
+              navigateRoot('Assessments');
+              return;
+            }
+            if (resolution.kind === 'resolved') {
+              resolvedSessionId = resolution.sessionId;
+              resolvedClassroomId = resolution.classroomId;
+            }
+          }
+          const resultParams = buildQuizGradedResultsNavigationParams({
+            quiz_id: quizId,
+            session_id: resolvedSessionId,
+            student_id: student,
+            quiz_title: quizTitle,
           });
-        }
+          if (!resultParams || !resolvedSessionId || quizId == null || !student) {
+            console.log('➡️ Graded notification missing resolvable quiz; opening Assessments');
+            navigateRoot('Assessments');
+            return;
+          }
+          if (!resolvedClassroomId) {
+            navigateRoot('Assessments');
+            return;
+          }
+          await executeStudentAssignedQuizViewResults(
+            {
+              studentId: String(student),
+              quizId,
+              sessionId: String(resolvedSessionId),
+              classroomId: String(resolvedClassroomId),
+              quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
+            },
+            {
+              navigation: navigationRef.current as { navigate: (screen: string, params?: unknown) => void },
+            },
+          );
+        })();
         break;
+      }
 
       case 'classroom_invite':
         // Classroom invitation - navigate to classes (could add classroom detail screen)
         console.log('➡️ Navigating to ClassesList');
-        (navigationRef.current as any).navigate('ClassesList');
+        navigateRoot('ClassesList');
         break;
 
       case 'announcement':
         // General announcement - navigate to notifications screen
         console.log('➡️ Navigating to Notifications');
-        (navigationRef.current as any).navigate('Notifications');
+        navigateRoot('Notifications');
         break;
 
       case 'general':
@@ -134,14 +181,14 @@ export default function NotificationHandler() {
           const navScreen = user?.role === 'student' ? 'QuizTakingScreen' : 'QuizPreviewScreen';
           console.log(`➡️ Navigating to ${navScreen} (general):`, quizId);
 
-          (navigationRef.current as any).navigate(navScreen, {
+          navigateRoot(navScreen, {
             quizId,
             sessionId,
           });
         } else {
           // Otherwise, go to notifications screen
           console.log('➡️ Navigating to Notifications (general)');
-          (navigationRef.current as any).navigate('Notifications');
+          navigateRoot('Notifications');
         }
         break;
     }

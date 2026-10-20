@@ -2,6 +2,12 @@
  * Analytics helpers — KPI tile generation (ported from Quiz-React KPIBanner)
  */
 import type { QuizListItem } from '../types/quizAnalytics.types';
+import {
+  isStudentAnalyticsCompleted,
+  isStudentAnalyticsMissed,
+  isStudentAnalyticsPendingLike,
+  scoreForStudentAnalyticsDisplay,
+} from './studentAnalyticsClassification';
 
 export type KPIColor = 'green' | 'amber' | 'red' | 'blue' | 'purple';
 
@@ -90,18 +96,16 @@ export function generateKPITiles(data: QuizListItem[] | null | undefined): KPITi
 
 export function generateStudentKPITiles(data: QuizListItem[] | null | undefined): KPITileData[] {
   const items = data ?? [];
-  const completed = items.filter((q) => {
-    const score = q.best_score ?? q.latest_score ?? q.score;
-    return score !== null && score !== undefined;
-  });
-  const pending = items.filter((q) => q.availability_status === 'active' && !q.best_score && !q.latest_score).length;
+  const completed = items.filter(isStudentAnalyticsCompleted);
+  const pending = items.filter(isStudentAnalyticsPendingLike).length;
+  const missed = items.filter(isStudentAnalyticsMissed).length;
+  const scored = completed
+    .map((q) => scoreForStudentAnalyticsDisplay(q))
+    .filter((s): s is number => s != null);
   const avgScore =
-    completed.length > 0
-      ? Math.round(
-          completed.reduce((sum, q) => sum + (q.best_score ?? q.latest_score ?? q.score ?? 0), 0) / completed.length,
-        )
+    scored.length > 0
+      ? Math.round(scored.reduce((sum, s) => sum + s, 0) / scored.length)
       : 0;
-  const missed = items.filter((q) => q.availability_status === 'expired' && !q.best_score).length;
 
   return [
     { title: 'Completed', value: completed.length, color: 'green', icon: 'checkmark-done-outline' },
@@ -111,6 +115,9 @@ export function generateStudentKPITiles(data: QuizListItem[] | null | undefined)
   ];
 }
 
+/**
+ * Default teacher analytics window — matches Quiz-React `AnalyticsPage` (last calendar month → tomorrow, UTC date slice).
+ */
 export function getDefaultDateRange() {
   const today = new Date();
   const lastMonth = new Date();
@@ -121,6 +128,11 @@ export function getDefaultDateRange() {
     from: lastMonth.toISOString().split('T')[0],
     to: tomorrow.toISOString().split('T')[0],
   };
+}
+
+/** Founder acceptance fixture (Aug 2026 assignment) — use via date filter UI, not product default. */
+export function getFounderFixtureAnalyticsDateRange() {
+  return { from: '2026-08-01', to: '2026-10-13' };
 }
 
 export function formatDuration(seconds: number | null | undefined): string {

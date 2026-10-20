@@ -1,0 +1,40 @@
+{
+  "verifiedAt": "2026-10-18T18:32:23.386Z",
+  "apiBase": "https://dev-api.eduvijna.com",
+  "webOrigin": "https://dev.eduvijna.com",
+  "role": "instructor",
+  "multipartField": "files",
+  "steps": [
+    {
+      "label": "mobile_dev_api",
+      "method": "POST",
+      "url": "https://dev-api.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
+      "mimeType": "image/jpeg",
+      "bytes": 20957,
+      "elapsedMs": 50,
+      "status": 503,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "correlationId": "8eeb2c690e9278626abbf11db6159800",
+      "success": false,
+      "mathpixGate": true
+    },
+    {
+      "label": "deployed_web_same_origin",
+      "method": "POST",
+      "url": "https://dev.eduvijna.com/api/v1/batch-ocr-upload",
+      "filename": "edge-markers-portrait.jpg",
+      "mimeType": "image/jpeg",
+      "loginStatus": 200,
+      "loginOk": true,
+      "status": 503,
+      "detail": "Mathpix OCR service is not enabled or not fully configured. Configure MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX.",
+      "success": false,
+      "mathpixGate": true,
+      "elapsedMs": 99
+    }
+  ],
+  "conclusion": "SHARED_MATHPIX_GATE: authorized probes of the same readable image against mobile/dev-api and deployed-web both return HTTP 503 Mathpix configuration. A direct API probe reaching this gate does not alone prove the mobile multipart client is defect-free under every device URI/MIME path; it does confirm the shared backend provider gate blocks generation for both clients today. Mobile keeps images/form values and offers deliberate Retry (no auto-retry loop). Generation is not fixed until image → OCR text → usable assessment succeeds after MATHPIX_API_KEY, MATHPIX_APP_ID, and ENABLE_MATHPIX are configured on the API origin. This workspace has no authorized secret/config write access to enable Mathpix on hosted dev-api.",
+  "generationFixed": false,
+  "relatedStudentInventoryEvidence": "student-classroom-and-ocr-live.json"
+}

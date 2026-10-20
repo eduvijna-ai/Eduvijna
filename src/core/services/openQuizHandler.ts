@@ -15,6 +15,17 @@
  */
 
 import { fetchQuizDetailsBySessionId } from './dashboardApi';
+import { resolveAssignmentClassroomId } from './openQuizAttemptResolution';
+import {
+  buildRecoveryResumeParams,
+  findPendingSubmissionCheckpoint,
+} from './assignedQuizRecovery.service';
+import {
+  executeStudentAssignedQuizViewResults,
+  loadAssignedQuizDataForImmutableRecovery,
+  loadAssignedQuizDataForSession,
+} from './assessmentQuizStart.service';
+import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -69,59 +80,7 @@ interface User {
 interface NavigationAdapter {
   navigate: (screen: string, params?: any) => void;
   alert: (title: string, message: string, buttons?: any[]) => void;
-}
-
-/**
- * Check quiz availability based on start_time and end_time
- * Returns availability status with formatted time strings
- */
-function checkQuizAvailability(quizData: any): {
-  available: boolean;
-  startTime: string;
-  endTime: string;
-  expired?: boolean;
-} {
-  // Only check for assigned quizzes (those with start_time/end_time)
-  if (!quizData?.start_time || !quizData?.end_time) {
-    return { available: true, startTime: '', endTime: '' };
-  }
-
-  const now = new Date();
-  const startTime = new Date(quizData.start_time);
-  const endTime = new Date(quizData.end_time);
-
-  // Format dates for display
-  const formatDateTime = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (now < startTime) {
-    // Quiz hasn't started yet
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-    };
-  }
-
-  if (now > endTime) {
-    // Quiz has ended
-    return {
-      available: false,
-      startTime: formatDateTime(startTime),
-      endTime: formatDateTime(endTime),
-      expired: true,
-    };
-  }
-
-  // Quiz is currently available
-  return { available: true, startTime: '', endTime: '' };
+  onNavigate?: (screen: string, params?: any) => void;
 }
 
 /**
@@ -243,12 +202,17 @@ function normalizeQuizData(quizData: any, sessionId: string): NormalizedQuiz {
  * - Data normalization
  * - Navigation decisions
  */
+export type OpenQuizRequestContext = {
+  quizId?: string;
+};
+
 export async function handleOpenQuiz(
   sessionId: string,
   _source: OpenQuizSource,
   user: User | null,
   navigationAdapter: NavigationAdapter,
-  savePendingSession?: (sessionId: string) => void
+  savePendingSession?: (sessionId: string) => void,
+  requestContext?: OpenQuizRequestContext,
 ): Promise<void> {
   // ==========================================
   // 1. AUTHENTICATION CHECK
@@ -276,11 +240,12 @@ export async function handleOpenQuiz(
     // ==========================================
     console.log('🔍 handleOpenQuiz: Fetching quiz for session:', sessionId);
     
+    const hintedQuizId = Number(requestContext?.quizId);
     const validation = await fetchQuizDetailsBySessionId(
       sessionId,
       user.id,
-      0,
-      user.role as 'instructor' | 'admin' | 'student'
+      Number.isFinite(hintedQuizId) && hintedQuizId > 0 ? hintedQuizId : 0,
+      user.role as 'instructor' | 'admin' | 'student',
     );
     
     console.log('📦 handleOpenQuiz: Received quiz data:', {
@@ -294,7 +259,35 @@ export async function handleOpenQuiz(
     // ==========================================
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
+    if (validation.fetchFailure?.retryable) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'error',
+        title: 'Could not verify quiz',
+        message:
+          validation.fetchFailure.httpStatus === 429
+            ? 'The server is rate-limiting requests. Please wait a moment and try again.'
+            : 'The server is temporarily unavailable. Please try again.',
+        icon: 'cloud-offline-outline',
+      });
+      return;
+    }
+
     if (!validation.exists || !validation.quizData) {
+      navigationAdapter.navigate('QuizStatusScreen', {
+        status: 'not_found',
+        title: 'No Quiz Available',
+        message: 'No quiz is available for you.',
+        icon: 'alert-circle-outline',
+      });
+      return;
+    }
+
+    const untrustedQuizId = Number(requestContext?.quizId);
+    if (
+      Number.isFinite(untrustedQuizId) &&
+      untrustedQuizId > 0 &&
+      Number(validation.quizData.quiz_id) !== untrustedQuizId
+    ) {
       navigationAdapter.navigate('QuizStatusScreen', {
         status: 'not_found',
         title: 'No Quiz Available',
@@ -321,16 +314,101 @@ export async function handleOpenQuiz(
     const isTeacher = user.role === 'instructor' || user.role === 'admin';
 
     // ==========================================
-    // 6. STUDENT FLOW - Complete validation chain
+    // 6. TEACHER FLOW - Preview (before public/student branch)
+    // ==========================================
+    if (isTeacher) {
+      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
+
+      navigationAdapter.navigate('QuizPreviewScreen', {
+        quiz: normalizedQuiz,
+        quizId: normalizedQuiz.quizId,
+        sessionId: normalizedQuiz.sessionId,
+        quizData: normalizedQuiz,
+      });
+      return;
+    }
+
+    // ==========================================
+    // 7. STUDENT / PUBLIC FLOW - Complete validation chain
     // ==========================================
     if (isStudent || quizData.is_public === true) {
-      // A. Already attempted - show results
+      let pendingCheckpoint;
+      try {
+        pendingCheckpoint = await findPendingSubmissionCheckpoint(
+          user.id,
+          quizData.quiz_id,
+          sessionId,
+        );
+      } catch (probeError) {
+        if (isAssignedQuizRecoveryProbeError(probeError)) {
+          navigationAdapter.alert(
+            'Could not open quiz',
+            probeError.message,
+            [
+              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+          return;
+        }
+        throw probeError;
+      }
+      if (pendingCheckpoint) {
+        const recovery = buildRecoveryResumeParams(pendingCheckpoint);
+        const startCtx = {
+          correctQuizId: quizData.quiz_id,
+          correctSessionId: sessionId,
+          correctClassroomId: quizData.classroom_id || quizData.class_id || '',
+          attemptData: validation.quizData,
+        };
+        const mergedQuiz = recovery
+          ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
+          : await loadAssignedQuizDataForSession(startCtx);
+        const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
+        const screenParams = {
+          quiz: normalizedQuiz,
+          quizId: normalizedQuiz.quizId,
+          sessionId: normalizedQuiz.sessionId,
+          classroomId: normalizedQuiz.classroomId,
+          quizData: normalizedQuiz,
+          is_public: quizData.is_public,
+          submissionRecovery: recovery,
+        };
+        if (navigationAdapter.onNavigate) {
+          navigationAdapter.onNavigate('QuizTakingScreen', {
+            ...screenParams,
+            quiz: normalizedQuiz,
+            is_public: quizData.is_public,
+          });
+        } else {
+          navigationAdapter.navigate('QuizTakingScreen', screenParams);
+        }
+        return;
+      }
+
+      // A. Already attempted — shared recovery-aware View Results resolver
       if (validation.isAttempted) {
-        navigationAdapter.navigate('QuizResultsScreen', {
-          quizId: quizData.quiz_id,
-          sessionId: quizData.session_id,
-          attemptData: validation.attemptData,
-        });
+        const resolvedSessionId = sessionId || quizData.session_id;
+        const classroomId = resolveAssignmentClassroomId(
+          resolvedSessionId,
+          validation.attemptData?.classroom_id,
+          quizData.classroom_id,
+          quizData.class_id,
+        );
+        await executeStudentAssignedQuizViewResults(
+          {
+            studentId: String(user.id),
+            quizId: quizData.quiz_id,
+            sessionId: resolvedSessionId,
+            classroomId: classroomId ?? '',
+            attemptData: validation.attemptData ?? quizData,
+            quizName: quizData.topic || quizData.title,
+          },
+          {
+            navigation: { navigate: (screen, params) => navigationAdapter.navigate(screen, params) },
+            onNavigate: navigationAdapter.onNavigate,
+          },
+        );
         return;
       }
 
@@ -396,23 +474,6 @@ export async function handleOpenQuiz(
         classroomId: normalizedQuiz.classroomId,
         quizData: normalizedQuiz,
         is_public: quizData.is_public,
-      });
-      return;
-    }
-
-    // ==========================================
-    // 7. TEACHER FLOW - Preview quiz
-    // ==========================================
-    if (isTeacher) {
-      // Normalize quiz data for teacher preview
-      const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
-
-      navigationAdapter.navigate('QuizPreviewScreen', {
-        quiz: normalizedQuiz,
-        // Legacy params for backward compatibility
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        quizData: normalizedQuiz,
       });
       return;
     }
