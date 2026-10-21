@@ -29,7 +29,7 @@ export async function getFCMToken(): Promise<string | null> {
 
   try {
     const token = await FirebasePush.getToken();
-    console.log('✅ FCM Token obtained:', token);
+    console.log('FCM token obtained');
     return token;
   } catch (error) {
     console.error('❌ Error getting FCM token:', error);

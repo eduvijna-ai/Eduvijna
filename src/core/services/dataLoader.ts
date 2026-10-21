@@ -181,7 +181,7 @@ export async function loadAllData(forceRefresh: boolean = false): Promise<void> 
   
   console.log('═══════════════════════════════════════════════');
   console.log('🚀 LOADING ALL DATA FOR USER');
-  console.log(`👤 User: ${user.username || user.email}`);
+  console.log('Loading data for authenticated user');
   console.log(`🎭 Role: ${user.role}`);
   console.log(`🔄 Force Refresh: ${forceRefresh}`);
   console.log('═══════════════════════════════════════════════');

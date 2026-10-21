@@ -29,6 +29,11 @@ import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@c
 import type { UserProfile } from '@core/types';
 import { getDisplayName } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
+import {
+  PRIVACY_CONTACT_EMAIL,
+  openDeletionRequestEmail,
+  openPrivacyPolicy,
+} from '@core/config/legal';
 
 export default function Profile({ navigation }: any) {
   const { user: authUser, logout } = useAuth();
@@ -268,9 +273,8 @@ export default function Profile({ navigation }: any) {
         fcmToken ? `🔥 FCM Token:\n${fcmToken}` : '',
       ].filter(Boolean).join('\n\n');
 
-      console.log('📱 Expo Push Token:', expoToken);
-      console.log('🔥 FCM Device Token:', fcmToken);
-      
+      // Do not log push tokens (device identifiers) — Play Data safety remediation.
+
       const alertButtons = [];
       
       if (expoToken) {
@@ -368,7 +372,10 @@ export default function Profile({ navigation }: any) {
             <Ionicons name="warning" size={48} color="#F44336" style={{ alignSelf: 'center', marginBottom: 12 }} />
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Account</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              This action cannot be undone. All your data will be permanently deleted.
+              Account deletion is handled by our team after identity verification — it is not
+              automatic in the app. Email {PRIVACY_CONTACT_EMAIL} from your account email, or use
+              the button below to open a pre-filled request in your mail app. Nothing is deleted
+              until you send that email and the team confirms.
             </Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -379,12 +386,22 @@ export default function Profile({ navigation }: any) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalDeleteButton]}
-                onPress={() => {
+                onPress={async () => {
                   setShowDeleteConfirm(false);
-                  Alert.alert('Feature Not Implemented', 'Account deletion is not yet available.');
+                  const opened = await openDeletionRequestEmail({
+                    email: formData.email,
+                    username: formData.username,
+                    id: formData.id,
+                  });
+                  if (!opened) {
+                    Alert.alert(
+                      'Request deletion by email',
+                      `Please email ${PRIVACY_CONTACT_EMAIL} from your account email with the subject "Account Deletion Request".`,
+                    );
+                  }
                 }}
               >
-                <Text style={styles.modalDeleteText}>Delete</Text>
+                <Text style={styles.modalDeleteText}>Request by email</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -721,6 +738,53 @@ export default function Profile({ navigation }: any) {
                 <Ionicons name="chevron-forward" size={20} color="#999" />
               </View>
             </TouchableOpacity> */}
+          </View>
+        </View>
+      )}
+
+      {/* Privacy & Account — reachable legal/deletion entries (Play Data safety) */}
+      {!isEditing && (
+        <View style={[styles.card, { backgroundColor: colors.cardBackground }]}>
+          <View style={[styles.cardHeader, { borderBottomColor: colors.border }]}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} />
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Privacy &amp; Account</Text>
+          </View>
+          <View style={styles.preferencesList}>
+            <TouchableOpacity
+              style={[styles.preferenceItem, { backgroundColor: colors.inputBackground }]}
+              onPress={async () => {
+                const opened = await openPrivacyPolicy();
+                if (!opened) {
+                  Alert.alert('Privacy Policy', 'Could not open the Privacy Policy. Please check your connection and try again.');
+                }
+              }}
+            >
+              <View style={styles.preferenceLeft}>
+                <View style={[styles.preferenceIconCircle, { backgroundColor: isDark ? colors.primary + '20' : '#E8F4F8' }]}>
+                  <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.preferenceLabel, { color: colors.text }]}>Privacy Policy</Text>
+                  <Text style={[styles.preferenceSubtext, { color: colors.textSecondary }]}>How EduVijna collects and uses data</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.preferenceItem, { backgroundColor: colors.inputBackground }]}
+              onPress={() => setShowDeleteConfirm(true)}
+            >
+              <View style={styles.preferenceLeft}>
+                <View style={[styles.preferenceIconCircle, { backgroundColor: '#FDECEA' }]}>
+                  <Ionicons name="trash-outline" size={18} color="#F44336" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.preferenceLabel, { color: '#F44336' }]}>Delete Account</Text>
+                  <Text style={[styles.preferenceSubtext, { color: colors.textSecondary }]}>Request deletion by verified email</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
       )}

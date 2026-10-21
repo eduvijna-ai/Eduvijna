@@ -123,7 +123,7 @@ async function getToken(): Promise<string | null> {
     
     try {
       const devicePushToken = await Notifications.getDevicePushTokenAsync();
-      console.log('🔍 Device push token response:', devicePushToken);
+      console.log('Device push token received');
       
       if (devicePushToken && typeof devicePushToken === 'object' && 'data' in devicePushToken) {
         token = devicePushToken.data;
@@ -143,7 +143,7 @@ async function getToken(): Promise<string | null> {
       
       if (expoPushToken?.data) {
         token = expoPushToken.data;
-        console.log('⚠️ Using Expo Push Token as fallback:', token);
+        console.log('Using Expo Push Token as fallback');
       }
     }
 
@@ -193,7 +193,7 @@ async function registerDevice(token: string): Promise<boolean> {
     const tokenType = token.startsWith('ExponentPushToken') ? 'Expo (FALLBACK)' : 'FCM (NATIVE)';
     console.log('📤 Registering device with backend...');
     console.log('📦 Token type:', tokenType);
-    console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+    console.log('Registering device (token redacted)');
     
     // API endpoint: POST /api/notifications/devices
     const response = await apiClient.post('/api/notifications/devices', requestBody);
@@ -402,7 +402,7 @@ async function enablePushNotifications(): Promise<{
     const isExpoToken = token.startsWith('ExponentPushToken');
     const tokenType = isExpoToken ? 'Expo Push Token (fallback)' : 'Native FCM Token';
     
-    console.log(`✅ ${tokenType} received:`, token.substring(0, 30) + '...');
+    console.log(`${tokenType} received (redacted)`);
 
     // Register with backend using FCM token
     await registerDevice(token);

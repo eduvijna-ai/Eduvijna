@@ -1,7 +1,17 @@
 /** Settings — preferences (theme, notifications) + account + about. screens.md "Settings". */
 
 import React, { useState } from 'react';
-import { View, Text, Switch, StyleSheet } from 'react-native';
+import { View, Text, Switch, StyleSheet, Alert } from 'react-native';
+import { openDeletionRequestEmail, openPrivacyPolicy, PRIVACY_CONTACT_EMAIL } from '@core/config/legal';
+
+async function handlePrivacyPolicy() {
+  const opened = await openPrivacyPolicy();
+  if (!opened) Alert.alert('Privacy Policy', 'Could not open the Privacy Policy. Please check your connection and try again.');
+}
+async function handleDeletionRequest() {
+  const opened = await openDeletionRequestEmail();
+  if (!opened) Alert.alert('Request Account Deletion', `Please email ${PRIVACY_CONTACT_EMAIL} with the subject "Account Deletion Request". Nothing is deleted until the team verifies and confirms.`);
+}
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import {
@@ -72,7 +82,8 @@ export default function SettingsScreen() {
         <SectionHeader title="Account" />
         <SurfaceCard padded={false} style={styles.card}>
           <ListItem icon="lock-closed-outline" iconAccent="teal" title="Change Password" showChevron />
-          <ListItem icon="shield-checkmark-outline" iconAccent="green" title="Privacy" showChevron />
+          <ListItem icon="shield-checkmark-outline" iconAccent="green" title="Privacy Policy" showChevron onPress={handlePrivacyPolicy} />
+          <ListItem icon="trash-outline" iconAccent="orange" title="Request Account Deletion" subtitle="By verified email" showChevron onPress={handleDeletionRequest} />
           <ListItem icon="language-outline" iconAccent="blue" title="Language" subtitle="English" divider={false} showChevron />
         </SurfaceCard>
       </View>
