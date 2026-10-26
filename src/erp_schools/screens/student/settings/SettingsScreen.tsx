@@ -2,17 +2,13 @@
 
 import React, { useState } from 'react';
 import { View, Text, Switch, StyleSheet, Alert } from 'react-native';
-import { openDeletionRequestEmail, openPrivacyPolicy, PRIVACY_CONTACT_EMAIL } from '@core/config/legal';
-
-async function handlePrivacyPolicy() {
-  const opened = await openPrivacyPolicy();
-  if (!opened) Alert.alert('Privacy Policy', 'Could not open the Privacy Policy. Please check your connection and try again.');
-}
-async function handleDeletionRequest() {
-  const opened = await openDeletionRequestEmail();
-  if (!opened) Alert.alert('Request Account Deletion', `Please email ${PRIVACY_CONTACT_EMAIL} with the subject "Account Deletion Request". Nothing is deleted until the team verifies and confirms.`);
-}
 import { Ionicons } from '@expo/vector-icons';
+import {
+  accountDeletionOpenFailureMessage,
+  openAccountDeletionPage,
+  openPrivacyPolicy,
+  privacyPolicyOpenFailureMessage,
+} from '@core/config/legal';
 import { useTheme } from '@context/ThemeContext';
 import {
   TeacherScreen,
@@ -23,6 +19,15 @@ import {
 } from '../../../components';
 import { accentColors, type AccentKey } from '../../../theme/accents';
 import { useTeacherTheme } from '../../../theme/useTeacherTheme';
+
+async function handlePrivacyPolicy() {
+  const opened = await openPrivacyPolicy();
+  if (!opened) Alert.alert('Privacy Policy', privacyPolicyOpenFailureMessage());
+}
+async function handleDeletionRequest() {
+  const opened = await openAccountDeletionPage();
+  if (!opened) Alert.alert('Open deletion-request page', accountDeletionOpenFailureMessage());
+}
 
 function ToggleRow({
   icon,
@@ -83,7 +88,7 @@ export default function SettingsScreen() {
         <SurfaceCard padded={false} style={styles.card}>
           <ListItem icon="lock-closed-outline" iconAccent="teal" title="Change Password" showChevron />
           <ListItem icon="shield-checkmark-outline" iconAccent="green" title="Privacy Policy" showChevron onPress={handlePrivacyPolicy} />
-          <ListItem icon="trash-outline" iconAccent="orange" title="Request Account Deletion" subtitle="By verified email" showChevron onPress={handleDeletionRequest} />
+          <ListItem icon="trash-outline" iconAccent="orange" title="Request Account Deletion" subtitle="Opens deletion-request page" showChevron onPress={handleDeletionRequest} />
           <ListItem icon="language-outline" iconAccent="blue" title="Language" subtitle="English" divider={false} showChevron />
         </SurfaceCard>
       </View>

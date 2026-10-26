@@ -30,9 +30,10 @@ import type { UserProfile } from '@core/types';
 import { getDisplayName } from '@core/types';
 import PushNotificationService from '@core/services/PushNotificationService';
 import {
-  PRIVACY_CONTACT_EMAIL,
-  openDeletionRequestEmail,
+  accountDeletionOpenFailureMessage,
+  openAccountDeletionPage,
   openPrivacyPolicy,
+  privacyPolicyOpenFailureMessage,
 } from '@core/config/legal';
 
 export default function Profile({ navigation }: any) {
@@ -372,10 +373,9 @@ export default function Profile({ navigation }: any) {
             <Ionicons name="warning" size={48} color="#F44336" style={{ alignSelf: 'center', marginBottom: 12 }} />
             <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Account</Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
-              Account deletion is handled by our team after identity verification — it is not
-              automatic in the app. Email {PRIVACY_CONTACT_EMAIL} from your account email, or use
-              the button below to open a pre-filled request in your mail app. Nothing is deleted
-              until you send that email and the team confirms.
+              The next page explains how to request account deletion. Opening it does not submit a
+              request or delete your account. Nothing is deleted until you follow the instructions
+              on that page and the team confirms.
             </Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -388,20 +388,13 @@ export default function Profile({ navigation }: any) {
                 style={[styles.modalButton, styles.modalDeleteButton]}
                 onPress={async () => {
                   setShowDeleteConfirm(false);
-                  const opened = await openDeletionRequestEmail({
-                    email: formData.email,
-                    username: formData.username,
-                    id: formData.id,
-                  });
+                  const opened = await openAccountDeletionPage();
                   if (!opened) {
-                    Alert.alert(
-                      'Request deletion by email',
-                      `Please email ${PRIVACY_CONTACT_EMAIL} from your account email with the subject "Account Deletion Request".`,
-                    );
+                    Alert.alert('Open deletion-request page', accountDeletionOpenFailureMessage());
                   }
                 }}
               >
-                <Text style={styles.modalDeleteText}>Request by email</Text>
+                <Text style={styles.modalDeleteText}>Open deletion-request page</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -755,7 +748,7 @@ export default function Profile({ navigation }: any) {
               onPress={async () => {
                 const opened = await openPrivacyPolicy();
                 if (!opened) {
-                  Alert.alert('Privacy Policy', 'Could not open the Privacy Policy. Please check your connection and try again.');
+                  Alert.alert('Privacy Policy', privacyPolicyOpenFailureMessage());
                 }
               }}
             >
@@ -780,7 +773,7 @@ export default function Profile({ navigation }: any) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.preferenceLabel, { color: '#F44336' }]}>Delete Account</Text>
-                  <Text style={[styles.preferenceSubtext, { color: colors.textSecondary }]}>Request deletion by verified email</Text>
+                  <Text style={[styles.preferenceSubtext, { color: colors.textSecondary }]}>Opens the deletion-request page</Text>
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
