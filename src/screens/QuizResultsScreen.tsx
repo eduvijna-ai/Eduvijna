@@ -437,6 +437,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           questionText={question.question}
           options={question.options}
           selectedAnswer={userAnswers[index] || ''}
+          correctAnswer={
+            typeof question.correctOptionIndex === 'number' &&
+            question.options?.[question.correctOptionIndex]
+              ? question.options[question.correctOptionIndex]
+              : question.correctAnswer || question.answer || undefined
+          }
           clearTrigger={false}
           colors={{
             text: theme.colors.textPrimary,

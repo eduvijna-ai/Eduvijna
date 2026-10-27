@@ -136,9 +136,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const [page, setPage] = useState(1);
   /** Internal book metadata for APIs only — not shown in generation UI. */
-  const [classId, setClassId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [lesson, setLesson] = useState('');
+  const [classId, setClassId] = useState(String(restoredForm?.classId ?? ''));
+  const [subjectId, setSubjectId] = useState(String(restoredForm?.subjectId ?? ''));
+  const [classMeta, setClassMeta] = useState(String(restoredForm?.classValue ?? ''));
+  const [subjectMeta, setSubjectMeta] = useState(String(restoredForm?.subject ?? ''));
+  const [lesson, setLesson] = useState(String(restoredForm?.lesson ?? ''));
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
     restoredForm?.difficulty ?? route?.params?.presetDifficulty ?? 'medium',
   );
@@ -220,7 +222,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    // Ignore restored class/subject/lesson — generation UI no longer exposes them.
+    if (restored.classValue) setClassMeta(restored.classValue);
+    if (restored.classId) setClassId(restored.classId);
+    if (restored.subject) setSubjectMeta(restored.subject);
+    if (restored.subjectId) setSubjectId(restored.subjectId);
+    if (restored.lesson) setLesson(restored.lesson);
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
     }
@@ -228,11 +234,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   useEffect(() => {
     if (!bookState) return;
-    setLesson(defaultCameraLessonTitle(bookState));
+    if (!lesson.trim()) setLesson(defaultCameraLessonTitle(bookState));
     if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
     }
-  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState]);
+  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState, lesson]);
 
   const persistBook = useCallback(async (next: DocumentUploadBook) => {
     const withIdentity =
@@ -247,10 +253,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     navigation.setParams?.({ book: withIdentity });
   }, [navigation]);
 
-  // Generation UI no longer exposes Class/Subject/Lesson — keep optional API
-  // fields empty unless book/library metadata already provides them.
-  const resolvedClass = '';
-  const resolvedSubject = '';
+  // Generation UI may hide Class/Subject, but APIs still need metadata when available
+  // (workspace preset / restored form / route presets) — never invent values.
+  const workspacePreset = readDocumentWorkspacePreset(route);
+  const resolvedClass =
+    classMeta.trim() ||
+    String(route?.params?.presetClass ?? workspacePreset?.classValue ?? '').trim();
+  const resolvedSubject =
+    subjectMeta.trim() ||
+    String(route?.params?.presetSubject ?? workspacePreset?.subject ?? '').trim();
   const resolvedLesson = lesson.trim() || (bookState ? defaultCameraLessonTitle(bookState) : '');
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {

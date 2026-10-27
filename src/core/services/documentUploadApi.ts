@@ -1033,7 +1033,8 @@ export async function waitForLibraryBookReady(params: {
     await sleepMs(pollMs);
   }
 
-  if (last && last.totalPages >= 1) {
+  // Do not soft-succeed with incomplete page counts — that produces empty generation.
+  if (last && last.totalPages >= expected) {
     return last;
   }
   throw new Error(

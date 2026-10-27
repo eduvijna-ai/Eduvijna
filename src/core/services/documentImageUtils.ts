@@ -22,12 +22,19 @@ export type NormalizedDocumentImage = {
   height?: number;
 };
 
-function getImageSize(uri: string): Promise<{ width: number; height: number }> {
+function getImageSize(uri: string, timeoutMs = 8000): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('getImageSize timed out')), timeoutMs);
     RNImage.getSize(
       uri,
-      (width, height) => resolve({ width, height }),
-      (err) => reject(err),
+      (width, height) => {
+        clearTimeout(timer);
+        resolve({ width, height });
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
     );
   });
 }

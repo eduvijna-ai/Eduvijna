@@ -772,7 +772,7 @@ function AppContent() {
     // Mobile: Use React Navigation with authentication check and deep linking
     const linking = {
       enabled: isAuthenticated,
-      prefixes: ['eduvijna://', 'https://ui.eduvijna.com'],
+      prefixes: ['eduvijna://', 'https://app.eduvijna.com', 'https://ui.eduvijna.com'],
       config: {
         screens: {
           Main: {
