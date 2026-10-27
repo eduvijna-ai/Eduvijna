@@ -11,7 +11,7 @@ Environment-configuration only. No application bug fixes. No assessment / naviga
 | Physical Android LAN | **PENDING** (separate; not required for READY) |
 | Branch | `chore/expo-lan-emulator-setup-20261027` |
 | Baseline SHA | `0e81f9e3dfb8b88f4dab6c7b7158819c602b9a2c` |
-| Setup commit | *(filled after commit)* |
+| Setup commit | `4dc21f62c1f6b13f5468f1a6f65c3d634cdecb4a` |
 | Captured LAN IP (this host session) | `10.147.219.97` (Wi-Fi) — re-detect every session |
 | Metro port | `8082` |
 
