@@ -200,6 +200,15 @@ function AppContent() {
             (navigationRef.current as any).navigate(screen, params);
           }
         },
+        replace: (screen: string, params?: any) => {
+          const nav = navigationRef.current as any;
+          if (!nav) return;
+          if (typeof nav.replace === 'function') {
+            nav.replace(screen, params);
+            return;
+          }
+          nav.navigate(screen, params);
+        },
         alert: Alert.alert,
       };
       if (!navigationRef.isReady()) {
@@ -432,6 +441,15 @@ function AppContent() {
         if (navigationRef.isReady()) {
           (navigationRef.current as any).navigate(screen, params);
         }
+      },
+      replace: (screen: string, params?: any) => {
+        const nav = navigationRef.current as any;
+        if (!navigationRef.isReady() || !nav) return;
+        if (typeof nav.replace === 'function') {
+          nav.replace(screen, params);
+          return;
+        }
+        nav.navigate(screen, params);
       },
       alert: Alert.alert,
     };

@@ -377,8 +377,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         <View style={styles.optionsList}>
           {options.length > 0 && options.map((option: string, optIndex: number) => {
             const optionLabel = String.fromCharCode(65 + optIndex);
-            const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options);
-            const isCorrectAnswer = isOptionTheCorrectAnswer(option, question);
+            const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options, optIndex);
+            const isCorrectAnswer = isOptionTheCorrectAnswer(option, question, optIndex);
 
             let optBg = theme.colors.surfaceAlt;
             let optBorder = theme.colors.border;

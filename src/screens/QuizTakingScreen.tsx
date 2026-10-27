@@ -905,11 +905,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       const questionsForPersistence = quiz.questions.map((question, index) => {
         const resolved = authoritativeCorrect[index];
         if (!resolved) return question;
-        return {
-          ...question,
-          correctAnswer: resolved,
-          answer: resolved,
-        };
+        return withAuthoritativeCorrectAnswer(question, resolved);
       });
 
       const correctCount = Object.values(results).filter(Boolean).length;

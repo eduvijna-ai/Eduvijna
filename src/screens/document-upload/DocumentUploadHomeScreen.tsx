@@ -439,24 +439,47 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   };
 
   const handleCameraTilePress = async () => {
+    let cancelled = false;
     try {
       setError('');
       setSuccess('');
       setCapturing(true);
+      setSuccess('Opening camera…');
 
       const captured = await captureDocumentImage();
-      if (!captured) return;
+      if (!captured) {
+        cancelled = true;
+        return;
+      }
 
-      await processCameraCapture({
-        uri: captured.uri,
-        name: captured.name,
-        mimeType: captured.mimeType,
-        size: captured.fileSize,
-      });
+      setSuccess('Processing captured page…');
+      // Bound post-capture work so a hung compress/persist cannot leave an endless spinner.
+      await Promise.race([
+        processCameraCapture({
+          uri: captured.uri,
+          name: captured.name,
+          mimeType: captured.mimeType,
+          size: captured.fileSize,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'Processing the captured page timed out. Your photo may still be available — try again or use Gallery.',
+                ),
+              ),
+            60000,
+          ),
+        ),
+      ]);
+      setSuccess('');
     } catch (e: any) {
+      setSuccess('');
       setError(normalizeErrorMessage(e, 'Failed to capture document.'));
     } finally {
       setCapturing(false);
+      if (cancelled) setSuccess('');
     }
   };
 

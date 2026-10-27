@@ -777,7 +777,45 @@ export async function resolveBookPageCount(
   return match && match.totalPages > 0 ? match.totalPages : null;
 }
 
-const normalizeQuestions = (questionsRaw: any[]): Array<{
+/** Unwrap nested API question shapes (flat, quiz.*, questions.quizzes). */
+function unwrapRawQuestion(q: any): {
+  id?: string;
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  explanation: string | null;
+} {
+  const nested = q?.quiz && typeof q.quiz === 'object' ? q.quiz : q;
+  const optionsRaw = nested?.options ?? q?.options;
+  const options = Array.isArray(optionsRaw)
+    ? optionsRaw.map((o: any) => String(o ?? '').trim()).filter(Boolean)
+    : [];
+  const correctRaw = String(
+    nested?.correctAnswer ??
+      nested?.answer ??
+      q?.correctAnswer ??
+      q?.answer ??
+      '',
+  ).trim();
+  return {
+    id: q?.id != null ? String(q.id) : nested?.id != null ? String(nested.id) : undefined,
+    question: String(nested?.question ?? q?.question ?? '').trim(),
+    options,
+    correctAnswer: correctRaw,
+    explanation:
+      nested?.explanation != null
+        ? String(nested.explanation)
+        : q?.explanation != null
+          ? String(q.explanation)
+          : null,
+  };
+}
+
+/**
+ * Normalize generation API questions without inventing a default letter key.
+ * Accepts letter (A–D) or full option text; drops empty/invalid items.
+ */
+export const normalizeQuestions = (questionsRaw: any[]): Array<{
   id: string;
   question: string;
   options: string[];
@@ -785,24 +823,47 @@ const normalizeQuestions = (questionsRaw: any[]): Array<{
   answer: string;
   explanation: string | null;
 }> => {
-  if (!Array.isArray(questionsRaw)) return [];
+  const list = Array.isArray(questionsRaw)
+    ? questionsRaw
+    : Array.isArray((questionsRaw as any)?.quizzes)
+      ? (questionsRaw as any).quizzes
+      : [];
 
-  return questionsRaw
+  return list
     .map((q: any, idx: number) => {
-      const options = Array.isArray(q?.options) ? q.options.map((o: any) => String(o ?? '').trim()) : [];
-      const correct = String(q?.correctAnswer ?? q?.answer ?? 'A').trim().toUpperCase();
-      const safeCorrect = ['A', 'B', 'C', 'D'].includes(correct) ? correct : 'A';
+      const unwrapped = unwrapRawQuestion(q);
+      const letter =
+        unwrapped.correctAnswer.length === 1 && /^[A-Da-d]$/.test(unwrapped.correctAnswer)
+          ? unwrapped.correctAnswer.toUpperCase()
+          : '';
+      const correctAnswer = letter || unwrapped.correctAnswer;
       return {
-        id: String(q?.id ?? `du-q-${idx}`),
-        question: String(q?.question ?? '').trim(),
-        options,
-        correctAnswer: safeCorrect,
-        answer: safeCorrect,
-        explanation: q?.explanation ? String(q.explanation) : null,
+        id: unwrapped.id ?? `du-q-${idx}`,
+        question: unwrapped.question,
+        options: unwrapped.options,
+        correctAnswer,
+        answer: correctAnswer,
+        explanation: unwrapped.explanation,
       };
     })
-    .filter((q) => q.question.length > 0 && q.options.length >= 2);
+    .filter(
+      (q: {
+        question: string;
+        options: string[];
+      }) => q.question.length > 0 && q.options.length >= 2,
+    );
 };
+
+/** Pull question arrays from heterogeneous generate-from-book / multimodal payloads. */
+export function extractQuestionsPayload(payload: any): any[] {
+  if (!payload || typeof payload !== 'object') return [];
+  if (Array.isArray(payload.questions)) return payload.questions;
+  if (Array.isArray(payload.quiz)) return payload.quiz;
+  if (Array.isArray(payload?.questions?.quizzes)) return payload.questions.quizzes;
+  if (Array.isArray(payload?.data?.questions)) return payload.data.questions;
+  if (Array.isArray(payload?.result?.questions)) return payload.result.questions;
+  return [];
+}
 
 export async function uploadDocumentToRag(params: {
   fileUri: string;
@@ -1122,8 +1183,16 @@ export async function generateFromBook(params: {
   });
 
   const payload = response?.data ?? {};
+  const questions = normalizeQuestions(extractQuestionsPayload(payload));
+  if (!questions.length) {
+    const apiError = String(payload?.error || payload?.message || '').trim();
+    throw new Error(
+      apiError ||
+        'Assessment generation returned no questions. Please try different pages or configuration.',
+    );
+  }
   return {
-    questions: normalizeQuestions(payload?.questions || []),
+    questions,
     rawContent: String(payload?.raw_content || ''),
     raw: payload,
   };
@@ -1207,7 +1276,14 @@ export async function generateMultimodalAssessmentFromDocument(params: GenerateM
   });
 
   const payload = response?.data ?? {};
-  const questions = normalizeQuestions(payload?.questions || []);
+  const questions = normalizeQuestions(extractQuestionsPayload(payload));
+  if (!questions.length) {
+    const apiError = String(payload?.error || payload?.message || '').trim();
+    throw new Error(
+      apiError ||
+        'Assessment generation returned no questions. Please try another file or configuration.',
+    );
+  }
 
   return {
     quizData: {

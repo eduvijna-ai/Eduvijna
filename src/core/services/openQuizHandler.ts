@@ -79,8 +79,18 @@ interface User {
 
 interface NavigationAdapter {
   navigate: (screen: string, params?: any) => void;
+  /** Prefer replace when leaving QuizLoadingScreen so it cannot strand the stack. */
+  replace?: (screen: string, params?: any) => void;
   alert: (title: string, message: string, buttons?: any[]) => void;
   onNavigate?: (screen: string, params?: any) => void;
+}
+
+function leaveLoading(navigationAdapter: NavigationAdapter, screen: string, params?: any): void {
+  if (typeof navigationAdapter.replace === 'function') {
+    navigationAdapter.replace(screen, params);
+    return;
+  }
+  navigationAdapter.navigate(screen, params);
 }
 
 /**
@@ -228,7 +238,7 @@ export async function handleOpenQuiz(
   // ==========================================
   // 2. SHOW LOADING SCREEN
   // ==========================================
-  navigationAdapter.navigate('QuizLoadingScreen', {
+  leaveLoading(navigationAdapter, 'QuizLoadingScreen', {
     message: 'Validating quiz...',
   });
 
@@ -260,7 +270,7 @@ export async function handleOpenQuiz(
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
     if (validation.fetchFailure?.retryable) {
-      navigationAdapter.navigate('QuizStatusScreen', {
+      leaveLoading(navigationAdapter, 'QuizStatusScreen', {
         status: 'error',
         title: 'Could not verify quiz',
         message:
@@ -273,7 +283,7 @@ export async function handleOpenQuiz(
     }
 
     if (!validation.exists || !validation.quizData) {
-      navigationAdapter.navigate('QuizStatusScreen', {
+      leaveLoading(navigationAdapter, 'QuizStatusScreen', {
         status: 'not_found',
         title: 'No Quiz Available',
         message: 'No quiz is available for you.',
@@ -288,7 +298,7 @@ export async function handleOpenQuiz(
       untrustedQuizId > 0 &&
       Number(validation.quizData.quiz_id) !== untrustedQuizId
     ) {
-      navigationAdapter.navigate('QuizStatusScreen', {
+      leaveLoading(navigationAdapter, 'QuizStatusScreen', {
         status: 'not_found',
         title: 'No Quiz Available',
         message: 'No quiz is available for you.',
@@ -319,7 +329,7 @@ export async function handleOpenQuiz(
     if (isTeacher) {
       const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
 
-      navigationAdapter.navigate('QuizPreviewScreen', {
+      leaveLoading(navigationAdapter, 'QuizPreviewScreen', {
         quiz: normalizedQuiz,
         quizId: normalizedQuiz.quizId,
         sessionId: normalizedQuiz.sessionId,
@@ -345,8 +355,17 @@ export async function handleOpenQuiz(
             'Could not open quiz',
             probeError.message,
             [
-              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
-              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Assessments',
+                onPress: () => leaveLoading(navigationAdapter, 'Assessments'),
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                // Cancel must leave QuizLoadingScreen — never strand "Validating quiz..."
+                onPress: () =>
+                  leaveLoading(navigationAdapter, 'Main', { screen: 'Dashboard' }),
+              },
             ],
           );
           return;
@@ -381,7 +400,7 @@ export async function handleOpenQuiz(
             is_public: quizData.is_public,
           });
         } else {
-          navigationAdapter.navigate('QuizTakingScreen', screenParams);
+          leaveLoading(navigationAdapter, 'QuizTakingScreen', screenParams);
         }
         return;
       }
@@ -429,7 +448,7 @@ export async function handleOpenQuiz(
         
         // Quiz not started yet
         if (now < startTime) {
-          navigationAdapter.navigate('QuizStatusScreen', {
+          leaveLoading(navigationAdapter, 'QuizStatusScreen', {
             status: 'scheduled',
             title: 'Quiz Not Yet Available',
             message: `This quiz will be available between:\n${new Date(startTime).toLocaleString()} and ${new Date(endTime).toLocaleString()}`,
@@ -442,7 +461,7 @@ export async function handleOpenQuiz(
         
         // Quiz expired
         if (now > endTime) {
-          navigationAdapter.navigate('QuizStatusScreen', {
+          leaveLoading(navigationAdapter, 'QuizStatusScreen', {
             status: 'expired',
             title: 'Quiz Expired',
             message: `This quiz was available until:\n${new Date(endTime).toLocaleString()}`,
@@ -466,7 +485,7 @@ export async function handleOpenQuiz(
         firstQuestion: normalizedQuiz.questions[0]?.question.substring(0, 50)
       });
 
-      navigationAdapter.navigate('QuizTakingScreen', {
+      leaveLoading(navigationAdapter, 'QuizTakingScreen', {
         quiz: normalizedQuiz,
         // Legacy params for backward compatibility (can be removed later)
         quizId: normalizedQuiz.quizId,
@@ -481,7 +500,7 @@ export async function handleOpenQuiz(
     // ==========================================
     // 8. FALLBACK - Unknown role
     // ==========================================
-    navigationAdapter.navigate('QuizStatusScreen', {
+    leaveLoading(navigationAdapter, 'QuizStatusScreen', {
       status: 'error',
       title: 'Error',
       message: 'Unable to process quiz request.',
@@ -489,7 +508,7 @@ export async function handleOpenQuiz(
     });
   } catch (error) {
     console.error('❌ Error in handleOpenQuiz:', error);
-    navigationAdapter.navigate('QuizStatusScreen', {
+    leaveLoading(navigationAdapter, 'QuizStatusScreen', {
       status: 'error',
       title: 'Error Loading Quiz',
       message: 'Unable to load quiz details. Please try again later.',

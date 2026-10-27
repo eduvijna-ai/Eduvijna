@@ -8,7 +8,11 @@ import {
 import EducationalContent from './EducationalContent';
 import LoadingSpinner from './LoadingSpinner';
 import { getQuizExplanation } from '../core/services/sharedApi';
-import { normalizeSelectedAnswer } from '@core/utils/answerMappingUtils';
+import {
+  explanationAgreesWithVerifiedKey,
+  normalizeSelectedAnswer,
+  type PlayableQuizQuestion,
+} from '@core/utils/answerMappingUtils';
 
 // Types for the API request and response
 interface ExplanationRequest {
@@ -137,10 +141,22 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
   };
 
   const currentExplanation = explanations[questionId];
-  const displayedCorrectAnswer =
-    (correctAnswer && correctAnswer.trim().length > 0)
-      ? correctAnswer
-      : currentExplanation?.correct_answer;
+  const persistedKey = (correctAnswer && correctAnswer.trim().length > 0) ? correctAnswer.trim() : '';
+  const verifiedQuestion: PlayableQuizQuestion = {
+    question: questionText,
+    options,
+    correctAnswer: persistedKey || undefined,
+    answer: persistedKey || undefined,
+  };
+  const apiCorrect = currentExplanation?.correct_answer?.trim() || '';
+  const explanationContradictsKey =
+    Boolean(persistedKey) &&
+    Boolean(apiCorrect) &&
+    !explanationAgreesWithVerifiedKey(verifiedQuestion, apiCorrect);
+  // Prefer verified attempt key. Quarantine contradictory explanation correct_answer.
+  const displayedCorrectAnswer = persistedKey
+    ? persistedKey
+    : apiCorrect || undefined;
 
   return (
     <View style={styles.container}>
@@ -184,6 +200,11 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
               <View style={styles.mathBlock}>
                 <EducationalContent content={displayedCorrectAnswer} />
               </View>
+            ) : null}
+            {explanationContradictsKey ? (
+              <Text style={styles.quarantineNote}>
+                Explanation service returned a conflicting answer key; showing the verified assessment answer instead.
+              </Text>
             ) : null}
             <View style={styles.mathBlock}>
               <EducationalContent content={currentExplanation.explanation.correct_reason} />
@@ -275,6 +296,13 @@ const createStyles = (colors: any) =>
       fontSize: 14,
       color: '#065f46',
       marginBottom: 6,
+    },
+    quarantineNote: {
+      marginTop: 8,
+      marginBottom: 4,
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#92400e',
     },
     mathBlock: {
       marginTop: 4,

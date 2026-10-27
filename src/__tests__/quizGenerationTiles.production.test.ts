@@ -49,7 +49,7 @@ describe('resolveQuizGenerationTiles (production helper used by QuizGenerationGr
     expect(handwritten).toHaveLength(1);
   });
 
-  it('fallback navigation still exposes Document and preserves handwritten access mapping', () => {
+  it('fallback navigation opens DocumentUploadHomeScreen for all Document entry screens', () => {
     const tiles = resolveQuizGenerationTiles({
       fetchStatus: 'error',
       navItems: [],
@@ -57,16 +57,17 @@ describe('resolveQuizGenerationTiles (production helper used by QuizGenerationGr
     const doc = tiles.find((t) => t.screen === 'CreateDocumentQuizScreen');
     expect(doc?.label).toBe('Document');
     expect(resolveQuizGenerationNavigation('CreateDocumentQuizScreen')).toEqual({
-      screen: 'AssessmentWorkspaceScreen',
-      params: { mode: 'document' },
+      screen: 'DocumentUploadHomeScreen',
     });
     expect(resolveQuizGenerationNavigation('DocumentUploadHomeScreen')).toEqual({
-      screen: 'AssessmentWorkspaceScreen',
-      params: { mode: 'document' },
+      screen: 'DocumentUploadHomeScreen',
     });
     expect(resolveQuizGenerationNavigation('CreateHandwrittenQuizScreen')).toEqual({
       screen: 'AssessmentWorkspaceScreen',
       params: { mode: 'handwritten' },
+    });
+    expect(resolveQuizGenerationNavigation('CreateDocumentQuizScreen', { isWeb: true })).toEqual({
+      screen: 'DocumentUploadHomeScreen',
     });
   });
 

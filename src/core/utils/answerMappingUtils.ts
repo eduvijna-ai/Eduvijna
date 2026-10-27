@@ -145,17 +145,41 @@ export const isQuizAnswerCorrect = (
 
 export const isOptionTheCorrectAnswer = (
   option: string,
-  question: { options: string[]; correctAnswer?: string; answer?: string },
-): boolean =>
-  normalizeComparableOptionValue(option) ===
-  normalizeComparableOptionValue(getQuestionCorrectOptionText(question));
+  question: {
+    options: string[];
+    correctAnswer?: string;
+    answer?: string;
+    correctOptionIndex?: number;
+  },
+  optionIndex?: number,
+): boolean => {
+  if (
+    typeof question.correctOptionIndex === 'number' &&
+    typeof optionIndex === 'number'
+  ) {
+    return optionIndex === question.correctOptionIndex;
+  }
+  if (typeof question.correctOptionIndex === 'number') {
+    const idx = resolveSelectedOptionIndex(option, question.options);
+    return idx != null && idx === question.correctOptionIndex;
+  }
+  return (
+    normalizeComparableOptionValue(option) ===
+    normalizeComparableOptionValue(getQuestionCorrectOptionText(question))
+  );
+};
 
 export const isOptionTheUserAnswer = (
   option: string,
   userAnswer: string,
   options: string[],
+  optionIndex?: number,
 ): boolean => {
   if (!userAnswer) return false;
+  if (typeof optionIndex === 'number') {
+    const selectedIdx = resolveSelectedOptionIndex(userAnswer, options);
+    if (selectedIdx != null) return selectedIdx === optionIndex;
+  }
   const normalizedUser = normalizeSelectedAnswer(userAnswer, options);
   return normalizeComparableOptionValue(option) === normalizeComparableOptionValue(normalizedUser);
 };
@@ -269,12 +293,41 @@ export const withAuthoritativeCorrectAnswer = (
 ): PlayableQuizQuestion => {
   if (!authoritativeText?.trim()) return question;
   const resolved = normalizeSelectedAnswer(authoritativeText, question.options);
+  const correctOptionIndex = resolveCorrectOptionIndex(resolved, question.options);
+  if (correctOptionIndex == null) {
+    // Ambiguous / unverifiable — do not silently rewrite the answer key.
+    return question;
+  }
   return {
     ...question,
-    correctAnswer: resolved,
-    answer: resolved,
+    correctAnswer: question.options[correctOptionIndex] ?? resolved,
+    answer: question.options[correctOptionIndex] ?? resolved,
+    correctOptionIndex,
   };
 };
+
+/**
+ * True when an explanation API correct_answer agrees with the verified quiz key.
+ * Contradictory explanation content must be quarantined, not used for grading/UI.
+ */
+export function explanationAgreesWithVerifiedKey(
+  question: PlayableQuizQuestion,
+  explanationCorrectAnswer?: string,
+): boolean {
+  const apiText = String(explanationCorrectAnswer ?? '').trim();
+  if (!apiText) return false;
+  if (typeof question.correctOptionIndex === 'number') {
+    const apiIdx = resolveCorrectOptionIndex(apiText, question.options);
+    return apiIdx != null && apiIdx === question.correctOptionIndex;
+  }
+  if (!hasAuthoritativeCorrectAnswer(question)) return false;
+  const keyIdx = resolveCorrectOptionIndex(
+    String(question.correctAnswer ?? question.answer ?? ''),
+    question.options,
+  );
+  const apiIdx = resolveCorrectOptionIndex(apiText, question.options);
+  return keyIdx != null && apiIdx != null && keyIdx === apiIdx;
+}
 
 export interface ExplanationReconcileInput {
   questionId: string;
@@ -309,15 +362,20 @@ export function computeLocalQuizResults(
 }
 
 /**
- * Reconcile local grading with explanation API correct_answer (source of truth when generate-strict is wrong).
+ * Reconcile results with explanation API for display enrichment only.
+ * Verified quiz answer keys and frozen grades are never rewritten by explanations.
+ * Contradictory explanation correct_answer values are quarantined (omitted).
  */
 export const reconcileResultsWithExplanations = async (
   questions: PlayableQuizQuestion[],
   selectedAnswers: Record<number, string>,
   fetchExplanation: (payload: ExplanationReconcileInput) => Promise<{ correct_answer?: string }>,
 ): Promise<ExplanationReconcileResult> => {
-  const authoritativeCorrectAnswers: Record<number, string> = {};
-  const questionResults: Record<number, boolean> = {};
+  const local = computeLocalQuizResults(questions, selectedAnswers);
+  const authoritativeCorrectAnswers: Record<number, string> = {
+    ...local.authoritativeCorrectAnswers,
+  };
+  const questionResults: Record<number, boolean> = { ...local.questionResults };
 
   await Promise.all(
     questions.map(async (question, index) => {
@@ -327,12 +385,42 @@ export const reconcileResultsWithExplanations = async (
         return;
       }
 
+      // Frozen / attended grades and verified keys: never regrade from explanations.
       if (question.gradingFrozen || typeof question.attendedIsCorrect === 'boolean') {
         const persisted = evaluatePersistedAnswerCorrectness(selectedAnswer, question);
         questionResults[index] = persisted === true;
         return;
       }
 
+      const hasVerifiedKey =
+        typeof question.correctOptionIndex === 'number' ||
+        hasAuthoritativeCorrectAnswer(question);
+
+      if (hasVerifiedKey) {
+        questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+        // Optionally fetch explanation for enrichment; never override grading.
+        try {
+          const data = await fetchExplanation({
+            questionId: question.id || `q-${index}`,
+            questionText: question.question,
+            options: question.options,
+            selectedAnswer,
+          });
+          const apiCorrect = data.correct_answer?.trim();
+          if (apiCorrect && explanationAgreesWithVerifiedKey(question, apiCorrect)) {
+            const enriched = withAuthoritativeCorrectAnswer(question, apiCorrect);
+            authoritativeCorrectAnswers[index] =
+              enriched.correctAnswer || question.options[enriched.correctOptionIndex!] || apiCorrect;
+          }
+          // Contradictory explanation correct_answer is quarantined (not stored).
+        } catch {
+          // Explanation failures are tolerable.
+        }
+        return;
+      }
+
+      // No verified key: explanation may supply a unique resolvable answer for display,
+      // but ambiguous resolutions must not invent a grade.
       try {
         const data = await fetchExplanation({
           questionId: question.id || `q-${index}`,
@@ -342,16 +430,16 @@ export const reconcileResultsWithExplanations = async (
         });
         const apiCorrect = data.correct_answer?.trim();
         if (apiCorrect) {
-          const resolvedCorrect = normalizeSelectedAnswer(apiCorrect, question.options);
-          authoritativeCorrectAnswers[index] = resolvedCorrect;
-          questionResults[index] = isQuizAnswerCorrect(
-            selectedAnswer,
-            withAuthoritativeCorrectAnswer(question, resolvedCorrect),
-          );
-          return;
+          const enriched = withAuthoritativeCorrectAnswer(question, apiCorrect);
+          if (typeof enriched.correctOptionIndex === 'number') {
+            authoritativeCorrectAnswers[index] =
+              enriched.correctAnswer || question.options[enriched.correctOptionIndex];
+            questionResults[index] = isQuizAnswerCorrect(selectedAnswer, enriched);
+            return;
+          }
         }
       } catch {
-        // Fall back to locally stored correct answer when explanation is unavailable.
+        // Fall through to local grading.
       }
 
       questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);

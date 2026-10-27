@@ -10,15 +10,15 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal, TouchableWithoutFeedba
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuizNavItems, SCREEN_DEFAULTS } from '@core/hooks/useQuizNavItems';
+import { resolveQuizGenerationNavigation } from '@core/utils/quizGenerationTiles';
 
-/** Hard-coded fallback items shown when API returns nothing */
+/** Hard-coded fallback items shown when API returns nothing (one Document entry only). */
 const FALLBACK_OPTIONS = [
   { screen: 'CreateAIQuizScreen',          iconColor: '#0891B2', label: 'AI Assessment',  icon: 'bulb' },
-  { screen: 'DocumentUploadHomeScreen',    iconColor: '#0F766E', label: 'Document Upload', icon: 'folder-open' },
-  { screen: 'AssessmentWorkspaceScreen',   iconColor: '#DC2626', label: 'Document',       icon: 'document', routeParams: { mode: 'document' } },
+  { screen: 'DocumentUploadHomeScreen',    iconColor: '#0F766E', label: 'Document',       icon: 'document' },
   { screen: 'CreateImageQuizScreen',       iconColor: '#D97706', label: 'Image',          icon: 'image' },
   { screen: 'CreateYouTubeQuizScreen',     iconColor: '#059669', label: 'YouTube',        icon: 'logo-youtube' },
-  { screen: 'AssessmentWorkspaceScreen',   iconColor: '#7C3AED', label: 'Handwritten',    icon: 'create', routeParams: { mode: 'handwritten' } },
+  { screen: 'CreateHandwrittenQuizScreen', iconColor: '#7C3AED', label: 'Handwritten',    icon: 'create' },
   { screen: 'WorksheetScreen',             iconColor: '#059669', label: 'Worksheet',      icon: 'document-text' },
   { screen: 'RecentAssessmentsScreen',     iconColor: '#6366F1', label: 'Recent Quizzes', icon: 'time' },
 ];
@@ -63,24 +63,15 @@ export default function CreateAssessmentModal({
   const handleQuizTypePress = (screen: string, routeParams?: Record<string, any>) => {
     onClose();
 
-    const useWorkspaceRedirect = Platform.OS !== 'web';
-
-    const resolvedScreen =
-      useWorkspaceRedirect && (screen === 'CreateDocumentQuizScreen' || screen === 'CreateHandwrittenQuizScreen')
-        ? 'AssessmentWorkspaceScreen'
-        : screen;
-
-    const resolvedParams =
-      (useWorkspaceRedirect ? routeParams : undefined) ??
-      (useWorkspaceRedirect && screen === 'CreateDocumentQuizScreen'
-        ? { mode: 'document' }
-        : useWorkspaceRedirect && screen === 'CreateHandwrittenQuizScreen'
-          ? { mode: 'handwritten' }
-          : undefined);
+    const { screen: resolvedScreen, params: resolvedParams } = resolveQuizGenerationNavigation(
+      screen,
+      { isWeb: Platform.OS === 'web' },
+    );
+    const params = resolvedParams ?? routeParams;
 
     setTimeout(() => {
       if (navigation) {
-        navigation.navigate(resolvedScreen as never, resolvedParams as never);
+        navigation.navigate(resolvedScreen as never, params as never);
       }
     }, 200);
   };
@@ -117,7 +108,7 @@ export default function CreateAssessmentModal({
         
         {options.map((option, index) => (
           <TouchableOpacity
-            key={option.screen}
+            key={`${option.screen}-${option.label}-${index}`}
             style={[
               styles.menuItem, 
               { borderBottomColor: theme.colors.border },
