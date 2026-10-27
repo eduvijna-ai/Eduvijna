@@ -32,19 +32,19 @@ Engineering code + focused unit regressions for Issues 1–6 are implemented on 
 **Files:** `src/core/utils/documentAssessmentNavigation.ts`, `quizGenerationTiles.ts`, `CreateAssessmentModal.tsx`, tests.
 
 ### Issue 2 — Camera continuous loading
-**Root cause:** Post-capture processing could hang without a bound; spinner relied solely on `finally`.  
-**Fix:** 60s timeout around `processCameraCapture`; stage messages; guaranteed `setCapturing(false)`.  
-**Files:** `DocumentUploadHomeScreen.tsx`.  
+**Root cause:** Post-capture processing could hang without a bound; spinner relied solely on `finally`. Compress/EXIF inside `captureDocumentImage` was outside the Home timeout.  
+**Fix:** 45s bound around compress inside `captureDocumentImage` (raw-URI fallback); `getImageSize` 8s timeout; Home still races `processCameraCapture` (60s); guaranteed `setCapturing(false)`.  
+**Files:** `documentCameraCapture.ts`, `documentImageUtils.ts`, `DocumentUploadHomeScreen.tsx`.  
 **Device evidence:** **BLOCKED** (needs emulator/physical camera capture confirmation).
 
 ### Issue 3 — Generation returned no questions
-**Root cause:** `normalizeQuestions` ignored nested `quiz.*` / `questions.quizzes` shapes and coerced non-letter answers to `'A'`; empty nested payloads became zero questions silently.  
-**Fix:** Unwrap nested shapes; preserve full-text keys; `extractQuestionsPayload`; throw actionable errors from `generateFromBook` / multimodal when empty.  
-**Files:** `documentUploadApi.ts`, tests.
+**Root cause:** `normalizeQuestions` ignored nested `quiz.*` / `questions.quizzes` shapes and coerced non-letter answers to `'A'`; empty nested payloads became zero questions silently; `waitForLibraryBookReady` soft-succeeded with incomplete pages; generate sent empty class/subject.  
+**Fix:** Unwrap nested shapes; preserve full-text keys; `extractQuestionsPayload`; throw actionable errors from `generateFromBook` / multimodal when empty; fail hard unless `totalPages >= expected`; restore class/subject from form/preset when present.  
+**Files:** `documentUploadApi.ts`, `DocumentUploadPreviewScreen.tsx`, tests.
 
 ### Issues 4–5 — Option / explanation inconsistency (Swachh Bharat)
-**Root cause:** `withAuthoritativeCorrectAnswer` updated text without `correctOptionIndex`; `reconcileResultsWithExplanations` regraded from explanation API; results UI used text match.  
-**Fix:** Index-aware highlighting; explanations never override verified keys; quarantine contradictory explanation keys; `attemptAnswerIdentity` v1 contract; mandatory Swachh Bharat fixture.  
+**Root cause:** `withAuthoritativeCorrectAnswer` updated text without `correctOptionIndex`; `reconcileResultsWithExplanations` regraded from explanation API; results UI used text match; accordion omitted verified `correctAnswer` prop.  
+**Fix:** Index-aware highlighting; explanations never override verified keys; quarantine contradictory explanation keys; pass verified key into accordion; `attemptAnswerIdentity` v1 contract; mandatory Swachh Bharat fixture.  
 **Files:** `answerMappingUtils.ts`, `attemptAnswerIdentity.ts`, `QuizResultsScreen.tsx`, `QuizTakingScreen.tsx`, `QuizExplanationAccordion.tsx`, tests.
 
 ### Issue 6 — Deep-link Back / Cancel stranded on Validating quiz…
@@ -53,7 +53,7 @@ Engineering code + focused unit regressions for Issues 1–6 are implemented on 
 **Files:** `openQuizHandler.ts`, `QuizLoadingScreen.tsx`, `App.tsx`, `BottomTabNavigator.tsx`, tests.
 
 ### Issue 7 — iOS Universal Links / Android Home after deep link
-**Code fix:** `ios.associatedDomains: ["applinks:app.eduvijna.com"]` in `app.json`; deep-link leave navigates to Dashboard (Issue 6).  
+**Code fix:** `ios.associatedDomains: ["applinks:app.eduvijna.com"]` in `app.json`; Navigation `linking.prefixes` includes `https://app.eduvijna.com`; deep-link leave navigates to Dashboard (Issue 6).  
 **Hosting:** AASA **404** — Universal Links cannot work until Apple Team ID + `com.eduvijna.app` AASA is published. Android App Links assetlinks **not verified**.  
 **Physical:** **BLOCKED**.
 
