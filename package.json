@@ -6,6 +6,11 @@
   "scripts": {
     "start": "expo start",
     "start:device": "node scripts/with-eduvijna-api-env.mjs development -- expo start --dev-client --lan",
+    "start:go:lan": "node scripts/start-expo-lan.mjs go",
+    "start:device:lan": "node scripts/start-expo-lan.mjs dev-client",
+    "dev:env:status": "node scripts/dev-env-status.mjs",
+    "dev:lan:ip": "node scripts/detect-lan-ipv4.mjs",
+    "dev:metro:port": "node scripts/check-metro-port.mjs",
     "start:production": "node scripts/with-eduvijna-api-env.mjs production -- expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

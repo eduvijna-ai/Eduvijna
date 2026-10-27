@@ -6,7 +6,14 @@
 
 [CmdletBinding()]
 param(
-  [string]$JdkPath = "C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot",
+  [string]$JdkPath = $(
+    $candidates = @(
+      "C:\Program Files\Eclipse Adoptium\jdk-17.0.17.10-hotspot",
+      "C:\Program Files\Microsoft\jdk-17",
+      $env:JAVA_HOME
+    )
+    ($candidates | Where-Object { $_ -and (Test-Path (Join-Path $_ "bin\java.exe")) } | Select-Object -First 1)
+  ),
   [string]$SdkPath = $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Android\Sdk" } else { "" })
 )
 
