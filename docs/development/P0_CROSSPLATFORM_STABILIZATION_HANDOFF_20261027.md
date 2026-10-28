@@ -23,8 +23,11 @@ Scope: seven Founder defects + Chief Architect eight-gate closure. No production
 | `npm run config:verify` | **PASS** |
 | `npm run type-check` | baseline delta recorded (not clean; see evidence) |
 | Physical Android / iOS | **PENDING** Founder authorization |
-| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **true** — crop runtime fixed; 10/10 emulator Crop/Confirm; see `20261028-crop-runtime/` |
-| `READY_FOR_CROSSPLATFORM_RELEASE` | **false** (hosting + physical incomplete) |
+| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **false** — Document Assessment generation still blocked on API deploy (preview PASS); crop session earlier PASS |
+| `READY_FOR_CROSSPLATFORM_RELEASE` | **false** (hosting + physical + generation incomplete) |
+| `DOCUMENT_PREVIEW_READY` | **true** — food.pdf pages 1–5 emulator + API image bytes PASS (`20261028-doc-stabilize/`) |
+| `DOCUMENT_GENERATION_READY` | **false** — live generate-from-book returns success+0 questions; API fix PR https://github.com/eduvijna-ai/eduvijna-api/pull/407 awaiting **development** deploy |
+| `MOBILE_CODE_READY_TO_MERGE` | **false** — generation gate + independent review after API deploy |
 
 ---
 
