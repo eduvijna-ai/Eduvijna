@@ -10,7 +10,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Modal,
   PanResponder,
@@ -40,6 +39,7 @@ import {
   type CropRect,
 } from '../utils/imageCropGeometry';
 import { isNearlyFullCrop, normalizeQuarterTurns } from '../utils/imageCropEditorOps';
+import { waitForSafeModalDismiss } from '../utils/cropModalLifecycle';
 
 const MIN_CROP_PX = 48;
 const HANDLE_SIZE = 28;
@@ -122,6 +122,7 @@ export default function ImageCropModal() {
   const [quarterTurns, setQuarterTurns] = useState(0);
   const [processing, setProcessing] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
   const [error, setError] = useState('');
 
   const cropRef = useRef<CropRect | null>(null);
@@ -130,10 +131,43 @@ export default function ImageCropModal() {
   const startCropRef = useRef<CropRect | null>(null);
   const stageRef = useRef<View | null>(null);
   const stageWindowOriginRef = useRef({ x: 0, y: 0 });
+  /** Blocks overlapping Crop/Confirm/Cancel while dismiss sequencing runs. */
+  const flightRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     return subscribeCropSession(() => {
+      if (!mountedRef.current) return;
       setPendingUri(getPendingCropUri());
     });
+  }, []);
+
+  /**
+   * Stop native ActivityIndicator animation, then dismiss the Modal.
+   * Avoids Fabric NativeAnimatedNodesManager crashes on confirm/cancel.
+   */
+  const dismissWithResult = useCallback(async (result: Parameters<typeof resolveCropSession>[0]) => {
+    if (flightRef.current) return;
+    flightRef.current = true;
+    try {
+      if (mountedRef.current) {
+        setProcessing(false);
+        setPreparing(false);
+        setDismissing(true);
+      }
+      await waitForSafeModalDismiss();
+      resolveCropSession(result);
+    } finally {
+      flightRef.current = false;
+      if (mountedRef.current) setDismissing(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -322,16 +356,16 @@ export default function ImageCropModal() {
     [applyDrag, refreshStageWindowOrigin],
   );
 
-  const busy = processing || preparing;
+  const busy = processing || preparing || dismissing;
 
   const handleCancel = () => {
     if (busy) return;
-    resolveCropSession({ kind: 'cancelled' });
+    void dismissWithResult({ kind: 'cancelled' });
   };
 
   const handleRetake = () => {
     if (busy) return;
-    resolveCropSession({ kind: 'retake' });
+    void dismissWithResult({ kind: 'retake' });
   };
 
   /** Reset = full-frame crop selection on the current working image (not pixel restore). */
@@ -385,7 +419,8 @@ export default function ImageCropModal() {
     (imageUri !== sessionOriginalUri || normalizeQuarterTurns(quarterTurns) !== 0);
 
   const handleConfirm = async () => {
-    if (busy || !imageUri || !naturalSize || !imageBounds || !crop) return;
+    if (busy || flightRef.current || !imageUri || !naturalSize || !imageBounds || !crop) return;
+    flightRef.current = true;
     setProcessing(true);
     setError('');
     try {
@@ -395,6 +430,14 @@ export default function ImageCropModal() {
         : workingDiffersFromSession
           ? { uri: imageUri, width: naturalSize.width, height: naturalSize.height }
           : null;
+
+      if (!mountedRef.current) return;
+
+      // Stop animated indicators before Modal dismiss (NativeAnimatedNodesManager).
+      setProcessing(false);
+      setDismissing(true);
+      await waitForSafeModalDismiss();
+      if (!mountedRef.current) return;
 
       if (!output) {
         // No edits — keep current input bytes (caller MIME preserved).
@@ -416,9 +459,14 @@ export default function ImageCropModal() {
         height: output.height,
       });
     } catch {
-      setError('Failed to crop image. Please try again.');
+      if (mountedRef.current) {
+        setProcessing(false);
+        setDismissing(false);
+        setError('Failed to crop image. Please try again.');
+      }
     } finally {
-      setProcessing(false);
+      flightRef.current = false;
+      if (mountedRef.current) setDismissing(false);
     }
   };
 
@@ -428,7 +476,7 @@ export default function ImageCropModal() {
   const handleUseCurrentImage = () => {
     if (busy || !imageUri) return;
     if (workingDiffersFromSession) {
-      resolveCropSession({
+      void dismissWithResult({
         kind: 'cropped',
         uri: imageUri,
         mimeType: 'image/jpeg',
@@ -438,7 +486,7 @@ export default function ImageCropModal() {
       });
       return;
     }
-    resolveCropSession({
+    void dismissWithResult({
       kind: 'unchanged',
       uri: sessionOriginalUri || imageUri,
       width: sessionOriginalSize?.width || naturalSize?.width,
@@ -448,10 +496,12 @@ export default function ImageCropModal() {
 
   const visible = !!pendingUri;
 
+  // Fabric: Modal slide/fade teardown races NativeAnimatedNodesManager
+  // (disconnectAnimatedNodeFromView). Prefer none so dismiss is a mount flip only.
   return (
     <Modal
-      visible={visible}
-      animationType="slide"
+      visible={visible && !dismissing}
+      animationType="none"
       presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : 'fullScreen'}
       onRequestClose={handleCancel}
     >
@@ -553,7 +603,11 @@ export default function ImageCropModal() {
             </>
           ) : (
             <View style={styles.loadingStage}>
-              <ActivityIndicator color="#FFFFFF" />
+              {/* Static label only — ActivityIndicator uses Native Animated and
+                  raced Modal unmount (disconnectAnimatedNodeFromView). */}
+              <Text style={styles.loadingText}>
+                {preparing ? 'Preparing…' : processing ? 'Working…' : 'Loading…'}
+              </Text>
             </View>
           )}
         </View>
@@ -638,11 +692,11 @@ export default function ImageCropModal() {
               accessibilityRole="button"
               accessibilityLabel="Apply crop and use photo"
             >
-              {processing ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>Crop & use</Text>
-              )}
+              {/* Prefer static label while processing — avoids Native Animated node
+                  teardown races when the Modal dismisses immediately after confirm. */}
+              <Text style={styles.btnPrimaryText}>
+                {processing ? 'Working…' : 'Crop & use'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -704,6 +758,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 15,
+    fontWeight: '600',
   },
   error: {
     color: '#FCA5A5',

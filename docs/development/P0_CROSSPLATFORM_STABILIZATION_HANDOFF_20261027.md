@@ -23,7 +23,7 @@ Scope: seven Founder defects + Chief Architect eight-gate closure. No production
 | `npm run config:verify` | **PASS** |
 | `npm run type-check` | baseline delta recorded (not clean; see evidence) |
 | Physical Android / iOS | **PENDING** Founder authorization |
-| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **true** — see `FOUNDER_EMULATOR_SESSION_20261028.md` |
+| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **true** — crop runtime fixed; 10/10 emulator Crop/Confirm; see `20261028-crop-runtime/` |
 | `READY_FOR_CROSSPLATFORM_RELEASE` | **false** (hosting + physical incomplete) |
 
 ---

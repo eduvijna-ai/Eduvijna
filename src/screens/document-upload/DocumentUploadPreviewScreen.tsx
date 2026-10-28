@@ -373,26 +373,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   }, [isCameraSession, bookState?.id]);
 
   const handleCropCurrentPage = async () => {
-    if (!bookState?.isCameraSession) return;
+    if (!bookState?.isCameraSession || capturingPage) return;
     const current = bookState.pages?.find((p) => p.pageNumber === page);
     const sourceUri = current?.fileUri || getLocalPageUri(bookState, page);
     if (!current || !sourceUri) {
       setError('No image available to crop for this page.');
       return;
     }
+    const cropOpId = ++cameraAddOpIdRef.current;
     try {
       setError('');
       setCapturingPage(true);
       const result = await openImageCropper(sourceUri, {
         suggestedFileName: current.fileName,
       });
+      if (cameraAddOpIdRef.current !== cropOpId) return;
       if (result.kind === 'cancelled' || result.kind === 'retake') return;
       if (result.kind === 'unchanged') {
         // Keep current bytes/MIME — do not relabel as JPEG and do not claim Restore.
         return;
       }
       const targetPageId = current.pageId;
-      const nextPages = (bookState.pages || []).map((p) =>
+      const latestBook =
+        (await getDocumentUploadBookById(bookState.id)) ?? bookState;
+      const nextPages = (latestBook.pages || []).map((p) =>
         p.pageId === targetPageId
           ? applyCroppedJpegToCameraPage(p, {
               uri: result.uri,
@@ -403,15 +407,20 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             })
           : p,
       );
-      const next = { ...bookState, pages: nextPages };
+      const next = { ...latestBook, pages: nextPages };
       await persistBook(next);
+      if (cameraAddOpIdRef.current !== cropOpId) return;
       invalidateUploadedCameraSource();
       setPreviewImages((prev) => ({ ...prev, [page]: result.uri }));
       setThumbImages((prev) => ({ ...prev, [page]: result.uri }));
     } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+      if (cameraAddOpIdRef.current === cropOpId) {
+        setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+      }
     } finally {
-      setCapturingPage(false);
+      if (cameraAddOpIdRef.current === cropOpId) {
+        setCapturingPage(false);
+      }
     }
   };
 

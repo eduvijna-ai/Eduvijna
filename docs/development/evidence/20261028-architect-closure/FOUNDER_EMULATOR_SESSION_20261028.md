@@ -5,7 +5,8 @@
 | Item | Value |
 |------|--------|
 | Branch | `fix/mobile-crossplatform-p0-stabilization` |
-| HEAD | `1f8e61cec6dcc132cbed10e634a41aee7742c1e9` |
+| Code HEAD (bundle stamp) | `1f8e61cec6dcc132cbed10e634a41aee7742c1e9` |
+| Session evidence tip | `517c8dcf7e777b7623d6b46ab9f0c237d468d0b6` |
 | Working tree | Clean PR tip + local engineering stamp + this evidence (not merged) |
 | AVD | `Eduvijna_Android_Dev` |
 | ADB | `emulator-5554    device` |
@@ -51,6 +52,17 @@
 7. **Deep link / Dashboard:** Open an assessment link if available; Cancel/Back must leave “Validating…”; Home/Dashboard must work afterward.
 
 Report each as PASS/FAIL with screenshots.
+
+## Crop runtime P0 (2026-10-28 follow-up)
+
+| Item | Result |
+|------|--------|
+| Exception | `JSApplicationIllegalArgumentException` / `disconnectAnimatedNodeFromView` (Fabric NativeAnimated) |
+| Fix | Safe modal dismiss + no ActivityIndicator + `animationType="none"` + single-flight session |
+| Emulator | **10/10** Crop → Crop & use; **0** disconnect crashes |
+| Evidence | `docs/development/evidence/20261028-crop-runtime/` |
+| Jest (crop lifecycle) | **2 suites passed / 2 total**; **4 tests passed / 4 total** |
+| Jest (focused P0+crop) | **11 suites passed / 11 total**; **49 tests passed / 49 total** |
 
 ## Flags
 

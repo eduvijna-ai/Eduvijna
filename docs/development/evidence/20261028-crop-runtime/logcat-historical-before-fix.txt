@@ -1,0 +1,78 @@
+﻿
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.fabric.mounting.MountItemDispatcher.tryDispatchMountItems(MountItemDispatcher.kt:97)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.fabric.FabricUIManager$DispatchUIFrameCallback.doFrameGuarded(FabricUIManager.java:1484)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.uimanager.GuardedFrameCallback.doFrame(GuardedFrameCallback.kt:25)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.modules.core.ReactChoreographer.frameCallback$lambda$1(ReactChoreographer.kt:59)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.modules.core.ReactChoreographer.$r8$lambda$nSkFhrr5T7rop_XKwzlLov4NLLw(Unknown Source:0)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.facebook.react.modules.core.ReactChoreographer$$ExternalSyntheticLambda0.doFrame(D8$$SyntheticClass:0)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+android.view.Choreographer$CallbackRecord.run(Choreographer.java:1628)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+android.view.Choreographer$CallbackRecord.run(Choreographer.java:1639)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+android.view.Choreographer.doCallbacks(Choreographer.java:1235)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+android.view.Choreographer.doFrame(Choreographer.java:1160)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1613)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.os.Handler.handleCallback(Handler.java:1070)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.os.Looper.dispatchMessage(Looper.java:333)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.os.Looper.loopOnce(Looper.java:263)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.os.Looper.loop(Looper.java:367)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at android.app.ActivityThread.main(ActivityThread.java:9287)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at java.lang.reflect.Method.invoke(Native Method)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:566)
+10-28 09:54:22.188 14692 14692 E unknown:FabricUIManager: 	at 
+com.android.internal.os.ZygoteInit.main(ZygoteInit.java:929)
+10-28 09:54:22.189 14692 14692 E DevLauncher: com.facebook.react.bridge.JSApplicationIllegalArgumentException: 
+disconnectAnimatedNodeFromView: Animated node with tag [347] does not exist
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at com.facebook.react.animated.NativeAnimatedNodesManager.disconnectAnim
+atedNodeFromView(NativeAnimatedNodesManager.kt:402)
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at 
+com.facebook.react.animated.NativeAnimatedModule$disconnectAnimatedNodeFromView$1.execute(NativeAnimatedModule.kt:774)
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at 
+com.facebook.react.animated.NativeAnimatedModule$ConcurrentOperationQueue.executeBatch(NativeAnimatedModule.kt:150)
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at 
+com.facebook.react.animated.NativeAnimatedModule.didDispatchMountItems(NativeAnimatedModule.kt:305)
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at 
+com.facebook.react.fabric.FabricUIManager$MountItemDispatchListener.didDispatchMountItems(FabricUIManager.java:1384)
+10-28 09:54:22.189 14692 14692 E DevLauncher: 	at 
+com.facebook.react.fabric.FabricUIManager$DispatchUIFrameCallback.doFrameGuarded(FabricUIManager.java:1484)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: Caused by: 
+com.facebook.react.bridge.JSApplicationIllegalArgumentException: disconnectAnimatedNodeFromView: Animated node with 
+tag [347] does not exist
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at com.facebook.react.animated.NativeAnimatedNodesManager.disconne
+ctAnimatedNodeFromView(NativeAnimatedNodesManager.kt:402)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at 
+com.facebook.react.animated.NativeAnimatedModule$disconnectAnimatedNodeFromView$1.execute(NativeAnimatedModule.kt:774)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at 
+com.facebook.react.animated.NativeAnimatedModule$ConcurrentOperationQueue.executeBatch(NativeAnimatedModule.kt:150)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at 
+com.facebook.react.animated.NativeAnimatedModule.didDispatchMountItems(NativeAnimatedModule.kt:305)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at 
+com.facebook.react.fabric.FabricUIManager$MountItemDispatchListener.didDispatchMountItems(FabricUIManager.java:1384)
+10-28 09:54:22.212 14692 14747 E unknown:ReactHost: 	at 
+com.facebook.react.fabric.FabricUIManager$DispatchUIFrameCallback.doFrameGuarded(FabricUIManager.java:1484)
+10-28 09:54:22.240 14692 14692 W unknown:FabricUIManager: Not flushing pending UI operations: exception was previously 
+thrown
+10-28 09:56:33.596  8668 15548 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.goo
+gle.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+10-28 09:56:33.603  8668 15548 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.goo
+gle.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+10-28 09:56:33.676  8668 15548 W PeoplePU: java.lang.IllegalArgumentException: Unknown component: 
+ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ProxyGalProvider}
+10-28 09:56:34.660  8668 15603 E Nearby  : java.lang.IllegalArgumentException: Component class 
+com.google.android.gms.nearby.sharing.MigrationCompleteIntentOperation does not exist in com.google.android.gms
+10-28 09:56:39.269  1521  1521 D InteractionJankMonitor: java.lang.IllegalArgumentException: invalid view: 
+view=com.google.android.apps.nexuslauncher.search.SearchEditText{384a5fb VFED..CL. ......I. 0,0-0,0 #7f0a0215 
+app:id/input}, attached=false, hasViewRoot=false, hasRenderer=false
+
+
