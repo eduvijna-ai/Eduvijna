@@ -61,6 +61,7 @@ import {
 } from '@core/services/curriculumGenerationErrors';
 import {
   buildCurriculumGeneratedPreviewParams,
+  extractQuizArrayFromGenerationResponse,
   type CurriculumSource,
 } from '@core/utils/documentCurriculumGeneratedHandoff';
 
@@ -800,10 +801,11 @@ export default function DocumentCurriculumFromBooksScreen({
         if (!res.assessment_intelligence) {
           throw new Error(MISSING_ALIGNMENT_METADATA_MESSAGE);
         }
+        const extractedQuiz = extractQuizArrayFromGenerationResponse(res);
         const delivery = summarizeVerifiedDelivery(res, {
-          returnedCountFallback: res.quiz?.length ?? 0,
+          returnedCountFallback: extractedQuiz.length,
         });
-        if (!res.quiz?.length) {
+        if (!extractedQuiz.length) {
           if (delivery.hasDeliveryMetadata) {
             throw createCurriculumGenerationError(CURRICULUM_VERIFICATION_FAILED_CODE);
           }
@@ -901,7 +903,7 @@ export default function DocumentCurriculumFromBooksScreen({
         },
       );
       if (genSeq !== genSeqRef.current || controller.signal.aborted) return;
-      if (!res.quiz?.length) {
+      if (!extractQuizArrayFromGenerationResponse(res).length) {
         throw new Error(res.message || 'No questions returned');
       }
       const previewParams = buildCurriculumGeneratedPreviewParams({

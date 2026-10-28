@@ -56,9 +56,24 @@ function toCaptured(
   };
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * Opens the camera and saves the complete frame (EXIF-normalized + compressed when possible).
  * MIME/filename always match actual bytes (never claim JPEG if conversion failed).
+ * Compress/EXIF work is bounded so callers cannot hang forever on capturing spinners.
  */
 export async function captureDocumentImage(): Promise<CapturedDocumentImage | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -75,11 +90,31 @@ export async function captureDocumentImage(): Promise<CapturedDocumentImage | nu
   const sourceMime =
     captured.mimeType ||
     inferMimeFromNameOrUri(captured.fileName || captured.uri, 'image/jpeg');
-  const normalized = await compressCameraImage(captured.uri, {
-    originalName: captured.fileName || `camera-${Date.now()}.jpg`,
-    sourceMimeType: sourceMime,
-  });
-  return toCaptured(normalized, captured.fileName || `camera-${Date.now()}.jpg`, captured.fileSize);
+  const fallbackName = captured.fileName || `camera-${Date.now()}.jpg`;
+  try {
+    const normalized = await withTimeout(
+      compressCameraImage(captured.uri, {
+        originalName: fallbackName,
+        sourceMimeType: sourceMime,
+      }),
+      45000,
+      'Image processing timed out after capture. Please try again or use Gallery.',
+    );
+    return toCaptured(normalized, fallbackName, captured.fileSize);
+  } catch (err) {
+    // Prefer a usable raw frame over an endless spinner when compress hangs/fails.
+    if (captured.uri) {
+      return {
+        uri: captured.uri,
+        sourceUri: captured.uri,
+        name: fallbackName,
+        mimeType: sourceMime,
+        convertedToJpeg: false,
+        fileSize: captured.fileSize,
+      };
+    }
+    throw err;
+  }
 }
 
 export async function captureAndCropDocumentImage(opts?: {

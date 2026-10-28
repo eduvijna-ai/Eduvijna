@@ -38,6 +38,8 @@ type CropRequest = {
 };
 
 let pending: CropRequest | null = null;
+/** True between resolveCropSession notify and caller continuation — blocks re-entry. */
+let resolving = false;
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -75,6 +77,11 @@ export function openImageCropper(
   uri: string,
   options?: { suggestedFileName?: string },
 ): Promise<CropSessionResult> {
+  // Do not stack a new crop while the previous session is still dismissing.
+  if (resolving) {
+    return Promise.resolve({ kind: 'cancelled' });
+  }
+
   if (pending) {
     const previous = pending;
     pending = null;
@@ -92,11 +99,27 @@ export function openImageCropper(
 }
 
 export function resolveCropSession(result: CropSessionResult): void {
-  if (!pending) return;
+  if (!pending || resolving) return;
   const current = pending;
   pending = null;
+  resolving = true;
+  // Hide modal first so UI tears down before the caller's await continues
+  // into preview persist/navigation.
   notify();
-  current.resolve(result);
+  try {
+    current.resolve(result);
+  } finally {
+    // Allow a new crop only after this turn's microtasks have been scheduled.
+    queueMicrotask(() => {
+      resolving = false;
+    });
+  }
+}
+
+/** Test helper — reset module locks between suites. */
+export function __resetImageCropSessionForTests(): void {
+  pending = null;
+  resolving = false;
 }
 
 export function isCropSessionDismissed(result: CropSessionResult): boolean {

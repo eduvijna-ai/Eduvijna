@@ -1,8 +1,9 @@
+import { type PlayableQuizQuestion } from './answerMappingUtils';
 import {
-  isQuizAnswerCorrect,
-  optionStringToLetter,
-  type PlayableQuizQuestion,
-} from './answerMappingUtils';
+  buildAttemptAnswerIdentity,
+  selectedDisplayLetter,
+  type AttemptAnswerIdentityV1,
+} from './attemptAnswerIdentity';
 
 export interface QuizSubmissionAnswerLogEntry {
   questionNumber: number;
@@ -10,7 +11,11 @@ export interface QuizSubmissionAnswerLogEntry {
   options: string[];
   correctAnswer: string;
   userAnswer: string | null;
-  isCorrect: boolean;
+  /** Display text selected by the student (authoritative for reopen). */
+  userAnswerText: string | null;
+  selectedDisplayIndex: number | null;
+  correctDisplayIndex: number | null;
+  isCorrect: boolean | null;
 }
 
 export function buildAssignedQuizLogData(params: {
@@ -21,6 +26,8 @@ export function buildAssignedQuizLogData(params: {
   attemptId: number;
   scorePercent?: number;
   questionResults?: Record<number, boolean>;
+  /** Display indices from the taking UI — required when option text is duplicated. */
+  selectedDisplayIndices?: Record<number, number>;
 }): Record<string, unknown> {
   const {
     questions,
@@ -30,37 +37,44 @@ export function buildAssignedQuizLogData(params: {
     attemptId,
     scorePercent,
     questionResults,
+    selectedDisplayIndices,
   } = params;
 
-  const answers: QuizSubmissionAnswerLogEntry[] = questions.map((question, index) => {
-    const selectedText = selectedAnswers[index];
-    const letter =
-      selectedText != null && selectedText !== ''
-        ? optionStringToLetter(selectedText, question.options) ??
-          (selectedText.length === 1 ? selectedText.toUpperCase() : selectedText)
-        : null;
+  const answerIdentity: AttemptAnswerIdentityV1 = buildAttemptAnswerIdentity(
+    questions,
+    selectedAnswers,
+    String(attemptId),
+    selectedDisplayIndices,
+  );
 
-    const correctRaw = question.correctAnswer ?? question.answer ?? '';
-    const userAnswer = letter != null ? String(letter) : null;
+  const answers: QuizSubmissionAnswerLogEntry[] = answerIdentity.questions.map((snap, index) => {
+    const question = questions[index];
+    const letter = selectedDisplayLetter(snap);
+    const correctRaw = question?.correctAnswer ?? question?.answer ?? '';
+    const isCorrectFromIdentity = snap.isCorrect;
     const isCorrect =
       questionResults && Object.prototype.hasOwnProperty.call(questionResults, index)
         ? Boolean(questionResults[index])
-        : selectedText
-          ? isQuizAnswerCorrect(selectedText, question)
-          : false;
+        : isCorrectFromIdentity === null
+          ? null
+          : isCorrectFromIdentity;
 
     return {
       questionNumber: index + 1,
-      question: question.question,
-      options: question.options,
+      question: snap.questionText,
+      options: snap.optionsDisplayed,
       correctAnswer: correctRaw,
-      userAnswer,
+      userAnswer: letter,
+      userAnswerText: snap.selected?.displayText ?? null,
+      selectedDisplayIndex: snap.selected?.displayIndex ?? null,
+      correctDisplayIndex: snap.correct?.displayIndex ?? null,
       isCorrect,
     };
   });
 
   return {
     answers,
+    answer_identity: answerIdentity,
     questionCount,
     score: scorePercent,
     time_spent_seconds: timeSpentSeconds,

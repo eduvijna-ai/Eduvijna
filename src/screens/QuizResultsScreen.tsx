@@ -182,10 +182,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             questions = [];
           }
           setQuizData({ questions });
-          if (logData?.answers) {
+          if (logData?.answer_identity?.questions && Array.isArray(logData.answer_identity.questions)) {
+            setUserAnswers(
+              logData.answer_identity.questions.map(
+                (q: { selected?: { displayText?: string } | null }) =>
+                  q.selected?.displayText ?? '',
+              ),
+            );
+          } else if (logData?.answers) {
             let answers: string[];
             if (Array.isArray(logData.answers)) {
-              answers = logData.answers.map((a: any) => a.userAnswer);
+              answers = logData.answers.map(
+                (a: any) => a.userAnswerText ?? a.userAnswer,
+              );
             } else if (typeof logData.answers === 'object') {
               answers = Object.keys(logData.answers)
                 .sort((a, b) => parseInt(a) - parseInt(b))
@@ -377,8 +386,8 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
         <View style={styles.optionsList}>
           {options.length > 0 && options.map((option: string, optIndex: number) => {
             const optionLabel = String.fromCharCode(65 + optIndex);
-            const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options);
-            const isCorrectAnswer = isOptionTheCorrectAnswer(option, question);
+            const isUserAnswer = isOptionTheUserAnswer(option, userAnswer, options, optIndex);
+            const isCorrectAnswer = isOptionTheCorrectAnswer(option, question, optIndex);
 
             let optBg = theme.colors.surfaceAlt;
             let optBorder = theme.colors.border;
@@ -437,6 +446,12 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
           questionText={question.question}
           options={question.options}
           selectedAnswer={userAnswers[index] || ''}
+          correctAnswer={
+            typeof question.correctOptionIndex === 'number' &&
+            question.options?.[question.correctOptionIndex]
+              ? question.options[question.correctOptionIndex]
+              : question.correctAnswer || question.answer || undefined
+          }
           clearTrigger={false}
           colors={{
             text: theme.colors.textPrimary,

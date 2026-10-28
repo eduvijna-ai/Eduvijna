@@ -107,6 +107,8 @@ export interface SavedBooksGenerateResult {
   context_chunks?: number;
   message?: string;
   quiz?: CurriculumQuizItem[];
+  /** Some saved-books job payloads return questions instead of quiz. */
+  questions?: CurriculumQuizItem[];
   assessment_intelligence?: AssessmentIntelligenceSummary;
   delivery_status?: string;
   requested_question_count?: number;
@@ -520,6 +522,7 @@ function isLegacySavedBooksGenerateResult(data: unknown): data is SavedBooksGene
     row.success === true ||
     typeof row.generation_type === 'string' ||
     Array.isArray(row.quiz) ||
+    Array.isArray(row.questions) ||
     row.worksheet != null ||
     row.summary != null ||
     row.lesson_plan != null ||

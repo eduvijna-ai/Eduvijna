@@ -8,7 +8,11 @@ import {
 import EducationalContent from './EducationalContent';
 import LoadingSpinner from './LoadingSpinner';
 import { getQuizExplanation } from '../core/services/sharedApi';
-import { normalizeSelectedAnswer } from '@core/utils/answerMappingUtils';
+import {
+  explanationAgreesWithVerifiedKey,
+  normalizeSelectedAnswer,
+  type PlayableQuizQuestion,
+} from '@core/utils/answerMappingUtils';
 
 // Types for the API request and response
 interface ExplanationRequest {
@@ -137,10 +141,24 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
   };
 
   const currentExplanation = explanations[questionId];
-  const displayedCorrectAnswer =
-    (correctAnswer && correctAnswer.trim().length > 0)
-      ? correctAnswer
-      : currentExplanation?.correct_answer;
+  const persistedKey = (correctAnswer && correctAnswer.trim().length > 0) ? correctAnswer.trim() : '';
+  const verifiedQuestion: PlayableQuizQuestion = {
+    question: questionText,
+    options,
+    correctAnswer: persistedKey || undefined,
+    answer: persistedKey || undefined,
+  };
+  const apiCorrect = currentExplanation?.correct_answer?.trim() || '';
+  const explanationContradictsKey =
+    Boolean(persistedKey) &&
+    Boolean(apiCorrect) &&
+    !explanationAgreesWithVerifiedKey(verifiedQuestion, apiCorrect);
+  // Without a verified persisted key, do not present generated correctness as authoritative.
+  const explanationUnverified =
+    !persistedKey && Boolean(currentExplanation);
+  const quarantineExplanationBody = explanationContradictsKey || explanationUnverified;
+  // Prefer verified attempt key only.
+  const displayedCorrectAnswer = persistedKey || undefined;
 
   return (
     <View style={styles.container}>
@@ -185,23 +203,33 @@ const QuizExplanationAccordion: React.FC<QuizExplanationAccordionProps> = ({
                 <EducationalContent content={displayedCorrectAnswer} />
               </View>
             ) : null}
-            <View style={styles.mathBlock}>
-              <EducationalContent content={currentExplanation.explanation.correct_reason} />
-            </View>
+            {quarantineExplanationBody ? (
+              <Text style={styles.quarantineNote}>
+                {explanationContradictsKey
+                  ? 'Explanation unavailable: the explanation service conflicted with the verified assessment answer. Showing the verified answer only.'
+                  : 'Explanation unavailable: no verified assessment answer key is available for this question.'}
+              </Text>
+            ) : (
+              <View style={styles.mathBlock}>
+                <EducationalContent content={currentExplanation.explanation.correct_reason} />
+              </View>
+            )}
           </View>
 
-          {/* Incorrect Options */}
-          {Object.entries(currentExplanation.explanation.wrong_options).map(([option, reason]) => (
-            <View key={option} style={styles.individualIncorrectSection}>
-              <Text style={styles.incorrectOptionHeader}>❌ {option.replace(/^option\d+\s*:?\s*/i, '')} — why it's wrong</Text>
-              <View style={styles.mathBlock}>
-                <EducationalContent content={reason as string} />
-              </View>
-            </View>
-          ))}
+          {/* Incorrect Options — fully quarantined when explanation is untrusted */}
+          {!quarantineExplanationBody
+            ? Object.entries(currentExplanation.explanation.wrong_options).map(([option, reason]) => (
+                <View key={option} style={styles.individualIncorrectSection}>
+                  <Text style={styles.incorrectOptionHeader}>❌ {option.replace(/^option\d+\s*:?\s*/i, '')} — why it's wrong</Text>
+                  <View style={styles.mathBlock}>
+                    <EducationalContent content={reason as string} />
+                  </View>
+                </View>
+              ))
+            : null}
 
-          {/* Educational Fact */}
-          {currentExplanation.explanation.educational_fact ? (
+          {/* Educational Fact — quarantined with untrusted explanation content */}
+          {!quarantineExplanationBody && currentExplanation.explanation.educational_fact ? (
             <View style={styles.educationalFactSection}>
               <Text style={styles.educationalFactHeader}>💡 Did you know?</Text>
               <View style={styles.mathBlock}>
@@ -275,6 +303,13 @@ const createStyles = (colors: any) =>
       fontSize: 14,
       color: '#065f46',
       marginBottom: 6,
+    },
+    quarantineNote: {
+      marginTop: 8,
+      marginBottom: 4,
+      fontSize: 12,
+      fontWeight: '600',
+      color: '#92400e',
     },
     mathBlock: {
       marginTop: 4,

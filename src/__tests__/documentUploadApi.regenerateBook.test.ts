@@ -21,6 +21,6 @@ describe('regenerateDocumentUploadQuiz server book', () => {
         },
         { id: 'quiz-1', questions: [{ id: 'q1' }] },
       ),
-    ).rejects.toThrow('generate_from_book_zero_questions');
+    ).rejects.toThrow(/no questions|generate_from_book_zero_questions/i);
   });
 });

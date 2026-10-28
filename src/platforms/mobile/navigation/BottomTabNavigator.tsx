@@ -413,11 +413,9 @@ export default function MobileNavigation() {
           const isDocumentFlow = routeParams?.source === 'document';
 
           const handleLeave = () => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('Main', { screen: 'Dashboard' });
-            }
+            // Prefer resetting to Home/Dashboard so deep-link stacks
+            // (QuizLoading → Taking → Results) cannot cover the tab navigator.
+            navigation.navigate('Main', { screen: 'Dashboard' });
           };
 
           if (isDocumentFlow) {

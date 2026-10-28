@@ -7,6 +7,7 @@ jest.mock('../core/services/assessmentQuizStart.service');
 jest.mock('../core/services/assignedQuizRecovery.service', () => ({
   findPendingSubmissionCheckpoint: jest.fn().mockResolvedValue(null),
   buildRecoveryResumeParams: jest.fn(),
+  isAssignedQuizRecoveryProbeError: jest.fn().mockReturnValue(false),
 }));
 
 const student = { id: '70', role: 'student' };
@@ -19,6 +20,9 @@ function navAdapter() {
 describe('handleOpenQuiz routing', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const recovery = jest.requireMock('../core/services/assignedQuizRecovery.service');
+    recovery.findPendingSubmissionCheckpoint.mockResolvedValue(null);
+    recovery.isAssignedQuizRecoveryProbeError.mockReturnValue(false);
   });
 
   it('routes completed student assignments to shared view-results resolver', async () => {
@@ -78,6 +82,51 @@ describe('handleOpenQuiz routing', () => {
     await handleOpenQuiz('sess-2', 'deep_link', null, adapter, savePending);
     expect(savePending).toHaveBeenCalledWith('sess-2');
     expect(adapter.navigate).not.toHaveBeenCalled();
+  });
+
+  it('Cancel on recovery-probe alert leaves QuizLoadingScreen (Issue 6)', async () => {
+    const { isAssignedQuizRecoveryProbeError } = jest.requireMock(
+      '../core/services/assignedQuizRecovery.service',
+    );
+    const { findPendingSubmissionCheckpoint } = jest.requireMock(
+      '../core/services/assignedQuizRecovery.service',
+    );
+
+    (dashboardApi.fetchQuizDetailsBySessionId as jest.Mock).mockResolvedValue({
+      exists: true,
+      isExpired: false,
+      isScheduled: false,
+      isAssigned: true,
+      isAttempted: false,
+      quizData: {
+        quiz_id: 99,
+        session_id: 'sess-cancel',
+        topic: 'Probe',
+        questions: { quizzes: [] },
+        has_time_limit: false,
+        is_public: false,
+      },
+      startTime: null,
+      endTime: null,
+    });
+
+    const probeError = Object.assign(new Error('Recovery probe timed out'), {
+      code: 'ASSIGNED_QUIZ_RECOVERY_PROBE',
+    });
+    (isAssignedQuizRecoveryProbeError as jest.Mock).mockReturnValue(true);
+    (findPendingSubmissionCheckpoint as jest.Mock).mockRejectedValue(probeError);
+
+    const replace = jest.fn();
+    const navigate = jest.fn();
+    const alert = jest.fn((_title: string, _msg: string, buttons?: any[]) => {
+      const cancel = buttons?.find((b) => b.style === 'cancel' || b.text === 'Cancel');
+      cancel?.onPress?.();
+    });
+
+    await handleOpenQuiz('sess-cancel', 'deep_link', student, { navigate, replace, alert });
+
+    expect(alert).toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith('Main', { screen: 'Dashboard' });
   });
 
   it('routes available unattempted student quiz to QuizTakingScreen', async () => {

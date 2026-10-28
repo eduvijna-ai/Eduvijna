@@ -46,6 +46,203 @@ const completeItems = [
 ];
 
 describe('quizResultNormalization', () => {
+  it('falls back when same-count identity has unrelated question texts', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 100,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [
+            {
+              questionId: 'other',
+              questionText: 'Completely different quiz question',
+              optionsDisplayed: ['A', 'B', 'C', 'D'],
+              correct: { originalIndex: 0, displayIndex: 0, displayText: 'A' },
+              selected: { originalIndex: 0, displayIndex: 0, displayText: 'A' },
+              isCorrect: true,
+            },
+          ],
+        },
+      },
+      items: [
+        {
+          question: 'Attended real question',
+          options: ['1', '2', '3', '4'],
+          student_answer: '2',
+          answer_key: '2',
+          is_correct: true,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].question).toBe('Attended real question');
+    expect(normalized?.userAnswers[0]).toBe('2');
+  });
+
+  it('falls back when identity questions are reordered vs attended items', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 50,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [
+            {
+              questionId: 'q2',
+              questionText: 'Second question',
+              optionsDisplayed: ['a', 'b', 'c', 'd'],
+              correct: { originalIndex: 1, displayIndex: 1, displayText: 'b' },
+              selected: { originalIndex: 0, displayIndex: 0, displayText: 'a' },
+              isCorrect: false,
+            },
+            {
+              questionId: 'q1',
+              questionText: 'First question',
+              optionsDisplayed: ['1', '2', '3', '4'],
+              correct: { originalIndex: 1, displayIndex: 1, displayText: '2' },
+              selected: { originalIndex: 1, displayIndex: 1, displayText: '2' },
+              isCorrect: true,
+            },
+          ],
+        },
+      },
+      items: [
+        {
+          question: 'First question',
+          options: ['1', '2', '3', '4'],
+          student_answer: '2',
+          answer_key: '2',
+          is_correct: true,
+        },
+        {
+          question: 'Second question',
+          options: ['a', 'b', 'c', 'd'],
+          student_answer: 'a',
+          answer_key: 'b',
+          is_correct: false,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].question).toBe('First question');
+    expect(normalized?.userAnswers[0]).toBe('2');
+    expect(normalized?.questions[1].question).toBe('Second question');
+  });
+
+  it('falls back to attended.items when answer_identity is partial or misaligned', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 50,
+      time_spent_seconds: 12,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [
+            {
+              questionId: 'only-one',
+              questionText: 'Only one snapshot',
+              optionsDisplayed: ['A', 'B'],
+              correct: { originalIndex: 0, displayIndex: 0, displayText: 'A' },
+              selected: { originalIndex: 1, displayIndex: 1, displayText: 'B' },
+              isCorrect: false,
+            },
+          ],
+        },
+      },
+      items: [
+        {
+          question: 'Q1',
+          options: ['1', '2', '3', '4'],
+          student_answer: '2',
+          answer_key: '2',
+          is_correct: true,
+        },
+        {
+          question: 'Q2',
+          options: ['a', 'b', 'c', 'd'],
+          student_answer: 'a',
+          answer_key: 'b',
+          is_correct: false,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions).toHaveLength(2);
+    expect(normalized?.questions[0].question).toBe('Q1');
+    expect(normalized?.userAnswers[0]).toBe('2');
+  });
+
+  it('ignores malformed answer_identity entries and uses attended items', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 0,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [{ notAValidSnapshot: true }],
+        },
+      },
+      items: [
+        {
+          question: 'Safe attended',
+          options: ['x', 'y'],
+          student_answer: 'x',
+          answer_key: 'y',
+          is_correct: false,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].question).toBe('Safe attended');
+    expect(normalized?.userAnswers[0]).toBe('x');
+  });
+
+  it('prefers answer_identity over attended.items for reopen review model', () => {
+    const identity = {
+      version: 1 as const,
+      questions: [
+        {
+          questionId: 'q-0',
+          questionText: 'Swachh?',
+          optionsDisplayed: ['A text', 'B text', 'C text', 'D text'],
+          correct: { originalIndex: 1, displayIndex: 1, displayText: 'B text' },
+          selected: { originalIndex: 0, displayIndex: 0, displayText: 'A text' },
+          isCorrect: false,
+        },
+      ],
+    };
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 0,
+      time_spent_seconds: 12,
+      log_data: {
+        answer_identity: identity,
+        answers: [
+          {
+            questionNumber: 1,
+            question: 'Swachh?',
+            options: ['A text', 'B text', 'C text', 'D text'],
+            correctAnswer: 'B text',
+            userAnswer: 'A',
+            userAnswerText: 'A text',
+            isCorrect: false,
+          },
+        ],
+      },
+      items: [
+        {
+          question: 'Swachh?',
+          // Mutated / incomplete attended payload must not win over identity.
+          options: ['C text', 'A text', 'B text', 'D text'],
+          student_answer: 'A',
+          answer_key: '',
+          is_correct: true,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].options).toEqual(['A text', 'B text', 'C text', 'D text']);
+    expect(normalized?.questions[0].correctOptionIndex).toBe(1);
+    expect(normalized?.userAnswers[0]).toBe('A text');
+    expect(normalized?.questions[0].attendedIsCorrect).toBe(false);
+  });
+
   it('reconstructs questions and answers from complete log_data.answers', () => {
     const normalized = normalizeQuestionsAndAnswersFromLogData({
       answers: [

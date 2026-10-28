@@ -45,6 +45,11 @@ import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureDocumentImage } from '@core/services/documentCameraCapture';
 import { openImageCropper } from '@core/services/imageCropSession';
 import {
+  BookPageImageRequestTracker,
+  loadBookPageImagesPrioritized,
+  makeBookPageImageKey,
+} from '@core/utils/bookPageImageSession';
+import {
   getDocumentUploadBookById,
   upsertDocumentUploadBook,
   removeDocumentUploadBook,
@@ -136,9 +141,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   const [page, setPage] = useState(1);
   /** Internal book metadata for APIs only — not shown in generation UI. */
-  const [classId, setClassId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [lesson, setLesson] = useState('');
+  const [classId, setClassId] = useState(String(restoredForm?.classId ?? ''));
+  const [subjectId, setSubjectId] = useState(String(restoredForm?.subjectId ?? ''));
+  const [classMeta, setClassMeta] = useState(String(restoredForm?.classValue ?? ''));
+  const [subjectMeta, setSubjectMeta] = useState(String(restoredForm?.subject ?? ''));
+  const [lesson, setLesson] = useState(String(restoredForm?.lesson ?? ''));
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(
     restoredForm?.difficulty ?? route?.params?.presetDifficulty ?? 'medium',
   );
@@ -162,8 +169,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [resolvedPageCount, setResolvedPageCount] = useState<number | null>(null);
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
   const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
-  const requestedImages = useRef<Set<string>>(new Set());
+  const pageImageTracker = useRef(new BookPageImageRequestTracker());
+  const pageImageDocRef = useRef<string | null>(null);
   const generateInFlightRef = useRef(false);
+  const cameraAddOpIdRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      cameraAddOpIdRef.current += 1;
+    };
+  }, []);
   /** Cached library upload for camera Document Assessment (invalidated on source edits). */
   const uploadedCameraSourceRef = useRef<{
     docId: string;
@@ -211,6 +225,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       })();
       return () => {
         active = false;
+        cameraAddOpIdRef.current += 1;
       };
     }, [route?.params?.book?.id, route?.params?.book?.isCameraSession]),
   );
@@ -220,7 +235,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     if (!restored) return;
     if (restored.difficulty) setDifficulty(restored.difficulty);
     if (restored.questionCount) setQuestionCount(restored.questionCount);
-    // Ignore restored class/subject/lesson — generation UI no longer exposes them.
+    if (restored.classValue) setClassMeta(restored.classValue);
+    if (restored.classId) setClassId(restored.classId);
+    if (restored.subject) setSubjectMeta(restored.subject);
+    if (restored.subjectId) setSubjectId(restored.subjectId);
+    if (restored.lesson) setLesson(restored.lesson);
     if (restored.selectedPages?.length) {
       setSelectedPages(new Set(restored.selectedPages));
     }
@@ -228,11 +247,11 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
 
   useEffect(() => {
     if (!bookState) return;
-    setLesson(defaultCameraLessonTitle(bookState));
+    if (!lesson.trim()) setLesson(defaultCameraLessonTitle(bookState));
     if (isCameraSession && bookState.pages?.length && !route?.params?.previewFormState) {
       setSelectedPages(new Set(bookState.pages.map((p) => p.pageNumber)));
     }
-  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState]);
+  }, [bookState?.title, bookState?.originalName, isCameraSession, bookState?.pages?.length, route?.params?.previewFormState, lesson]);
 
   const persistBook = useCallback(async (next: DocumentUploadBook) => {
     const withIdentity =
@@ -247,10 +266,15 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     navigation.setParams?.({ book: withIdentity });
   }, [navigation]);
 
-  // Generation UI no longer exposes Class/Subject/Lesson — keep optional API
-  // fields empty unless book/library metadata already provides them.
-  const resolvedClass = '';
-  const resolvedSubject = '';
+  // Generation UI may hide Class/Subject, but APIs still need metadata when available
+  // (workspace preset / restored form / route presets) — never invent values.
+  const workspacePreset = readDocumentWorkspacePreset(route);
+  const resolvedClass =
+    classMeta.trim() ||
+    String(route?.params?.presetClass ?? workspacePreset?.classValue ?? '').trim();
+  const resolvedSubject =
+    subjectMeta.trim() ||
+    String(route?.params?.presetSubject ?? workspacePreset?.subject ?? '').trim();
   const resolvedLesson = lesson.trim() || (bookState ? defaultCameraLessonTitle(bookState) : '');
 
   const syncLocalPageImages = useCallback((bookOverride?: DocumentUploadBook) => {
@@ -300,53 +324,78 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   }, [bookState, isCameraSession, docId, syncLocalPageImages]);
 
-  // Load server page thumbnails for PDF / server-backed documents.
+  // Load server page images: focused medium first, then bounded thumbnail concurrency.
   useEffect(() => {
     if (!docId || isCameraSession) return;
     let cancelled = false;
     setLoadingImages(true);
 
+    if (pageImageDocRef.current !== docId) {
+      pageImageTracker.current.reset();
+      pageImageDocRef.current = docId;
+      setThumbImages({});
+      setPreviewImages({});
+    }
+
     const loadImage = async (p: number, size: 'mini' | 'medium') => {
-      const key = `${p}:${size}`;
-      if (requestedImages.current.has(key)) return;
-      requestedImages.current.add(key);
       const [primaryId, ...alternateIds] = [docId, ...imageDocIds].filter(
         (id, index, list) => id && list.indexOf(id) === index,
       );
-      const uri = await fetchBookPageImage(primaryId, p, size === 'mini' ? 'mini' : 'medium', alternateIds);
-      if (cancelled) return;
-      if (!uri) {
-        requestedImages.current.delete(key);
-        const localUri = getLocalPageUri(bookState, p);
-        if (localUri) {
-          if (size === 'mini') {
-            setThumbImages((prev) => ({ ...prev, [p]: localUri }));
-          } else {
-            setPreviewImages((prev) => ({ ...prev, [p]: localUri }));
-          }
+      const key = makeBookPageImageKey(primaryId, p, size);
+      if (pageImageTracker.current.shouldSkip(key)) return;
+      pageImageTracker.current.markInFlight(key);
+      try {
+        const uri = await fetchBookPageImage(
+          primaryId,
+          p,
+          size === 'mini' ? 'mini' : 'medium',
+          alternateIds,
+        );
+        if (cancelled) {
+          pageImageTracker.current.release(key);
+          return;
         }
-        return;
-      }
-      if (size === 'mini') {
-        setThumbImages((prev) => ({ ...prev, [p]: uri }));
-      } else {
-        setPreviewImages((prev) => ({ ...prev, [p]: uri }));
+        if (!uri) {
+          pageImageTracker.current.release(key);
+          const localUri = getLocalPageUri(bookState, p);
+          if (localUri) {
+            if (size === 'mini') {
+              setThumbImages((prev) => ({ ...prev, [p]: localUri }));
+            } else {
+              setPreviewImages((prev) => ({ ...prev, [p]: localUri }));
+            }
+          }
+          return;
+        }
+        pageImageTracker.current.markSucceeded(key);
+        if (size === 'mini') {
+          setThumbImages((prev) => ({ ...prev, [p]: uri }));
+        } else {
+          setPreviewImages((prev) => ({ ...prev, [p]: uri }));
+        }
+      } catch {
+        pageImageTracker.current.release(key);
       }
     };
 
-    const maxThumbs = Math.min(Math.max(1, totalPages), 24);
     (async () => {
-      for (let p = 1; p <= maxThumbs; p += 1) {
-        await loadImage(p, 'mini');
-      }
-      await loadImage(page, 'medium');
+      await loadBookPageImagesPrioritized({
+        focusedPage: page,
+        totalPages,
+        maxThumbs: 24,
+        thumbConcurrency: 3,
+        load: loadImage,
+        isCancelled: () => cancelled,
+      });
       if (!cancelled) setLoadingImages(false);
     })();
 
     return () => {
       cancelled = true;
+      pageImageTracker.current.releaseAllInFlight();
     };
-  }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
+    // Intentionally omit bookState object identity — use docId/pages only.
+  }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState?.id]);
 
   // Document workspace generation UI omits Class/Subject/Lesson — never submit stale selections.
   useEffect(() => {
@@ -355,26 +404,30 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   }, [isCameraSession, bookState?.id]);
 
   const handleCropCurrentPage = async () => {
-    if (!bookState?.isCameraSession) return;
+    if (!bookState?.isCameraSession || capturingPage) return;
     const current = bookState.pages?.find((p) => p.pageNumber === page);
     const sourceUri = current?.fileUri || getLocalPageUri(bookState, page);
     if (!current || !sourceUri) {
       setError('No image available to crop for this page.');
       return;
     }
+    const cropOpId = ++cameraAddOpIdRef.current;
     try {
       setError('');
       setCapturingPage(true);
       const result = await openImageCropper(sourceUri, {
         suggestedFileName: current.fileName,
       });
+      if (cameraAddOpIdRef.current !== cropOpId) return;
       if (result.kind === 'cancelled' || result.kind === 'retake') return;
       if (result.kind === 'unchanged') {
         // Keep current bytes/MIME — do not relabel as JPEG and do not claim Restore.
         return;
       }
       const targetPageId = current.pageId;
-      const nextPages = (bookState.pages || []).map((p) =>
+      const latestBook =
+        (await getDocumentUploadBookById(bookState.id)) ?? bookState;
+      const nextPages = (latestBook.pages || []).map((p) =>
         p.pageId === targetPageId
           ? applyCroppedJpegToCameraPage(p, {
               uri: result.uri,
@@ -385,15 +438,20 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
             })
           : p,
       );
-      const next = { ...bookState, pages: nextPages };
+      const next = { ...latestBook, pages: nextPages };
       await persistBook(next);
+      if (cameraAddOpIdRef.current !== cropOpId) return;
       invalidateUploadedCameraSource();
       setPreviewImages((prev) => ({ ...prev, [page]: result.uri }));
       setThumbImages((prev) => ({ ...prev, [page]: result.uri }));
     } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+      if (cameraAddOpIdRef.current === cropOpId) {
+        setError(normalizeErrorMessage(e, 'Failed to crop page.'));
+      }
     } finally {
-      setCapturingPage(false);
+      if (cameraAddOpIdRef.current === cropOpId) {
+        setCapturingPage(false);
+      }
     }
   };
 
@@ -434,12 +492,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    const opId = ++cameraAddOpIdRef.current;
     try {
       setError('');
       setCapturingPage(true);
 
       const captured = await captureDocumentImage();
-      if (!captured) return;
+      if (!captured || cameraAddOpIdRef.current !== opId) return;
 
       const newPage = normalizeCameraPage({
         pageNumber: (bookState.pages?.length || 0) + 1,
@@ -449,15 +508,21 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         thumbnailUri: captured.uri,
       });
 
+      if (cameraAddOpIdRef.current !== opId) return;
       const next = appendCameraPage(bookState, newPage);
       await persistBook(next);
+      if (cameraAddOpIdRef.current !== opId) return;
       invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+      if (cameraAddOpIdRef.current === opId) {
+        setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+      }
     } finally {
-      setCapturingPage(false);
+      if (cameraAddOpIdRef.current === opId) {
+        setCapturingPage(false);
+      }
     }
   };
 
@@ -556,7 +621,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                 if (current > pageNumber) return current - 1;
                 return current;
               });
-              requestedImages.current.clear();
+              pageImageTracker.current.reset();
               setThumbImages({});
               setPreviewImages({});
               syncLocalPageImages(next);

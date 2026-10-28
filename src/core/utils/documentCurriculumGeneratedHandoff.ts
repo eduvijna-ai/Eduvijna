@@ -36,11 +36,27 @@ export type CurriculumGeneratedPreviewParams = {
 };
 
 export function extractQuizArrayFromGenerationResponse(res: unknown): unknown[] {
-  const r = res as Record<string, unknown>;
-  if (Array.isArray(r?.quiz)) return r.quiz as unknown[];
-  const data = r?.data as Record<string, unknown> | undefined;
-  if (Array.isArray(data?.quiz)) return data.quiz as unknown[];
-  if (Array.isArray(r?.questions)) return r.questions as unknown[];
+  const r = res as Record<string, unknown> | null | undefined;
+  if (!r || typeof r !== 'object') return [];
+  if (Array.isArray(r.quiz) && r.quiz.length) return r.quiz as unknown[];
+  if (Array.isArray(r.questions) && r.questions.length) return r.questions as unknown[];
+  const data = r.data as Record<string, unknown> | undefined;
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.quiz) && data.quiz.length) return data.quiz as unknown[];
+    if (Array.isArray(data.questions) && data.questions.length) return data.questions as unknown[];
+  }
+  const result = r.result as Record<string, unknown> | undefined;
+  if (result && typeof result === 'object') {
+    if (Array.isArray(result.quiz) && result.quiz.length) return result.quiz as unknown[];
+    if (Array.isArray(result.questions) && result.questions.length) {
+      return result.questions as unknown[];
+    }
+  }
+  // Empty arrays still count as "present" for callers checking length === 0.
+  if (Array.isArray(r.quiz)) return r.quiz as unknown[];
+  if (Array.isArray(r.questions)) return r.questions as unknown[];
+  if (Array.isArray(data?.quiz)) return data!.quiz as unknown[];
+  if (Array.isArray(data?.questions)) return data!.questions as unknown[];
   return [];
 }
 

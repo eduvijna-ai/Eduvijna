@@ -275,6 +275,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>(
     () => submissionRecovery?.selectedAnswers ?? {},
   );
+  const [selectedDisplayIndices, setSelectedDisplayIndices] = useState<{
+    [key: number]: number;
+  }>({});
   const [showResults, setShowResults] = useState(false);
 
   // Pre-fill previously saved answers exactly once when restoring from history.
@@ -407,7 +410,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     [authoritativeCorrectAnswers],
   );
 
-  // Calculate results helper function
+  // Calculate results helper function — prefer authoritative questionResults (index-aware).
   const calculateResults = () => {
     let correctCount = 0;
     let incorrectCount = 0;
@@ -416,9 +419,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     if (!currentQuizData?.questions) return { correctCount, incorrectCount, unansweredCount };
 
     currentQuizData.questions.forEach((question: QuizQuestion, index: number) => {
-      if (!selectedAnswers[index]) {
+      const selected =
+        selectedDisplayIndices[index] != null ||
+        (selectedAnswers[index] != null && String(selectedAnswers[index]).trim() !== '');
+      if (!selected) {
         unansweredCount++;
-      } else if (isQuizAnswerCorrect(selectedAnswers[index], getEffectiveQuestion(question, index))) {
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(questionResults, index)) {
+        if (questionResults[index]) correctCount++;
+        else incorrectCount++;
+        return;
+      }
+      if (
+        isQuizAnswerCorrect(
+          selectedAnswers[index],
+          getEffectiveQuestion(question, index),
+          selectedDisplayIndices[index],
+        )
+      ) {
         correctCount++;
       } else {
         incorrectCount++;
@@ -834,6 +853,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       ...selectedAnswers,
       [currentQuestionIndex]: option,
     });
+    setSelectedDisplayIndices({
+      ...selectedDisplayIndices,
+      [currentQuestionIndex]: optionIndex,
+    });
   };
 
   const handleNextQuestion = () => {
@@ -880,7 +903,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setSubmitting(true);
     
     try {
-      const localGrading = computeLocalQuizResults(quiz.questions, selectedAnswers);
+      const localGrading = computeLocalQuizResults(
+        quiz.questions,
+        selectedAnswers,
+        selectedDisplayIndices,
+      );
       let results = localGrading.questionResults;
       let authoritativeCorrect = localGrading.authoritativeCorrectAnswers;
 
@@ -895,6 +922,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               options,
               selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
             }),
+          selectedDisplayIndices,
         );
         results = reconciled.questionResults;
         authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
@@ -905,11 +933,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       const questionsForPersistence = quiz.questions.map((question, index) => {
         const resolved = authoritativeCorrect[index];
         if (!resolved) return question;
-        return {
-          ...question,
-          correctAnswer: resolved,
-          answer: resolved,
-        };
+        return withAuthoritativeCorrectAnswer(question, resolved);
       });
 
       const correctCount = Object.values(results).filter(Boolean).length;
@@ -971,6 +995,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             sessionId,
             questions: questionsForPersistence,
             selectedAnswers,
+            selectedDisplayIndices,
             startedAtIso: quizStartTime,
             scorePercent: score,
             questionCount: totalQuestions,
@@ -1327,10 +1352,14 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
           <View style={styles.optionsContainer}>
             {currentQuestion.options.map((option: string, index: number) => {
-              const isSelected = selectedAnswers[currentQuestionIndex] === option;
+              const isSelected =
+                selectedDisplayIndices[currentQuestionIndex] === index ||
+                (selectedDisplayIndices[currentQuestionIndex] == null &&
+                  selectedAnswers[currentQuestionIndex] === option);
               const optionLetter = String.fromCharCode(65 + index);
               const isCorrectAnswer =
-                showResults && isOptionTheCorrectAnswer(option, effectiveCurrentQuestion);
+                showResults &&
+                isOptionTheCorrectAnswer(option, effectiveCurrentQuestion, index);
               const isWrongSelection = showResults && isSelected && !isCorrectAnswer;
 
               return (

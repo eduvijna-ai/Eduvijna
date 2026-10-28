@@ -91,6 +91,14 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   const [selectedBook, setSelectedBook] = useState<DocumentUploadBook | null>(null);
   const selectedBookRef = useRef<DocumentUploadBook | null>(null);
   selectedBookRef.current = selectedBook;
+  /** Bumped on timeout/unmount so a late processCameraCapture cannot persist or navigate. */
+  const cameraCaptureOpIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      cameraCaptureOpIdRef.current += 1;
+    };
+  }, []);
   const [bookName, setBookName] = useState('');
   const [search, setSearch] = useState('');
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
@@ -149,6 +157,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       })();
       return () => {
         active = false;
+        // Blur / leave Home must invalidate in-flight camera capture work.
+        cameraCaptureOpIdRef.current += 1;
       };
     }, []),
   );
@@ -213,12 +223,17 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     }
   };
 
-  const processCameraCapture = async (asset: {
-    uri: string;
-    name?: string;
-    mimeType?: string;
-    size?: number;
-  }) => {
+  const processCameraCapture = async (
+    asset: {
+      uri: string;
+      name?: string;
+      mimeType?: string;
+      size?: number;
+    },
+    opId: number,
+  ) => {
+    const isStale = () => cameraCaptureOpIdRef.current !== opId;
+    if (isStale()) return;
     setError('');
     // URI is already EXIF-normalized + aspect-preserving compressed (full frame).
     const fileUri = asset.uri;
@@ -242,14 +257,19 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
     }
 
     if ((next.pages?.length || 0) > MAX_QUIZ_PAGES) {
-      setError(`You can capture up to ${MAX_QUIZ_PAGES} pages.`);
+      if (!isStale()) {
+        setError(`You can capture up to ${MAX_QUIZ_PAGES} pages.`);
+      }
       return;
     }
 
+    if (isStale()) return;
     await upsertDocumentUploadBook(next);
+    if (isStale()) return;
     setSelectedBook(next);
     setBookName(next.title);
     await loadBooks();
+    if (isStale()) return;
     navigation.navigate(
       'DocumentUploadPreviewScreen',
       withDocumentWorkspaceParams(route, {
@@ -439,24 +459,60 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
   };
 
   const handleCameraTilePress = async () => {
+    let cancelled = false;
+    const opId = ++cameraCaptureOpIdRef.current;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       setError('');
       setSuccess('');
       setCapturing(true);
+      setSuccess('Opening camera…');
 
       const captured = await captureDocumentImage();
-      if (!captured) return;
+      if (!captured || cameraCaptureOpIdRef.current !== opId) {
+        cancelled = true;
+        return;
+      }
 
-      await processCameraCapture({
-        uri: captured.uri,
-        name: captured.name,
-        mimeType: captured.mimeType,
-        size: captured.fileSize,
-      });
+      setSuccess('Processing captured page…');
+      // Bound post-capture work; timeout invalidates opId so late work cannot navigate.
+      await Promise.race([
+        processCameraCapture(
+          {
+            uri: captured.uri,
+            name: captured.name,
+            mimeType: captured.mimeType,
+            size: captured.fileSize,
+          },
+          opId,
+        ),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            if (cameraCaptureOpIdRef.current === opId) {
+              cameraCaptureOpIdRef.current += 1;
+            }
+            reject(
+              new Error(
+                'Processing the captured page timed out. Your photo may still be available — try again or use Gallery.',
+              ),
+            );
+          }, 60000);
+        }),
+      ]);
+      if (cameraCaptureOpIdRef.current === opId) {
+        setSuccess('');
+      }
     } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to capture document.'));
+      if (cameraCaptureOpIdRef.current === opId) {
+        setSuccess('');
+        setError(normalizeErrorMessage(e, 'Failed to capture document.'));
+      }
     } finally {
-      setCapturing(false);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (cameraCaptureOpIdRef.current === opId) {
+        setCapturing(false);
+        if (cancelled) setSuccess('');
+      }
     }
   };
 

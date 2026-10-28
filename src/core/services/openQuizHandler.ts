@@ -26,6 +26,10 @@ import {
   loadAssignedQuizDataForSession,
 } from './assessmentQuizStart.service';
 import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
+import {
+  beginOpenQuizRequest,
+  isOpenQuizRequestCurrent,
+} from './openQuizRequestGuard';
 
 export type OpenQuizSource = 'deep_link' | 'notification' | 'post_login';
 
@@ -79,8 +83,26 @@ interface User {
 
 interface NavigationAdapter {
   navigate: (screen: string, params?: any) => void;
+  /** Prefer replace when leaving QuizLoadingScreen so it cannot strand the stack. */
+  replace?: (screen: string, params?: any) => void;
   alert: (title: string, message: string, buttons?: any[]) => void;
   onNavigate?: (screen: string, params?: any) => void;
+}
+
+function leaveLoading(
+  navigationAdapter: NavigationAdapter,
+  screen: string,
+  params?: any,
+  generation?: number,
+): void {
+  if (generation != null && !isOpenQuizRequestCurrent(generation)) {
+    return;
+  }
+  if (typeof navigationAdapter.replace === 'function') {
+    navigationAdapter.replace(screen, params);
+    return;
+  }
+  navigationAdapter.navigate(screen, params);
 }
 
 /**
@@ -225,14 +247,24 @@ export async function handleOpenQuiz(
     return;
   }
 
+  const requestGeneration = beginOpenQuizRequest();
+
   // ==========================================
   // 2. SHOW LOADING SCREEN
   // ==========================================
-  navigationAdapter.navigate('QuizLoadingScreen', {
-    message: 'Validating quiz...',
-  });
+  leaveLoading(
+    navigationAdapter,
+    'QuizLoadingScreen',
+    {
+      message: 'Validating quiz...',
+    },
+    requestGeneration,
+  );
 
   await new Promise((resolve) => setTimeout(resolve, 100));
+  if (!isOpenQuizRequestCurrent(requestGeneration)) {
+    return;
+  }
 
   try {
     // ==========================================
@@ -247,6 +279,10 @@ export async function handleOpenQuiz(
       Number.isFinite(hintedQuizId) && hintedQuizId > 0 ? hintedQuizId : 0,
       user.role as 'instructor' | 'admin' | 'student',
     );
+
+    if (!isOpenQuizRequestCurrent(requestGeneration)) {
+      return;
+    }
     
     console.log('📦 handleOpenQuiz: Received quiz data:', {
       exists: validation.exists,
@@ -260,25 +296,35 @@ export async function handleOpenQuiz(
     // 4. QUIZ EXISTENCE CHECK
     // ==========================================
     if (validation.fetchFailure?.retryable) {
-      navigationAdapter.navigate('QuizStatusScreen', {
-        status: 'error',
-        title: 'Could not verify quiz',
-        message:
-          validation.fetchFailure.httpStatus === 429
-            ? 'The server is rate-limiting requests. Please wait a moment and try again.'
-            : 'The server is temporarily unavailable. Please try again.',
-        icon: 'cloud-offline-outline',
-      });
+      leaveLoading(
+        navigationAdapter,
+        'QuizStatusScreen',
+        {
+          status: 'error',
+          title: 'Could not verify quiz',
+          message:
+            validation.fetchFailure.httpStatus === 429
+              ? 'The server is rate-limiting requests. Please wait a moment and try again.'
+              : 'The server is temporarily unavailable. Please try again.',
+          icon: 'cloud-offline-outline',
+        },
+        requestGeneration,
+      );
       return;
     }
 
     if (!validation.exists || !validation.quizData) {
-      navigationAdapter.navigate('QuizStatusScreen', {
-        status: 'not_found',
-        title: 'No Quiz Available',
-        message: 'No quiz is available for you.',
-        icon: 'alert-circle-outline',
-      });
+      leaveLoading(
+        navigationAdapter,
+        'QuizStatusScreen',
+        {
+          status: 'not_found',
+          title: 'No Quiz Available',
+          message: 'No quiz is available for you.',
+          icon: 'alert-circle-outline',
+        },
+        requestGeneration,
+      );
       return;
     }
 
@@ -288,12 +334,17 @@ export async function handleOpenQuiz(
       untrustedQuizId > 0 &&
       Number(validation.quizData.quiz_id) !== untrustedQuizId
     ) {
-      navigationAdapter.navigate('QuizStatusScreen', {
-        status: 'not_found',
-        title: 'No Quiz Available',
-        message: 'No quiz is available for you.',
-        icon: 'alert-circle-outline',
-      });
+      leaveLoading(
+        navigationAdapter,
+        'QuizStatusScreen',
+        {
+          status: 'not_found',
+          title: 'No Quiz Available',
+          message: 'No quiz is available for you.',
+          icon: 'alert-circle-outline',
+        },
+        requestGeneration,
+      );
       return;
     }
 
@@ -319,12 +370,17 @@ export async function handleOpenQuiz(
     if (isTeacher) {
       const normalizedQuiz = normalizeQuizData(validation.quizData, sessionId);
 
-      navigationAdapter.navigate('QuizPreviewScreen', {
-        quiz: normalizedQuiz,
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        quizData: normalizedQuiz,
-      });
+      leaveLoading(
+        navigationAdapter,
+        'QuizPreviewScreen',
+        {
+          quiz: normalizedQuiz,
+          quizId: normalizedQuiz.quizId,
+          sessionId: normalizedQuiz.sessionId,
+          quizData: normalizedQuiz,
+        },
+        requestGeneration,
+      );
       return;
     }
 
@@ -339,19 +395,37 @@ export async function handleOpenQuiz(
           quizData.quiz_id,
           sessionId,
         );
-      } catch (probeError) {
+      } catch (probeError: unknown) {
         if (isAssignedQuizRecoveryProbeError(probeError)) {
           navigationAdapter.alert(
             'Could not open quiz',
             probeError.message,
             [
-              { text: 'Open Assessments', onPress: () => navigationAdapter.navigate('Assessments') },
-              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Assessments',
+                onPress: () =>
+                  leaveLoading(navigationAdapter, 'Assessments', undefined, requestGeneration),
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                // Cancel must leave QuizLoadingScreen — never strand "Validating quiz..."
+                onPress: () =>
+                  leaveLoading(
+                    navigationAdapter,
+                    'Main',
+                    { screen: 'Dashboard' },
+                    requestGeneration,
+                  ),
+              },
             ],
           );
           return;
         }
         throw probeError;
+      }
+      if (!isOpenQuizRequestCurrent(requestGeneration)) {
+        return;
       }
       if (pendingCheckpoint) {
         const recovery = buildRecoveryResumeParams(pendingCheckpoint);
@@ -364,6 +438,9 @@ export async function handleOpenQuiz(
         const mergedQuiz = recovery
           ? await loadAssignedQuizDataForImmutableRecovery(startCtx, recovery)
           : await loadAssignedQuizDataForSession(startCtx);
+        if (!isOpenQuizRequestCurrent(requestGeneration)) {
+          return;
+        }
         const normalizedQuiz = normalizeQuizData(mergedQuiz, sessionId);
         const screenParams = {
           quiz: normalizedQuiz,
@@ -375,19 +452,25 @@ export async function handleOpenQuiz(
           submissionRecovery: recovery,
         };
         if (navigationAdapter.onNavigate) {
+          if (!isOpenQuizRequestCurrent(requestGeneration)) {
+            return;
+          }
           navigationAdapter.onNavigate('QuizTakingScreen', {
             ...screenParams,
             quiz: normalizedQuiz,
             is_public: quizData.is_public,
           });
         } else {
-          navigationAdapter.navigate('QuizTakingScreen', screenParams);
+          leaveLoading(navigationAdapter, 'QuizTakingScreen', screenParams, requestGeneration);
         }
         return;
       }
 
       // A. Already attempted — shared recovery-aware View Results resolver
       if (validation.isAttempted) {
+        if (!isOpenQuizRequestCurrent(requestGeneration)) {
+          return;
+        }
         const resolvedSessionId = sessionId || quizData.session_id;
         const classroomId = resolveAssignmentClassroomId(
           resolvedSessionId,
@@ -405,8 +488,18 @@ export async function handleOpenQuiz(
             quizName: quizData.topic || quizData.title,
           },
           {
-            navigation: { navigate: (screen, params) => navigationAdapter.navigate(screen, params) },
-            onNavigate: navigationAdapter.onNavigate,
+            navigation: {
+              navigate: (screen, params) => {
+                if (!isOpenQuizRequestCurrent(requestGeneration)) return;
+                navigationAdapter.navigate(screen, params);
+              },
+            },
+            onNavigate: navigationAdapter.onNavigate
+              ? (screen, params) => {
+                  if (!isOpenQuizRequestCurrent(requestGeneration)) return;
+                  navigationAdapter.onNavigate?.(screen, params);
+                }
+              : undefined,
           },
         );
         return;
@@ -429,26 +522,36 @@ export async function handleOpenQuiz(
         
         // Quiz not started yet
         if (now < startTime) {
-          navigationAdapter.navigate('QuizStatusScreen', {
-            status: 'scheduled',
-            title: 'Quiz Not Yet Available',
-            message: `This quiz will be available between:\n${new Date(startTime).toLocaleString()} and ${new Date(endTime).toLocaleString()}`,
-            icon: 'time-outline',
-            startTime: new Date(startTime).toLocaleString(),
-            endTime: new Date(endTime).toLocaleString(),
-          });
+          leaveLoading(
+            navigationAdapter,
+            'QuizStatusScreen',
+            {
+              status: 'scheduled',
+              title: 'Quiz Not Yet Available',
+              message: `This quiz will be available between:\n${new Date(startTime).toLocaleString()} and ${new Date(endTime).toLocaleString()}`,
+              icon: 'time-outline',
+              startTime: new Date(startTime).toLocaleString(),
+              endTime: new Date(endTime).toLocaleString(),
+            },
+            requestGeneration,
+          );
           return;
         }
         
         // Quiz expired
         if (now > endTime) {
-          navigationAdapter.navigate('QuizStatusScreen', {
-            status: 'expired',
-            title: 'Quiz Expired',
-            message: `This quiz was available until:\n${new Date(endTime).toLocaleString()}`,
-            icon: 'close-circle-outline',
-            endTime: new Date(endTime).toLocaleString(),
-          });
+          leaveLoading(
+            navigationAdapter,
+            'QuizStatusScreen',
+            {
+              status: 'expired',
+              title: 'Quiz Expired',
+              message: `This quiz was available until:\n${new Date(endTime).toLocaleString()}`,
+              icon: 'close-circle-outline',
+              endTime: new Date(endTime).toLocaleString(),
+            },
+            requestGeneration,
+          );
           return;
         }
       } else {
@@ -466,34 +569,49 @@ export async function handleOpenQuiz(
         firstQuestion: normalizedQuiz.questions[0]?.question.substring(0, 50)
       });
 
-      navigationAdapter.navigate('QuizTakingScreen', {
-        quiz: normalizedQuiz,
-        // Legacy params for backward compatibility (can be removed later)
-        quizId: normalizedQuiz.quizId,
-        sessionId: normalizedQuiz.sessionId,
-        classroomId: normalizedQuiz.classroomId,
-        quizData: normalizedQuiz,
-        is_public: quizData.is_public,
-      });
+      leaveLoading(
+        navigationAdapter,
+        'QuizTakingScreen',
+        {
+          quiz: normalizedQuiz,
+          // Legacy params for backward compatibility (can be removed later)
+          quizId: normalizedQuiz.quizId,
+          sessionId: normalizedQuiz.sessionId,
+          classroomId: normalizedQuiz.classroomId,
+          quizData: normalizedQuiz,
+          is_public: quizData.is_public,
+        },
+        requestGeneration,
+      );
       return;
     }
 
     // ==========================================
     // 8. FALLBACK - Unknown role
     // ==========================================
-    navigationAdapter.navigate('QuizStatusScreen', {
-      status: 'error',
-      title: 'Error',
-      message: 'Unable to process quiz request.',
-      icon: 'alert-circle-outline',
-    });
+    leaveLoading(
+      navigationAdapter,
+      'QuizStatusScreen',
+      {
+        status: 'error',
+        title: 'Error',
+        message: 'Unable to process quiz request.',
+        icon: 'alert-circle-outline',
+      },
+      requestGeneration,
+    );
   } catch (error) {
     console.error('❌ Error in handleOpenQuiz:', error);
-    navigationAdapter.navigate('QuizStatusScreen', {
-      status: 'error',
-      title: 'Error Loading Quiz',
-      message: 'Unable to load quiz details. Please try again later.',
-      icon: 'cloud-offline-outline',
-    });
+    leaveLoading(
+      navigationAdapter,
+      'QuizStatusScreen',
+      {
+        status: 'error',
+        title: 'Error Loading Quiz',
+        message: 'Unable to load quiz details. Please try again later.',
+        icon: 'cloud-offline-outline',
+      },
+      requestGeneration,
+    );
   }
 }

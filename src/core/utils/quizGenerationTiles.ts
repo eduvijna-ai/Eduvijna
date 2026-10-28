@@ -8,6 +8,7 @@ import {
   type QuizNavCapability,
 } from '../domain/quizNavCapability';
 import { SCREEN_DEFAULTS, type ResolvedNavItem } from '../hooks/useQuizNavItems';
+import { resolveDocumentAssessmentNavigation } from './documentAssessmentNavigation';
 
 export const QUIZ_GENERATION_FALLBACK_SCREENS = [
   'CreateAIQuizScreen',
@@ -131,21 +132,22 @@ export function resolveQuizGenerationTiles(
   return deduped;
 }
 
-/** Resolve navigation target for a generation tile press (mobile workspace redirect). */
+/**
+ * Resolve navigation target for a generation tile / '+' menu press.
+ * Document family always opens DocumentUploadHomeScreen (Founder-approved '+' path).
+ * Handwritten still uses AssessmentWorkspaceScreen on native.
+ */
 export function resolveQuizGenerationNavigation(
   screen: string,
   options?: { isWeb?: boolean },
-): { screen: string; params?: { mode: 'document' | 'handwritten' } } {
+): { screen: string; params?: Record<string, unknown> } {
   const isWeb = options?.isWeb === true;
-  const isDocument =
-    screen === 'CreateDocumentQuizScreen' || screen === 'DocumentUploadHomeScreen';
-  if (isWeb) {
-    return { screen };
+  const documentTarget = resolveDocumentAssessmentNavigation(screen);
+  if (documentTarget) {
+    // Web and native: same Document home (no AssessmentWorkspace redirect).
+    return documentTarget;
   }
-  if (isDocument) {
-    return { screen: 'AssessmentWorkspaceScreen', params: { mode: 'document' } };
-  }
-  if (screen === 'CreateHandwrittenQuizScreen') {
+  if (!isWeb && screen === 'CreateHandwrittenQuizScreen') {
     return { screen: 'AssessmentWorkspaceScreen', params: { mode: 'handwritten' } };
   }
   if (screen === 'CreateImageQuizScreen') {
