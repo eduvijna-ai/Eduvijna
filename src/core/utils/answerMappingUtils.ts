@@ -129,17 +129,29 @@ export const isQuizAnswerCorrect = (
     answer?: string;
     correctOptionIndex?: number;
   },
+  selectedDisplayIndex?: number | null,
 ): boolean => {
-  if (!selectedAnswer) return false;
+  if (
+    selectedDisplayIndex == null &&
+    (selectedAnswer == null || !String(selectedAnswer).trim())
+  ) {
+    return false;
+  }
+  const selectedIdx =
+    typeof selectedDisplayIndex === 'number' &&
+    selectedDisplayIndex >= 0 &&
+    selectedDisplayIndex < (question.options?.length ?? 0)
+      ? selectedDisplayIndex
+      : selectedAnswer
+        ? resolveSelectedOptionIndex(selectedAnswer, question.options)
+        : null;
+  if (selectedIdx == null) return false;
   if (typeof question.correctOptionIndex === 'number') {
-    const selectedIdx = resolveSelectedOptionIndex(selectedAnswer, question.options);
-    if (selectedIdx == null) return false;
     return selectedIdx === question.correctOptionIndex;
   }
   const rawCorrect = String(question.correctAnswer ?? question.answer ?? '').trim();
   const correctIdx = resolveCorrectOptionIndex(rawCorrect, question.options);
-  const selectedIdx = resolveSelectedOptionIndex(selectedAnswer, question.options);
-  if (correctIdx == null || selectedIdx == null) return false;
+  if (correctIdx == null) return false;
   return selectedIdx === correctIdx;
 };
 
@@ -222,7 +234,19 @@ export function evaluatePersistedAnswerCorrectness(
   if (!selectedAnswer || !String(selectedAnswer).trim()) {
     return false;
   }
+  if (typeof question.correctOptionIndex === 'number') {
+    return isQuizAnswerCorrect(selectedAnswer, question);
+  }
   if (hasAuthoritativeCorrectAnswer(question)) {
+    const rawCorrect = String(question.correctAnswer ?? question.answer ?? '').trim();
+    const correctIdx = resolveCorrectOptionIndex(rawCorrect, question.options || []);
+    if (correctIdx == null) {
+      // Key present but unverifiable (ambiguous / unresolved) — unknown, not wrong.
+      if (typeof question.attendedIsCorrect === 'boolean') {
+        return question.attendedIsCorrect;
+      }
+      return null;
+    }
     return isQuizAnswerCorrect(selectedAnswer, question);
   }
   if (typeof question.attendedIsCorrect === 'boolean') {
@@ -345,17 +369,26 @@ export interface ExplanationReconcileResult {
 export function computeLocalQuizResults(
   questions: PlayableQuizQuestion[],
   selectedAnswers: Record<number, string>,
+  selectedDisplayIndices?: Record<number, number>,
 ): ExplanationReconcileResult {
   const authoritativeCorrectAnswers: Record<number, string> = {};
   const questionResults: Record<number, boolean> = {};
 
   questions.forEach((question, index) => {
     const selectedAnswer = selectedAnswers[index];
-    if (!selectedAnswer) {
+    const selectedDisplayIndex = selectedDisplayIndices?.[index];
+    if (
+      selectedDisplayIndex == null &&
+      (!selectedAnswer || !String(selectedAnswer).trim())
+    ) {
       questionResults[index] = false;
       return;
     }
-    questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+    questionResults[index] = isQuizAnswerCorrect(
+      selectedAnswer,
+      question,
+      selectedDisplayIndex,
+    );
   });
 
   return { authoritativeCorrectAnswers, questionResults };
@@ -370,8 +403,9 @@ export const reconcileResultsWithExplanations = async (
   questions: PlayableQuizQuestion[],
   selectedAnswers: Record<number, string>,
   fetchExplanation: (payload: ExplanationReconcileInput) => Promise<{ correct_answer?: string }>,
+  selectedDisplayIndices?: Record<number, number>,
 ): Promise<ExplanationReconcileResult> => {
-  const local = computeLocalQuizResults(questions, selectedAnswers);
+  const local = computeLocalQuizResults(questions, selectedAnswers, selectedDisplayIndices);
   const authoritativeCorrectAnswers: Record<number, string> = {
     ...local.authoritativeCorrectAnswers,
   };
@@ -380,7 +414,11 @@ export const reconcileResultsWithExplanations = async (
   await Promise.all(
     questions.map(async (question, index) => {
       const selectedAnswer = selectedAnswers[index];
-      if (!selectedAnswer) {
+      const selectedDisplayIndex = selectedDisplayIndices?.[index];
+      if (
+        selectedDisplayIndex == null &&
+        (!selectedAnswer || !String(selectedAnswer).trim())
+      ) {
         questionResults[index] = false;
         return;
       }
@@ -397,7 +435,11 @@ export const reconcileResultsWithExplanations = async (
         hasAuthoritativeCorrectAnswer(question);
 
       if (hasVerifiedKey) {
-        questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+        questionResults[index] = isQuizAnswerCorrect(
+          selectedAnswer,
+          question,
+          selectedDisplayIndex,
+        );
         // Optionally fetch explanation for enrichment; never override grading.
         try {
           const data = await fetchExplanation({
@@ -419,30 +461,15 @@ export const reconcileResultsWithExplanations = async (
         return;
       }
 
-      // No verified key: explanation may supply a unique resolvable answer for display,
-      // but ambiguous resolutions must not invent a grade.
-      try {
-        const data = await fetchExplanation({
-          questionId: question.id || `q-${index}`,
-          questionText: question.question,
-          options: question.options,
-          selectedAnswer,
-        });
-        const apiCorrect = data.correct_answer?.trim();
-        if (apiCorrect) {
-          const enriched = withAuthoritativeCorrectAnswer(question, apiCorrect);
-          if (typeof enriched.correctOptionIndex === 'number') {
-            authoritativeCorrectAnswers[index] =
-              enriched.correctAnswer || question.options[enriched.correctOptionIndex];
-            questionResults[index] = isQuizAnswerCorrect(selectedAnswer, enriched);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to local grading.
+      // No verified key: never let explanation generation invent a grade.
+      // Preserve local/unknown state; explanations are display-only when a key exists.
+      const persisted = evaluatePersistedAnswerCorrectness(selectedAnswer, question);
+      if (persisted === null) {
+        // Keep false as placeholder for Record<boolean>; UI uses evaluatePersistedAnswerCorrectness.
+        questionResults[index] = false;
+        return;
       }
-
-      questionResults[index] = isQuizAnswerCorrect(selectedAnswer, question);
+      questionResults[index] = persisted;
     }),
   );
 

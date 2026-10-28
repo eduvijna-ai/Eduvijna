@@ -67,6 +67,8 @@ export interface SubmitAssignedQuizInput {
   sessionId: string;
   questions: PlayableQuizQuestion[];
   selectedAnswers: Record<number, string>;
+  /** Display option indices from QuizTakingScreen (duplicate-text safe). */
+  selectedDisplayIndices?: Record<number, number>;
   startedAtIso: string;
   scorePercent: number;
   questionCount: number;
@@ -248,6 +250,7 @@ function resolvePersistenceFromCheckpoint(
   const log_data = buildAssignedQuizLogData({
     questions: input.questions,
     selectedAnswers: input.selectedAnswers,
+    selectedDisplayIndices: input.selectedDisplayIndices,
     questionCount: input.questionCount,
     timeSpentSeconds: timeSpent,
     attemptId,

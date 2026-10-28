@@ -166,6 +166,12 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
   const requestedImages = useRef<Set<string>>(new Set());
   const generateInFlightRef = useRef(false);
+  const cameraAddOpIdRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      cameraAddOpIdRef.current += 1;
+    };
+  }, []);
   /** Cached library upload for camera Document Assessment (invalidated on source edits). */
   const uploadedCameraSourceRef = useRef<{
     docId: string;
@@ -445,12 +451,13 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       return;
     }
 
+    const opId = ++cameraAddOpIdRef.current;
     try {
       setError('');
       setCapturingPage(true);
 
       const captured = await captureDocumentImage();
-      if (!captured) return;
+      if (!captured || cameraAddOpIdRef.current !== opId) return;
 
       const newPage = normalizeCameraPage({
         pageNumber: (bookState.pages?.length || 0) + 1,
@@ -460,15 +467,21 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
         thumbnailUri: captured.uri,
       });
 
+      if (cameraAddOpIdRef.current !== opId) return;
       const next = appendCameraPage(bookState, newPage);
       await persistBook(next);
+      if (cameraAddOpIdRef.current !== opId) return;
       invalidateUploadedCameraSource();
       setPage(next.totalPages);
       setSelectedPages(new Set(next.pages?.map((p) => p.pageNumber) || [1]));
     } catch (e: any) {
-      setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+      if (cameraAddOpIdRef.current === opId) {
+        setError(normalizeErrorMessage(e, 'Failed to capture page.'));
+      }
     } finally {
-      setCapturingPage(false);
+      if (cameraAddOpIdRef.current === opId) {
+        setCapturingPage(false);
+      }
     }
   };
 

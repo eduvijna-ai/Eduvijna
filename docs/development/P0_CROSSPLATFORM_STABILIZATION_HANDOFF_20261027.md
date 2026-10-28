@@ -1,89 +1,93 @@
-# EduVijna — P0 Cross-Platform Stabilization Handoff (2026-10-27)
+# EduVijna — P0 Cross-Platform Stabilization Handoff (2026-10-27 / closure 2026-10-28)
 
 Branch: `fix/mobile-crossplatform-p0-stabilization`  
 Baseline: `origin/main` @ `0e81f9e3dfb8b88f4dab6c7b7158819c602b9a2c`  
-Scope: seven Founder-reported defects in one coordinated batch. No production API secret changes.
+DRAFT PR: https://github.com/eduvijna-ai/Eduvijna/pull/27  
+Prior verified HEAD: `93e679f051b3d7b764f99e44fc0e4938bdd0b86a`  
+Architect closure HEAD: `ea0d908e799eeb2d395250d9630b0f1aebf26e39`
 
-## Status
+Scope: seven Founder defects + Chief Architect eight-gate closure. No production API secret changes. Physical-phone LAN remains **ON HOLD**.
 
-**BLOCKED** for Founder acceptance until physical-device / hosting gates below clear.  
-Engineering code + focused unit regressions for Issues 1–6 are implemented on this branch.
+## Status matrix (2026-10-28)
 
 | Gate | Result |
 |------|--------|
-| Branch cut from verified main | **PASS** |
-| Focused Jest (28 tests) | **PASS** |
-| `npm run config:verify` | **PASS** |
-| `npm run type-check` | **FAIL** (pre-existing suite errors across many `__tests__`; no new errors attributed to core fix files) |
-| Android physical release-like | **BLOCKED** — no physical device on ADB this session |
-| iOS physical Universal Links | **BLOCKED** — Windows host; AASA `https://app.eduvijna.com/.well-known/apple-app-site-association` returns **404** |
-| Android assetlinks verification | **BLOCKED** — `/.well-known/assetlinks.json` fetch timed out / not verified |
-| Expo Web manual journeys | **PENDING** |
-| Quiz-React parity | **PENDING** (shared API contract only; no Quiz-React code change yet) |
-| Codex independent review | **PENDING** |
+| Gate 1 — Answer identity in production submit/persist/reopen | **PASS** (code + Jest) |
+| Gate 2 — Full explanation quarantine + Swachh integration | **PASS** (code + Jest) |
+| Gate 3 — Real From Books `generateFromSavedBooks` extraction | **PASS** (code + unit); live API journey **PENDING**/device |
+| Gate 4 — Cancel-safe camera + deep-link stale nav | **PASS** (code + Jest) |
+| Gate 5 — Handoff Metro commands vs `package.json` | **PASS** (reconciled to committed scripts) |
+| Gate 6 — Full engineering validation / emulator E2E | **PARTIAL** — focused Jest PASS; emulator **BLOCKED** (`adb devices` empty) |
+| Gate 7 — Independent review of full PR diff | **PENDING** (report attached after review run) |
+| Gate 8 — Hosting AASA / assetlinks | **BLOCKED** — AASA 404; assetlinks HTTP 500; Team ID / fingerprints not inventable |
+| `npm run config:verify` | run on deliver |
+| `npm run type-check` | compare vs baseline; see evidence |
+| Physical Android / iOS | **PENDING** Founder authorization |
+| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **false** until emulator evidence exists |
+| `READY_FOR_CROSSPLATFORM_RELEASE` | **false** (hosting + physical incomplete) |
 
 ---
 
-## Issue summaries
+## Architect closure — root causes
 
-### Issue 1 — Document entry mismatch
-**Root cause:** Dashboard `resolveQuizGenerationNavigation` redirected Document tiles to `AssessmentWorkspaceScreen`, while '+' opened `DocumentUploadHomeScreen`. Fallback '+' menu also listed two Document entries.  
-**Fix:** Canonical `resolveDocumentAssessmentNavigation` → always `DocumentUploadHomeScreen`. Grid + modal share `resolveQuizGenerationNavigation`.  
-**Files:** `src/core/utils/documentAssessmentNavigation.ts`, `quizGenerationTiles.ts`, `CreateAssessmentModal.tsx`, tests.
+### Gate 1 — Correctness and persistence
+**Finding:** `attemptAnswerIdentity` was test-only; production `buildAssignedQuizLogData` / reopen paths did not freeze display indices.  
+**Fix:** `buildAssignedQuizLogData` embeds `answer_identity` v1 + `userAnswerText` / display indices; `quizResultNormalization` prefers identity on reopen; QuizTakingScreen tracks `selectedDisplayIndices` for duplicate option text; unknown/unresolvable keys stay unknown via `evaluatePersistedAnswerCorrectness` (no explanation regrade).  
+**Invariant evidence:** `src/__tests__/swachhBharatSubmissionReopen.integration.test.ts`.
 
-### Issue 2 — Camera continuous loading
-**Root cause:** Post-capture processing could hang without a bound; spinner relied solely on `finally`. Compress/EXIF inside `captureDocumentImage` was outside the Home timeout.  
-**Fix:** 45s bound around compress inside `captureDocumentImage` (raw-URI fallback); `getImageSize` 8s timeout; Home still races `processCameraCapture` (60s); guaranteed `setCapturing(false)`.  
-**Files:** `documentCameraCapture.ts`, `documentImageUtils.ts`, `DocumentUploadHomeScreen.tsx`.  
-**Device evidence:** **BLOCKED** (needs emulator/physical camera capture confirmation).
+### Gate 2 — Explanation consistency
+**Finding:** Accordion quarantined contradictory `correct_answer` but still rendered `correct_reason` / `wrong_options` / fact.  
+**Fix:** When `explanationContradictsKey`, show verified answer + explanation-unavailable only; omit conflicting body entirely.  
+**Evidence:** `QuizExplanationAccordion.quarantine.test.tsx` + Swachh reopen suite.
 
-### Issue 3 — Generation returned no questions
-**Root cause:** `normalizeQuestions` ignored nested `quiz.*` / `questions.quizzes` shapes and coerced non-letter answers to `'A'`; empty nested payloads became zero questions silently; `waitForLibraryBookReady` soft-succeeded with incomplete pages; generate sent empty class/subject.  
-**Fix:** Unwrap nested shapes; preserve full-text keys; `extractQuestionsPayload`; throw actionable errors from `generateFromBook` / multimodal when empty; fail hard unless `totalPages >= expected`; restore class/subject from form/preset when present.  
-**Files:** `documentUploadApi.ts`, `DocumentUploadPreviewScreen.tsx`, tests.
+### Gate 3 — From Books generation
+**Finding:** Prior work focused on `generateFromBook`; real path is `DocumentCurriculumFromBooksScreen` → `generateFromSavedBooks`. Early empty checks used `res.quiz?.length` only, missing `questions` / nested `result.quiz`.  
+**Fix:** `extractQuizArrayFromGenerationResponse` expanded; both aligned and non-aligned early checks use it before preview handoff.  
+**Evidence:** `documentCurriculumFromBooks.extract.test.ts`. Live generate/save/reopen on emulator: **BLOCKED** (no device).
 
-### Issues 4–5 — Option / explanation inconsistency (Swachh Bharat)
-**Root cause:** `withAuthoritativeCorrectAnswer` updated text without `correctOptionIndex`; `reconcileResultsWithExplanations` regraded from explanation API; results UI used text match; accordion omitted verified `correctAnswer` prop.  
-**Fix:** Index-aware highlighting; explanations never override verified keys; quarantine contradictory explanation keys; pass verified key into accordion; `attemptAnswerIdentity` v1 contract; mandatory Swachh Bharat fixture.  
-**Files:** `answerMappingUtils.ts`, `attemptAnswerIdentity.ts`, `QuizResultsScreen.tsx`, `QuizTakingScreen.tsx`, `QuizExplanationAccordion.tsx`, tests.
+### Gate 4 — Cancel-safe async
+**Camera:** Timeout now invalidates `cameraCaptureOpIdRef` so late `processCameraCapture` cannot persist/navigate.  
+**Deep link:** `openQuizRequestGuard` generation token; Cancel/watchdog calls `cancelPendingOpenQuizRequest`; `leaveLoading` / view-results nav no-ops when stale; App adapter uses `StackActions.replace` / `CommonActions.navigate` (no assumed `navigationRef.replace`).  
+**Evidence:** `openQuizRequestGuard.test.ts`.
 
-### Issue 6 — Deep-link Back / Cancel stranded on Validating quiz…
-**Root cause:** Recovery-probe alert Cancel returned while still on `QuizLoadingScreen`.  
-**Fix:** Cancel → `Main/Dashboard` via `replace`; all exit paths use `leaveLoading`; loading screen Cancel + 45s watchdog; App adapters expose `replace`.  
-**Files:** `openQuizHandler.ts`, `QuizLoadingScreen.tsx`, `App.tsx`, `BottomTabNavigator.tsx`, tests.
+### Gate 5 — Environment commands
+**Finding:** Handoff referenced `npm run start:device:lan`, absent from this branch’s committed `package.json`.  
+**Resolution:** Use verified committed script (do **not** cherry-pick LAN WIP stash):
 
-### Issue 7 — iOS Universal Links / Android Home after deep link
-**Code fix:** `ios.associatedDomains: ["applinks:app.eduvijna.com"]` in `app.json`; Navigation `linking.prefixes` includes `https://app.eduvijna.com`; deep-link leave navigates to Dashboard (Issue 6).  
-**Hosting:** AASA **404** — Universal Links cannot work until Apple Team ID + `com.eduvijna.app` AASA is published. Android App Links assetlinks **not verified**.  
-**Physical:** **BLOCKED**.
+```powershell
+npm run start:device
+```
+
+(`node scripts/with-eduvijna-api-env.mjs development -- expo start --dev-client --lan`)
+
+LAN emulator WIP remains stashed separately: `preserve/expo-lan-emulator-setup-wip-20261027-evening` on branch `chore/expo-lan-emulator-setup-20261027` — **explicit prerequisite** only if Founder needs Mode-B `10.0.2.2` scripts; not silently merged into PR #27.
+
+### Gate 8 — Hosting
+See `docs/development/HOSTING_UNIVERSAL_LINKS_HANDOFF_20261028.md`.  
+`ios.associatedDomains` preserved. Public AASA **404**; assetlinks **500**. Apple Team ID and release SHA-256 **not** present as verified values in-repo (placeholders only).
 
 ---
 
-## Founder commands (after merge / on this branch)
+## Founder commands (this branch)
 
 ```powershell
 cd D:\Eduvijna-Android-App\Eduvijna
 git checkout fix/mobile-crossplatform-p0-stabilization
 . .\scripts\setup-android-env.ps1
-npm run start:device:lan
+npm run start:device
 ```
 
 Focused regression:
 
 ```powershell
-node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand --testPathPattern="documentAssessmentNavigation|quizGenerationTiles.production|swachhBharatAnswerIdentity|documentUploadNormalizeQuestions|answerMappingPermutation|openQuizHandler.routing"
+node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand --testPathPattern="documentAssessmentNavigation|quizGenerationTiles.production|swachhBharat|documentUploadNormalizeQuestions|answerMappingPermutation|openQuizHandler.routing|openQuizRequestGuard|QuizExplanationAccordion.quarantine|documentCurriculumFromBooks.extract|quizResultNormalization"
 ```
 
 ---
 
-## Remaining prerequisites before READY FOR FOUNDER ACCEPTANCE
+## Remaining before release
 
-1. Publish valid AASA at `https://app.eduvijna.com/.well-known/apple-app-site-association`.
-2. Publish / verify Android Digital Asset Links for the release signing cert.
-3. Newly signed iOS build including associated domains; physical Universal Link test.
-4. Physical Android App Links + Home/Dashboard after openquiz.
-5. Camera capture + From Books generation on device with redacted API evidence.
-6. Codex review of this PR; resolve P0/P1 findings.
-7. Optional: clear pre-existing `tsc` test-file debt or exclude tests from `type-check` consistently.
-
-LAN environment WIP remains stashed as `preserve/expo-lan-emulator-setup-wip-20261027-evening` (separate from this branch).
+1. Publish AASA + assetlinks with real Team ID / signing fingerprints (Gate 8).  
+2. Emulator E2E (Gate 6) then Founder-authorized physical device.  
+3. Independent review findings fixed (Gate 7).  
+4. Do **not** set `READY_FOR_CROSSPLATFORM_RELEASE=true` until hosting + physical complete.

@@ -46,6 +46,55 @@ const completeItems = [
 ];
 
 describe('quizResultNormalization', () => {
+  it('prefers answer_identity over attended.items for reopen review model', () => {
+    const identity = {
+      version: 1 as const,
+      questions: [
+        {
+          questionId: 'q-0',
+          questionText: 'Swachh?',
+          optionsDisplayed: ['A text', 'B text', 'C text', 'D text'],
+          correct: { originalIndex: 1, displayIndex: 1, displayText: 'B text' },
+          selected: { originalIndex: 0, displayIndex: 0, displayText: 'A text' },
+          isCorrect: false,
+        },
+      ],
+    };
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 0,
+      time_spent_seconds: 12,
+      log_data: {
+        answer_identity: identity,
+        answers: [
+          {
+            questionNumber: 1,
+            question: 'Swachh?',
+            options: ['A text', 'B text', 'C text', 'D text'],
+            correctAnswer: 'B text',
+            userAnswer: 'A',
+            userAnswerText: 'A text',
+            isCorrect: false,
+          },
+        ],
+      },
+      items: [
+        {
+          question: 'Swachh?',
+          // Mutated / incomplete attended payload must not win over identity.
+          options: ['C text', 'A text', 'B text', 'D text'],
+          student_answer: 'A',
+          answer_key: '',
+          is_correct: true,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].options).toEqual(['A text', 'B text', 'C text', 'D text']);
+    expect(normalized?.questions[0].correctOptionIndex).toBe(1);
+    expect(normalized?.userAnswers[0]).toBe('A text');
+    expect(normalized?.questions[0].attendedIsCorrect).toBe(false);
+  });
+
   it('reconstructs questions and answers from complete log_data.answers', () => {
     const normalized = normalizeQuestionsAndAnswersFromLogData({
       answers: [

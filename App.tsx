@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { CommonActions, NavigationContainer, StackActions } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from './src/core/hooks/useAuth';
@@ -196,18 +196,29 @@ function AppContent() {
       if (!user) return;
       const navigationAdapter = {
         navigate: (screen: string, params?: any) => {
-          if (navigationRef.current) {
-            (navigationRef.current as any).navigate(screen, params);
+          if (navigationRef.isReady()) {
+            navigationRef.dispatch(
+              CommonActions.navigate({
+                name: screen,
+                params,
+              }),
+            );
           }
         },
         replace: (screen: string, params?: any) => {
-          const nav = navigationRef.current as any;
-          if (!nav) return;
-          if (typeof nav.replace === 'function') {
-            nav.replace(screen, params);
+          if (!navigationRef.isReady()) return;
+          // Container ref has no native-stack replace; use StackActions.
+          try {
+            navigationRef.dispatch(StackActions.replace(screen, params));
             return;
+          } catch {
+            navigationRef.dispatch(
+              CommonActions.navigate({
+                name: screen,
+                params,
+              }),
+            );
           }
-          nav.navigate(screen, params);
         },
         alert: Alert.alert,
       };
@@ -937,6 +948,7 @@ function AppContent() {
           />;
         case 'QuizLoadingScreen':
           return <QuizLoadingScreen 
+            navigation={createWebNavigation('Dashboard')}
             route={{ params: navigationParams }}
           />;
         case 'WorksheetScreen':

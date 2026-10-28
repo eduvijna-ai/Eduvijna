@@ -6,12 +6,16 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { useTheme } from '@context/ThemeContext';
+import { cancelPendingOpenQuizRequest } from '@core/services/openQuizRequestGuard';
+import { navigateToAppMainTab } from '@platforms/mobile/navigation/navigateToAppMainTab';
 
 interface QuizLoadingScreenProps {
   navigation?: {
     navigate: (screen: string, params?: any) => void;
     replace?: (screen: string, params?: any) => void;
+    dispatch?: (action: unknown) => void;
     canGoBack?: () => boolean;
     goBack?: () => void;
   };
@@ -33,12 +37,35 @@ export default function QuizLoadingScreen({ navigation, route }: QuizLoadingScre
   const leaveToHome = () => {
     if (leftRef.current) return;
     leftRef.current = true;
+    // Invalidate in-flight open-quiz validation before leaving.
+    cancelPendingOpenQuizRequest();
+    // Prefer the screen's navigation prop (works on web shell + stack).
+    if (navigation?.dispatch) {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main', state: { routes: [{ name: 'Dashboard' }], index: 0 } }],
+        }),
+      );
+      return;
+    }
     if (navigation?.replace) {
       navigation.replace('Main', { screen: 'Dashboard' });
       return;
     }
-    navigation?.navigate?.('Main', { screen: 'Dashboard' });
+    if (navigation?.navigate) {
+      navigation.navigate('Main', { screen: 'Dashboard' });
+      return;
+    }
+    navigateToAppMainTab('Dashboard');
   };
+
+  useEffect(() => {
+    return () => {
+      // Leaving the loading screen by any means must invalidate pending validation.
+      cancelPendingOpenQuizRequest();
+    };
+  }, []);
 
   // Safety net: never leave the user stranded on "Validating quiz..." forever.
   useEffect(() => {

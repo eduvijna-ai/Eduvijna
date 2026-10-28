@@ -275,6 +275,9 @@ export default function QuizTakingScreen({ route, navigation }: any) {
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>(
     () => submissionRecovery?.selectedAnswers ?? {},
   );
+  const [selectedDisplayIndices, setSelectedDisplayIndices] = useState<{
+    [key: number]: number;
+  }>({});
   const [showResults, setShowResults] = useState(false);
 
   // Pre-fill previously saved answers exactly once when restoring from history.
@@ -834,6 +837,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
       ...selectedAnswers,
       [currentQuestionIndex]: option,
     });
+    setSelectedDisplayIndices({
+      ...selectedDisplayIndices,
+      [currentQuestionIndex]: optionIndex,
+    });
   };
 
   const handleNextQuestion = () => {
@@ -880,7 +887,11 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     setSubmitting(true);
     
     try {
-      const localGrading = computeLocalQuizResults(quiz.questions, selectedAnswers);
+      const localGrading = computeLocalQuizResults(
+        quiz.questions,
+        selectedAnswers,
+        selectedDisplayIndices,
+      );
       let results = localGrading.questionResults;
       let authoritativeCorrect = localGrading.authoritativeCorrectAnswers;
 
@@ -895,6 +906,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
               options,
               selected_answer: normalizeSelectedAnswer(selectedAnswer, options),
             }),
+          selectedDisplayIndices,
         );
         results = reconciled.questionResults;
         authoritativeCorrect = reconciled.authoritativeCorrectAnswers;
@@ -967,6 +979,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
             sessionId,
             questions: questionsForPersistence,
             selectedAnswers,
+            selectedDisplayIndices,
             startedAtIso: quizStartTime,
             scorePercent: score,
             questionCount: totalQuestions,
@@ -1323,7 +1336,10 @@ export default function QuizTakingScreen({ route, navigation }: any) {
 
           <View style={styles.optionsContainer}>
             {currentQuestion.options.map((option: string, index: number) => {
-              const isSelected = selectedAnswers[currentQuestionIndex] === option;
+              const isSelected =
+                selectedDisplayIndices[currentQuestionIndex] === index ||
+                (selectedDisplayIndices[currentQuestionIndex] == null &&
+                  selectedAnswers[currentQuestionIndex] === option);
               const optionLetter = String.fromCharCode(65 + index);
               const isCorrectAnswer =
                 showResults && isOptionTheCorrectAnswer(option, effectiveCurrentQuestion);

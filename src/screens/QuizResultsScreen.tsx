@@ -182,10 +182,19 @@ export default function QuizResultsScreen({ route, navigation }: QuizResultsScre
             questions = [];
           }
           setQuizData({ questions });
-          if (logData?.answers) {
+          if (logData?.answer_identity?.questions && Array.isArray(logData.answer_identity.questions)) {
+            setUserAnswers(
+              logData.answer_identity.questions.map(
+                (q: { selected?: { displayText?: string } | null }) =>
+                  q.selected?.displayText ?? '',
+              ),
+            );
+          } else if (logData?.answers) {
             let answers: string[];
             if (Array.isArray(logData.answers)) {
-              answers = logData.answers.map((a: any) => a.userAnswer);
+              answers = logData.answers.map(
+                (a: any) => a.userAnswerText ?? a.userAnswer,
+              );
             } else if (typeof logData.answers === 'object') {
               answers = Object.keys(logData.answers)
                 .sort((a, b) => parseInt(a) - parseInt(b))

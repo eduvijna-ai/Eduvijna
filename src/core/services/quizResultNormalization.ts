@@ -13,6 +13,11 @@ import {
   type LetterOption,
   type PlayableQuizQuestion,
 } from '../utils/answerMappingUtils';
+import {
+  isAttemptAnswerIdentityV1,
+  userAnswersArrayFromIdentity,
+  type AttemptAnswerIdentityV1,
+} from '../utils/attemptAnswerIdentity';
 
 export interface NormalizedPersistedQuizResult {
   questions: PlayableQuizQuestion[];
@@ -29,9 +34,12 @@ type LogAnswerEntry = {
   options?: string[];
   correctAnswer?: string;
   userAnswer?: string | null;
+  userAnswerText?: string | null;
   user_answer?: string | null;
   selected_option?: string | null;
-  isCorrect?: boolean;
+  selectedDisplayIndex?: number | null;
+  correctDisplayIndex?: number | null;
+  isCorrect?: boolean | null;
 };
 
 function letterOrTextToDisplayAnswer(
@@ -86,8 +94,26 @@ function attendedItemsHaveQuestionStructure(
 
 function extractUserAnswer(entry: LogAnswerEntry | undefined, options: string[]): string {
   if (!entry) return '';
+  // Prefer display text frozen at submit (survives letter/text/shuffle reopen).
+  if (entry.userAnswerText != null && String(entry.userAnswerText).trim() !== '') {
+    return String(entry.userAnswerText);
+  }
+  if (
+    typeof entry.selectedDisplayIndex === 'number' &&
+    entry.selectedDisplayIndex >= 0 &&
+    entry.selectedDisplayIndex < options.length
+  ) {
+    return options[entry.selectedDisplayIndex];
+  }
   const raw = entry.userAnswer ?? entry.user_answer ?? entry.selected_option ?? null;
   return letterOrTextToDisplayAnswer(raw, options);
+}
+
+function readAnswerIdentity(
+  logData: Record<string, unknown> | null | undefined,
+): AttemptAnswerIdentityV1 | null {
+  const raw = logData?.answer_identity ?? logData?.answerIdentity;
+  return isAttemptAnswerIdentityV1(raw) ? raw : null;
 }
 
 function isUsableMergedAnswer(answer: string): boolean {
@@ -160,6 +186,46 @@ function mergeUserAnswersOntoQuestions(
 export function normalizeQuestionsAndAnswersFromLogData(
   logData: Record<string, unknown> | null | undefined,
 ): NormalizedPersistedQuizResult | null {
+  const identity = readAnswerIdentity(logData);
+  if (identity && identity.questions.length > 0) {
+    const questions: PlayableQuizQuestion[] = identity.questions.map((snap, index) => {
+      const entry = readLogAnswerEntries(logData)[index];
+      const options = snap.optionsDisplayed?.length
+        ? snap.optionsDisplayed
+        : Array.isArray(entry?.options)
+          ? entry.options
+          : [];
+      const correctRaw =
+        snap.correct?.displayText ??
+        entry?.correctAnswer ??
+        '';
+      const correctDisplayIndex = snap.correct?.displayIndex;
+      return {
+        id: snap.questionId || `q-${index}`,
+        question: snap.questionText || entry?.question || '',
+        options,
+        answer: correctRaw,
+        correctAnswer: correctRaw,
+        correctOptionIndex:
+          typeof correctDisplayIndex === 'number' ? correctDisplayIndex : undefined,
+        optionOrder: snap.optionOrder,
+        originalOptions: snap.originalOptions,
+        attendedIsCorrect: snap.isCorrect,
+        gradingFrozen: true,
+        explanation: null,
+      };
+    });
+    return {
+      questions,
+      userAnswers: userAnswersArrayFromIdentity(identity),
+      score: resolvePersistedScore(undefined, logData),
+      logData: logData ?? null,
+      timeSpentSeconds:
+        typeof logData?.time_spent_seconds === 'number' ? logData.time_spent_seconds : null,
+      completedAt: null,
+    };
+  }
+
   const entries = readLogAnswerEntries(logData);
   if (!logAnswersHaveSufficientQuestionData(entries)) {
     return null;
@@ -168,12 +234,17 @@ export function normalizeQuestionsAndAnswersFromLogData(
   const questions: PlayableQuizQuestion[] = entries.map((entry, index) => {
     const options = Array.isArray(entry.options) ? entry.options : [];
     const correctRaw = entry.correctAnswer ?? '';
+    const correctDisplayIndex =
+      typeof entry.correctDisplayIndex === 'number' ? entry.correctDisplayIndex : undefined;
     return {
       id: `q-${index}`,
       question: entry.question ?? '',
       options,
       answer: correctRaw,
       correctAnswer: correctRaw,
+      correctOptionIndex: correctDisplayIndex,
+      attendedIsCorrect: typeof entry.isCorrect === 'boolean' ? entry.isCorrect : null,
+      gradingFrozen: true,
       explanation: null,
     };
   });
@@ -199,6 +270,10 @@ export function userAnswersFromLogDataEntries(
   logData: Record<string, unknown> | null | undefined,
   questions: PlayableQuizQuestion[],
 ): string[] {
+  const identity = readAnswerIdentity(logData);
+  if (identity && identity.questions.length === questions.length) {
+    return userAnswersArrayFromIdentity(identity);
+  }
   const entries = readLogAnswerEntries(logData);
   return mergeUserAnswersOntoQuestions(questions, undefined, entries);
 }
@@ -219,6 +294,19 @@ export function normalizeAttendedQuizResponse(
     timeSpentSeconds: resolvePersistedTimeSpentSeconds(attended.time_spent_seconds, logData),
     completedAt: attended.submitted_at,
   };
+
+  const identity = readAnswerIdentity(logData);
+  // Prefer frozen attempt identity when present — authoritative for reopen review.
+  if (identity && identity.questions.length > 0) {
+    const fromIdentity = normalizeQuestionsAndAnswersFromLogData(logData);
+    if (fromIdentity) {
+      return {
+        ...fromIdentity,
+        ...meta,
+        score: meta.score,
+      };
+    }
+  }
 
   if (attendedItemsHaveQuestionStructure(attended.items)) {
     const questions = questionsFromAttendedItems(attended.items);

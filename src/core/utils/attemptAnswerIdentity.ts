@@ -43,6 +43,33 @@ export type AttemptAnswerIdentityV1 = {
   questions: AttemptQuestionSnapshot[];
 };
 
+export function isAttemptAnswerIdentityV1(value: unknown): value is AttemptAnswerIdentityV1 {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as AttemptAnswerIdentityV1;
+  return (
+    row.version === ATTEMPT_ANSWER_IDENTITY_VERSION &&
+    Array.isArray(row.questions)
+  );
+}
+
+/** Rebuild display selected-answer strings from a frozen identity (reopen/review). */
+export function selectedAnswersFromIdentity(
+  identity: AttemptAnswerIdentityV1,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  identity.questions.forEach((q, index) => {
+    if (q.selected?.displayText) {
+      out[index] = q.selected.displayText;
+    }
+  });
+  return out;
+}
+
+/** Rebuild userAnswers array aligned to question order for QuizResultsScreen. */
+export function userAnswersArrayFromIdentity(identity: AttemptAnswerIdentityV1): string[] {
+  return identity.questions.map((q) => q.selected?.displayText ?? '');
+}
+
 function buildOptionIdentity(
   displayIndex: number,
   optionsDisplayed: string[],
@@ -65,6 +92,7 @@ export function freezeAttemptQuestionSnapshot(
   question: PlayableQuizQuestion,
   selectedAnswer: string | undefined,
   questionIndex: number,
+  selectedDisplayIndexHint?: number | null,
 ): AttemptQuestionSnapshot {
   const optionsDisplayed = question.options || [];
   const correctDisplayIndex =
@@ -74,9 +102,18 @@ export function freezeAttemptQuestionSnapshot(
           String(question.correctAnswer ?? question.answer ?? ''),
           optionsDisplayed,
         );
-  const selectedDisplayIndex = selectedAnswer
-    ? resolveSelectedOptionIndex(selectedAnswer, optionsDisplayed)
-    : null;
+  const hinted =
+    typeof selectedDisplayIndexHint === 'number' &&
+    selectedDisplayIndexHint >= 0 &&
+    selectedDisplayIndexHint < optionsDisplayed.length
+      ? selectedDisplayIndexHint
+      : null;
+  const selectedDisplayIndex =
+    hinted != null
+      ? hinted
+      : selectedAnswer
+        ? resolveSelectedOptionIndex(selectedAnswer, optionsDisplayed)
+        : null;
 
   const correct =
     correctDisplayIndex == null
@@ -88,12 +125,12 @@ export function freezeAttemptQuestionSnapshot(
       : buildOptionIdentity(selectedDisplayIndex, optionsDisplayed, question.optionOrder);
 
   let isCorrect: boolean | null = null;
-  if (!selectedAnswer || !String(selectedAnswer).trim()) {
+  if (selectedDisplayIndex == null && (!selectedAnswer || !String(selectedAnswer).trim())) {
     isCorrect = false;
   } else if (correct == null) {
     isCorrect = null;
   } else {
-    isCorrect = isQuizAnswerCorrect(selectedAnswer, question);
+    isCorrect = isQuizAnswerCorrect(selectedAnswer, question, selectedDisplayIndex);
   }
 
   return {
@@ -112,12 +149,18 @@ export function buildAttemptAnswerIdentity(
   questions: PlayableQuizQuestion[],
   selectedAnswers: Record<number, string>,
   attemptId?: string,
+  selectedDisplayIndices?: Record<number, number>,
 ): AttemptAnswerIdentityV1 {
   return {
     version: ATTEMPT_ANSWER_IDENTITY_VERSION,
     attemptId,
     questions: questions.map((q, i) =>
-      freezeAttemptQuestionSnapshot(q, selectedAnswers[i], i),
+      freezeAttemptQuestionSnapshot(
+        q,
+        selectedAnswers[i],
+        i,
+        selectedDisplayIndices?.[i],
+      ),
     ),
   };
 }

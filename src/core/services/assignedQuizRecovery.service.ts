@@ -18,7 +18,9 @@ export class AssignedQuizRecoveryProbeError extends Error {
   }
 }
 
-export function isAssignedQuizRecoveryProbeError(error: unknown): boolean {
+export function isAssignedQuizRecoveryProbeError(
+  error: unknown,
+): error is AssignedQuizRecoveryProbeError {
   return error instanceof AssignedQuizRecoveryProbeError;
 }
 
