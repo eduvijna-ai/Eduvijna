@@ -4,7 +4,7 @@ Branch: `fix/mobile-crossplatform-p0-stabilization`
 Baseline: `origin/main` @ `0e81f9e3dfb8b88f4dab6c7b7158819c602b9a2c`  
 DRAFT PR: https://github.com/eduvijna-ai/Eduvijna/pull/27  
 Prior verified HEAD: `93e679f051b3d7b764f99e44fc0e4938bdd0b86a`  
-Architect closure HEAD: `ea0d908e799eeb2d395250d9630b0f1aebf26e39`
+Architect closure HEAD: `2d031ea2e463b3fe3e495f7812acf265de77bd15`
 
 Scope: seven Founder defects + Chief Architect eight-gate closure. No production API secret changes. Physical-phone LAN remains **ON HOLD**.
 
