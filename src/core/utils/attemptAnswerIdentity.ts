@@ -43,17 +43,33 @@ export type AttemptAnswerIdentityV1 = {
   questions: AttemptQuestionSnapshot[];
 };
 
-function isValidOptionIdentity(value: unknown, optionCount: number): boolean {
+function isNonNegInt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isValidOptionIdentity(
+  value: unknown,
+  optionsDisplayed: string[],
+): boolean {
   if (value == null) return true;
   if (!value || typeof value !== 'object') return false;
   const row = value as AttemptOptionIdentity;
-  return (
-    typeof row.displayIndex === 'number' &&
-    row.displayIndex >= 0 &&
-    row.displayIndex < optionCount &&
-    typeof row.originalIndex === 'number' &&
-    typeof row.displayText === 'string'
-  );
+  const n = optionsDisplayed.length;
+  if (!isNonNegInt(row.displayIndex) || row.displayIndex >= n) return false;
+  if (!isNonNegInt(row.originalIndex) || row.originalIndex >= n) return false;
+  if (typeof row.displayText !== 'string') return false;
+  return row.displayText === optionsDisplayed[row.displayIndex];
+}
+
+function isValidOptionOrder(order: unknown, optionCount: number): boolean {
+  if (order == null) return true;
+  if (!Array.isArray(order) || order.length !== optionCount) return false;
+  const seen = new Set<number>();
+  for (const idx of order) {
+    if (!isNonNegInt(idx) || idx >= optionCount || seen.has(idx)) return false;
+    seen.add(idx);
+  }
+  return seen.size === optionCount;
 }
 
 function isValidQuestionSnapshot(value: unknown): value is AttemptQuestionSnapshot {
@@ -62,9 +78,9 @@ function isValidQuestionSnapshot(value: unknown): value is AttemptQuestionSnapsh
   if (typeof row.questionId !== 'string' || typeof row.questionText !== 'string') return false;
   if (!Array.isArray(row.optionsDisplayed) || row.optionsDisplayed.length === 0) return false;
   if (!row.optionsDisplayed.every((o) => typeof o === 'string')) return false;
-  const n = row.optionsDisplayed.length;
-  if (!isValidOptionIdentity(row.correct, n)) return false;
-  if (!isValidOptionIdentity(row.selected, n)) return false;
+  if (!isValidOptionIdentity(row.correct, row.optionsDisplayed)) return false;
+  if (!isValidOptionIdentity(row.selected, row.optionsDisplayed)) return false;
+  if (!isValidOptionOrder(row.optionOrder, row.optionsDisplayed.length)) return false;
   if (!(row.isCorrect === true || row.isCorrect === false || row.isCorrect === null)) return false;
   return true;
 }
@@ -79,15 +95,28 @@ export function isAttemptAnswerIdentityV1(value: unknown): value is AttemptAnswe
   return row.questions.every(isValidQuestionSnapshot);
 }
 
-/** True when identity question count matches attended/log question count. */
+function normalizeQuestionText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+/**
+ * Align identity with attended/log question texts in order.
+ * Same-count but different/reordered questions must fail alignment.
+ */
 export function isAnswerIdentityAligned(
   identity: AttemptAnswerIdentityV1,
-  expectedQuestionCount: number,
+  referenceQuestionTexts: string[],
 ): boolean {
-  return (
-    expectedQuestionCount > 0 &&
-    identity.questions.length === expectedQuestionCount
-  );
+  if (!referenceQuestionTexts.length) return false;
+  if (identity.questions.length !== referenceQuestionTexts.length) return false;
+  return identity.questions.every((snap, index) => {
+    const expected = normalizeQuestionText(referenceQuestionTexts[index]);
+    if (!expected) return false;
+    return normalizeQuestionText(snap.questionText) === expected;
+  });
 }
 
 /** Rebuild display selected-answer strings from a frozen identity (reopen/review). */

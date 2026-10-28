@@ -297,21 +297,25 @@ export function normalizeAttendedQuizResponse(
   };
 
   const identity = readAnswerIdentity(logData);
-  const attendedCount = Array.isArray(attended.items) ? attended.items.length : 0;
-  const expectedCount =
-    attendedCount > 0
-      ? attendedCount
-      : entries.length > 0
-        ? entries.length
-        : identity?.questions.length ?? 0;
-  // Prefer frozen identity only when structurally valid and aligned with attended/log count.
-  if (
-    identity &&
-    isAnswerIdentityAligned(identity, expectedCount)
-  ) {
+  const referenceTexts =
+    attendedItemsHaveQuestionStructure(attended.items)
+      ? attended.items.map((item) => item.question)
+      : entries.length > 0 && entries.every((e) => String(e.question ?? '').trim())
+        ? entries.map((e) => String(e.question))
+        : [];
+  // Prefer frozen identity when structurally valid. If attended/log texts exist, require
+  // in-order text alignment so same-count foreign/reordered snapshots cannot win.
+  const identityUsable =
+    !!identity &&
+    (referenceTexts.length === 0 || isAnswerIdentityAligned(identity, referenceTexts));
+  if (identityUsable) {
     try {
       const fromIdentity = normalizeQuestionsAndAnswersFromLogData(logData);
-      if (fromIdentity && fromIdentity.questions.length === expectedCount) {
+      if (
+        fromIdentity &&
+        (referenceTexts.length === 0 ||
+          fromIdentity.questions.length === referenceTexts.length)
+      ) {
         return {
           ...fromIdentity,
           ...meta,

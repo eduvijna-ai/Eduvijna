@@ -46,6 +46,88 @@ const completeItems = [
 ];
 
 describe('quizResultNormalization', () => {
+  it('falls back when same-count identity has unrelated question texts', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 100,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [
+            {
+              questionId: 'other',
+              questionText: 'Completely different quiz question',
+              optionsDisplayed: ['A', 'B', 'C', 'D'],
+              correct: { originalIndex: 0, displayIndex: 0, displayText: 'A' },
+              selected: { originalIndex: 0, displayIndex: 0, displayText: 'A' },
+              isCorrect: true,
+            },
+          ],
+        },
+      },
+      items: [
+        {
+          question: 'Attended real question',
+          options: ['1', '2', '3', '4'],
+          student_answer: '2',
+          answer_key: '2',
+          is_correct: true,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].question).toBe('Attended real question');
+    expect(normalized?.userAnswers[0]).toBe('2');
+  });
+
+  it('falls back when identity questions are reordered vs attended items', () => {
+    const normalized = normalizeAttendedQuizResponse({
+      submitted_at: '2026-10-28T00:00:00Z',
+      score: 50,
+      log_data: {
+        answer_identity: {
+          version: 1,
+          questions: [
+            {
+              questionId: 'q2',
+              questionText: 'Second question',
+              optionsDisplayed: ['a', 'b', 'c', 'd'],
+              correct: { originalIndex: 1, displayIndex: 1, displayText: 'b' },
+              selected: { originalIndex: 0, displayIndex: 0, displayText: 'a' },
+              isCorrect: false,
+            },
+            {
+              questionId: 'q1',
+              questionText: 'First question',
+              optionsDisplayed: ['1', '2', '3', '4'],
+              correct: { originalIndex: 1, displayIndex: 1, displayText: '2' },
+              selected: { originalIndex: 1, displayIndex: 1, displayText: '2' },
+              isCorrect: true,
+            },
+          ],
+        },
+      },
+      items: [
+        {
+          question: 'First question',
+          options: ['1', '2', '3', '4'],
+          student_answer: '2',
+          answer_key: '2',
+          is_correct: true,
+        },
+        {
+          question: 'Second question',
+          options: ['a', 'b', 'c', 'd'],
+          student_answer: 'a',
+          answer_key: 'b',
+          is_correct: false,
+        },
+      ],
+    } as any);
+    expect(normalized?.questions[0].question).toBe('First question');
+    expect(normalized?.userAnswers[0]).toBe('2');
+    expect(normalized?.questions[1].question).toBe('Second question');
+  });
+
   it('falls back to attended.items when answer_identity is partial or misaligned', () => {
     const normalized = normalizeAttendedQuizResponse({
       submitted_at: '2026-10-28T00:00:00Z',
