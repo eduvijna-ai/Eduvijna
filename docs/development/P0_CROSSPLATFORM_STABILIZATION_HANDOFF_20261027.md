@@ -4,7 +4,7 @@ Branch: `fix/mobile-crossplatform-p0-stabilization`
 Baseline: `origin/main` @ `0e81f9e3dfb8b88f4dab6c7b7158819c602b9a2c`  
 DRAFT PR: https://github.com/eduvijna-ai/Eduvijna/pull/27  
 Prior verified HEAD: `93e679f051b3d7b764f99e44fc0e4938bdd0b86a`  
-Architect closure HEAD: `2d031ea2e463b3fe3e495f7812acf265de77bd15`
+Architect closure / session HEAD: `1f8e61cec6dcc132cbed10e634a41aee7742c1e9`
 
 Scope: seven Founder defects + Chief Architect eight-gate closure. No production API secret changes. Physical-phone LAN remains **ON HOLD**.
 
@@ -17,13 +17,13 @@ Scope: seven Founder defects + Chief Architect eight-gate closure. No production
 | Gate 3 — Real From Books `generateFromSavedBooks` extraction | **PASS** (code + unit); live API journey **PENDING**/device |
 | Gate 4 — Cancel-safe camera + deep-link stale nav | **PASS** (code + Jest) |
 | Gate 5 — Handoff Metro commands vs `package.json` | **PASS** (reconciled to committed scripts) |
-| Gate 6 — Full engineering validation / emulator E2E | **PARTIAL** — focused Jest PASS; emulator **BLOCKED** (`adb devices` empty) |
-| Gate 7 — Independent review of full PR diff | **PENDING** (report attached after review run) |
+| Gate 6 — Full engineering validation / emulator E2E | **PASS (prep)** — emulator online; Metro 8082; app on Document Upload; focused Jest 13/64 PASS; live 7 workflows **READY FOR MANUAL TEST** |
+| Gate 7 — Independent review of full PR diff | **DONE** (Request changes → remediations; evidence under `20261028-architect-closure/`) |
 | Gate 8 — Hosting AASA / assetlinks | **BLOCKED** — AASA 404; assetlinks HTTP 500; Team ID / fingerprints not inventable |
-| `npm run config:verify` | run on deliver |
-| `npm run type-check` | compare vs baseline; see evidence |
+| `npm run config:verify` | **PASS** |
+| `npm run type-check` | baseline delta recorded (not clean; see evidence) |
 | Physical Android / iOS | **PENDING** Founder authorization |
-| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **false** until emulator evidence exists |
+| `READY_FOR_FOUNDER_EMULATOR_TESTING` | **true** — see `FOUNDER_EMULATOR_SESSION_20261028.md` |
 | `READY_FOR_CROSSPLATFORM_RELEASE` | **false** (hosting + physical incomplete) |
 
 ---
