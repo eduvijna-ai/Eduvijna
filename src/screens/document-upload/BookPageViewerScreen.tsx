@@ -27,6 +27,11 @@ import {
   type ServerBook,
   type DocumentUploadDifficulty,
 } from '@core/services/documentUploadApi';
+import {
+  BookPageImageRequestTracker,
+  loadBookPageImagesPrioritized,
+  makeBookPageImageKey,
+} from '@core/utils/bookPageImageSession';
 import { generateWorksheet, saveUserAssessment } from '@core/services/sharedApi';
 import FullScreenImagePreview from '@core/components/FullScreenImagePreview';
 import DocumentAssessmentInlinePreview from '../../components/document-assessment/DocumentAssessmentInlinePreview';
@@ -86,7 +91,8 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
   const [loadingImages, setLoadingImages] = useState(false);
   const [previewPage, setPreviewPage] = useState(1);
   const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
-  const requestedImages = useRef<Set<string>>(new Set());
+  const pageImageTracker = useRef(new BookPageImageRequestTracker());
+  const pageImageDocRef = useRef<string | null>(null);
 
   const docId = book?.docId;
   const totalPagesRaw = Math.max(1, book?.totalPages || 1);
@@ -101,40 +107,59 @@ export default function BookPageViewerScreen({ route, navigation }: any) {
     }
   }, [route.params?.previewFormState]);
 
-  // Lazily load protected page thumbnails + a larger preview for the focused page.
+  // Focused medium first, then bounded thumbnail concurrency (shared with Preview screen).
   useEffect(() => {
     if (!docId) return;
     let cancelled = false;
     setLoadingImages(true);
 
+    if (pageImageDocRef.current !== docId) {
+      pageImageTracker.current.reset();
+      pageImageDocRef.current = docId;
+      setThumbImages({});
+      setPreviewImages({});
+    }
+
     const loadImage = async (pageNum: number, size: 'mini' | 'medium') => {
-      const key = `${pageNum}:${size}`;
-      if (requestedImages.current.has(key)) return;
-      requestedImages.current.add(key);
-      const uri = await fetchBookPageImage(docId, pageNum, size === 'mini' ? 'mini' : 'medium');
-      if (cancelled) return;
-      if (!uri) {
-        requestedImages.current.delete(key);
-        return;
-      }
-      if (size === 'mini') {
-        setThumbImages((prev) => ({ ...prev, [pageNum]: uri }));
-      } else {
-        setPreviewImages((prev) => ({ ...prev, [pageNum]: uri }));
+      const key = makeBookPageImageKey(docId, pageNum, size);
+      if (pageImageTracker.current.shouldSkip(key)) return;
+      pageImageTracker.current.markInFlight(key);
+      try {
+        const uri = await fetchBookPageImage(docId, pageNum, size === 'mini' ? 'mini' : 'medium');
+        if (cancelled) {
+          pageImageTracker.current.release(key);
+          return;
+        }
+        if (!uri) {
+          pageImageTracker.current.release(key);
+          return;
+        }
+        pageImageTracker.current.markSucceeded(key);
+        if (size === 'mini') {
+          setThumbImages((prev) => ({ ...prev, [pageNum]: uri }));
+        } else {
+          setPreviewImages((prev) => ({ ...prev, [pageNum]: uri }));
+        }
+      } catch {
+        pageImageTracker.current.release(key);
       }
     };
 
     (async () => {
-      const maxThumbs = Math.min(totalPagesRaw, 24);
-      for (let p = 1; p <= maxThumbs; p += 1) {
-        await loadImage(p, 'mini');
-      }
-      await loadImage(previewPage, 'medium');
+      await loadBookPageImagesPrioritized({
+        focusedPage: previewPage,
+        totalPages: totalPagesRaw,
+        maxThumbs: 24,
+        thumbConcurrency: 3,
+        load: loadImage,
+        isCancelled: () => cancelled,
+      });
       if (!cancelled) setLoadingImages(false);
     })();
 
     return () => {
       cancelled = true;
+      pageImageTracker.current.releaseAllInFlight();
     };
   }, [docId, totalPagesRaw, previewPage]);
 

@@ -562,11 +562,11 @@ export interface GenerateMultimodalParams {
   additionalInstructions?: string;
 }
 
-// Web parity (HandwrittenWorkspace.difficultyToApi): easy → '2', medium → 'mixed', hard → '6'.
-const toDifficultyPayload = (difficulty: DocumentUploadDifficulty): string => {
+// Web parity (HandwrittenWorkspace.difficultyToApi): easy → '2', medium → '4', hard → '6'.
+export const toDifficultyPayload = (difficulty: DocumentUploadDifficulty): string => {
   if (difficulty === 'easy') return '2';
   if (difficulty === 'hard') return '6';
-  return 'mixed';
+  return '4';
 };
 
 export const isPdfAsset = (fileName?: string, mimeType?: string): boolean =>
@@ -650,37 +650,169 @@ const uint8ToBase64 = (bytes: Uint8Array): string => {
   return result;
 };
 
+export type PageImageDownloadOutcome =
+  | { kind: 'ok'; uri: string }
+  | { kind: 'auth'; status: number }
+  | { kind: 'not_found'; status: number }
+  | { kind: 'rate_limited'; status: number }
+  | { kind: 'server'; status: number }
+  | { kind: 'empty' };
+
+const classifyHttpStatus = (status: number): PageImageDownloadOutcome['kind'] | 'ok' => {
+  if (status === 200) return 'ok';
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'not_found';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'server';
+  return 'empty';
+};
+
+export const looksLikeImageBytes = (bytes: Uint8Array): boolean => {
+  if (bytes.length < 3) return false;
+  // JPEG
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return true;
+  // PNG
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return true;
+  }
+  // WebP (RIFF....WEBP)
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const base64PrefixToBytes = (b64: string): Uint8Array => {
+  if (typeof globalThis.atob === 'function') {
+    const bin = globalThis.atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  // Node/Jest fallback without depending on Buffer in RN bundles.
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = b64.replace(/=+$/, '');
+  const bytes: number[] = [];
+  for (let i = 0; i < clean.length; i += 4) {
+    const a = chars.indexOf(clean[i]);
+    const b = chars.indexOf(clean[i + 1]);
+    const c = chars.indexOf(clean[i + 2]);
+    const d = chars.indexOf(clean[i + 3]);
+    const triple = (a << 18) | (b << 12) | ((c >= 0 ? c : 0) << 6) | (d >= 0 ? d : 0);
+    bytes.push((triple >> 16) & 0xff);
+    if (c >= 0) bytes.push((triple >> 8) & 0xff);
+    if (d >= 0) bytes.push(triple & 0xff);
+  }
+  return Uint8Array.from(bytes);
+};
+
+const deleteQuietly = async (path: string): Promise<void> => {
+  try {
+    await FileSystem.deleteAsync(path, { idempotent: true });
+  } catch {
+    // ignore
+  }
+};
+
 const downloadProtectedImage = async (
   url: string,
   dest: string,
   headers: Record<string, string>,
-): Promise<string | null> => {
+): Promise<PageImageDownloadOutcome> => {
+  // Always wipe a prior dest so non-200 bodies cannot be mistaken for images later.
+  await deleteQuietly(dest);
+
   try {
     const result = await FileSystem.downloadAsync(url, dest, { headers });
-    if (result.status === 200 && result.uri) return result.uri;
+    const status = Number(result.status) || 0;
+    if (status === 200 && result.uri) {
+      // Verify magic bytes — FS download may still write JSON/HTML error bodies as 200 in edge cases.
+      try {
+        const b64 = await FileSystem.readAsStringAsync(result.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+          length: 16,
+          position: 0,
+        });
+        const probe = base64PrefixToBytes(b64);
+        if (!looksLikeImageBytes(probe)) {
+          await deleteQuietly(result.uri);
+          // Fall through to axios (may still succeed with typed bytes).
+        } else {
+          return { kind: 'ok', uri: result.uri };
+        }
+      } catch {
+        return { kind: 'ok', uri: result.uri };
+      }
+    } else {
+      await deleteQuietly(dest);
+      const classified = classifyHttpStatus(status);
+      // Do not treat downloadAsync 401 as terminal — axios path can refresh via interceptors.
+      if (classified === 'not_found' || classified === 'rate_limited' || classified === 'server') {
+        // Continue to axios for a second opinion / clearer status, then classify.
+      }
+    }
   } catch {
-    // fall through to axios fallback
+    await deleteQuietly(dest);
   }
 
   try {
+    // Do NOT set validateStatus: allow apiClient auth interceptor to refresh on 401.
     const response = await apiClient.get(url, {
       responseType: 'arraybuffer',
       headers,
       timeout: 60000,
     });
-    if (response.status !== 200 || !response.data) return null;
+    const status = Number(response.status) || 0;
+    if (status !== 200 || !response.data) {
+      const classified = classifyHttpStatus(status);
+      return classified === 'ok' || classified === 'empty'
+        ? { kind: 'empty' }
+        : { kind: classified, status };
+    }
 
-    const contentType = String(response.headers['content-type'] || 'image/jpeg');
-    const ext = contentType.includes('png') ? 'png' : 'jpg';
-    const destWithExt = dest.replace(/\.(jpg|png)$/i, '') + `.${ext}`;
+    const contentType = String(
+      response.headers?.['content-type'] || response.headers?.['Content-Type'] || 'image/jpeg',
+    );
     const bytes = new Uint8Array(response.data as ArrayBuffer);
-
+    if (!bytes.length || !looksLikeImageBytes(bytes)) {
+      if (!contentType.includes('image') && !contentType.includes('octet-stream')) {
+        return { kind: 'empty' };
+      }
+      // Some gateways omit magic-friendly content; still require image/* when magic fails.
+      if (!contentType.includes('image')) return { kind: 'empty' };
+    }
+    const ext = contentType.includes('png') || (bytes[0] === 0x89 && bytes[1] === 0x50) ? 'png' : 'jpg';
+    const destWithExt = dest.replace(/\.(jpg|png)$/i, '') + `.${ext}`;
+    await deleteQuietly(destWithExt);
     await FileSystem.writeAsStringAsync(destWithExt, uint8ToBase64(bytes), {
       encoding: FileSystem.EncodingType.Base64,
     });
-    return destWithExt;
-  } catch {
-    return null;
+    return { kind: 'ok', uri: destWithExt };
+  } catch (err: any) {
+    const status = Number(err?.response?.status) || 0;
+    if (status) {
+      const classified = classifyHttpStatus(status);
+      if (classified !== 'ok' && classified !== 'empty') {
+        return { kind: classified, status };
+      }
+    }
+    return { kind: 'empty' };
   }
 };
 
@@ -709,20 +841,64 @@ export async function fetchBookPageImage(
 
   for (const id of ids) {
     const cacheKey = `${id}-${page}-${size}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const dest = `${cacheDir}book-page-${cacheKey}.jpg`;
+    const destBase = `${cacheDir}book-page-${cacheKey}`;
+    // Reuse a previously written *image* cache file (survives screen remounts).
+    for (const ext of ['jpg', 'png', 'jpeg']) {
+      const existing = `${destBase}.${ext}`;
+      try {
+        const info = await FileSystem.getInfoAsync(existing);
+        const sizeBytes = (info as { size?: number }).size || 0;
+        if (!info.exists || sizeBytes < 32) {
+          if (info.exists) await deleteQuietly(existing);
+          continue;
+        }
+        const b64 = await FileSystem.readAsStringAsync(existing, {
+          encoding: FileSystem.EncodingType.Base64,
+          length: 16,
+          position: 0,
+        });
+        const probe = base64PrefixToBytes(b64);
+        if (looksLikeImageBytes(probe)) return existing;
+        await deleteQuietly(existing);
+      } catch {
+        // continue
+      }
+    }
+    const dest = `${destBase}.jpg`;
 
-    // Pages may still be rasterising immediately after upload — retry briefly.
+    // Pages may still be rasterising after upload — retry transient failures.
+    // 404 on one URL must NOT skip other candidates (study-materials → pdf-questions → files).
+    // Auth (401/403) after axios interceptor still fails → stop this id (token/permission).
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      let authDenied = false;
+      let sawNotFound = false;
       for (const url of pageImageUrlCandidates(id, page, size)) {
-        const uri = await downloadProtectedImage(url, dest, headers);
-        if (uri) return uri;
+        const outcome = await downloadProtectedImage(url, dest, headers);
+        if (outcome.kind === 'ok') return outcome.uri;
+        if (outcome.kind === 'auth') {
+          authDenied = true;
+          break;
+        }
+        if (outcome.kind === 'not_found') {
+          sawNotFound = true;
+          continue;
+        }
+        if (outcome.kind === 'rate_limited') {
+          await sleep(1500);
+        }
+      }
+      if (authDenied) break;
+      // Retry 404s for the first attempts while pages rasterise; final attempt accepts empty.
+      if (sawNotFound && attempt < 2) {
+        await sleep(1200);
+        continue;
       }
       if (attempt < 2) await sleep(1200);
     }
   }
 
   return null;
-};
+}
 
 const findServerBookMatch = (
   books: ServerBook[],
@@ -792,8 +968,10 @@ function unwrapRawQuestion(q: any): {
     : [];
   const correctRaw = String(
     nested?.correctAnswer ??
+      nested?.correct_answer ??
       nested?.answer ??
       q?.correctAnswer ??
+      q?.correct_answer ??
       q?.answer ??
       '',
   ).trim();
@@ -854,15 +1032,77 @@ export const normalizeQuestions = (questionsRaw: any[]): Array<{
     );
 };
 
-/** Pull question arrays from heterogeneous generate-from-book / multimodal payloads. */
+/**
+ * Pull question arrays from heterogeneous generate-from-book / multimodal payloads.
+ * Aligned with extractQuizArrayFromGenerationResponse (curriculum handoff) so job-style
+ * envelopes (`data.quiz`, `result.quiz`) are not silently treated as empty.
+ */
 export function extractQuestionsPayload(payload: any): any[] {
   if (!payload || typeof payload !== 'object') return [];
+  if (Array.isArray(payload.questions) && payload.questions.length) return payload.questions;
+  if (Array.isArray(payload.quiz) && payload.quiz.length) return payload.quiz;
+  if (Array.isArray(payload?.questions?.quizzes) && payload.questions.quizzes.length) {
+    return payload.questions.quizzes;
+  }
+  const data = payload.data;
+  if (data && typeof data === 'object') {
+    if (Array.isArray(data.quiz) && data.quiz.length) return data.quiz;
+    if (Array.isArray(data.questions) && data.questions.length) return data.questions;
+  }
+  const result = payload.result;
+  if (result && typeof result === 'object') {
+    if (Array.isArray(result.quiz) && result.quiz.length) return result.quiz;
+    if (Array.isArray(result.questions) && result.questions.length) return result.questions;
+  }
+  // Empty arrays still count as present for callers checking length === 0.
   if (Array.isArray(payload.questions)) return payload.questions;
   if (Array.isArray(payload.quiz)) return payload.quiz;
   if (Array.isArray(payload?.questions?.quizzes)) return payload.questions.quizzes;
-  if (Array.isArray(payload?.data?.questions)) return payload.data.questions;
-  if (Array.isArray(payload?.result?.questions)) return payload.result.questions;
+  if (Array.isArray(data?.quiz)) return data.quiz;
+  if (Array.isArray(data?.questions)) return data.questions;
+  if (Array.isArray(result?.quiz)) return result.quiz;
+  if (Array.isArray(result?.questions)) return result.questions;
   return [];
+}
+
+/** Redacted diagnostic fields from a generate-from-book style payload (no textbook text). */
+export function summarizeGenerationPayload(payload: any): {
+  success: boolean | null;
+  requestId: string;
+  totalQuestions: number | null;
+  questionArrayLength: number;
+  validatedQuestionCount: number;
+  rawContentLength: number;
+  pipelineStages: string[];
+  error: string;
+} {
+  const questionsRaw = extractQuestionsPayload(payload);
+  const validated = normalizeQuestions(questionsRaw);
+  const stagesRaw = payload?.pipeline_stages;
+  const pipelineStages = Array.isArray(stagesRaw)
+    ? stagesRaw.map((s: unknown) => String(s ?? '').trim()).filter(Boolean).slice(0, 20)
+    : typeof stagesRaw === 'object' && stagesRaw
+      ? Object.entries(stagesRaw as Record<string, unknown>)
+          .map(([k, v]) => `${k}:${String(v)}`)
+          .slice(0, 20)
+      : [];
+  const total =
+    Number(payload?.total_questions ?? payload?.totalQuestions ?? validated.length) || null;
+  return {
+    success:
+      typeof payload?.success === 'boolean'
+        ? payload.success
+        : payload?.success == null
+          ? null
+          : Boolean(payload.success),
+    requestId: String(payload?.request_id || payload?.requestId || '').trim(),
+    totalQuestions: Number.isFinite(total as number) ? (total as number) : null,
+    questionArrayLength: questionsRaw.length,
+    validatedQuestionCount: validated.length,
+    rawContentLength: String(payload?.raw_content || '').length,
+    pipelineStages,
+    error: String(payload?.error || payload?.message || '').trim(),
+  };
 }
 
 export async function uploadDocumentToRag(params: {
@@ -1176,6 +1416,8 @@ export async function generateFromBook(params: {
     subject: params.subject || '',
     grade_level: params.gradeLevel || '',
     lesson_title: params.lessonTitle || '',
+    // Web HandwrittenWorkspace sends language; backend GenerateFromBookBody defaults to "en".
+    language: 'en',
     additional_instructions: (params.additionalInstructions || '').trim(),
   };
 
@@ -1185,12 +1427,68 @@ export async function generateFromBook(params: {
 
   const payload = response?.data ?? {};
   const questions = normalizeQuestions(extractQuestionsPayload(payload));
-  if (!questions.length) {
-    const apiError = String(payload?.error || payload?.message || '').trim();
-    throw new Error(
-      apiError ||
-        'Assessment generation returned no questions. Please try different pages or configuration.',
+
+  // Redacted generation diagnostics (cache dir) — never write tokens or textbook text.
+  try {
+    const dir = `${FileSystem.cacheDirectory || ''}eduvijna-diag`;
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
+    const summary = summarizeGenerationPayload(payload);
+    await FileSystem.writeAsStringAsync(
+      `${dir}/generate-from-book-last.json`,
+      JSON.stringify(
+        {
+          at: new Date().toISOString(),
+          ...summary,
+          docId: params.docId,
+          pageNumbers: pages,
+          difficulty: body.difficulty,
+          questionCount: body.question_count,
+          httpStatus: Number((response as any)?.status) || null,
+          normalizedCount: questions.length,
+        },
+        null,
+        2,
+      ),
     );
+  } catch {
+    // Best-effort diagnostics only.
+  }
+
+  if (!questions.length) {
+    const summary = summarizeGenerationPayload(payload);
+    const diag = {
+      at: new Date().toISOString(),
+      success: summary.success,
+      requestId: summary.requestId,
+      totalQuestions: summary.totalQuestions,
+      questionArrayLength: summary.questionArrayLength,
+      validatedQuestionCount: summary.validatedQuestionCount,
+      rawContentLength: summary.rawContentLength,
+      pipelineStages: summary.pipelineStages,
+      error: summary.error,
+      topKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 20) : [],
+      docId: params.docId,
+      pageNumbers: pages,
+      difficulty: body.difficulty,
+      questionCount: body.question_count,
+      httpStatus: Number((response as any)?.status) || null,
+    };
+    console.warn('[generateFromBook] empty_questions', diag);
+    try {
+      const dir = `${FileSystem.cacheDirectory || ''}eduvijna-diag`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
+      await FileSystem.writeAsStringAsync(
+        `${dir}/generate-from-book-empty.json`,
+        JSON.stringify(diag, null, 2),
+      );
+    } catch {
+      // Best-effort only — never block the user-facing error path.
+    }
+    const fallback =
+      summary.rawContentLength > 0 && summary.rawContentLength < 200
+        ? 'Assessment generation returned no questions — selected-page content extraction looked too thin. Try different pages or a clearer scan.'
+        : 'Assessment generation returned no questions. Please try different pages or configuration.';
+    throw new Error(summary.error || fallback);
   }
   return {
     questions,

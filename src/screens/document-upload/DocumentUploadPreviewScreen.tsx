@@ -45,6 +45,11 @@ import { compressCameraImage } from '@core/services/documentImageUtils';
 import { captureDocumentImage } from '@core/services/documentCameraCapture';
 import { openImageCropper } from '@core/services/imageCropSession';
 import {
+  BookPageImageRequestTracker,
+  loadBookPageImagesPrioritized,
+  makeBookPageImageKey,
+} from '@core/utils/bookPageImageSession';
+import {
   getDocumentUploadBookById,
   upsertDocumentUploadBook,
   removeDocumentUploadBook,
@@ -164,7 +169,8 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
   const [resolvedPageCount, setResolvedPageCount] = useState<number | null>(null);
   const [imageDocIds, setImageDocIds] = useState<string[]>([]);
   const [fullPreviewUri, setFullPreviewUri] = useState<string | null>(null);
-  const requestedImages = useRef<Set<string>>(new Set());
+  const pageImageTracker = useRef(new BookPageImageRequestTracker());
+  const pageImageDocRef = useRef<string | null>(null);
   const generateInFlightRef = useRef(false);
   const cameraAddOpIdRef = useRef(0);
   useEffect(() => {
@@ -318,53 +324,78 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
     }
   }, [bookState, isCameraSession, docId, syncLocalPageImages]);
 
-  // Load server page thumbnails for PDF / server-backed documents.
+  // Load server page images: focused medium first, then bounded thumbnail concurrency.
   useEffect(() => {
     if (!docId || isCameraSession) return;
     let cancelled = false;
     setLoadingImages(true);
 
+    if (pageImageDocRef.current !== docId) {
+      pageImageTracker.current.reset();
+      pageImageDocRef.current = docId;
+      setThumbImages({});
+      setPreviewImages({});
+    }
+
     const loadImage = async (p: number, size: 'mini' | 'medium') => {
-      const key = `${p}:${size}`;
-      if (requestedImages.current.has(key)) return;
-      requestedImages.current.add(key);
       const [primaryId, ...alternateIds] = [docId, ...imageDocIds].filter(
         (id, index, list) => id && list.indexOf(id) === index,
       );
-      const uri = await fetchBookPageImage(primaryId, p, size === 'mini' ? 'mini' : 'medium', alternateIds);
-      if (cancelled) return;
-      if (!uri) {
-        requestedImages.current.delete(key);
-        const localUri = getLocalPageUri(bookState, p);
-        if (localUri) {
-          if (size === 'mini') {
-            setThumbImages((prev) => ({ ...prev, [p]: localUri }));
-          } else {
-            setPreviewImages((prev) => ({ ...prev, [p]: localUri }));
-          }
+      const key = makeBookPageImageKey(primaryId, p, size);
+      if (pageImageTracker.current.shouldSkip(key)) return;
+      pageImageTracker.current.markInFlight(key);
+      try {
+        const uri = await fetchBookPageImage(
+          primaryId,
+          p,
+          size === 'mini' ? 'mini' : 'medium',
+          alternateIds,
+        );
+        if (cancelled) {
+          pageImageTracker.current.release(key);
+          return;
         }
-        return;
-      }
-      if (size === 'mini') {
-        setThumbImages((prev) => ({ ...prev, [p]: uri }));
-      } else {
-        setPreviewImages((prev) => ({ ...prev, [p]: uri }));
+        if (!uri) {
+          pageImageTracker.current.release(key);
+          const localUri = getLocalPageUri(bookState, p);
+          if (localUri) {
+            if (size === 'mini') {
+              setThumbImages((prev) => ({ ...prev, [p]: localUri }));
+            } else {
+              setPreviewImages((prev) => ({ ...prev, [p]: localUri }));
+            }
+          }
+          return;
+        }
+        pageImageTracker.current.markSucceeded(key);
+        if (size === 'mini') {
+          setThumbImages((prev) => ({ ...prev, [p]: uri }));
+        } else {
+          setPreviewImages((prev) => ({ ...prev, [p]: uri }));
+        }
+      } catch {
+        pageImageTracker.current.release(key);
       }
     };
 
-    const maxThumbs = Math.min(Math.max(1, totalPages), 24);
     (async () => {
-      for (let p = 1; p <= maxThumbs; p += 1) {
-        await loadImage(p, 'mini');
-      }
-      await loadImage(page, 'medium');
+      await loadBookPageImagesPrioritized({
+        focusedPage: page,
+        totalPages,
+        maxThumbs: 24,
+        thumbConcurrency: 3,
+        load: loadImage,
+        isCancelled: () => cancelled,
+      });
       if (!cancelled) setLoadingImages(false);
     })();
 
     return () => {
       cancelled = true;
+      pageImageTracker.current.releaseAllInFlight();
     };
-  }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState]);
+    // Intentionally omit bookState object identity — use docId/pages only.
+  }, [docId, imageDocIds, totalPages, page, isCameraSession, bookState?.id]);
 
   // Document workspace generation UI omits Class/Subject/Lesson — never submit stale selections.
   useEffect(() => {
@@ -590,7 +621,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
                 if (current > pageNumber) return current - 1;
                 return current;
               });
-              requestedImages.current.clear();
+              pageImageTracker.current.reset();
               setThumbImages({});
               setPreviewImages({});
               syncLocalPageImages(next);

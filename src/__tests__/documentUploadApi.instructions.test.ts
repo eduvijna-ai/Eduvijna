@@ -43,6 +43,9 @@ describe('documentUploadApi additional_instructions', () => {
       '/api/v1/study-materials/generate-from-book',
       expect.objectContaining({
         additional_instructions: 'Include numericals only',
+        difficulty: '4',
+        page_numbers: [1, 2],
+        doc_id: 'doc-abc',
       }),
       expect.any(Object),
     );
