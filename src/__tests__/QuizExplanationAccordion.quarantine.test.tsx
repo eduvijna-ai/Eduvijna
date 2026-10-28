@@ -76,4 +76,42 @@ describe('QuizExplanationAccordion quarantine', () => {
     expect(queryByText('CONFLICTING_WRONG_OPTION_MUST_NOT_RENDER')).toBeNull();
     expect(queryByText('CONFLICTING_FACT_MUST_NOT_RENDER')).toBeNull();
   }, 15000);
+
+  it('quarantines generated answer and body when no verified persisted key exists', async () => {
+    getQuizExplanation.mockResolvedValue({
+      correct_answer: OPTIONS[1],
+      explanation: {
+        correct_reason: 'UNVERIFIED_REASON_MUST_NOT_RENDER',
+        wrong_options: {
+          option1: 'UNVERIFIED_WRONG_OPTION_MUST_NOT_RENDER',
+        },
+        educational_fact: 'UNVERIFIED_FACT_MUST_NOT_RENDER',
+      },
+    });
+
+    const { getByText, queryByText } = render(
+      <QuizExplanationAccordion
+        questionId="swachh-nokey"
+        questionText="In the matching activity, which description is paired with Swachh Bharat Abhiyan?"
+        options={OPTIONS}
+        selectedAnswer={OPTIONS[0]}
+        clearTrigger={false}
+        colors={colors}
+      />,
+    );
+
+    fireEvent.press(getByText('Show Explanation'));
+
+    await waitFor(
+      () => {
+        expect(getByText(/no verified assessment answer key/i)).toBeTruthy();
+      },
+      { timeout: 10000 },
+    );
+
+    expect(queryByText(OPTIONS[1])).toBeNull();
+    expect(queryByText('UNVERIFIED_REASON_MUST_NOT_RENDER')).toBeNull();
+    expect(queryByText('UNVERIFIED_WRONG_OPTION_MUST_NOT_RENDER')).toBeNull();
+    expect(queryByText('UNVERIFIED_FACT_MUST_NOT_RENDER')).toBeNull();
+  }, 15000);
 });

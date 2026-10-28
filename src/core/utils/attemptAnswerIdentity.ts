@@ -43,12 +43,50 @@ export type AttemptAnswerIdentityV1 = {
   questions: AttemptQuestionSnapshot[];
 };
 
+function isValidOptionIdentity(value: unknown, optionCount: number): boolean {
+  if (value == null) return true;
+  if (!value || typeof value !== 'object') return false;
+  const row = value as AttemptOptionIdentity;
+  return (
+    typeof row.displayIndex === 'number' &&
+    row.displayIndex >= 0 &&
+    row.displayIndex < optionCount &&
+    typeof row.originalIndex === 'number' &&
+    typeof row.displayText === 'string'
+  );
+}
+
+function isValidQuestionSnapshot(value: unknown): value is AttemptQuestionSnapshot {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as AttemptQuestionSnapshot;
+  if (typeof row.questionId !== 'string' || typeof row.questionText !== 'string') return false;
+  if (!Array.isArray(row.optionsDisplayed) || row.optionsDisplayed.length === 0) return false;
+  if (!row.optionsDisplayed.every((o) => typeof o === 'string')) return false;
+  const n = row.optionsDisplayed.length;
+  if (!isValidOptionIdentity(row.correct, n)) return false;
+  if (!isValidOptionIdentity(row.selected, n)) return false;
+  if (!(row.isCorrect === true || row.isCorrect === false || row.isCorrect === null)) return false;
+  return true;
+}
+
 export function isAttemptAnswerIdentityV1(value: unknown): value is AttemptAnswerIdentityV1 {
   if (!value || typeof value !== 'object') return false;
   const row = value as AttemptAnswerIdentityV1;
+  if (row.version !== ATTEMPT_ANSWER_IDENTITY_VERSION || !Array.isArray(row.questions)) {
+    return false;
+  }
+  if (row.questions.length === 0) return false;
+  return row.questions.every(isValidQuestionSnapshot);
+}
+
+/** True when identity question count matches attended/log question count. */
+export function isAnswerIdentityAligned(
+  identity: AttemptAnswerIdentityV1,
+  expectedQuestionCount: number,
+): boolean {
   return (
-    row.version === ATTEMPT_ANSWER_IDENTITY_VERSION &&
-    Array.isArray(row.questions)
+    expectedQuestionCount > 0 &&
+    identity.questions.length === expectedQuestionCount
   );
 }
 

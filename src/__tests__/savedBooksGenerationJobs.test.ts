@@ -89,6 +89,61 @@ describe('saved-books assessment generation jobs', () => {
     expect(getMock).not.toHaveBeenCalled();
   });
 
+  it('accepts synchronous questions-only payload without polling', async () => {
+    postMock.mockResolvedValue({
+      data: {
+        success: true,
+        generation_type: 'assessment',
+        questions: [
+          {
+            question: 'Questions-only Q',
+            options: ['1', '2', '3', '4'],
+            correctAnswer: '2',
+          },
+        ],
+      },
+    });
+    const result = await generateFromSavedBooks(curriculumParams);
+    expect(result.questions?.[0]?.question).toBe('Questions-only Q');
+    expect(getMock).not.toHaveBeenCalled();
+  });
+
+  it('accepted job returns persisted result with questions-only payload', async () => {
+    postMock.mockResolvedValue({
+      data: {
+        accepted: true,
+        job_id: 'job-q',
+        status: 'queued',
+        stage: 'queued',
+        poll_after_ms: 1000,
+        status_url: '/api/v1/content/saved-books/generation-jobs/job-q',
+      },
+    });
+    getMock.mockResolvedValueOnce({
+      data: {
+        job_id: 'job-q',
+        status: 'persisted',
+        stage: 'completed',
+        result: {
+          success: true,
+          questions: [
+            {
+              question: 'Nested questions job',
+              options: ['A', 'B', 'C', 'D'],
+              correctAnswer: 'A',
+            },
+          ],
+        },
+      },
+    });
+
+    const promise = generateFromSavedBooks(curriculumParams);
+    await jest.advanceTimersByTimeAsync(1000);
+    await Promise.resolve();
+    const result = await promise;
+    expect(result.questions?.[0]?.question).toBe('Nested questions job');
+  });
+
   it('accepted job polls trusted status URL with school_id and returns persisted result', async () => {
     postMock.mockResolvedValue({
       data: {

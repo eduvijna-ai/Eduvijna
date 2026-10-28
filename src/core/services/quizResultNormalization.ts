@@ -14,6 +14,7 @@ import {
   type PlayableQuizQuestion,
 } from '../utils/answerMappingUtils';
 import {
+  isAnswerIdentityAligned,
   isAttemptAnswerIdentityV1,
   userAnswersArrayFromIdentity,
   type AttemptAnswerIdentityV1,
@@ -296,15 +297,29 @@ export function normalizeAttendedQuizResponse(
   };
 
   const identity = readAnswerIdentity(logData);
-  // Prefer frozen attempt identity when present — authoritative for reopen review.
-  if (identity && identity.questions.length > 0) {
-    const fromIdentity = normalizeQuestionsAndAnswersFromLogData(logData);
-    if (fromIdentity) {
-      return {
-        ...fromIdentity,
-        ...meta,
-        score: meta.score,
-      };
+  const attendedCount = Array.isArray(attended.items) ? attended.items.length : 0;
+  const expectedCount =
+    attendedCount > 0
+      ? attendedCount
+      : entries.length > 0
+        ? entries.length
+        : identity?.questions.length ?? 0;
+  // Prefer frozen identity only when structurally valid and aligned with attended/log count.
+  if (
+    identity &&
+    isAnswerIdentityAligned(identity, expectedCount)
+  ) {
+    try {
+      const fromIdentity = normalizeQuestionsAndAnswersFromLogData(logData);
+      if (fromIdentity && fromIdentity.questions.length === expectedCount) {
+        return {
+          ...fromIdentity,
+          ...meta,
+          score: meta.score,
+        };
+      }
+    } catch {
+      // Malformed identity must not break reopen — fall through to attended/log.
     }
   }
 

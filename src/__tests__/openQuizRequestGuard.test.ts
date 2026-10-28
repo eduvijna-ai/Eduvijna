@@ -32,11 +32,13 @@ describe('openQuizRequestGuard + stale navigation', () => {
     expect(isOpenQuizRequestCurrent(gen)).toBe(false);
   });
 
-  it('late fetch after Cancel does not navigate to QuizTakingScreen', async () => {
+  it('late in-flight fetch after Cancel does not navigate to QuizTakingScreen', async () => {
     let resolveFetch: (value: unknown) => void = () => undefined;
+    let fetchStarted = false;
     (dashboardApi.fetchQuizDetailsBySessionId as jest.Mock).mockImplementation(
       () =>
         new Promise((resolve) => {
+          fetchStarted = true;
           resolveFetch = resolve;
         }),
     );
@@ -52,7 +54,18 @@ describe('openQuizRequestGuard + stale navigation', () => {
       alert,
     });
 
-    // User hits Cancel on QuizLoadingScreen while validation is in flight.
+    // Wait until fetch is genuinely in flight (after the 100ms loading settle).
+    await new Promise<void>((resolve) => {
+      const tick = () => {
+        if (fetchStarted) {
+          resolve();
+          return;
+        }
+        setTimeout(tick, 20);
+      };
+      tick();
+    });
+
     cancelPendingOpenQuizRequest();
 
     resolveFetch({
@@ -81,6 +94,7 @@ describe('openQuizRequestGuard + stale navigation', () => {
 
     await pending;
 
+    expect(fetchStarted).toBe(true);
     expect(replace).not.toHaveBeenCalledWith(
       'QuizTakingScreen',
       expect.anything(),

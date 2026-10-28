@@ -157,6 +157,8 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
       })();
       return () => {
         active = false;
+        // Blur / leave Home must invalidate in-flight camera capture work.
+        cameraCaptureOpIdRef.current += 1;
       };
     }, []),
   );
@@ -501,12 +503,16 @@ export default function DocumentUploadHomeScreen({ navigation, route }: any) {
         setSuccess('');
       }
     } catch (e: any) {
-      setSuccess('');
-      setError(normalizeErrorMessage(e, 'Failed to capture document.'));
+      if (cameraCaptureOpIdRef.current === opId) {
+        setSuccess('');
+        setError(normalizeErrorMessage(e, 'Failed to capture document.'));
+      }
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
-      setCapturing(false);
-      if (cancelled) setSuccess('');
+      if (cameraCaptureOpIdRef.current === opId) {
+        setCapturing(false);
+        if (cancelled) setSuccess('');
+      }
     }
   };
 

@@ -219,6 +219,7 @@ export default function DocumentUploadPreviewScreen({ navigation, route }: any) 
       })();
       return () => {
         active = false;
+        cameraAddOpIdRef.current += 1;
       };
     }, [route?.params?.book?.id, route?.params?.book?.isCameraSession]),
   );

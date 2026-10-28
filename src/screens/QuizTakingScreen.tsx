@@ -410,7 +410,7 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     [authoritativeCorrectAnswers],
   );
 
-  // Calculate results helper function
+  // Calculate results helper function — prefer authoritative questionResults (index-aware).
   const calculateResults = () => {
     let correctCount = 0;
     let incorrectCount = 0;
@@ -419,9 +419,25 @@ export default function QuizTakingScreen({ route, navigation }: any) {
     if (!currentQuizData?.questions) return { correctCount, incorrectCount, unansweredCount };
 
     currentQuizData.questions.forEach((question: QuizQuestion, index: number) => {
-      if (!selectedAnswers[index]) {
+      const selected =
+        selectedDisplayIndices[index] != null ||
+        (selectedAnswers[index] != null && String(selectedAnswers[index]).trim() !== '');
+      if (!selected) {
         unansweredCount++;
-      } else if (isQuizAnswerCorrect(selectedAnswers[index], getEffectiveQuestion(question, index))) {
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(questionResults, index)) {
+        if (questionResults[index]) correctCount++;
+        else incorrectCount++;
+        return;
+      }
+      if (
+        isQuizAnswerCorrect(
+          selectedAnswers[index],
+          getEffectiveQuestion(question, index),
+          selectedDisplayIndices[index],
+        )
+      ) {
         correctCount++;
       } else {
         incorrectCount++;
@@ -1342,7 +1358,8 @@ export default function QuizTakingScreen({ route, navigation }: any) {
                   selectedAnswers[currentQuestionIndex] === option);
               const optionLetter = String.fromCharCode(65 + index);
               const isCorrectAnswer =
-                showResults && isOptionTheCorrectAnswer(option, effectiveCurrentQuestion);
+                showResults &&
+                isOptionTheCorrectAnswer(option, effectiveCurrentQuestion, index);
               const isWrongSelection = showResults && isSelected && !isCorrectAnswer;
 
               return (
