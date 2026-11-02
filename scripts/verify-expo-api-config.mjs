@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   ApiEnvironmentConfigError,
@@ -69,18 +69,20 @@ assert(
 );
 
 const easBuildProfiles = JSON.parse(
-  (await import('node:fs')).readFileSync(resolve('eas.json'), 'utf8'),
+  readFileSync(resolve('eas.json'), 'utf8'),
 ).build;
 assert(
-  easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === 'development' &&
-    easBuildProfiles.development?.env?.EDUVIJNA_API_ENV === 'development' &&
-    easBuildProfiles.development?.android?.buildType === 'apk',
-  'EAS development profile selects separate Android DEV APK and DEV API',
+  easBuildProfiles['android-fcm-dev']?.extends === 'development' &&
+    easBuildProfiles['android-fcm-dev']?.env?.EDUVIJNA_APP_VARIANT === 'development' &&
+    easBuildProfiles['android-fcm-dev']?.env?.EDUVIJNA_API_ENV === 'development' &&
+    easBuildProfiles['android-fcm-dev']?.android?.buildType === 'apk',
+  'Dedicated Android FCM DEV profile selects side-by-side APK and DEV API',
 );
 assert(
-  easBuildProfiles.production?.env?.EDUVIJNA_APP_VARIANT === undefined &&
+  easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === undefined &&
+    easBuildProfiles.production?.env?.EDUVIJNA_APP_VARIANT === undefined &&
     easBuildProfiles.preview?.env?.EDUVIJNA_APP_VARIANT === undefined,
-  'existing preview and production app identities remain unchanged',
+  'existing development, preview and production build identities remain unchanged',
 );
 
 try {
