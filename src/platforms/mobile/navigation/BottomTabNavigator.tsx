@@ -4,7 +4,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, Linking } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -682,9 +681,7 @@ function BottomTabNavigator() {
       const result = await PushNotificationService.enablePushNotifications();
       
       if (result.success) {
-        if (user?.id != null) {
-          await AsyncStorage.setItem('pushRegisteredUserId', String(user.id));
-        }
+        // PushNotificationService owns backend-confirmed token/account association.
         setShowPushPrompt(false);
         Alert.alert('Success', result.message);
       } else {

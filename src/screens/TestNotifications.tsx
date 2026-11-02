@@ -145,7 +145,7 @@ if (Constants.appOwnership === 'expo') {
       console.log('✅ Permission granted');
 
       // Get push token using PushNotificationService
-      const token = await PushNotificationService.getToken();
+      const token = await PushNotificationService.getToken({ forceRefresh: true });
       
       if (!token) {
         Alert.alert(
@@ -156,26 +156,14 @@ if (Constants.appOwnership === 'expo') {
         return;
       }
 
-      const tokenType = fcmToken && fcmToken.startsWith('ExponentPushToken') ? 'Expo Push Token' : 'Native FCM Token';
-      console.log(`✅ ${tokenType} obtained:`, token);
+      // Token acquisition does not prove backend registration or Firebase acceptance.
+      console.log('Native FCM token obtained (redacted)');
       setFcmToken(token);
-
-      // Save to AsyncStorage
-      await AsyncStorage.setItem('fcmDeviceToken', token);
-
-      // Check if push is enabled and registered
-      const pushStatus = await PushNotificationService.getPushStatus();
-      if (pushStatus.isEnabled && pushStatus.hasToken) {
-        setRegistrationStatus('✅ Registered with backend');
-        setIsRegistered(true);
-      } else {
-        setRegistrationStatus('⚠️ Token obtained but not registered');
-        setIsRegistered(false);
-      }
-
+      setRegistrationStatus('Native token acquired; backend association unverified');
+      setIsRegistered(false);
       Alert.alert(
-        'Token Generated!',
-        `${tokenType} generated successfully!\n\nNext step: Click "Register with Backend" to enable push notifications.`,
+        'Native FCM Token',
+        'Token acquired. Select "Register with Backend" to register for push.',
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -191,7 +179,7 @@ if (Constants.appOwnership === 'expo') {
       return;
     }
 
-    const tokenType = fcmToken.startsWith('ExponentPushToken') ? 'Expo Push Token' : 'FCM Token';
+    const tokenType = 'FCM Token';
     await Clipboard.setStringAsync(fcmToken);
     Alert.alert('Copied!', `${tokenType} copied to clipboard`);
   };
@@ -287,98 +275,76 @@ if (Constants.appOwnership === 'expo') {
   const sendBackendTestNotification = async () => {
     setBackendTestLoading(true);
     try {
-      // Get auth token using the correct method
-      const token = await getAccessToken();
-      
-      if (!token) {
-        Alert.alert(
-          'Authentication Required', 
-          'Please login first to test backend notifications.\n\nToken not found in storage.'
-        );
-        setBackendTestLoading(false);
+      const userId = Number(user?.id);
+      if (!Number.isSafeInteger(userId) || userId <= 0) {
+        Alert.alert('Authentication Required', 'Sign in with an authorized test account.');
+        return;
+      }
+      const role = String(user?.role || '').toLowerCase();
+      if (role !== 'admin' && role !== 'instructor') {
+        Alert.alert('Not Authorized', 'Only an admin or instructor may send a test notification.');
+        return;
+      }
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        Alert.alert('Authentication Required', 'Please sign in again before testing.');
         return;
       }
 
-      // Get user from hook
-      if (!user || !user.id) {
-        Alert.alert('Error', 'User information not found. Please login again.');
-        setBackendTestLoading(false);
-        return;
-      }
-
-      const userId = user.id;
-
-      console.log('📤 Sending backend test notification...');
-      console.log('User ID:', userId);
-      console.log('User:', user.username || user.email);
-      console.log('Token:', token.substring(0, 20) + '...');
-
-      // Send test notification via backend API
+      // Never send diagnostic push messages to hard-coded user or school IDs.
       const response = await fetch(`${API_BASE_URL}/api/notifications/send`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-  "user_ids": [
-    11
-  ],
-  "title": "📚 New Quiz: Ghui Quiz",
-  "body": "sam has assigned a new quiz in class-maths-4th-sec-b. Tap to start!",
-  "priority": "high",
-  "data": {
-    "type": "QUIZ_ASSIGNED",
-    "quiz_id": "86",
-    "classroom_id": "class_3017c343",
-    "session_id": "770b9930-3f6e-49af-a0ea-f5da5b3b661e",
-    "screen": "QuizTakingScreen",
-    "quizId": "86",
-    "sessionId": "770b9930-3f6e-49af-a0ea-f5da5b3b661e",
-    "classroomId": "class_3017c343"
-  }
-}),
+          user_ids: [userId],
+          title: 'EduVijna push diagnostic',
+          body: 'A notification test for this account. Confirm receipt on your device.',
+          priority: 'normal',
+          data: { type: 'PUSH_DIAGNOSTIC' },
+        }),
       });
 
+      // Provider response can contain private details: parse but never log.
       const responseText = await response.text();
-      console.log('\ud83d\udcca Response status:', response.status);
-      console.log('\ud83d\udcca Response body:', responseText);
-
-      if (response.ok) {
-        let result;
-        try {
-          result = JSON.parse(responseText);
-        } catch (e) {
-          result = { message: responseText };
+      let result: Record<string, unknown> = {};
+      try {
+        const parsed: unknown = JSON.parse(responseText);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          result = parsed as Record<string, unknown>;
         }
-
+      } catch {
+        // Baseline API may not have structured provider-result fields.
+      }
+      if (!response.ok) {
+        Alert.alert('Test request failed', `API returned HTTP ${response.status}. Push not verified.`);
+        return;
+      }
+      const accepted = typeof result.push_accepted_count === 'number' ? result.push_accepted_count : 0;
+      const unavailable = typeof result.push_not_configured_count === 'number'
+        ? result.push_not_configured_count
+        : 0;
+      const failed = typeof result.push_failed_count === 'number' ? result.push_failed_count : 0;
+      if (accepted > 0) {
         Alert.alert(
-          '\u2705 Success!',
-          `Backend notification sent successfully!\n\nStatus: ${response.status}\nMessage: ${result.message || 'Notification sent'}`,
-          [{ text: 'OK' }]
+          'FCM provider accepted',
+          'Firebase accepted the send. Physical-device receipt and display remain unverified.',
+        );
+      } else if (unavailable > 0 || failed > 0) {
+        Alert.alert(
+          'FCM provider unavailable',
+          'An in-app notification may have been saved, but Firebase did not accept the push.',
         );
       } else {
-        let errorMsg;
-        try {
-          const error = JSON.parse(responseText);
-          errorMsg = error.detail || error.message || responseText;
-        } catch (e) {
-          errorMsg = responseText;
-        }
-
         Alert.alert(
-          '\u274c Error',
-          `Failed to send notification\n\nStatus: ${response.status}\nError: ${errorMsg}`,
-          [{ text: 'OK' }]
+          'In-app request accepted',
+          'HTTP success does not prove Firebase delivery. DEV may not expose provider-result fields yet.',
         );
       }
-    } catch (error: any) {
-      console.error('\u274c Backend test error:', error);
-      Alert.alert(
-        'Error',
-        `Failed to send backend notification:\n\n${error.message}`,
-        [{ text: 'OK' }]
-      );
+    } catch {
+      Alert.alert('Error', 'Could not complete the backend notification request.');
     } finally {
       setBackendTestLoading(false);
     }

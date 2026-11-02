@@ -192,9 +192,7 @@ export default function Profile({ navigation }: any) {
           // The push service has already obtained, stored and registered the native FCM token.
           // Never fetch it a second time here: that could desynchronize local and backend tokens.
 
-          if (authUser?.id != null) {
-            await AsyncStorage.setItem('pushRegisteredUserId', String(authUser.id));
-          }
+          // PushNotificationService owns backend-confirmed token/account association.
           
           // Simple success message
           Alert.alert('Success', 'Push notifications enabled successfully!');

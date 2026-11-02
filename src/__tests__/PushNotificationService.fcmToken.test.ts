@@ -53,6 +53,7 @@ import { PushNotificationService } from '../core/services/PushNotificationServic
 
 const NATIVE_FCM = 'native-fcm-token:APA91bTESTTOKENVALUE';
 const EXPO_TOKEN = 'ExponentPushToken[abc123]';
+const MODERN_EXPO_TOKEN = 'ExpoPushToken[abc123]';
 
 describe('PushNotificationService native FCM token path', () => {
   beforeEach(async () => {
@@ -98,12 +99,15 @@ describe('PushNotificationService native FCM token path', () => {
     expect(await AsyncStorage.getItem('fcmDeviceToken')).toBeNull();
   });
 
-  it('rejects Expo tokens at the registration boundary', async () => {
-    await expect(PushNotificationService.registerDevice(EXPO_TOKEN)).rejects.toThrow(
-      /Expo push tokens are not supported/i,
-    );
-    expect(mockPost).not.toHaveBeenCalled();
-  });
+  it.each([EXPO_TOKEN, MODERN_EXPO_TOKEN])(
+    'rejects Expo tokens at registration boundary: %s',
+    async (token) => {
+      await expect(PushNotificationService.registerDevice(token)).rejects.toThrow(
+        /Expo push tokens are not supported/i,
+      );
+      expect(mockPost).not.toHaveBeenCalled();
+    },
+  );
 
   it('registers a refreshed native token with the backend', async () => {
     await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
@@ -121,14 +125,15 @@ describe('PushNotificationService native FCM token path', () => {
     expect(await AsyncStorage.getItem('lastTokenRegistered')).toBe(NATIVE_FCM);
   });
 
-  it('ignores Expo tokens during refresh', async () => {
-    await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
-
-    await PushNotificationService.handleTokenRefresh(EXPO_TOKEN);
-
-    expect(mockPost).not.toHaveBeenCalled();
-    expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
-  });
+  it.each([EXPO_TOKEN, MODERN_EXPO_TOKEN])(
+    'ignores Expo tokens during refresh: %s',
+    async (token) => {
+      await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
+      await PushNotificationService.handleTokenRefresh(token);
+      expect(mockPost).not.toHaveBeenCalled();
+      expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+    },
+  );
 
   it('enablePushNotifications fails closed when native token cannot be obtained', async () => {
     (Notifications.getDevicePushTokenAsync as jest.Mock).mockRejectedValueOnce(
@@ -149,11 +154,16 @@ describe('PushNotificationService native FCM token path', () => {
     expect(typeof sub.remove).toBe('function');
     sub.remove();
   });
-  it('does not consider a legacy Expo token to be a valid cached native token', async () => {
-    await AsyncStorage.setItem('fcmDeviceToken', EXPO_TOKEN);
-    const status = await PushNotificationService.getPushStatus();
-    expect(status.hasToken).toBe(false);
-  });
+  it.each([EXPO_TOKEN, MODERN_EXPO_TOKEN])(
+    'treats Expo tokens as invalid cached native tokens: %s',
+    async (token) => {
+      await AsyncStorage.setItem('fcmDeviceToken', token);
+      const status = await PushNotificationService.getPushStatus();
+      expect(status.hasToken).toBe(false);
+      expect(await PushNotificationService.getToken()).toBe(NATIVE_FCM);
+      expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+    },
+  );
 
   it('re-reads FCM on launch and reconciles a rotation missed while app was closed', async () => {
     await AsyncStorage.setItem('pushNotificationsEnabled', 'true');

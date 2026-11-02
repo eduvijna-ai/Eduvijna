@@ -128,7 +128,10 @@ async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined
 }
 
 function isExpoPushToken(token: string | null | undefined): boolean {
-  return !!token && token.startsWith('ExponentPushToken');
+  return !!token && (
+    token.startsWith('ExponentPushToken') ||
+    token.startsWith('ExpoPushToken')
+  );
 }
 
 function extractDevicePushTokenData(
