@@ -178,8 +178,8 @@ if (Constants.appOwnership === 'expo') {
         setRegistrationStatus('✅ Registered with backend');
         setIsRegistered(true);
         Alert.alert(
-          '✅ Success!',
-          'Push notifications enabled and token registered with backend!\n\nYou can now receive push notifications.',
+          '✅ Backend registration',
+          'Token registered with the backend. Device delivery still depends on Firebase Admin acceptance (push_accepted_count) — HTTP success alone is not physical delivery.',
           [{ text: 'OK' }]
         );
       } else {
