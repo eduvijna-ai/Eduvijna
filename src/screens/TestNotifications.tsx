@@ -11,7 +11,6 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { API_BASE_URL } from '../core/api/config';
 import * as Device from 'expo-device';
 import * as Clipboard from 'expo-clipboard';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
