@@ -89,11 +89,20 @@ jest.mock('expo-file-system', () => ({
 jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   requestPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
-  getExpoPushTokenAsync: jest.fn().mockResolvedValue({ data: 'mock-token' }),
+  getDevicePushTokenAsync: jest.fn().mockResolvedValue({
+    type: 'android',
+    data: 'mock-native-fcm-token:APA91bTEST',
+  }),
+  getExpoPushTokenAsync: jest.fn().mockResolvedValue({
+    data: 'ExponentPushToken[SHOULD-NOT-BE-USED]',
+  }),
   scheduleNotificationAsync: jest.fn().mockResolvedValue('mock-id'),
   setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
   addNotificationReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  addPushTokenListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  AndroidImportance: { MAX: 5 },
 }));
 
 // ── @expo/vector-icons ────────────────────────────────────────────────────

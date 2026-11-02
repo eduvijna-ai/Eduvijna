@@ -297,6 +297,12 @@ function AppContent() {
     PushNotificationService.initializeOnAppLaunch().catch((error) => {
       console.error('❌ Failed to initialize push on app launch:', error);
     });
+
+    // Re-register when FCM rotates the native device token
+    const tokenSubscription = PushNotificationService.subscribeToTokenRefresh();
+    return () => {
+      tokenSubscription.remove();
+    };
   }, [isMobile]);
 
   // Sync push status after successful login (defer so navigation can mount first)
