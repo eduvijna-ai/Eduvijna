@@ -21,7 +21,6 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
@@ -190,16 +189,8 @@ export default function Profile({ navigation }: any) {
         const result = await PushNotificationService.enablePushNotifications();
         
         if (result.success) {
-          // Generate FCM/Native Device Token (silently)
-          try {
-            const fcmToken = (await Notifications.getDevicePushTokenAsync()).data;
-            console.log('🔥 FCM Token Generated!');
-            
-            // Store FCM token in AsyncStorage
-            await AsyncStorage.setItem('fcmDeviceToken', fcmToken);
-          } catch (fcmError) {
-            console.warn('Could not generate FCM token:', fcmError);
-          }
+          // The push service has already obtained, stored and registered the native FCM token.
+          // Never fetch it a second time here: that could desynchronize local and backend tokens.
 
           if (authUser?.id != null) {
             await AsyncStorage.setItem('pushRegisteredUserId', String(authUser.id));

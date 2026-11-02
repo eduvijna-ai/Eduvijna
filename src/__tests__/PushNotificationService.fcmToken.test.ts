@@ -149,4 +149,66 @@ describe('PushNotificationService native FCM token path', () => {
     expect(typeof sub.remove).toBe('function');
     sub.remove();
   });
+  it('does not consider a legacy Expo token to be a valid cached native token', async () => {
+    await AsyncStorage.setItem('fcmDeviceToken', EXPO_TOKEN);
+    const status = await PushNotificationService.getPushStatus();
+    expect(status.hasToken).toBe(false);
+  });
+
+  it('re-reads FCM on launch and reconciles a rotation missed while app was closed', async () => {
+    await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
+    await AsyncStorage.setItem('fcmDeviceToken', 'old-fcm-token:APA91bOLD');
+    await AsyncStorage.setItem('lastTokenRegistered', 'old-fcm-token:APA91bOLD');
+    await PushNotificationService.initializeOnAppLaunch();
+    expect(Notifications.getDevicePushTokenAsync).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/notifications/devices',
+      expect.objectContaining({ token: NATIVE_FCM, platform: 'android' }),
+    );
+    expect(await AsyncStorage.getItem('fcmDeviceToken')).toBe(NATIVE_FCM);
+  });
+
+  it('replaces legacy cached Expo tokens on app launch instead of skipping refresh', async () => {
+    await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
+    await AsyncStorage.setItem('fcmDeviceToken', EXPO_TOKEN);
+    await AsyncStorage.setItem('lastTokenRegistered', EXPO_TOKEN);
+    await PushNotificationService.initializeOnAppLaunch();
+    expect(await AsyncStorage.getItem('fcmDeviceToken')).toBe(NATIVE_FCM);
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/notifications/devices',
+      expect.objectContaining({ token: NATIVE_FCM }),
+    );
+    expect(Notifications.getExpoPushTokenAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt for notification permission when the app launches', async () => {
+    await AsyncStorage.setItem('pushNotificationsEnabled', 'true');
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'denied' });
+    await PushNotificationService.initializeOnAppLaunch();
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('does not log registration responses or errors that may contain device tokens', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      mockPost.mockResolvedValueOnce({
+        data: { id: 42, user_id: 7, token: 'SENSITIVE_DEVICE_TOKEN' },
+      });
+      await PushNotificationService.registerDevice(NATIVE_FCM);
+      const error = Object.assign(new Error('Failed request'), {
+        response: { status: 503, data: { token: 'SENSITIVE_DEVICE_TOKEN' } },
+      });
+      mockPost.mockRejectedValueOnce(error);
+      await expect(PushNotificationService.registerDevice(NATIVE_FCM)).rejects.toThrow();
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain('SENSITIVE_DEVICE_TOKEN');
+      expect(JSON.stringify(errSpy.mock.calls)).not.toContain('SENSITIVE_DEVICE_TOKEN');
+    } finally {
+      logSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
 });
