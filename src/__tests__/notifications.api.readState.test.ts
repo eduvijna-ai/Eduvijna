@@ -1,6 +1,7 @@
 import { getNotifications } from '../core/api/notifications.api';
 import { guardedNotificationFetch } from '../core/api/notificationFetchGuard';
 import { loadReadNotificationIds } from '../core/api/notificationReadState';
+import { notificationIdKey } from '../core/api/notificationIdentity';
 
 jest.mock('../core/api/notificationFetchGuard', () => ({
   guardedNotificationFetch: jest.fn(),
@@ -29,7 +30,7 @@ describe('getNotifications read-state merge', () => {
         { id: 7, title: 't', body: 'b', status: 'sent', priority: 'normal', created_at: '' },
       ],
     });
-    mockLoadRead.mockResolvedValue(new Set([7]));
+    mockLoadRead.mockResolvedValue(new Set([notificationIdKey(7)]));
 
     const rows = await getNotifications({ accountKey: 'acct-1' });
     expect(mockLoadRead).toHaveBeenCalledWith('acct-1');
