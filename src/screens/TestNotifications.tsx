@@ -118,16 +118,11 @@ if (Constants.appOwnership === 'expo') {
     try {
       console.log('🔔 Starting FCM token registration...');
 
-      // Request permission
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
+      // Reuse the channel-aware permission flow from PushNotificationService.
+      // Android 13+ requires an Android channel before requesting a push token.
+      const permissionStatus = await PushNotificationService.requestPermission();
 
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
+      if (permissionStatus !== 'granted') {
         setPermissionStatus('❌ Permission denied');
         Alert.alert('Permission Denied', 'Please enable notifications in device settings');
         return;
@@ -158,10 +153,11 @@ if (Constants.appOwnership === 'expo') {
         'Token acquired. Select "Register with Backend" to register for push.',
         [{ text: 'OK' }]
       );
-    } catch (error) {
-      console.error('Failed to register for push notifications:', error);
-      setPermissionStatus('❌ Error: ' + (error as Error)?.message);
-      Alert.alert('Error', (error as Error)?.message || 'Failed to get FCM token');
+    } catch {
+      // Do not log raw native errors or device tokens from diagnostic flows.
+      console.error('Failed to acquire native FCM token (details redacted)');
+      setPermissionStatus('❌ Native FCM setup failed');
+      Alert.alert('Error', 'Could not get a native FCM token. Check device notifications and Google Play services.');
     }
   };
 
