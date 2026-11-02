@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   ApiEnvironmentConfigError,
   REQUIRE_PRODUCTION_VAR,
@@ -12,6 +14,8 @@ function buildProcessEnv(overrides = {}) {
   const env = { ...process.env };
   delete env[API_ENV_VAR];
   delete env[REQUIRE_PRODUCTION_VAR];
+  delete env.EDUVIJNA_APP_VARIANT;
+  delete env.EDUVIJNA_ANDROID_DEV_GOOGLE_SERVICES_FILE;
   return { ...env, ...overrides };
 }
 
@@ -34,6 +38,12 @@ function expoPublicExtra(processEnv) {
     ok: true,
     API_BASE_URL: config?.extra?.API_BASE_URL,
     EDUVIJNA_API_ENV: config?.extra?.EDUVIJNA_API_ENV,
+    name: config?.name,
+    scheme: config?.scheme,
+    androidPackage: config?.android?.package,
+    androidGoogleServicesFile: config?.android?.googleServicesFile,
+    androidIntentFilters: config?.android?.intentFilters,
+    expoUpdatesEnabled: config?.updates?.enabled,
   };
 }
 
@@ -56,6 +66,21 @@ assert(
   resolveApiOriginForProcess(buildProcessEnv({ EDUVIJNA_API_ENV: 'production' })).apiOrigin ===
     'https://eduapi.eduvijna.com',
   'production selects eduapi',
+);
+
+const easBuildProfiles = JSON.parse(
+  (await import('node:fs')).readFileSync(resolve('eas.json'), 'utf8'),
+).build;
+assert(
+  easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === 'development' &&
+    easBuildProfiles.development?.env?.EDUVIJNA_API_ENV === 'development' &&
+    easBuildProfiles.development?.android?.buildType === 'apk',
+  'EAS development profile selects separate Android DEV APK and DEV API',
+);
+assert(
+  easBuildProfiles.production?.env?.EDUVIJNA_APP_VARIANT === undefined &&
+    easBuildProfiles.preview?.env?.EDUVIJNA_APP_VARIANT === undefined,
+  'existing preview and production app identities remain unchanged',
 );
 
 try {
@@ -87,6 +112,61 @@ assert(devExtra.ok && !devExtra.API_BASE_URL.includes('/api/v1'), 'origin has no
 
 const prodExtra = expoPublicExtra(buildProcessEnv({ EDUVIJNA_API_ENV: 'production' }));
 assert(prodExtra.ok && prodExtra.API_BASE_URL === 'https://eduapi.eduvijna.com', 'Expo production → eduapi');
+assert(
+  prodExtra.ok && prodExtra.androidPackage === 'com.eduvijna.app' &&
+    prodExtra.scheme === 'eduvijna',
+  'Expo production retains existing Android identity and URI scheme',
+);
+assert(
+  devExtra.ok && devExtra.androidPackage === 'com.eduvijna.app',
+  'Legacy development Metro workflow retains existing identity when app variant is unset',
+);
+
+const configuredDevFirebasePath = resolve('google-services.dev.json');
+const devVariantConfig = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'development',
+  EDUVIJNA_APP_VARIANT: 'development',
+}));
+if (!existsSync(configuredDevFirebasePath)) {
+  assert(
+    devVariantConfig.status !== 0 &&
+      String(devVariantConfig.stderr || devVariantConfig.stdout).includes('google-services.dev.json'),
+    'Android side-by-side DEV variant fails closed until approved Firebase config is available',
+  );
+} else {
+  let resolvedDevConfig;
+  try {
+    resolvedDevConfig = JSON.parse(devVariantConfig.stdout);
+  } catch {
+    resolvedDevConfig = null;
+  }
+  assert(
+    devVariantConfig.status === 0 &&
+      resolvedDevConfig?.android?.package === 'com.eduvijna.app.dev' &&
+      resolvedDevConfig?.android?.googleServicesFile === './google-services.dev.json' &&
+      resolvedDevConfig?.name === 'EduVijna Dev' &&
+      resolvedDevConfig?.scheme === 'eduvijna-dev' &&
+      resolvedDevConfig?.extra?.API_BASE_URL === 'https://dev-api.eduvijna.com' &&
+      resolvedDevConfig?.updates?.enabled === false,
+    'Approved Android DEV variant has isolated app/Firebase identity, DEV API and no OTA',
+  );
+  const devFilters = resolvedDevConfig?.android?.intentFilters || [];
+  assert(
+    !JSON.stringify(devFilters).includes('app.eduvijna.com') &&
+      JSON.stringify(devFilters).includes('eduvijna-dev'),
+    'Android DEV variant does not intercept production App Links',
+  );
+}
+
+const wrongEnvironmentVariant = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'production',
+  EDUVIJNA_APP_VARIANT: 'development',
+}));
+assert(
+  wrongEnvironmentVariant.status !== 0,
+  'Android DEV variant cannot target the production API',
+);
+
 
 const invalidExpo = expoConfigResult(buildProcessEnv({ EDUVIJNA_API_ENV: 'not-valid' }));
 assert(invalidExpo.status !== 0, 'expo config fails on invalid EDUVIJNA_API_ENV');
