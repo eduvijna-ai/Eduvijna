@@ -621,9 +621,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             } else {
               console.warn('⚠️ No students found in classroom for push notifications', {
                 classroom_exists: !!classroom,
-                classroom_id: responseData.classroom_id,
-                total_classrooms: classrooms.length,
-                classroom_ids: classrooms.map(c => c.classroom_id)
+                classroom_count: classrooms.length,
               });
             }
           } catch (pushError) {
