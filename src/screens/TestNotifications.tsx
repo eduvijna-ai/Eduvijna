@@ -18,16 +18,7 @@ import { getAccessToken } from '@core/services/tokenStorage';
 import { PushNotificationService } from '@core/services/PushNotificationService';
 import Constants from 'expo-constants';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Global foreground notification handler is owned by PushNotificationService.
 
 export default function TestNotifications({ navigation }: any) {
   const { theme } = useTheme();

@@ -76,17 +76,35 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Set up Android notification channel (required for Android 8.0+)
-if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('default', {
-    name: 'Default',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#FF231F7C',
-    sound: 'default',
-    enableVibrate: true,
-    showBadge: true,
-  });
+// Android 13+ requires the notification channel to exist before permission
+// and native FCM token operations. Wait for creation instead of racing it.
+let androidChannelReady: Promise<void> | null = null;
+
+function ensureAndroidNotificationChannel(): Promise<void> {
+  if (Platform.OS !== 'android') {
+    return Promise.resolve();
+  }
+
+  if (!androidChannelReady) {
+    androidChannelReady = Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+      sound: 'default',
+      enableVibrate: true,
+      showBadge: true,
+    }).then(
+      () => undefined,
+      (error: unknown) => {
+        // Retry on the next operation if Android channel creation failed.
+        androidChannelReady = null;
+        throw error;
+      },
+    );
+  }
+
+  return androidChannelReady;
 }
 
 /**
@@ -111,6 +129,8 @@ async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined
       console.log('❌ Push notifications only supported on Android');
       return 'denied';
     }
+
+    await ensureAndroidNotificationChannel();
 
     // Check existing permissions
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -163,6 +183,7 @@ async function getToken(options?: { forceRefresh?: boolean }): Promise<string | 
       return null;
     }
 
+    await ensureAndroidNotificationChannel();
     const forceRefresh = options?.forceRefresh === true;
 
     // Drop any legacy Expo tokens cached from older builds

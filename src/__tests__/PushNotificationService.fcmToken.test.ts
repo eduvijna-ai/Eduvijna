@@ -74,6 +74,36 @@ describe('PushNotificationService native FCM token path', () => {
     });
   });
 
+  it('awaits Android notification channel before permission and native FCM token operations', async () => {
+    let completeChannel: () => void = () => {
+      throw new Error('Android channel creation was not requested');
+    };
+
+    (Notifications.setNotificationChannelAsync as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        completeChannel = resolve;
+      }),
+    );
+
+    const permissionTask = PushNotificationService.requestPermission();
+    const tokenTask = PushNotificationService.getToken({ forceRefresh: true });
+
+    expect(Notifications.setNotificationChannelAsync).toHaveBeenCalledTimes(1);
+    expect(Notifications.setNotificationChannelAsync).toHaveBeenCalledWith(
+      'default',
+      expect.objectContaining({ importance: Notifications.AndroidImportance.MAX }),
+    );
+    expect(Notifications.getPermissionsAsync).not.toHaveBeenCalled();
+    expect(Notifications.getDevicePushTokenAsync).not.toHaveBeenCalled();
+
+    completeChannel();
+
+    expect(await permissionTask).toBe('granted');
+    expect(await tokenTask).toBe(NATIVE_FCM);
+    expect(Notifications.getPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(Notifications.getDevicePushTokenAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('acquires and caches a native FCM token without calling Expo Push Token APIs', async () => {
     const token = await PushNotificationService.getToken({ forceRefresh: true });
 
