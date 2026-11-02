@@ -10,7 +10,6 @@ import * as Notifications from 'expo-notifications';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { API_BASE_URL } from '../core/api/config';
 import * as Device from 'expo-device';
-import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@context/ThemeContext';
 import { useAuth } from '@core/hooks/useAuth';
@@ -144,13 +143,14 @@ if (Constants.appOwnership === 'expo') {
       }
 
       // Token acquisition does not prove backend registration or Firebase acceptance.
+      // Never put the raw FCM token into UI state or alerts.
       console.log('Native FCM token obtained (redacted)');
-      setFcmToken(token);
+      setFcmToken('acquired');
       setRegistrationStatus('Native token acquired; backend association unverified');
       setIsRegistered(false);
       Alert.alert(
         'Native FCM Token',
-        'Token acquired. Select "Register with Backend" to register for push.',
+        'Token acquired (not shown). Select "Register with Backend" to register for push.',
         [{ text: 'OK' }]
       );
     } catch {
@@ -159,17 +159,6 @@ if (Constants.appOwnership === 'expo') {
       setPermissionStatus('❌ Native FCM setup failed');
       Alert.alert('Error', 'Could not get a native FCM token. Check device notifications and Google Play services.');
     }
-  };
-
-  const copyTokenToClipboard = async () => {
-    if (!fcmToken || fcmToken.startsWith('❌')) {
-      Alert.alert('No Token', 'Push token not available yet. Click "Get FCM Token" first.');
-      return;
-    }
-
-    const tokenType = 'FCM Token';
-    await Clipboard.setStringAsync(fcmToken);
-    Alert.alert('Copied!', `${tokenType} copied to clipboard`);
   };
 
   const registerWithBackend = async () => {
@@ -182,7 +171,7 @@ if (Constants.appOwnership === 'expo') {
       setRegistrationStatus('🔄 Registering...');
       console.log('📤 Registering token with backend...');
 
-      // Enable push notifications (this registers the token)
+      // enablePushNotifications acquires/registers via the service — never paste tokens into UI.
       const result = await PushNotificationService.enablePushNotifications();
 
       if (result.success) {
@@ -388,23 +377,17 @@ if (Constants.appOwnership === 'expo') {
           Push Notification Token
         </Text>
         
-        {/* Push Token */}
+        {/* Push Token status only — never display or copy raw FCM / Expo tokens */}
         <Text style={[styles.tokenLabel, { color: theme.colors.textSecondary }]}>
-          {fcmToken && fcmToken.startsWith('ExponentPushToken') ? '📱 Expo Push Token (Fallback)' : '🔥 Native FCM Token'}
+          Native FCM token (direct Firebase only)
         </Text>
-        <ScrollView horizontal style={styles.tokenScroll}>
-          <Text style={[styles.tokenText, { color: theme.colors.textSecondary }]}>
-            {fcmToken || 'Click "Get FCM Token" to generate'}
-          </Text>
-        </ScrollView>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#FF9500' }]}
-          onPress={copyTokenToClipboard}
-          disabled={!fcmToken || fcmToken.startsWith('❌')}
-        >
-          <Ionicons name="copy" size={20} color="#FFF" />
-          <Text style={styles.buttonText}>Copy Token</Text>
-        </TouchableOpacity>
+        <Text style={[styles.tokenText, { color: theme.colors.textSecondary }]}>
+          {fcmToken
+            ? fcmToken.startsWith('❌')
+              ? fcmToken
+              : 'Acquired (value hidden). Register with backend to associate this device.'
+            : 'Click "Get FCM Token" to generate'}
+        </Text>
 
         <TouchableOpacity
           style={[styles.button, { backgroundColor: isRegistered ? '#10B981' : '#3B82F6', marginTop: 8 }]}
@@ -417,11 +400,9 @@ if (Constants.appOwnership === 'expo') {
           </Text>
         </TouchableOpacity>
         
-        <View style={{ marginTop: 12, padding: 12, backgroundColor: fcmToken && fcmToken.startsWith('ExponentPushToken') ? '#FFF3CD' : '#D1FAE5', borderRadius: 8 }}>
-          <Text style={{ color: fcmToken && fcmToken.startsWith('ExponentPushToken') ? '#856404' : '#065F46', fontSize: 12 }}>
-            {fcmToken && fcmToken.startsWith('ExponentPushToken') 
-              ? '⚠️ Using Expo Push Token as fallback.\nBackend can use Expo push service or convert to FCM.'
-              : '✅ Native FCM token.\nBackend can use this directly with Firebase.'}
+        <View style={{ marginTop: 12, padding: 12, backgroundColor: '#D1FAE5', borderRadius: 8 }}>
+          <Text style={{ color: '#065F46', fontSize: 12 }}>
+            Direct FCM only. Expo Push Tokens are rejected. No Expo Push Service path.
           </Text>
         </View>
       </View>
@@ -499,7 +480,7 @@ if (Constants.appOwnership === 'expo') {
           OS: {Device.osName} {Device.osVersion}{'\n'}
           Brand: {Device.brand}{'\n'}
           Model: {Device.modelName}{'\n'}
-          Push Token: {fcmToken && !fcmToken.includes('❌') ? '✅' : fcmToken.includes('❌') ? '❌' : '⏳'}{' ('}{fcmToken && fcmToken.startsWith('ExponentPushToken') ? 'Expo' : 'FCM'}{')'}
+          Push Token: {fcmToken && !fcmToken.includes('❌') ? '✅ FCM (hidden)' : fcmToken.includes('❌') ? '❌' : '⏳'}
         </Text>
       </View>
     </ScrollView>
