@@ -78,7 +78,7 @@ if (Constants.appOwnership === 'expo') {
    */
   const handleNotificationTap = (notification: Notifications.Notification) => {
     const data = notification.request.content.data;
-    console.log('📱 Notification data:', data);
+    // Avoid logging notification data: it can contain personal or assessment details.
 
     // Extract quiz information from notification data
     const quizId = data?.quiz_id || data?.quizId;
@@ -215,7 +215,7 @@ if (Constants.appOwnership === 'expo') {
         );
       }
     } catch (error: any) {
-      console.error('❌ Registration error:', error);
+      console.error('❌ Registration error (details redacted)');
       setRegistrationStatus('❌ Registration error');
       setIsRegistered(false);
       Alert.alert('Error', error.message || 'Failed to register with backend');

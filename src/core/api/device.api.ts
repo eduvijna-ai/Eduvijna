@@ -127,7 +127,7 @@ class NotificationsAPI {
         payload
       );
 
-      console.log('✅ [Notifications API] Notification sent');
+      console.log('✅ [Notifications API] Request accepted (push delivery not verified)');
       return response.data;
     } catch (error: any) {
       console.error('❌ [Notifications API] Send failed:', error);

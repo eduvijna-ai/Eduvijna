@@ -546,13 +546,13 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
             }
             
             if (classroom && classroom.students && classroom.students.length > 0) {
-              console.log('👥 Processing students:', classroom.students);
+              console.log('Preparing classroom notification recipients');
               
               // Extract student IDs from classroom
               const studentIds = classroom.students.map((student: any) => student.id || student.user_id).filter(Boolean);
               
               if (studentIds.length > 0) {
-                console.log(`✅ Sending push notifications to ${studentIds.length} students: ${studentIds.join(', ')}`);
+                console.log('Sending classroom notification request; recipient count:', studentIds.length);
                 
                 // Get auth token
                 const token = await getAccessToken();
@@ -586,7 +586,7 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                     },
                   };
                   
-                  console.log('📤 Notification payload:', JSON.stringify(notificationPayload, null, 2));
+                  // Avoid printing student identifiers or notification payloads in logs.
                   
                   // Send push notification via backend API
                   const notificationResponse = await fetch(`${API_BASE_URL}/api/notifications/send`, {
@@ -602,16 +602,21 @@ const ShareQuizModal: React.FC<ShareQuizModalProps> = ({
                   
                   if (notificationResponse.ok) {
                     const responseJson = await notificationResponse.json();
-                    console.log('✅ Push notifications sent successfully:', responseJson);
+                    const acceptedCount = typeof responseJson?.push_accepted_count === 'number'
+                       ? responseJson.push_accepted_count
+                       : 0;
+                     console.log(acceptedCount > 0
+                       ? 'FCM provider accepted a push; device delivery remains unverified'
+                       : 'In-app notification request accepted; Firebase acceptance unverified');
                   } else {
-                    const errorText = await notificationResponse.text();
-                    console.error('⚠️ Push notification failed:', notificationResponse.status, errorText);
+                    // Do not log raw backend error bodies; they may contain sensitive details.
+                    console.error('⚠️ Notification request failed with HTTP:', notificationResponse.status);
                   }
                 } else {
                   console.warn('⚠️ No auth token available for push notifications');
                 }
               } else {
-                console.warn('⚠️ No valid student IDs found in classroom - students array:', classroom.students);
+                console.warn('⚠️ No valid student IDs found in classroom');
               }
             } else {
               console.warn('⚠️ No students found in classroom for push notifications', {
