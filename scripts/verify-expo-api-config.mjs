@@ -19,8 +19,12 @@ function buildProcessEnv(overrides = {}) {
   return { ...env, ...overrides };
 }
 
-function expoConfigResult(processEnv) {
-  const { executable, args } = resolveCommandArgv(['expo', 'config', '--type', 'public', '--json']);
+function expoConfigResult(processEnv, { json = true } = {}) {
+  const command = ['expo', 'config', '--type', 'public'];
+  if (json) {
+    command.push('--json');
+  }
+  const { executable, args } = resolveCommandArgv(command);
   return spawnSync(executable, args, {
     env: processEnv,
     encoding: 'utf8',
@@ -125,17 +129,26 @@ assert(
 );
 
 const configuredDevFirebasePath = resolve('google-services.dev.json');
-const devVariantConfig = expoConfigResult(buildProcessEnv({
+const devVariantEnv = buildProcessEnv({
   EDUVIJNA_API_ENV: 'development',
   EDUVIJNA_APP_VARIANT: 'development',
-}));
+});
 if (!existsSync(configuredDevFirebasePath)) {
+  // Expo --json can exit non-zero with empty pipes on Windows; capture the
+  // actionable fail-closed message from the human-readable config path.
+  const missingFirebaseConfig = expoConfigResult(devVariantEnv, { json: false });
+  const missingFirebaseOutput = String(
+    `${missingFirebaseConfig.stderr || ''}${missingFirebaseConfig.stdout || ''}`,
+  );
   assert(
-    devVariantConfig.status !== 0 &&
-      String(devVariantConfig.stderr || devVariantConfig.stdout).includes('google-services.dev.json'),
+    missingFirebaseConfig.status !== 0 &&
+      missingFirebaseOutput.includes('google-services.dev.json') &&
+      missingFirebaseOutput.includes('com.eduvijna.app.dev') &&
+      missingFirebaseOutput.includes('Do not reuse the production google-services.json'),
     'Android side-by-side DEV variant fails closed until approved Firebase config is available',
   );
 } else {
+  const devVariantConfig = expoConfigResult(devVariantEnv);
   let resolvedDevConfig;
   try {
     resolvedDevConfig = JSON.parse(devVariantConfig.stdout);
