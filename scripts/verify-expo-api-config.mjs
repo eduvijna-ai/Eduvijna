@@ -128,10 +128,13 @@ assert(
   'Legacy development Metro workflow retains existing identity when app variant is unset',
 );
 
-const configuredDevFirebasePath = resolve('google-services.dev.json');
+const suppliedDevFirebasePath =
+  process.env.EDUVIJNA_ANDROID_DEV_GOOGLE_SERVICES_FILE?.trim() || './google-services-dev.json';
+const configuredDevFirebasePath = resolve(suppliedDevFirebasePath);
 const devVariantEnv = buildProcessEnv({
   EDUVIJNA_API_ENV: 'development',
   EDUVIJNA_APP_VARIANT: 'development',
+  EDUVIJNA_ANDROID_DEV_GOOGLE_SERVICES_FILE: suppliedDevFirebasePath,
 });
 if (!existsSync(configuredDevFirebasePath)) {
   // Expo --json can exit non-zero with empty pipes on Windows; capture the
@@ -142,7 +145,7 @@ if (!existsSync(configuredDevFirebasePath)) {
   );
   assert(
     missingFirebaseConfig.status !== 0 &&
-      missingFirebaseOutput.includes('google-services.dev.json') &&
+      missingFirebaseOutput.includes('google-services-dev.json') &&
       missingFirebaseOutput.includes('com.eduvijna.app.dev') &&
       missingFirebaseOutput.includes('Do not reuse the production google-services.json'),
     'Android side-by-side DEV variant fails closed until approved Firebase config is available',
@@ -158,7 +161,7 @@ if (!existsSync(configuredDevFirebasePath)) {
   assert(
     devVariantConfig.status === 0 &&
       resolvedDevConfig?.android?.package === 'com.eduvijna.app.dev' &&
-      resolvedDevConfig?.android?.googleServicesFile === './google-services.dev.json' &&
+      resolvedDevConfig?.android?.googleServicesFile === suppliedDevFirebasePath &&
       resolvedDevConfig?.name === 'EduVijna Dev' &&
       resolvedDevConfig?.scheme === 'eduvijna-dev' &&
       resolvedDevConfig?.extra?.API_BASE_URL === 'https://dev-api.eduvijna.com' &&

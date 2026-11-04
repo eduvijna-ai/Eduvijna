@@ -27,3 +27,4 @@ web-build/
 # Side-by-side Android DEV client Firebase configuration (provisioned by authorized owner).
 # Never commit or accidentally ship development client configuration.
 google-services.dev.json
+google-services-dev.json
