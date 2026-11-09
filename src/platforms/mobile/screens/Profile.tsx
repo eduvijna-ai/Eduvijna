@@ -18,11 +18,8 @@ import {
   Switch,
   Linking,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
-import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import { getUserProfile, updateUserProfile, type UpdateProfileRequest } from '@core/api/profile.api';
@@ -36,7 +33,7 @@ import {
   privacyPolicyOpenFailureMessage,
 } from '@core/config/legal';
 
-export default function Profile({ navigation }: any) {
+export default function Profile(_props: any) {
   const { user: authUser, logout } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const colors = theme.colors;
@@ -190,20 +187,10 @@ export default function Profile({ navigation }: any) {
         const result = await PushNotificationService.enablePushNotifications();
         
         if (result.success) {
-          // Generate FCM/Native Device Token (silently)
-          try {
-            const fcmToken = (await Notifications.getDevicePushTokenAsync()).data;
-            console.log('🔥 FCM Token Generated!');
-            
-            // Store FCM token in AsyncStorage
-            await AsyncStorage.setItem('fcmDeviceToken', fcmToken);
-          } catch (fcmError) {
-            console.warn('Could not generate FCM token:', fcmError);
-          }
+          // The push service has already obtained, stored and registered the native FCM token.
+          // Never fetch it a second time here: that could desynchronize local and backend tokens.
 
-          if (authUser?.id != null) {
-            await AsyncStorage.setItem('pushRegisteredUserId', String(authUser.id));
-          }
+          // PushNotificationService owns backend-confirmed token/account association.
           
           // Simple success message
           Alert.alert('Success', 'Push notifications enabled successfully!');
@@ -255,65 +242,6 @@ export default function Profile({ navigation }: any) {
       Alert.alert('Error', 'Failed to update push notification settings');
     } finally {
       setPushToggleLoading(false);
-    }
-  };
-
-  // Debug: Copy push tokens to clipboard
-  const handleCopyPushToken = async () => {
-    try {
-      const expoToken = await AsyncStorage.getItem('expoPushToken');
-      const fcmToken = await AsyncStorage.getItem('fcmDeviceToken');
-      
-      if (!expoToken && !fcmToken) {
-        Alert.alert('No Token', 'Push tokens not found. Please enable push notifications first.');
-        return;
-      }
-
-      const tokenInfo = [
-        expoToken ? `📱 Expo Token:\n${expoToken}` : '',
-        fcmToken ? `🔥 FCM Token:\n${fcmToken}` : '',
-      ].filter(Boolean).join('\n\n');
-
-      // Do not log push tokens (device identifiers) — Play Data safety remediation.
-
-      const alertButtons = [];
-      
-      if (expoToken) {
-        alertButtons.push({
-          text: '📱 Expo Token',
-          onPress: async () => {
-            await Clipboard.setStringAsync(expoToken);
-            Alert.alert('Copied!', `Expo token copied:\n\n${expoToken.substring(0, 50)}...`);
-          }
-        });
-      }
-      
-      if (fcmToken) {
-        alertButtons.push({
-          text: '🔥 FCM Token',
-          onPress: async () => {
-            await Clipboard.setStringAsync(fcmToken);
-            Alert.alert('Copied!', `FCM token copied:\n\n${fcmToken.substring(0, 50)}...`);
-          }
-        });
-      }
-      
-      alertButtons.push(
-        {
-          text: 'View Both',
-          onPress: () => Alert.alert('Push Tokens', tokenInfo)
-        },
-        { text: 'Cancel', style: 'cancel' as const }
-      );
-      
-      Alert.alert(
-        '✅ Select Token to Copy',
-        'Choose which token to copy:',
-        alertButtons
-      );
-    } catch (error) {
-      console.error('Error copying token:', error);
-      Alert.alert('Error', 'Failed to copy push token');
     }
   };
 
@@ -691,26 +619,6 @@ export default function Profile({ navigation }: any) {
                 thumbColor="#fff"
               />
             </View>
-
-            {/* Debug: Copy Push Tokens */}
-            {/* {formData.preferences?.pushNotifications && (
-              <TouchableOpacity 
-                style={styles.debugButton}
-                onPress={handleCopyPushToken}
-              >
-                <Ionicons name="copy-outline" size={16} color="#059669" />
-                <Text style={styles.debugButtonText}>📋 Copy Push Tokens (Expo + FCM)</Text>
-              </TouchableOpacity>
-            )} */}
-
-            {/* Test Notifications */}
-            {/* <TouchableOpacity 
-              style={styles.testNotificationButton}
-              onPress={() => navigation?.navigate?.('TestNotifications')}
-            >
-              <Ionicons name="flask" size={16} color="#3B82F6" />
-              <Text style={styles.testNotificationText}>🔬 Test Push Notifications</Text>
-            </TouchableOpacity> */}
 
             {/* Theme Setting */}
             {/* <TouchableOpacity 

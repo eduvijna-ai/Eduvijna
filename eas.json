@@ -11,6 +11,16 @@
         "EDUVIJNA_API_ENV": "development"
       }
     },
+    "android-fcm-dev": {
+      "extends": "development",
+      "env": {
+        "EDUVIJNA_API_ENV": "development",
+        "EDUVIJNA_APP_VARIANT": "development"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "env": {
