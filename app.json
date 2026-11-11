@@ -17,6 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.eduvijna.app",
+      "appleTeamId": "847JWGJ2VM",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:app.eduvijna.com"

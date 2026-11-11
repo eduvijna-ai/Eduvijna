@@ -1,85 +1,66 @@
 # iOS FCM — Founder configuration handoff
 
-Mobile code for iOS Firebase Cloud Messaging lives on `feat/mobile-ios-fcm-notifications`.
-This document lists **Founder / Apple / Firebase Console** actions that cannot be completed without credentials.
+Mobile code for iOS Firebase Cloud Messaging lives on `feat/mobile-ios-fcm-notifications` (Draft PR #29).
 
-## Firebase project (do not recreate)
+## Screenshot-confirmed (Founder completed)
 
-- Project ID: `eduvijna-push`
-- Project number / sender ID: `416066207556`
-- Android production package (unchanged): `com.eduvijna.app`
-- iOS production bundle: `com.eduvijna.app`
+| Item | Status |
+|------|--------|
+| Firebase project `eduvijna-push` / `416066207556` | Confirmed |
+| iOS app `EduVijna iOS` / `com.eduvijna.app` | Registered |
+| Apple Team `847JWGJ2VM` | Confirmed |
+| App Store ID `6807368682` | Confirmed |
+| FCM HTTP v1 | Enabled |
+| Firebase development APNs auth key | Uploaded |
+| Firebase production APNs auth key | Uploaded |
+| Apple Developer sandbox + production APNs keys | Exist (team-scoped) |
+| Legacy Expo Push Notifications Apple key | Leave untouched |
 
-## 1. Authenticate Firebase tooling
+These confirm Console setup — **not** native iPhone receipt.
 
-Cursor Firebase MCP / CLI must be signed in as an account with access to `eduvijna-push`.
+## GoogleService-Info.plist
 
-Then from the iOS feature worktree:
+- Real file is **gitignored** at `./GoogleService-Info.plist`.
+- Sanitized template: `GoogleService-Info.example.plist`.
+- Local Founder backup (gitignored): `.local/GoogleService-Info.plist.founder-download`.
+- EAS injection instructions: `docs/development/IOS_FCM_EAS_FILE_INJECTION.md`.
 
-```bash
-node scripts/provision-ios-firebase-app.mjs
-```
+## Apple App ID Push capability — UNVERIFIED by agent
 
-This reuses an existing iOS app for `com.eduvijna.app` or registers one once, then writes `GoogleService-Info.plist` (metadata only is logged).
+Screenshots prove APNs **keys**, not App ID capability / provisioning.
 
-Optional EAS injection if the plist is not committed:
+Founder verify in Apple Developer:
 
-1. Store the plist as an EAS file environment variable / secret named for `EDUVIJNA_IOS_GOOGLE_SERVICES_FILE`.
-2. Point production / preview / `ios-fcm-preview` builds at that file path.
-3. Never upload APNs `.p8` keys into the mobile repository.
+1. Certificates, Identifiers & Profiles → Identifiers → `com.eduvijna.app`
+2. Confirm **Push Notifications** is enabled → Save if needed
+3. Profiles used by EAS for this App ID must include Push Notifications
+4. Development / ad-hoc vs App Store profiles must match the intended `aps-environment`
 
-## 2. Apple Developer + APNs (required for delivery)
+## Recommended physical iPhone acceptance path
 
-Firebase MCP/CLI **cannot** read whether an APNs auth key is already configured.
-An authorized Apple Developer / Firebase administrator must verify in Console.
+Prefer **TestFlight** for `com.eduvijna.app`:
 
-### Exact Console steps
+| Concern | Recommendation |
+|---------|----------------|
+| Bundle ID | Keep `com.eduvijna.app` (no second Firebase/iOS app) |
+| APNs | Production keys already in Firebase → use distribution signing |
+| EAS profile | `ios-fcm-testflight` (store distribution, production API, production APNs entitlement) |
+| API | Production `https://eduapi.eduvijna.com` — use **narrowly scoped test users** only |
+| Alternate | `ios-fcm-preview` = internal distribution + production API (ad-hoc); still production APNs entitlement in config, but not TestFlight |
 
-1. **Apple Developer** → Certificates, Identifiers & Profiles → Identifiers → `com.eduvijna.app`
-   - Enable **Push Notifications** capability → Save.
-2. **Apple Developer** → Keys → "+" → enable **Apple Push Notifications service (APNs)** → Continue → Register.
-   - Download the `.p8` once; record **Key ID** and your **Team ID**.
-3. **Firebase Console** → project `eduvijna-push` → ⚙️ Project settings → **Cloud Messaging** tab.
-4. Under **Apple app configuration** for the iOS app `com.eduvijna.app`:
-   - **APNs authentication key** → Upload
-   - Select the `.p8`, enter Key ID + Team ID → Upload
-5. EAS / Apple provisioning profiles for this App ID must include Push Notifications.
-6. Mobile config maps `aps-environment` by EAS profile (`development` → development; production/preview/ios-fcm-preview → production).
-7. Background mode `remote-notification` is declared in Expo config.
+Do **not** assume APNs Sandbox means DEV API. Sandbox vs production is a signing/APNs concern; API env is independent.
 
-**Do not** paste `.p8` contents into chat, git, or EAS public env vars.
-Firebase MCP has no approved API to inspect APNs private-key material.
+## Authorized builds (separate Founder approval)
 
-## 3. Google Sign-In — separate scope
+Do **not** start until explicit authorization:
 
-Firebase may suggest “Set up and use Google Sign-in.”
-
-EduVijna already authenticates via **backend JWT login**. Google Sign-In is **not** required for FCM.
-
-Out of scope for the iOS FCM PR:
-
-- Enabling Firebase Auth Google provider for mobile login
-- Replacing JWT session handling
-- Adding Google Sign-In UI
-
-If desired later: open a separate feature proposal covering Apple URL schemes / `REVERSED_CLIENT_ID`, backend identity federation contract, and account linking.
-
-## 4. Authorized builds (separate Founder approval)
-
-Do **not** start these until code review + Founder authorization:
-
-1. EAS iOS build from verified main SHA after merge (or authorized pre-merge TestFlight candidate).
-2. TestFlight internal validation on a physical iPhone.
-3. App Store submission.
+1. Create EAS file env `EDUVIJNA_IOS_GOOGLE_SERVICES_FILE` (see injection doc)
+2. EAS iOS build from this feature SHA or post-merge main SHA
+3. TestFlight internal validation on a physical iPhone
+4. App Store submission (later)
 
 Record the exact Git SHA on every build.
 
-## 5. Physical acceptance checklist
+## Google Sign-In
 
-- App launches and JWT login works
-- User grants notification permission (once)
-- Firebase returns an FCM registration token (not APNs hex, not Expo token)
-- Backend `POST /api/notifications/devices` accepts `platform: ios`
-- iPhone displays assignment / completion / graded / announcement notifications
-- Tap navigates correctly (foreground, background, cold start, signed-out → login resume)
-- Android regression remains clear
+Out of scope. See `GOOGLE_SIGNIN_SEPARATE_SCOPE.md`.

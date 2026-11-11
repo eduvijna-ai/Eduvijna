@@ -85,8 +85,10 @@ assert(
 assert(
   easBuildProfiles.production?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE !== '1' &&
     easBuildProfiles.preview?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE !== '1' &&
-    easBuildProfiles['ios-fcm-preview']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1',
-  'Android production/preview profiles are not blocked by iOS Firebase readiness; iOS preview requires it',
+    easBuildProfiles['ios-fcm-preview']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
+    easBuildProfiles['ios-fcm-testflight']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
+    easBuildProfiles['ios-fcm-testflight']?.distribution === 'store',
+  'Android production/preview profiles are not blocked by iOS Firebase readiness; iOS preview/testflight require it',
 );
 assert(
   easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === undefined &&

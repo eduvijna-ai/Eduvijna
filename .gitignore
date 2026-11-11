@@ -28,3 +28,9 @@ web-build/
 # Never commit or accidentally ship development client configuration.
 google-services.dev.json
 google-services-dev.json
+
+# Production iOS Firebase client configuration (Founder-provisioned; inject via EAS file env).
+# Tracked template: GoogleService-Info.example.plist
+GoogleService-Info.plist
+GoogleService-Info.plist.bak-*
+.local/

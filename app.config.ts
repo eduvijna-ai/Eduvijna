@@ -213,6 +213,7 @@ export default (): ExpoConfig => {
     ios: {
       ...staticExpo.ios,
       bundleIdentifier: PROD_IOS_BUNDLE_ID,
+      appleTeamId: staticExpo.ios?.appleTeamId || '847JWGJ2VM',
       googleServicesFile: iosFirebaseFile,
       entitlements: {
         ...(staticExpo.ios?.entitlements ?? {}),

@@ -38,9 +38,23 @@
     },
     "ios-fcm-preview": {
       "extends": "preview",
+      "distribution": "internal",
       "env": {
         "EDUVIJNA_API_ENV": "production",
         "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "ios-fcm-testflight": {
+      "extends": "production",
+      "distribution": "store",
+      "autoIncrement": true,
+      "env": {
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1",
+        "EDUVIJNA_APS_ENVIRONMENT": "production"
       },
       "ios": {
         "simulator": false

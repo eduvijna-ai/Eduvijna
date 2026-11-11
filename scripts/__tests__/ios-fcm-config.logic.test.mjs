@@ -54,3 +54,22 @@ test('provision script uses --bundle-id (not positional bundle id)', async () =>
   assert.match(source, /apps:create IOS "EduVijna iOS" --bundle-id/);
   assert.doesNotMatch(source, /apps:create IOS \$\{BUNDLE_ID\}/);
 });
+
+test('real GoogleService-Info.plist is gitignored while example template is tracked', async () => {
+  const fs = await import('node:fs');
+  const ignore = fs.readFileSync(resolve('.gitignore'), 'utf8');
+  assert.match(ignore, /^GoogleService-Info\.plist$/m);
+  assert.equal(fs.existsSync(resolve('GoogleService-Info.example.plist')), true);
+  assert.doesNotMatch(
+    fs.readFileSync(resolve('GoogleService-Info.example.plist'), 'utf8'),
+    /AIza|REPLACE_WITH_YOUR_API_KEY/,
+  );
+});
+
+test('eas.json distinguishes internal preview vs TestFlight store profile', async () => {
+  const fs = await import('node:fs');
+  const eas = JSON.parse(fs.readFileSync(resolve('eas.json'), 'utf8'));
+  assert.equal(eas.build['ios-fcm-preview']?.distribution, 'internal');
+  assert.equal(eas.build['ios-fcm-testflight']?.distribution, 'store');
+  assert.equal(eas.build['ios-fcm-testflight']?.env?.EDUVIJNA_API_ENV, 'production');
+});
