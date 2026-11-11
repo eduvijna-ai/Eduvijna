@@ -67,6 +67,17 @@ test('real GoogleService-Info.plist is gitignored while example template is trac
   );
 });
 
+test('iOS marketing version and runtimeVersion are isolated from Android', async () => {
+  const fs = await import('node:fs');
+  const app = JSON.parse(fs.readFileSync(resolve('app.json'), 'utf8')).expo;
+  assert.equal(app.version, '1.0.0');
+  assert.equal(app.ios.version, '1.0.3');
+  assert.equal(app.ios.runtimeVersion, '1.0.3-ios-fcm');
+  assert.equal(app.runtimeVersion, '1.0.0');
+  assert.equal(app.ios.bundleIdentifier, 'com.eduvijna.app');
+  assert.equal(app.ios.appleTeamId, '847JWGJ2VM');
+});
+
 test('eas.json distinguishes internal preview vs TestFlight store profile', async () => {
   const fs = await import('node:fs');
   const eas = JSON.parse(fs.readFileSync(resolve('eas.json'), 'utf8'));
