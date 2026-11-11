@@ -18,8 +18,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.eduvijna.app",
       "appleTeamId": "847JWGJ2VM",
-      "version": "1.0.3",
-      "runtimeVersion": "1.0.3-ios-fcm",
+      "version": "1.0.4",
+      "runtimeVersion": "1.0.4-ios-fcm",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:app.eduvijna.com"

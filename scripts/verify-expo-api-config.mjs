@@ -98,10 +98,10 @@ assert(
 const appJsonVersions = JSON.parse(readFileSync(resolve('app.json'), 'utf8')).expo;
 assert(
   appJsonVersions.version === '1.0.0' &&
-    appJsonVersions.ios?.version === '1.0.3' &&
-    appJsonVersions.ios?.runtimeVersion === '1.0.3-ios-fcm' &&
+    appJsonVersions.ios?.version === '1.0.4' &&
+    appJsonVersions.ios?.runtimeVersion === '1.0.4-ios-fcm' &&
     appJsonVersions.runtimeVersion === '1.0.0',
-  'iOS TestFlight version 1.0.3 / runtime 1.0.3-ios-fcm isolated from Android version/runtime 1.0.0',
+  'iOS TestFlight version 1.0.4 / runtime 1.0.4-ios-fcm isolated from Android version/runtime 1.0.0',
 );
 assert(
   easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === undefined &&

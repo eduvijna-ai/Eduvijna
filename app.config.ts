@@ -221,9 +221,9 @@ export default (): ExpoConfig => {
       ...staticExpo.ios,
       // Marketing version for TestFlight/App Store (CFBundleShortVersionString).
       // Keep root expo.version unchanged so Android versionName stays on the existing track.
-      version: staticExpo.ios?.version || '1.0.3',
-      // Isolate OTA from pre-RNFB iOS binaries and from Android runtime 1.0.0.
-      runtimeVersion: staticExpo.ios?.runtimeVersion || '1.0.3-ios-fcm',
+      version: staticExpo.ios?.version || '1.0.4',
+      // Isolate OTA from prior iOS trains (incl. closed 1.0.3) and from Android runtime 1.0.0.
+      runtimeVersion: staticExpo.ios?.runtimeVersion || '1.0.4-ios-fcm',
       bundleIdentifier: PROD_IOS_BUNDLE_ID,
       appleTeamId: staticExpo.ios?.appleTeamId || '847JWGJ2VM',
       googleServicesFile: iosFirebaseFile,
@@ -265,8 +265,8 @@ export default (): ExpoConfig => {
       FIREBASE_PROJECT_ID,
       FIREBASE_PROJECT_NUMBER,
       IOS_BUNDLE_ID: PROD_IOS_BUNDLE_ID,
-      IOS_APP_VERSION: staticExpo.ios?.version || '1.0.3',
-      IOS_RUNTIME_VERSION: staticExpo.ios?.runtimeVersion || '1.0.3-ios-fcm',
+      IOS_APP_VERSION: staticExpo.ios?.version || '1.0.4',
+      IOS_RUNTIME_VERSION: staticExpo.ios?.runtimeVersion || '1.0.4-ios-fcm',
       ANDROID_RUNTIME_VERSION: staticExpo.runtimeVersion || '1.0.0',
       APS_ENVIRONMENT: apsEnvironment,
       IOS_USE_FRAMEWORKS: 'dynamic',
