@@ -1,0 +1,77 @@
+# iOS FCM — Founder configuration handoff
+
+Mobile code for iOS Firebase Cloud Messaging lives on `feat/mobile-ios-fcm-notifications`.
+This document lists **Founder / Apple / Firebase Console** actions that cannot be completed without credentials.
+
+## Firebase project (do not recreate)
+
+- Project ID: `eduvijna-push`
+- Project number / sender ID: `416066207556`
+- Android production package (unchanged): `com.eduvijna.app`
+- iOS production bundle: `com.eduvijna.app`
+
+## 1. Authenticate Firebase tooling
+
+Cursor Firebase MCP / CLI must be signed in as an account with access to `eduvijna-push`.
+
+Then from the iOS feature worktree:
+
+```bash
+node scripts/provision-ios-firebase-app.mjs
+```
+
+This reuses an existing iOS app for `com.eduvijna.app` or registers one once, then writes `GoogleService-Info.plist` (metadata only is logged).
+
+Optional EAS injection if the plist is not committed:
+
+1. Store the plist as an EAS file environment variable / secret named for `EDUVIJNA_IOS_GOOGLE_SERVICES_FILE`.
+2. Point production / preview / `ios-fcm-preview` builds at that file path.
+3. Never upload APNs `.p8` keys into the mobile repository.
+
+## 2. Apple Developer + APNs (required for delivery)
+
+An authorized Apple Developer / Firebase administrator must:
+
+1. Confirm Apple Developer Program membership and correct Team.
+2. App ID `com.eduvijna.app` → enable **Push Notifications**.
+3. Create an APNs Authentication Key (`.p8`) in Apple Developer → Keys.
+4. Firebase Console → Project `eduvijna-push` → Project settings → Cloud Messaging → Apple app configuration → upload the APNs auth key (Key ID + Team ID).
+5. Ensure provisioning profiles used by EAS include Push Notifications.
+6. Confirm `aps-environment` entitlement (Expo sets development by plugin default; production archives use production — `app.json` also declares production entitlement for release builds).
+7. Background mode `remote-notification` is declared in Expo config for intended messaging behavior.
+
+**Do not** paste `.p8` contents into chat, git, or EAS public env vars.
+
+## 3. Google Sign-In — separate scope
+
+Firebase may suggest “Set up and use Google Sign-in.”
+
+EduVijna already authenticates via **backend JWT login**. Google Sign-In is **not** required for FCM.
+
+Out of scope for the iOS FCM PR:
+
+- Enabling Firebase Auth Google provider for mobile login
+- Replacing JWT session handling
+- Adding Google Sign-In UI
+
+If desired later: open a separate feature proposal covering Apple URL schemes / `REVERSED_CLIENT_ID`, backend identity federation contract, and account linking.
+
+## 4. Authorized builds (separate Founder approval)
+
+Do **not** start these until code review + Founder authorization:
+
+1. EAS iOS build from verified main SHA after merge (or authorized pre-merge TestFlight candidate).
+2. TestFlight internal validation on a physical iPhone.
+3. App Store submission.
+
+Record the exact Git SHA on every build.
+
+## 5. Physical acceptance checklist
+
+- App launches and JWT login works
+- User grants notification permission (once)
+- Firebase returns an FCM registration token (not APNs hex, not Expo token)
+- Backend `POST /api/notifications/devices` accepts `platform: ios`
+- iPhone displays assignment / completion / graded / announcement notifications
+- Tap navigates correctly (foreground, background, cold start, signed-out → login resume)
+- Android regression remains clear

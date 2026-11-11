@@ -19,8 +19,10 @@ const staticExpo = appJson.expo as ExpoConfig;
 
 const DEV_ANDROID_PACKAGE = 'com.eduvijna.app.dev';
 const DEV_ANDROID_GOOGLE_SERVICES_DEFAULT = './google-services-dev.json';
-const DEV_FIREBASE_PROJECT_ID = 'eduvijna-push';
-const DEV_FIREBASE_PROJECT_NUMBER = '416066207556';
+const PROD_IOS_BUNDLE_ID = 'com.eduvijna.app';
+const PROD_IOS_GOOGLE_SERVICES_DEFAULT = './GoogleService-Info.plist';
+const FIREBASE_PROJECT_ID = 'eduvijna-push';
+const FIREBASE_PROJECT_NUMBER = '416066207556';
 
 type FirebaseClientConfig = {
   project_info?: {
@@ -64,8 +66,8 @@ function validateAndroidDevFirebaseConfig(fileName: string): void {
   }
 
   const projectMatches =
-    parsed?.project_info?.project_id === DEV_FIREBASE_PROJECT_ID &&
-    String(parsed?.project_info?.project_number ?? '') === DEV_FIREBASE_PROJECT_NUMBER;
+    parsed?.project_info?.project_id === FIREBASE_PROJECT_ID &&
+    String(parsed?.project_info?.project_number ?? '') === FIREBASE_PROJECT_NUMBER;
   const packageMatches = Array.isArray(parsed?.client) && parsed.client.some(
     (client) => client?.client_info?.android_client_info?.package_name === DEV_ANDROID_PACKAGE,
   );
@@ -75,6 +77,67 @@ function validateAndroidDevFirebaseConfig(fileName: string): void {
       'DEV Firebase client configuration does not match the approved '
       + 'eduvijna-push project and com.eduvijna.app.dev package. '
       + 'Download the correct Android app configuration from Firebase Console.',
+    );
+  }
+}
+
+function plistStringValue(contents: string, key: string): string | null {
+  const pattern = new RegExp(
+    `<key>${key}<\\/key>\\s*<string>([^<]*)<\\/string>`,
+    'm',
+  );
+  const match = contents.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+/**
+ * Validate production iOS Firebase client plist metadata without printing secrets.
+ * Placeholder / missing files are allowed for Android-only local JS workflows unless
+ * EDUVIJNA_REQUIRE_IOS_FIREBASE=1 or an iOS EAS/native build is requested.
+ */
+function validateIosFirebaseConfig(fileName: string, requireReady: boolean): void {
+  const resolvedPath = resolvePath(__dirname, fileName);
+  if (!existsSync(resolvedPath)) {
+    if (!requireReady) return;
+    throw new Error(
+      'Missing approved Firebase iOS client configuration for com.eduvijna.app. '
+      + 'Provide GoogleService-Info.plist (or set EDUVIJNA_IOS_GOOGLE_SERVICES_FILE) '
+      + 'from Firebase project eduvijna-push. Do not upload APNs .p8 keys into the mobile repo.',
+    );
+  }
+
+  let contents: string;
+  try {
+    contents = readFileSync(resolvedPath, 'utf8');
+  } catch {
+    throw new Error('Invalid or unreadable iOS Firebase client plist.');
+  }
+
+  const isPlaceholder = contents.includes('REPLACE_WITH_YOUR_');
+  if (isPlaceholder) {
+    if (!requireReady) return;
+    throw new Error(
+      'GoogleService-Info.plist is still a placeholder. Register/reuse the iOS app '
+      + 'com.eduvijna.app in Firebase project eduvijna-push and replace the plist '
+      + 'via the approved Firebase workflow before an iOS native build.',
+    );
+  }
+
+  const projectId = plistStringValue(contents, 'PROJECT_ID');
+  const senderId = plistStringValue(contents, 'GCM_SENDER_ID');
+  const bundleId = plistStringValue(contents, 'BUNDLE_ID');
+  const googleAppId = plistStringValue(contents, 'GOOGLE_APP_ID');
+
+  const projectMatches =
+    projectId === FIREBASE_PROJECT_ID && senderId === FIREBASE_PROJECT_NUMBER;
+  const bundleMatches = bundleId === PROD_IOS_BUNDLE_ID;
+  const appIdLooksValid = !!googleAppId && googleAppId.startsWith(`1:${FIREBASE_PROJECT_NUMBER}:ios:`);
+
+  if (!projectMatches || !bundleMatches || !appIdLooksValid) {
+    throw new Error(
+      'iOS Firebase client configuration does not match the approved '
+      + 'eduvijna-push project and com.eduvijna.app bundle. '
+      + 'Download the correct iOS app configuration from Firebase.',
     );
   }
 }
@@ -103,13 +166,26 @@ export default (): ExpoConfig => {
 
   const devFirebaseFile = process.env.EDUVIJNA_ANDROID_DEV_GOOGLE_SERVICES_FILE?.trim()
     || DEV_ANDROID_GOOGLE_SERVICES_DEFAULT;
+  const iosFirebaseFile = process.env.EDUVIJNA_IOS_GOOGLE_SERVICES_FILE?.trim()
+    || PROD_IOS_GOOGLE_SERVICES_DEFAULT;
 
   if (isAndroidDevVariant) {
     validateAndroidDevFirebaseConfig(devFirebaseFile);
   }
 
+  const requireIosFirebase =
+    process.env.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1'
+    || process.env.EAS_BUILD_PLATFORM === 'ios'
+    || process.env.EXPO_OS === 'ios';
+  validateIosFirebaseConfig(iosFirebaseFile, requireIosFirebase);
+
   return {
     ...staticExpo,
+    ios: {
+      ...staticExpo.ios,
+      bundleIdentifier: PROD_IOS_BUNDLE_ID,
+      googleServicesFile: iosFirebaseFile,
+    },
     ...(isAndroidDevVariant
       ? {
           name: 'EduVijna Dev',
@@ -138,6 +214,9 @@ export default (): ExpoConfig => {
       ...(isAndroidDevVariant ? { EDUVIJNA_APP_VARIANT: 'development' } : {}),
       GIT_SHA: resolveGitSha(),
       GIT_BRANCH: process.env.EDUVIJNA_GIT_BRANCH || 'unknown',
+      FIREBASE_PROJECT_ID,
+      FIREBASE_PROJECT_NUMBER,
+      IOS_BUNDLE_ID: PROD_IOS_BUNDLE_ID,
     },
   };
 };

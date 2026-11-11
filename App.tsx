@@ -351,7 +351,10 @@ function AppContent() {
       });
     };
 
-    // Listen for notifications received while app is in foreground
+    // Authoritative receipt/tap path for Android + iOS: expo-notifications only.
+    // Do not also register RNFB messaging onMessage / onNotificationOpenedApp /
+    // getInitialNotification here — that causes duplicate tap processing on iOS.
+    // RNFB Messaging is reserved for iOS FCM registration token acquisition/refresh.
     notificationListener.current = Notifications.addNotificationReceivedListener(_notification => {
       // Notification will auto-display due to setNotificationHandler in PushNotificationService
     });

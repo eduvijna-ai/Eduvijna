@@ -24,7 +24,8 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EDUVIJNA_API_ENV": "production"
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
       },
       "android": {
         "buildType": "apk"
@@ -33,7 +34,18 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EDUVIJNA_API_ENV": "production"
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
+      }
+    },
+    "ios-fcm-preview": {
+      "extends": "preview",
+      "env": {
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
+      },
+      "ios": {
+        "simulator": false
       }
     }
   },

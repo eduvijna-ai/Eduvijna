@@ -102,8 +102,33 @@ jest.mock('expo-notifications', () => ({
   addNotificationReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   addPushTokenListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  dismissAllNotificationsAsync: jest.fn().mockResolvedValue(undefined),
+  setBadgeCountAsync: jest.fn().mockResolvedValue(undefined),
+  getLastNotificationResponseAsync: jest.fn().mockResolvedValue(null),
   AndroidImportance: { MAX: 5 },
 }));
+
+// ── @react-native-firebase/messaging (iOS FCM registration token path) ────
+const mockFirebaseMessaging = {
+  getToken: jest.fn().mockResolvedValue('ios-fcm-token:APA91bIOSFCMTESTTOKENVALUE'),
+  registerDeviceForRemoteMessages: jest.fn().mockResolvedValue(undefined),
+  isDeviceRegisteredForRemoteMessages: true,
+  onTokenRefresh: jest.fn((listener: (token: string) => void) => {
+    (mockFirebaseMessaging as { __refreshListener?: (token: string) => void }).__refreshListener =
+      listener;
+    return jest.fn();
+  }),
+  onMessage: jest.fn(() => jest.fn()),
+  onNotificationOpenedApp: jest.fn(() => jest.fn()),
+  getInitialNotification: jest.fn().mockResolvedValue(null),
+};
+
+jest.mock('@react-native-firebase/messaging', () => ({
+  __esModule: true,
+  default: () => mockFirebaseMessaging,
+}));
+
+(global as any).__mockFirebaseMessaging = mockFirebaseMessaging;
 
 // ── @expo/vector-icons ────────────────────────────────────────────────────
 jest.mock('@expo/vector-icons', () => {
