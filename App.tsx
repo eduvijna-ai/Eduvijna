@@ -298,10 +298,20 @@ function AppContent() {
       console.error('❌ Failed to initialize push on app launch:', error);
     });
 
-    // Re-register when FCM rotates the native device token
-    const tokenSubscription = PushNotificationService.subscribeToTokenRefresh();
+    // Re-register when FCM rotates the native device token.
+    // Must never throw during boot — login must still render if refresh wiring fails.
+    let tokenSubscription: { remove: () => void } = { remove: () => undefined };
+    try {
+      tokenSubscription = PushNotificationService.subscribeToTokenRefresh();
+    } catch (error) {
+      console.error('❌ Failed to wire FCM token refresh on launch:', error);
+    }
     return () => {
-      tokenSubscription.remove();
+      try {
+        tokenSubscription.remove();
+      } catch (error) {
+        console.error('❌ Failed to remove FCM token refresh subscription:', error);
+      }
     };
   }, [isMobile]);
 

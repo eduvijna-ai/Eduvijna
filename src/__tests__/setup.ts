@@ -123,9 +123,20 @@ const mockFirebaseMessaging = {
   getInitialNotification: jest.fn().mockResolvedValue(null),
 };
 
+// Mirror RNFB v27 modular exports (no default messaging() export).
 jest.mock('@react-native-firebase/messaging', () => ({
   __esModule: true,
-  default: () => mockFirebaseMessaging,
+  getMessaging: () => mockFirebaseMessaging,
+  getToken: (messaging: typeof mockFirebaseMessaging, ...args: unknown[]) =>
+    messaging.getToken(...(args as [])),
+  registerDeviceForRemoteMessages: (messaging: typeof mockFirebaseMessaging) =>
+    messaging.registerDeviceForRemoteMessages(),
+  isDeviceRegisteredForRemoteMessages: (messaging: typeof mockFirebaseMessaging) =>
+    messaging.isDeviceRegisteredForRemoteMessages,
+  onTokenRefresh: (
+    messaging: typeof mockFirebaseMessaging,
+    listener: (token: string) => void,
+  ) => messaging.onTokenRefresh(listener),
 }));
 
 (global as any).__mockFirebaseMessaging = mockFirebaseMessaging;

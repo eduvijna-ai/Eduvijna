@@ -530,9 +530,15 @@ async function handleTokenRefresh(incomingToken?: string | null): Promise<void> 
  * Caller must remove the subscription on cleanup.
  */
 function subscribeToTokenRefresh(): { remove: () => void } {
-  return subscribeNativeFcmTokenRefresh((token) => {
-    void handleTokenRefresh(token);
-  });
+  try {
+    return subscribeNativeFcmTokenRefresh((token) => {
+      void handleTokenRefresh(token);
+    });
+  } catch (error) {
+    // Boot must not fail when optional token-refresh wiring throws.
+    console.error('❌ Failed to subscribe to FCM token refresh:', safePushError(error));
+    return { remove: () => undefined };
+  }
 }
 
 /**

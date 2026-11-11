@@ -57,18 +57,73 @@ export function extractDevicePushTokenData(
   return null;
 }
 
-function loadFirebaseMessaging(): {
+type FirebaseMessagingFacade = {
   getToken: () => Promise<string>;
   registerDeviceForRemoteMessages: () => Promise<void>;
   isDeviceRegisteredForRemoteMessages: boolean;
   onTokenRefresh: (listener: (token: string) => void) => () => void;
-} | null {
+};
+
+/**
+ * Resolve Firebase Messaging against RNFB v22+/v27 modular exports.
+ *
+ * RNFB 27 no longer provides a default `messaging()` export. Calling the modular
+ * `onTokenRefresh(messaging, listener)` with a single listener argument produces
+ * Hermes: "undefined is not a function" (listener.onTokenRefresh is undefined).
+ */
+function loadFirebaseMessaging(): FirebaseMessagingFacade | null {
   try {
     // Lazy require keeps Jest / web bundles from hard-failing when native module is absent.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const messagingModule = require('@react-native-firebase/messaging');
-    const messaging = messagingModule.default ?? messagingModule;
-    return typeof messaging === 'function' ? messaging() : messaging;
+
+    // Preferred: modular API (getMessaging + helpers).
+    if (typeof messagingModule.getMessaging === 'function') {
+      const instance = messagingModule.getMessaging();
+      if (!instance || typeof instance !== 'object') {
+        return null;
+      }
+      return {
+        getToken: () =>
+          typeof messagingModule.getToken === 'function'
+            ? messagingModule.getToken(instance)
+            : instance.getToken(),
+        registerDeviceForRemoteMessages: () =>
+          typeof messagingModule.registerDeviceForRemoteMessages === 'function'
+            ? messagingModule.registerDeviceForRemoteMessages(instance)
+            : instance.registerDeviceForRemoteMessages(),
+        get isDeviceRegisteredForRemoteMessages() {
+          if (typeof messagingModule.isDeviceRegisteredForRemoteMessages === 'function') {
+            return !!messagingModule.isDeviceRegisteredForRemoteMessages(instance);
+          }
+          return !!instance.isDeviceRegisteredForRemoteMessages;
+        },
+        onTokenRefresh: (listener: (token: string) => void) => {
+          if (typeof messagingModule.onTokenRefresh === 'function') {
+            return messagingModule.onTokenRefresh(instance, listener);
+          }
+          if (typeof instance.onTokenRefresh === 'function') {
+            return instance.onTokenRefresh(listener);
+          }
+          throw new TypeError('Firebase Messaging onTokenRefresh is not a function');
+        },
+      };
+    }
+
+    // Legacy fallback: namespaced default export `messaging()` (pre-v22 style).
+    const legacy = messagingModule.default ?? messagingModule;
+    if (typeof legacy === 'function') {
+      const instance = legacy();
+      if (!instance || typeof instance !== 'object') {
+        return null;
+      }
+      if (typeof instance.onTokenRefresh !== 'function' || typeof instance.getToken !== 'function') {
+        return null;
+      }
+      return instance as FirebaseMessagingFacade;
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -152,16 +207,28 @@ export function subscribeNativeFcmTokenRefresh(
   }
 
   if (Platform.OS === 'ios') {
-    const messaging = loadFirebaseMessaging();
-    if (!messaging) {
+    try {
+      const messaging = loadFirebaseMessaging();
+      if (!messaging || typeof messaging.onTokenRefresh !== 'function') {
+        console.error('❌ Firebase Messaging onTokenRefresh unavailable on iOS');
+        return { remove: () => undefined };
+      }
+      const unsubscribe = messaging.onTokenRefresh((token: string) => {
+        if (isAcceptableFcmRegistrationToken(token)) {
+          onToken(token.trim());
+        }
+      });
+      return {
+        remove: () => {
+          if (typeof unsubscribe === 'function') {
+            unsubscribe();
+          }
+        },
+      };
+    } catch (error) {
+      console.error('❌ Failed to subscribe to iOS FCM token refresh:', error);
       return { remove: () => undefined };
     }
-    const unsubscribe = messaging.onTokenRefresh((token: string) => {
-      if (isAcceptableFcmRegistrationToken(token)) {
-        onToken(token.trim());
-      }
-    });
-    return { remove: () => unsubscribe() };
   }
 
   return { remove: () => undefined };

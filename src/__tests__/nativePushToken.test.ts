@@ -76,7 +76,18 @@ describe('nativePushToken acquisition', () => {
 
     Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'ios' });
     const iosSub = subscribeNativeFcmTokenRefresh(() => undefined);
+    // Modular mock: onTokenRefresh(messaging, listener) → instance.onTokenRefresh(listener)
     expect(messaging.onTokenRefresh).toHaveBeenCalled();
+    expect(typeof iosSub.remove).toBe('function');
+    expect(() => iosSub.remove()).not.toThrow();
+  });
+
+  it('iOS subscription cleans up the unsubscribe function returned by messaging', () => {
+    Object.defineProperty(Platform, 'OS', { configurable: true, get: () => 'ios' });
+    const unsubscribe = jest.fn();
+    messaging.onTokenRefresh.mockReturnValueOnce(unsubscribe);
+    const iosSub = subscribeNativeFcmTokenRefresh(() => undefined);
     iosSub.remove();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

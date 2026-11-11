@@ -128,7 +128,18 @@ describe('PushNotificationService iOS FCM path', () => {
     expect(messaging.onTokenRefresh).toHaveBeenCalled();
     expect(Notifications.addPushTokenListener).not.toHaveBeenCalled();
     expect(typeof sub.remove).toBe('function');
-    sub.remove();
+    expect(() => sub.remove()).not.toThrow();
+  });
+
+  it('subscribeToTokenRefresh remains safe when messaging onTokenRefresh throws', () => {
+    messaging.onTokenRefresh.mockImplementationOnce(() => {
+      throw new TypeError('undefined is not a function');
+    });
+    expect(() => {
+      const sub = PushNotificationService.subscribeToTokenRefresh();
+      expect(typeof sub.remove).toBe('function');
+      sub.remove();
+    }).not.toThrow();
   });
 
   it('does not re-prompt permission on launch when already denied', async () => {
