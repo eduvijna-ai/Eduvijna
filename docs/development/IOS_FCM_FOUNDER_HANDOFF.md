@@ -30,17 +30,25 @@ Optional EAS injection if the plist is not committed:
 
 ## 2. Apple Developer + APNs (required for delivery)
 
-An authorized Apple Developer / Firebase administrator must:
+Firebase MCP/CLI **cannot** read whether an APNs auth key is already configured.
+An authorized Apple Developer / Firebase administrator must verify in Console.
 
-1. Confirm Apple Developer Program membership and correct Team.
-2. App ID `com.eduvijna.app` → enable **Push Notifications**.
-3. Create an APNs Authentication Key (`.p8`) in Apple Developer → Keys.
-4. Firebase Console → Project `eduvijna-push` → Project settings → Cloud Messaging → Apple app configuration → upload the APNs auth key (Key ID + Team ID).
-5. Ensure provisioning profiles used by EAS include Push Notifications.
-6. Confirm `aps-environment` entitlement (Expo sets development by plugin default; production archives use production — `app.json` also declares production entitlement for release builds).
-7. Background mode `remote-notification` is declared in Expo config for intended messaging behavior.
+### Exact Console steps
+
+1. **Apple Developer** → Certificates, Identifiers & Profiles → Identifiers → `com.eduvijna.app`
+   - Enable **Push Notifications** capability → Save.
+2. **Apple Developer** → Keys → "+" → enable **Apple Push Notifications service (APNs)** → Continue → Register.
+   - Download the `.p8` once; record **Key ID** and your **Team ID**.
+3. **Firebase Console** → project `eduvijna-push` → ⚙️ Project settings → **Cloud Messaging** tab.
+4. Under **Apple app configuration** for the iOS app `com.eduvijna.app`:
+   - **APNs authentication key** → Upload
+   - Select the `.p8`, enter Key ID + Team ID → Upload
+5. EAS / Apple provisioning profiles for this App ID must include Push Notifications.
+6. Mobile config maps `aps-environment` by EAS profile (`development` → development; production/preview/ios-fcm-preview → production).
+7. Background mode `remote-notification` is declared in Expo config.
 
 **Do not** paste `.p8` contents into chat, git, or EAS public env vars.
+Firebase MCP has no approved API to inspect APNs private-key material.
 
 ## 3. Google Sign-In — separate scope
 

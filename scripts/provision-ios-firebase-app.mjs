@@ -7,18 +7,20 @@
  * Does NOT touch Android apps.
  * Does NOT upload or inspect APNs .p8 private keys.
  *
- * Usage (after `npx -y firebase-tools@latest login`):
+ * Usage (after Firebase CLI / MCP authentication):
  *   node scripts/provision-ios-firebase-app.mjs
  *
  * Optional:
  *   EDUVIJNA_IOS_FIREBASE_APP_ID=1:416066207556:ios:... node scripts/provision-ios-firebase-app.mjs
+ *   EDUVIJNA_FORCE_IOS_PLIST_OVERWRITE=1  # replace an already-valid local plist
  */
 
 import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const PROJECT_ID = 'eduvijna-push';
+const PROJECT_NUMBER = '416066207556';
 const BUNDLE_ID = 'com.eduvijna.app';
 const OUT_FILE = resolve(process.cwd(), 'GoogleService-Info.plist');
 const FIREBASE = 'npx -y firebase-tools@latest';
@@ -52,8 +54,41 @@ function summarizePlist(path) {
   };
 }
 
+function isApprovedMetadata(meta) {
+  return (
+    !meta.isPlaceholder
+    && meta.projectId === PROJECT_ID
+    && meta.senderId === PROJECT_NUMBER
+    && meta.bundleId === BUNDLE_ID
+    && typeof meta.googleAppId === 'string'
+    && meta.googleAppId.startsWith(`1:${PROJECT_NUMBER}:ios:`)
+  );
+}
+
 function main() {
   console.log(`Using Firebase project ${PROJECT_ID}; target bundle ${BUNDLE_ID}`);
+
+  if (existsSync(OUT_FILE)) {
+    const existing = summarizePlist(OUT_FILE);
+    if (isApprovedMetadata(existing) && process.env.EDUVIJNA_FORCE_IOS_PLIST_OVERWRITE !== '1') {
+      console.log('Approved GoogleService-Info.plist already present — leaving unchanged.');
+      console.log(JSON.stringify({
+        path: OUT_FILE,
+        reused: true,
+        projectId: existing.projectId,
+        senderId: existing.senderId,
+        bundleId: existing.bundleId,
+        googleAppId: existing.googleAppId,
+      }, null, 2));
+      return;
+    }
+    if (!existing.isPlaceholder) {
+      const backup = `${OUT_FILE}.bak-${Date.now()}`;
+      copyFileSync(OUT_FILE, backup);
+      console.log(`Backed up existing non-placeholder plist before refresh (${backup}).`);
+    }
+  }
+
   run(`${FIREBASE} use ${PROJECT_ID}`);
 
   const listRaw = run(`${FIREBASE} apps:list --project ${PROJECT_ID} --json`);
@@ -66,8 +101,10 @@ function main() {
   let appId = process.env.EDUVIJNA_IOS_FIREBASE_APP_ID?.trim() || existing?.appId || existing?.name;
   if (!appId) {
     console.log('No iOS app for com.eduvijna.app found — creating one (no duplicate if race).');
+    // Correct CLI shape: apps:create <platform> [displayName] --bundle-id <id>
+    // Do NOT pass the bundle id as the positional displayName argument.
     const createdRaw = run(
-      `${FIREBASE} apps:create IOS ${BUNDLE_ID} --display-name "EduVijna iOS" --project ${PROJECT_ID} --json`,
+      `${FIREBASE} apps:create IOS "EduVijna iOS" --bundle-id ${BUNDLE_ID} --project ${PROJECT_ID} --non-interactive --json`,
     );
     const created = parseAppsJson(createdRaw);
     appId = created?.appId || created?.app?.appId;
@@ -92,15 +129,14 @@ function main() {
   console.log(JSON.stringify({
     path: OUT_FILE,
     exists: existsSync(OUT_FILE),
-    ...meta,
+    projectId: meta.projectId,
+    senderId: meta.senderId,
+    bundleId: meta.bundleId,
+    googleAppId: meta.googleAppId,
+    isPlaceholder: meta.isPlaceholder,
   }, null, 2));
 
-  if (
-    meta.isPlaceholder ||
-    meta.projectId !== PROJECT_ID ||
-    meta.senderId !== '416066207556' ||
-    meta.bundleId !== BUNDLE_ID
-  ) {
+  if (!isApprovedMetadata(meta)) {
     process.exitCode = 1;
     console.error('Plist metadata validation failed.');
   }

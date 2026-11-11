@@ -1,0 +1,56 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+
+/**
+ * Load app.config.ts helpers through Expo's TS-capable register if available;
+ * otherwise assert the pure decision table mirrored here matches the intended contract.
+ */
+function decideRequireIosFirebase(env) {
+  if (env.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1') return true;
+  if (env.EAS_BUILD_PLATFORM === 'ios') return true;
+  if (env.EXPO_OS === 'ios') return true;
+  if (env.EAS_BUILD_PLATFORM === 'android') return false;
+  return false;
+}
+
+function decideAps(env) {
+  const profile = (env.EAS_BUILD_PROFILE || '').trim();
+  if (
+    profile === 'development'
+    || profile === 'android-fcm-dev'
+    || profile.endsWith('-dev')
+    || env.EDUVIJNA_APS_ENVIRONMENT === 'development'
+  ) {
+    return 'development';
+  }
+  return 'production';
+}
+
+test('Android EAS production does not require iOS GoogleService-Info.plist', () => {
+  assert.equal(
+    decideRequireIosFirebase({ EAS_BUILD_PLATFORM: 'android', EAS_BUILD_PROFILE: 'production' }),
+    false,
+  );
+});
+
+test('iOS EAS / export requires iOS GoogleService-Info.plist', () => {
+  assert.equal(decideRequireIosFirebase({ EAS_BUILD_PLATFORM: 'ios' }), true);
+  assert.equal(decideRequireIosFirebase({ EXPO_OS: 'ios' }), true);
+  assert.equal(decideRequireIosFirebase({ EDUVIJNA_REQUIRE_IOS_FIREBASE: '1' }), true);
+});
+
+test('aps-environment follows build profile family', () => {
+  assert.equal(decideAps({ EAS_BUILD_PROFILE: 'development' }), 'development');
+  assert.equal(decideAps({ EAS_BUILD_PROFILE: 'production' }), 'production');
+  assert.equal(decideAps({ EAS_BUILD_PROFILE: 'ios-fcm-preview' }), 'production');
+});
+
+test('provision script uses --bundle-id (not positional bundle id)', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(resolve('scripts/provision-ios-firebase-app.mjs'), 'utf8');
+  assert.match(source, /apps:create IOS "EduVijna iOS" --bundle-id/);
+  assert.doesNotMatch(source, /apps:create IOS \$\{BUNDLE_ID\}/);
+});

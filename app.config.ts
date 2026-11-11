@@ -92,8 +92,8 @@ function plistStringValue(contents: string, key: string): string | null {
 
 /**
  * Validate production iOS Firebase client plist metadata without printing secrets.
- * Placeholder / missing files are allowed for Android-only local JS workflows unless
- * EDUVIJNA_REQUIRE_IOS_FIREBASE=1 or an iOS EAS/native build is requested.
+ * Placeholder / missing files are allowed for Android-only workflows unless an
+ * iOS native/EAS/export path explicitly requires the approved client file.
  */
 function validateIosFirebaseConfig(fileName: string, requireReady: boolean): void {
   const resolvedPath = resolvePath(__dirname, fileName);
@@ -143,6 +143,37 @@ function validateIosFirebaseConfig(fileName: string, requireReady: boolean): voi
 }
 
 /**
+ * iOS Firebase client validation must not block Android EAS production/preview builds.
+ * Require the approved plist only for explicit iOS build/export contexts.
+ */
+export function shouldRequireIosFirebaseConfig(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1') return true;
+  if (env.EAS_BUILD_PLATFORM === 'ios') return true;
+  // Local/CI `expo export --platform ios` sets EXPO_OS=ios.
+  if (env.EXPO_OS === 'ios') return true;
+  // Never force iOS plist readiness solely because the shared production profile is selected.
+  if (env.EAS_BUILD_PLATFORM === 'android') return false;
+  return false;
+}
+
+/**
+ * Match APNs entitlement to the intended provisioning profile family.
+ * Development clients use development; store/internal release profiles use production.
+ */
+export function resolveApsEnvironment(env: NodeJS.ProcessEnv = process.env): 'development' | 'production' {
+  const profile = (env.EAS_BUILD_PROFILE || '').trim();
+  if (
+    profile === 'development'
+    || profile === 'android-fcm-dev'
+    || profile.endsWith('-dev')
+    || env.EDUVIJNA_APS_ENVIRONMENT === 'development'
+  ) {
+    return 'development';
+  }
+  return 'production';
+}
+
+/**
  * The separate Android identity is opt-in and fails closed without its own
  * Firebase client configuration. No production identity, Expo project, or
  * iOS bundle identifier is changed by the default configuration.
@@ -173,11 +204,9 @@ export default (): ExpoConfig => {
     validateAndroidDevFirebaseConfig(devFirebaseFile);
   }
 
-  const requireIosFirebase =
-    process.env.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1'
-    || process.env.EAS_BUILD_PLATFORM === 'ios'
-    || process.env.EXPO_OS === 'ios';
-  validateIosFirebaseConfig(iosFirebaseFile, requireIosFirebase);
+  validateIosFirebaseConfig(iosFirebaseFile, shouldRequireIosFirebaseConfig(process.env));
+
+  const apsEnvironment = resolveApsEnvironment(process.env);
 
   return {
     ...staticExpo,
@@ -185,6 +214,10 @@ export default (): ExpoConfig => {
       ...staticExpo.ios,
       bundleIdentifier: PROD_IOS_BUNDLE_ID,
       googleServicesFile: iosFirebaseFile,
+      entitlements: {
+        ...(staticExpo.ios?.entitlements ?? {}),
+        'aps-environment': apsEnvironment,
+      },
     },
     ...(isAndroidDevVariant
       ? {
@@ -217,6 +250,9 @@ export default (): ExpoConfig => {
       FIREBASE_PROJECT_ID,
       FIREBASE_PROJECT_NUMBER,
       IOS_BUNDLE_ID: PROD_IOS_BUNDLE_ID,
+      APS_ENVIRONMENT: apsEnvironment,
+      IOS_USE_FRAMEWORKS: 'dynamic',
+      RNFB_MESSAGING_TOKEN_STRATEGY: 'ios-firebase-messaging-fcm;android-expo-device-push-token',
     },
   };
 };
