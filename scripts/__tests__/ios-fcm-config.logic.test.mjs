@@ -17,12 +17,13 @@ function decideRequireIosFirebase(env) {
 }
 
 function decideAps(env) {
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'production') return 'production';
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'development') return 'development';
   const profile = (env.EAS_BUILD_PROFILE || '').trim();
   if (
     profile === 'development'
     || profile === 'android-fcm-dev'
     || profile.endsWith('-dev')
-    || env.EDUVIJNA_APS_ENVIRONMENT === 'development'
   ) {
     return 'development';
   }
@@ -72,4 +73,12 @@ test('eas.json distinguishes internal preview vs TestFlight store profile', asyn
   assert.equal(eas.build['ios-fcm-preview']?.distribution, 'internal');
   assert.equal(eas.build['ios-fcm-testflight']?.distribution, 'store');
   assert.equal(eas.build['ios-fcm-testflight']?.env?.EDUVIJNA_API_ENV, 'production');
+  assert.equal(eas.build['ios-fcm-testflight']?.environment, 'production');
+  assert.equal(eas.build.production?.environment, 'production');
+  assert.equal(eas.build['ios-fcm-testflight']?.env?.EDUVIJNA_APS_ENVIRONMENT, 'production');
+});
+
+test('explicit EDUVIJNA_APS_ENVIRONMENT=production wins for TestFlight', () => {
+  assert.equal(decideAps({ EDUVIJNA_APS_ENVIRONMENT: 'production', EAS_BUILD_PROFILE: 'development' }), 'production');
+  assert.equal(decideAps({ EDUVIJNA_APS_ENVIRONMENT: 'development' }), 'development');
 });

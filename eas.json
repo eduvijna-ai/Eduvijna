@@ -32,6 +32,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "environment": "production",
       "env": {
         "EDUVIJNA_API_ENV": "production"
       }
@@ -39,6 +40,7 @@
     "ios-fcm-preview": {
       "extends": "preview",
       "distribution": "internal",
+      "environment": "preview",
       "env": {
         "EDUVIJNA_API_ENV": "production",
         "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
@@ -51,6 +53,7 @@
       "extends": "production",
       "distribution": "store",
       "autoIncrement": true,
+      "environment": "production",
       "env": {
         "EDUVIJNA_API_ENV": "production",
         "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1",

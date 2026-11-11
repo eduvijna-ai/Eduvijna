@@ -161,15 +161,22 @@ export function shouldRequireIosFirebaseConfig(env: NodeJS.ProcessEnv = process.
  * Development clients use development; store/internal release profiles use production.
  */
 export function resolveApsEnvironment(env: NodeJS.ProcessEnv = process.env): 'development' | 'production' {
+  // Explicit override wins (TestFlight profile sets production).
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'production') {
+    return 'production';
+  }
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'development') {
+    return 'development';
+  }
   const profile = (env.EAS_BUILD_PROFILE || '').trim();
   if (
     profile === 'development'
     || profile === 'android-fcm-dev'
     || profile.endsWith('-dev')
-    || env.EDUVIJNA_APS_ENVIRONMENT === 'development'
   ) {
     return 'development';
   }
+  // Store / TestFlight / production profiles → production APNs entitlement.
   return 'production';
 }
 

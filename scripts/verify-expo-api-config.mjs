@@ -87,7 +87,9 @@ assert(
     easBuildProfiles.preview?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE !== '1' &&
     easBuildProfiles['ios-fcm-preview']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
     easBuildProfiles['ios-fcm-testflight']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
-    easBuildProfiles['ios-fcm-testflight']?.distribution === 'store',
+    easBuildProfiles['ios-fcm-testflight']?.distribution === 'store' &&
+    easBuildProfiles['ios-fcm-testflight']?.environment === 'production' &&
+    easBuildProfiles.production?.environment === 'production',
   'Android production/preview profiles are not blocked by iOS Firebase readiness; iOS preview/testflight require it',
 );
 assert(
