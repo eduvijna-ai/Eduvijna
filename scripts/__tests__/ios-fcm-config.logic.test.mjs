@@ -87,6 +87,16 @@ test('eas.json distinguishes internal preview vs TestFlight store profile', asyn
   assert.equal(eas.build['ios-fcm-testflight']?.environment, 'production');
   assert.equal(eas.build.production?.environment, 'production');
   assert.equal(eas.build['ios-fcm-testflight']?.env?.EDUVIJNA_APS_ENVIRONMENT, 'production');
+  // RNFB 27 / firebase-ios-sdk 13.x Package.swift requires Swift 6.2.3 (Xcode 26.2+).
+  assert.equal(
+    eas.build['ios-fcm-testflight']?.ios?.image,
+    'macos-sequoia-15.6-xcode-26.2',
+  );
+  assert.equal(
+    eas.build['ios-fcm-preview']?.ios?.image,
+    'macos-sequoia-15.6-xcode-26.2',
+  );
+  assert.equal(eas.build.production?.ios?.image, undefined);
 });
 
 test('explicit EDUVIJNA_APS_ENVIRONMENT=production wins for TestFlight', () => {

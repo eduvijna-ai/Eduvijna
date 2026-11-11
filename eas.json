@@ -46,7 +46,8 @@
         "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     },
     "ios-fcm-testflight": {
@@ -60,7 +61,8 @@
         "EDUVIJNA_APS_ENVIRONMENT": "production"
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     }
   },
