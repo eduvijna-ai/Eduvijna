@@ -1,15 +1,18 @@
 import { resolveStudentGradedAssignmentSession } from '../core/services/gradedNotificationRouting.service';
-import { fetchQuizCheckRecord, type CheckRecordResponse } from '../core/services/dashboardApi';
+import { fetchQuizCheckRecord, fetchQuizCheckRecordForSession, type CheckRecordResponse } from '../core/services/dashboardApi';
 
 jest.mock('../core/services/dashboardApi', () => ({
   fetchQuizCheckRecord: jest.fn(),
+  fetchQuizCheckRecordForSession: jest.fn(),
 }));
 
 const mockFetch = fetchQuizCheckRecord as jest.MockedFunction<typeof fetchQuizCheckRecord>;
+const mockScoped = fetchQuizCheckRecordForSession as jest.MockedFunction<typeof fetchQuizCheckRecordForSession>;
 
 describe('resolveStudentGradedAssignmentSession', () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    mockScoped.mockReset();
   });
 
   it('resolves a single matching assignment session', async () => {
@@ -137,4 +140,45 @@ describe('resolveStudentGradedAssignmentSession', () => {
     const result = await resolveStudentGradedAssignmentSession('student-1', 12);
     expect(result).toEqual({ kind: 'resolved', sessionId: 'sess-12', classroomId: 'class-9' });
   });
+  it('validates an explicit session against the completed student record', async () => {
+    mockScoped.mockResolvedValue({
+      status: 'completed',
+      student_id: 'student-1',
+      classid: 'class-9',
+      quiz_details: {quiz_id: 9,session_id:'sess-9'},
+    } as any);
+    await expect(resolveStudentGradedAssignmentSession('student-1',9,{
+      sessionId:'sess-9',classroomId:'class-9',
+    })).resolves.toEqual({kind:'resolved',sessionId:'sess-9',classroomId:'class-9'});
+    expect(mockScoped).toHaveBeenCalledWith('student-1','sess-9');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects an uncompleted or mismatched explicit session', async () => {
+    mockScoped.mockResolvedValue({
+      status:null,student_id:'student-1',classid:'class-9',
+      quiz_details:{quiz_id:9,session_id:'sess-9'},
+    } as any);
+    await expect(resolveStudentGradedAssignmentSession('student-1',9,{
+      sessionId:'sess-9',
+    })).resolves.toEqual({kind:'none'});
+    mockScoped.mockResolvedValueOnce({
+      status:'completed',student_id:'student-1',classid:'class-other',
+      quiz_details:{quiz_id:9,session_id:'sess-9'},
+    } as any);
+    await expect(resolveStudentGradedAssignmentSession('student-1',9,{
+      sessionId:'sess-9',classroomId:'class-9',
+    })).resolves.toEqual({kind:'none'});
+  });
+
+  it('rejects a completed row belonging to a different student', async () => {
+    mockScoped.mockResolvedValue({
+      status:'completed',student_id:'other',classid:'class-9',
+      quiz_details:{quiz_id:9,session_id:'sess-9'},
+    } as any);
+    await expect(resolveStudentGradedAssignmentSession('student-1',9,{
+      sessionId:'sess-9',
+    })).resolves.toEqual({kind:'none'});
+  });
+
 });
