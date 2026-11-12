@@ -95,7 +95,8 @@ async function openStudentGradedResults(
   const targetedStudentId = asString(data.student_id ?? data.studentId);
 
   if (
-    !studentId || !quizId || isInstructorLike(user) ||
+    !studentId || !quizId ||
+    String(user?.role ?? '').toLowerCase() !== 'student' ||
     (targetedStudentId && targetedStudentId !== studentId)
   ) {
     navigation.navigate('Assessments');
