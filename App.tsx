@@ -616,6 +616,11 @@ function AppContent() {
         setPendingNotificationIntent((current) => current ?? intent);
       } finally {
         notificationResumeInFlightRef.current = null;
+        // If another tap arrived while this one was in flight, trigger the
+        // deferred resume effect again with the latest pending destination.
+        setPendingNotificationIntent((current) =>
+          current && pendingIntentKey(current) !== key ? { ...current } : current,
+        );
       }
     })();
   }, [
