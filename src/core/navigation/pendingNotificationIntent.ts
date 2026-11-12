@@ -104,7 +104,13 @@ export function intentToData(intent: PendingNotificationIntent): Record<string, 
 }
 
 function asOptionalString(value: unknown): string | null {
-  if (typeof value === 'string' && value.trim()) return value.trim();
+  // The backend's FCM serializer uses str(value), so absent Python None
+  // sometimes arrives as the literal "None" instead of an omitted ID.
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || ['none', 'null', 'undefined'].includes(trimmed.toLowerCase())) return null;
+    return trimmed;
+  }
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return null;
 }
