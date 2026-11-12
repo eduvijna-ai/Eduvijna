@@ -19,6 +19,8 @@ export type PendingNotificationIntent = {
   studentName?: string | null;
   /** Expo / FCM request identifier for dedupe while processing. */
   notificationId?: string | null;
+  /** Stable backend event dedupe key, when present. */
+  eventKey?: string | null;
   /** Sanitized parse metadata for diagnostics (no payload values). */
   parseOutcome?: NotificationPayloadParseOutcome;
   recognizedKeys?: string[];
@@ -67,6 +69,7 @@ export function intentFromNotificationData(
     return {
       type: 'general',
       notificationId: notificationId ?? null,
+      eventKey: asOptionalString(flat.event_key ?? flat.eventKey),
       ...meta,
     };
   }
@@ -81,6 +84,7 @@ export function intentFromNotificationData(
     quizTitle: asOptionalString(flat.quiz_title ?? flat.quizTitle ?? flat.topic),
     studentName: asOptionalString(flat.student_name ?? flat.studentName),
     notificationId: notificationId ?? null,
+    eventKey: asOptionalString(flat.event_key ?? flat.eventKey),
     ...meta,
   };
 }
@@ -88,6 +92,7 @@ export function intentFromNotificationData(
 export function intentToData(intent: PendingNotificationIntent): Record<string, unknown> {
   return {
     type: intent.type,
+    event_key: intent.eventKey ?? undefined,
     session_id: intent.sessionId ?? undefined,
     quiz_id: intent.quizId ?? undefined,
     student_id: intent.studentId ?? undefined,
@@ -135,6 +140,6 @@ export function pendingIntentKey(intent: PendingNotificationIntent): string {
     intent.quizId ?? '',
     intent.studentId ?? '',
     intent.attemptId ?? '',
-    intent.notificationId ?? '',
+    intent.eventKey ?? intent.notificationId ?? '',
   ].join('|');
 }
