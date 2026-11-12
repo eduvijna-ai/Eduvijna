@@ -74,6 +74,15 @@ describe('pendingNotificationIntent', () => {
     });
   });
 
+  it('drops backend Python None string for an absent attempt id', () => {
+    const intent = intentFromNotificationData({
+      type:'quiz_completed',session_id:'sess-9',
+      quiz_id:9,student_id:'s1',attempt_id:'None',
+    },'fcm-complete');
+    expect(intent?.attemptId).toBeNull();
+    expect(intent?.quizId).toBe('9');
+  });
+
   it('uses backend event_key rather than device notification id for stable dedupe', () => {
     const a = intentFromNotificationData({
       type:'quiz_completed',quiz_id:'9',event_key:'quiz_completed:9:s1:1',
