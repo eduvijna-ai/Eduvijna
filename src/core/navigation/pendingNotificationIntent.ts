@@ -132,10 +132,9 @@ export function canProcessPendingNotificationIntent(input: {
   ) {
     return null;
   }
-  const key = pendingIntentKey(input.intent);
-  if (input.inFlightKey && input.inFlightKey === key) {
-    return null;
-  }
+  // Only one deferred navigation may be in flight. A different pending tap
+  // must wait, otherwise completion of two handlers can reorder screens.
+  if (input.inFlightKey) return null;
   return input.intent;
 }
 
