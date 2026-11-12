@@ -4,6 +4,10 @@ import { resolveStudentGradedAssignmentSession } from '../core/services/gradedNo
 import { executeStudentAssignedQuizViewResults } from '../core/services/assessmentQuizStart.service';
 import { handleOpenQuiz } from '../core/services/openQuizHandler';
 import { AssignedQuizRecoveryProbeError } from '../core/services/assignedQuizRecovery.service';
+import {
+  authorizeStudentAssignedNotification,
+  authorizeInstructorCompletionNotification,
+} from '../core/services/assessmentNotificationAccess';
 
 jest.mock('../core/services/gradedNotificationRouting.service', () => ({
   resolveStudentGradedAssignmentSession: jest.fn(),
@@ -17,6 +21,11 @@ jest.mock('../core/services/openQuizHandler', () => ({
   handleOpenQuiz: jest.fn(),
 }));
 
+jest.mock('../core/services/assessmentNotificationAccess', () => ({
+  authorizeStudentAssignedNotification: jest.fn(),
+  authorizeInstructorCompletionNotification: jest.fn(),
+}));
+
 const mockResolve = resolveStudentGradedAssignmentSession as jest.MockedFunction<
   typeof resolveStudentGradedAssignmentSession
 >;
@@ -24,6 +33,8 @@ const mockViewResults = executeStudentAssignedQuizViewResults as jest.MockedFunc
   typeof executeStudentAssignedQuizViewResults
 >;
 const mockOpenQuiz = handleOpenQuiz as jest.MockedFunction<typeof handleOpenQuiz>;
+const mockAssignedAccess = authorizeStudentAssignedNotification as jest.MockedFunction<typeof authorizeStudentAssignedNotification>;
+const mockInstructorAccess = authorizeInstructorCompletionNotification as jest.MockedFunction<typeof authorizeInstructorCompletionNotification>;
 
 describe('handleAppPushNotificationResponse', () => {
   const navigation = { navigate: jest.fn() };
@@ -32,6 +43,19 @@ describe('handleAppPushNotificationResponse', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     processed.clear();
+    mockAssignedAccess.mockImplementation(async (args) => ({
+      kind: 'authorized',
+      quizId: args.quizId ?? '9',
+      sessionId: args.sessionId,
+      classroomId: args.classroomId ?? 'class-9',
+    }));
+    mockInstructorAccess.mockImplementation(async (args) => ({
+      kind: 'authorized',
+      quizId: args.quizId,
+      sessionId: args.sessionId,
+      classroomId: args.classroomId,
+    }));
+    mockResolve.mockResolvedValue({kind:'resolved',sessionId:'sess-9',classroomId:'class-9'});
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
@@ -78,6 +102,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.anything(),
       expect.anything(),
       expect.any(Function),
+      expect.objectContaining({ quizId: expect.any(String) }),
     );
   });
 
@@ -173,6 +198,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.anything(),
       expect.anything(),
       expect.any(Function),
+      expect.objectContaining({ quizId: expect.any(String) }),
     );
   });
 
@@ -212,6 +238,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.anything(),
       expect.anything(),
       expect.any(Function),
+      expect.objectContaining({ quizId: expect.any(String) }),
     );
   });
 
@@ -229,7 +256,7 @@ describe('handleAppPushNotificationResponse', () => {
       setPendingNotificationIntent: setIntent,
     });
 
-    expect(setPending).toHaveBeenCalledWith('sess-1');
+    expect(setPending).not.toHaveBeenCalled(); // full intent prevents duplicate session-only resume
     expect(setIntent).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'quiz_assigned', sessionId: 'sess-1', quizId: '3' }),
     );
@@ -325,6 +352,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.anything(),
       expect.anything(),
       expect.any(Function),
+      expect.objectContaining({ quizId: expect.any(String) }),
     );
   });
 
@@ -402,6 +430,77 @@ describe('handleAppPushNotificationResponse', () => {
     expect(Alert.alert).toHaveBeenCalled();
   });
 
+  it('rejects assignment tap when authenticated check-record denies access', async () => {
+    mockAssignedAccess.mockResolvedValueOnce({ kind: 'denied', reason: 'assignment_not_found' });
+    await handleAppPushNotificationResponse({
+      notificationId: 'not-enrolled', data: {type:'quiz_assigned',session_id:'sess-other',quiz_id:99},
+      isAuthenticated: true, user: {id:'student-1',role:'student'}, processedIds: processed,
+      navigation, setPendingSessionId: jest.fn(),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('Assessments');
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+  });
+
+  it('rejects graded result when notification targets a different student', async () => {
+    await handleAppPushNotificationResponse({
+      notificationId: 'other-student',
+      data: {type:'quiz_graded',student_id:'other',quiz_id:9,session_id:'sess-9'},
+      isAuthenticated: true, user: {id:'student-1',role:'student'},
+      processedIds: processed, navigation, setPendingSessionId: jest.fn(),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('Assessments');
+    expect(mockViewResults).not.toHaveBeenCalled();
+    expect(mockResolve).not.toHaveBeenCalled();
+  });
+
+  it('requires server-verified grade session even when payload has all identifiers', async () => {
+    mockResolve.mockResolvedValueOnce({kind:'none'});
+    await handleAppPushNotificationResponse({
+      notificationId:'unverified-grade',
+      data:{type:'quiz_graded',quiz_id:9,student_id:'student-1',session_id:'untrusted',classroom_id:'c'},
+      isAuthenticated:true,user:{id:'student-1',role:'student'},
+      processedIds:processed,navigation,setPendingSessionId:jest.fn(),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('Assessments');
+    expect(mockViewResults).not.toHaveBeenCalled();
+  });
+
+  it('requires instructor authorization before opening a student completion result', async () => {
+    mockInstructorAccess.mockResolvedValueOnce({kind:'denied',reason:'completion_classroom_not_authorized'});
+    await handleAppPushNotificationResponse({
+      notificationId:'unauthorized-completion',
+      data:{type:'quiz_completed',quiz_id:9,student_id:'s1',session_id:'ss',classroom_id:'other'},
+      isAuthenticated:true,user:{id:'teacher-1',role:'instructor'},
+      processedIds:processed,navigation,setPendingSessionId:jest.fn(),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('Assessments');
+    expect(navigation.navigate).not.toHaveBeenCalledWith('QuizResultsScreen',expect.anything());
+  });
+
+  it('deduplicates backend event_key across distinct iOS FCM identifiers', async () => {
+    mockOpenQuiz.mockResolvedValue(undefined as any);
+    for (const notificationId of ['apns-first','apns-duplicate']) {
+      await handleAppPushNotificationResponse({
+        notificationId,
+        data:{type:'quiz_assigned',session_id:'sess-1',event_key:'quiz_assigned:9:c1:s1'},
+        isAuthenticated:true,user:{id:'student-1',role:'student'},
+        processedIds:processed,navigation,setPendingSessionId:jest.fn(),
+      });
+    }
+    expect(mockOpenQuiz).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not interpret unknown event types with session ids as assigned quizzes', async () => {
+    await handleAppPushNotificationResponse({
+      notificationId:'unknown-type',
+      data:{type:'future_unrecognized',session_id:'untrusted'},
+      isAuthenticated:true,user:{id:'student-1',role:'student'},
+      processedIds:processed,navigation,setPendingSessionId:jest.fn(),
+    });
+    expect(navigation.navigate).toHaveBeenCalledWith('Notifications');
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+  });
+
   it('opens assigned quiz for students via handleOpenQuiz (case-insensitive type)', async () => {
     mockOpenQuiz.mockResolvedValue(undefined as any);
     await handleAppPushNotificationResponse({
@@ -419,6 +518,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.anything(),
       expect.anything(),
       expect.any(Function),
+      expect.objectContaining({ quizId: expect.any(String) }),
     );
   });
 });
