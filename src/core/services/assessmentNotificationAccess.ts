@@ -111,7 +111,12 @@ export async function authorizeInstructorCompletionNotification(args: {
       const row = quiz as unknown as Record<string, unknown>;
       const quizId = identifier(row.quiz_id ?? row.id);
       const classId = identifier(row.classroom_id ?? row.class_id);
-      return quizId === args.quizId && (!classId || classId === args.classroomId);
+      const returnedSession = identifier(row.session_id ?? row.sessionId);
+      // When the instructor summary includes a session, it must match the
+      // notification. Do not open a different assignment of the same quiz.
+      return quizId === args.quizId &&
+        (!classId || classId === args.classroomId) &&
+        (!returnedSession || returnedSession === args.sessionId);
     })) {
       return { kind: 'denied', reason: 'completion_quiz_not_in_class' };
     }
