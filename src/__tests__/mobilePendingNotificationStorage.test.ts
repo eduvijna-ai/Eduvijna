@@ -76,7 +76,7 @@ describe('durable pending assessment notification intent', () => {
       queuedAtIso:new Date().toISOString(),
       intent:{type:'quiz_completed',studentId:'s1',eventKey:'new-event'},
     }));
-    await clearStoredPendingNotification('quiz_completed|||||new-event');
+    await clearStoredPendingNotification('quiz_completed|||s1||new-event');
     expect(removeItem).toHaveBeenCalledWith(MOBILE_PENDING_NOTIFICATION_KEY);
   });
 });
