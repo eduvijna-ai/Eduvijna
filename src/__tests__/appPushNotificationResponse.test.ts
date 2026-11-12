@@ -465,6 +465,42 @@ describe('handleAppPushNotificationResponse', () => {
     expect(mockViewResults).not.toHaveBeenCalled();
   });
 
+  it('replays a queued backend event_key after login exactly once', async () => {
+    const setIntent = jest.fn();
+    const data = {
+      type:'quiz_assigned',session_id:'sess-1',quiz_id:'9',
+      event_key:'quiz_assigned:9:c1:student-1',
+    };
+    await handleAppPushNotificationResponse({
+      notificationId:'apns-signed-out',
+      data,
+      isAuthenticated:false,user:null,
+      processedIds:processed,navigation,
+      setPendingSessionId:jest.fn(),
+      setPendingNotificationIntent:setIntent,
+    });
+    expect(setIntent).toHaveBeenCalledWith(expect.objectContaining({
+      eventKey:'quiz_assigned:9:c1:student-1',
+    }));
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+    await handleAppPushNotificationResponse({
+      notificationId:'resume:quiz_assigned',
+      data,
+      isAuthenticated:true,user:{id:'student-1',role:'student'},
+      processedIds:processed,navigation,
+      setPendingSessionId:jest.fn(),
+    });
+    expect(mockOpenQuiz).toHaveBeenCalledTimes(1);
+    await handleAppPushNotificationResponse({
+      notificationId:'apns-another-id',
+      data,
+      isAuthenticated:true,user:{id:'student-1',role:'student'},
+      processedIds:processed,navigation,
+      setPendingSessionId:jest.fn(),
+    });
+    expect(mockOpenQuiz).toHaveBeenCalledTimes(1);
+  });
+
   it('requires instructor authorization before opening a student completion result', async () => {
     mockInstructorAccess.mockResolvedValueOnce({kind:'denied',reason:'completion_classroom_not_authorized'});
     await handleAppPushNotificationResponse({
