@@ -4,6 +4,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import appJson from './app.json';
 import { resolveApiOriginForProcess } from './config/apiEnvironment.cjs';
+import {
+  deriveIosRuntimeVersion,
+  readIosMarketingVersion,
+} from './config/iosReleaseVersion.cjs';
 
 function resolveGitSha(): string {
   if (process.env.EDUVIJNA_GIT_SHA?.trim()) return process.env.EDUVIJNA_GIT_SHA.trim();
@@ -215,15 +219,20 @@ export default (): ExpoConfig => {
 
   const apsEnvironment = resolveApsEnvironment(process.env);
 
+  // Authoritative iOS marketing version lives in app.json; no stale hardcoded fallbacks.
+  // Advance only via `npm run release:ios:prepare`. Build numbers stay on EAS remote autoIncrement.
+  const iosMarketingVersion = readIosMarketingVersion(appJson);
+  const iosRuntimeVersion = deriveIosRuntimeVersion(iosMarketingVersion);
+
   return {
     ...staticExpo,
     ios: {
       ...staticExpo.ios,
       // Marketing version for TestFlight/App Store (CFBundleShortVersionString).
       // Keep root expo.version unchanged so Android versionName stays on the existing track.
-      version: staticExpo.ios?.version || '1.0.4',
-      // Isolate OTA from prior iOS trains (incl. closed 1.0.3) and from Android runtime 1.0.0.
-      runtimeVersion: staticExpo.ios?.runtimeVersion || '1.0.4-ios-fcm',
+      version: iosMarketingVersion,
+      // Isolate OTA from prior iOS trains and from Android runtime 1.0.0.
+      runtimeVersion: iosRuntimeVersion,
       bundleIdentifier: PROD_IOS_BUNDLE_ID,
       appleTeamId: staticExpo.ios?.appleTeamId || '847JWGJ2VM',
       googleServicesFile: iosFirebaseFile,
@@ -265,8 +274,8 @@ export default (): ExpoConfig => {
       FIREBASE_PROJECT_ID,
       FIREBASE_PROJECT_NUMBER,
       IOS_BUNDLE_ID: PROD_IOS_BUNDLE_ID,
-      IOS_APP_VERSION: staticExpo.ios?.version || '1.0.4',
-      IOS_RUNTIME_VERSION: staticExpo.ios?.runtimeVersion || '1.0.4-ios-fcm',
+      IOS_APP_VERSION: iosMarketingVersion,
+      IOS_RUNTIME_VERSION: iosRuntimeVersion,
       ANDROID_RUNTIME_VERSION: staticExpo.runtimeVersion || '1.0.0',
       APS_ENVIRONMENT: apsEnvironment,
       IOS_USE_FRAMEWORKS: 'dynamic',

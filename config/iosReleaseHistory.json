@@ -1,0 +1,24 @@
+{
+  "iosRuntimeSuffix": "-ios-fcm",
+  "android": {
+    "version": "1.0.0",
+    "runtimeVersion": "1.0.0"
+  },
+  "knownIosReleases": [
+    {
+      "marketing": "1.0.3",
+      "build": "1.0.10",
+      "note": "ASC rejected (90062/90186); train closed"
+    },
+    {
+      "marketing": "1.0.4",
+      "build": "1.0.11",
+      "note": "TestFlight uploaded; startup crash on RNFB modular API"
+    },
+    {
+      "marketing": "1.0.4",
+      "build": "1.0.12",
+      "note": "EAS finished (d8954ade); Founder deferred TestFlight upload"
+    }
+  ]
+}

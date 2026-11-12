@@ -8,6 +8,10 @@ import {
   API_ENV_VAR,
   resolveApiOriginForProcess,
 } from '../config/apiEnvironment.cjs';
+import {
+  validateCurrentIosReleaseIdentity,
+  deriveIosRuntimeVersion,
+} from '../config/iosReleaseVersion.cjs';
 import { resolveCommandArgv } from './resolve-cli-entry.mjs';
 
 function buildProcessEnv(overrides = {}) {
@@ -96,12 +100,13 @@ assert(
 );
 
 const appJsonVersions = JSON.parse(readFileSync(resolve('app.json'), 'utf8')).expo;
+const iosReleaseIdentity = validateCurrentIosReleaseIdentity();
 assert(
   appJsonVersions.version === '1.0.0' &&
-    appJsonVersions.ios?.version === '1.0.4' &&
-    appJsonVersions.ios?.runtimeVersion === '1.0.4-ios-fcm' &&
+    appJsonVersions.ios?.version === iosReleaseIdentity.marketing &&
+    appJsonVersions.ios?.runtimeVersion === deriveIosRuntimeVersion(iosReleaseIdentity.marketing) &&
     appJsonVersions.runtimeVersion === '1.0.0',
-  'iOS TestFlight version 1.0.4 / runtime 1.0.4-ios-fcm isolated from Android version/runtime 1.0.0',
+  `iOS TestFlight version ${iosReleaseIdentity.marketing} / runtime ${iosReleaseIdentity.runtime} isolated from Android version/runtime 1.0.0`,
 );
 assert(
   easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === undefined &&

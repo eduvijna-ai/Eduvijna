@@ -69,10 +69,17 @@ test('real GoogleService-Info.plist is gitignored while example template is trac
 
 test('iOS marketing version and runtimeVersion are isolated from Android', async () => {
   const fs = await import('node:fs');
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const {
+    deriveIosRuntimeVersion,
+    validateCurrentIosReleaseIdentity,
+  } = require('../../config/iosReleaseVersion.cjs');
   const app = JSON.parse(fs.readFileSync(resolve('app.json'), 'utf8')).expo;
+  const identity = validateCurrentIosReleaseIdentity();
   assert.equal(app.version, '1.0.0');
-  assert.equal(app.ios.version, '1.0.4');
-  assert.equal(app.ios.runtimeVersion, '1.0.4-ios-fcm');
+  assert.equal(app.ios.version, identity.marketing);
+  assert.equal(app.ios.runtimeVersion, deriveIosRuntimeVersion(identity.marketing));
   assert.equal(app.runtimeVersion, '1.0.0');
   assert.equal(app.ios.bundleIdentifier, 'com.eduvijna.app');
   assert.equal(app.ios.appleTeamId, '847JWGJ2VM');
