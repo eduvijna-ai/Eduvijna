@@ -114,6 +114,7 @@ function AppContent() {
   const initialNotificationResponseHandled = useRef(false);
   const notificationResumeInFlightRef = useRef<string | null>(null);
   const pendingNotificationEpochRef = useRef(0);
+  const pendingNotificationWriteRef = useRef<Promise<void>>(Promise.resolve());
   const initialDeepLinkProcessed = useRef<boolean>(false);
   const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
@@ -131,7 +132,11 @@ function AppContent() {
   const queuePendingNotification = useCallback((intent: PendingNotificationIntent | null) => {
     setPendingNotificationIntent(intent);
     if (intent) {
-      void writeStoredPendingNotification(intent).catch(() => undefined);
+      // Serialize writes so a fast login/resume cannot clear the record before
+      // its original AsyncStorage write completes.
+      pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
+        .catch(() => undefined)
+        .then(() => writeStoredPendingNotification(intent));
     }
   }, []);
 
@@ -210,7 +215,9 @@ function AppContent() {
       clearPendingOpenQuiz('explicit_logout');
       setPendingNotificationIntent(null);
       pendingNotificationEpochRef.current += 1;
-      void clearStoredPendingNotification().catch(() => undefined);
+      pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
+        .catch(() => undefined)
+        .then(() => clearStoredPendingNotification());
       processedNotifications.current.clear();
       notificationResumeInFlightRef.current = null;
     }
@@ -602,6 +609,7 @@ function AppContent() {
         setPendingNotificationIntent((current) =>
           current && pendingIntentKey(current) === key ? null : current,
         );
+        await pendingNotificationWriteRef.current.catch(() => undefined);
         await clearStoredPendingNotification(key);
       } catch (error) {
         console.error('❌ Pending notification intent resume failed:', error);
