@@ -1,9 +1,10 @@
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { buildQuizGradedResultsNavigationParams } from './notificationNavigation';
 import { executeStudentAssignedQuizViewResults } from './assessmentQuizStart.service';
 import { resolveStudentGradedAssignmentSession } from './gradedNotificationRouting.service';
 import { handleOpenQuiz } from './openQuizHandler';
 import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
+import { normalizeNotificationPayload } from '../navigation/normalizeNotificationPayload';
 import {
   intentFromNotificationData,
   intentToData,
@@ -62,6 +63,28 @@ function queuePending(
   }
 }
 
+/** Structured, non-sensitive routing diagnostics only. */
+function logNotificationRoutingDiag(info: {
+  eventType: string | null;
+  recognizedKeys: string[];
+  parseOutcome: string;
+  routingDecision: string;
+  fallbackReason?: string;
+  navigationReady: boolean;
+  authenticated: boolean;
+}): void {
+  console.log('[push-nav]', {
+    platform: Platform.OS,
+    eventType: info.eventType,
+    recognizedKeys: info.recognizedKeys,
+    parseOutcome: info.parseOutcome,
+    routingDecision: info.routingDecision,
+    fallbackReason: info.fallbackReason,
+    navigationReady: info.navigationReady,
+    authenticated: info.authenticated,
+  });
+}
+
 async function openStudentGradedResults(
   args: HandleAppPushNotificationResponseArgs,
   data: Record<string, unknown>,
@@ -78,6 +101,15 @@ async function openStudentGradedResults(
   if (!resolvedSessionId && quizId != null && studentId) {
     const resolution = await resolveStudentGradedAssignmentSession(String(studentId), quizId);
     if (resolution.kind === 'ambiguous') {
+      logNotificationRoutingDiag({
+        eventType: 'quiz_graded',
+        recognizedKeys: Object.keys(data),
+        parseOutcome: 'flat',
+        routingDecision: 'Assessments',
+        fallbackReason: 'graded_assignment_ambiguous',
+        navigationReady: true,
+        authenticated: true,
+      });
       navigation.navigate('Assessments');
       return;
     }
@@ -95,12 +127,30 @@ async function openStudentGradedResults(
   });
 
   if (!resultParams || !resolvedSessionId || quizId == null || !studentId) {
+    logNotificationRoutingDiag({
+      eventType: 'quiz_graded',
+      recognizedKeys: Object.keys(data),
+      parseOutcome: 'flat',
+      routingDecision: 'Assessments',
+      fallbackReason: 'graded_missing_routing_identifiers',
+      navigationReady: true,
+      authenticated: true,
+    });
     navigation.navigate('Assessments');
     return;
   }
 
   const effectiveClassroomId = classroomId || asString(data.classroom_id ?? data.classroomId);
   if (!effectiveClassroomId) {
+    logNotificationRoutingDiag({
+      eventType: 'quiz_graded',
+      recognizedKeys: Object.keys(data),
+      parseOutcome: 'flat',
+      routingDecision: 'Assessments',
+      fallbackReason: 'graded_missing_classroom_id',
+      navigationReady: true,
+      authenticated: true,
+    });
     navigation.navigate('Assessments');
     return;
   }
@@ -130,6 +180,15 @@ function openInstructorStudentResult(
   const studentName = asString(data.student_name ?? data.studentName);
 
   if (!quizId || !studentId) {
+    logNotificationRoutingDiag({
+      eventType: asString(data.type),
+      recognizedKeys: Object.keys(data),
+      parseOutcome: 'flat',
+      routingDecision: 'Assessments',
+      fallbackReason: 'instructor_result_missing_quiz_or_student',
+      navigationReady: true,
+      authenticated: true,
+    });
     args.navigation.navigate('Assessments');
     return;
   }
@@ -144,6 +203,33 @@ function openInstructorStudentResult(
     quizName: quizTitle ?? undefined,
     isTeacherView: true,
   });
+}
+
+function openGeneralNotifications(
+  args: HandleAppPushNotificationResponseArgs,
+  intent: PendingNotificationIntent,
+  fallbackReason: string,
+): void {
+  const navigationReady = args.navigationReady !== false;
+  logNotificationRoutingDiag({
+    eventType: intent.type,
+    recognizedKeys: intent.recognizedKeys ?? [],
+    parseOutcome: intent.parseOutcome ?? 'flat',
+    routingDecision:
+      !args.isAuthenticated || !navigationReady ? 'queue_Notifications' : 'Notifications',
+    fallbackReason,
+    navigationReady,
+    authenticated: args.isAuthenticated,
+  });
+
+  if (!args.isAuthenticated || !navigationReady) {
+    queuePending(args, { ...intent, type: 'general' });
+    args.processedIds.add(args.notificationId);
+    return;
+  }
+
+  args.processedIds.add(args.notificationId);
+  args.navigation.navigate('Notifications');
 }
 
 export async function handleAppPushNotificationResponse(
@@ -164,26 +250,45 @@ export async function handleAppPushNotificationResponse(
     return;
   }
 
+  const normalized = normalizeNotificationPayload(data);
+  const flatData = normalized.data;
+
   const intent =
-    intentFromNotificationData(data, notificationId) ||
-    (asString(data?.session_id ?? data?.sessionId)
+    intentFromNotificationData(flatData, notificationId) ||
+    (asString(flatData.session_id ?? flatData.sessionId)
       ? {
           type: 'quiz_assigned',
-          sessionId: asString(data?.session_id ?? data?.sessionId),
+          sessionId: asString(flatData.session_id ?? flatData.sessionId),
           notificationId,
+          parseOutcome: normalized.parseOutcome,
+          recognizedKeys: normalized.recognizedKeys,
         }
-      : null);
-
-  if (!intent) {
-    Alert.alert('Error', 'Notification data is incomplete. Please try again.');
-    processedIds.add(notificationId);
-    return;
-  }
+      : {
+          type: 'general',
+          notificationId,
+          parseOutcome: normalized.parseOutcome,
+          recognizedKeys: normalized.recognizedKeys,
+        });
 
   const type = normalizeNotificationType(intent.type) || intent.type;
 
+  // Ordinary general / self-test / announcement — never show incomplete-data alert.
+  if (type === 'general') {
+    openGeneralNotifications(args, intent, 'general_or_self_test_notification');
+    return;
+  }
+
   // Queue full intent until auth + navigation are ready (incl. graded / completion).
   if (!isAuthenticated || !navigationReady) {
+    logNotificationRoutingDiag({
+      eventType: type,
+      recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+      parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+      routingDecision: 'queue_pending_intent',
+      fallbackReason: !isAuthenticated ? 'signed_out' : 'navigation_not_ready',
+      navigationReady,
+      authenticated: isAuthenticated,
+    });
     queuePending(args, intent);
     if (intent.sessionId) {
       setPendingSessionId(intent.sessionId);
@@ -197,21 +302,56 @@ export async function handleAppPushNotificationResponse(
   try {
     if (type === 'quiz_graded') {
       // Graded results are student-facing; instructors tapping graded templates fall through to Assessments.
-      if (isInstructorLike(user) && asString(data?.student_id ?? data?.studentId) &&
-          asString(data?.student_id ?? data?.studentId) !== asString(user?.id)) {
+      if (
+        isInstructorLike(user) &&
+        asString(flatData.student_id ?? flatData.studentId) &&
+        asString(flatData.student_id ?? flatData.studentId) !== asString(user?.id)
+      ) {
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: 'QuizResultsScreen_teacher',
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
         openInstructorStudentResult(args, intentToData(intent));
         return;
       }
+      logNotificationRoutingDiag({
+        eventType: type,
+        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+        routingDecision: 'student_graded_results',
+        navigationReady,
+        authenticated: isAuthenticated,
+      });
       await openStudentGradedResults(args, intentToData(intent));
       return;
     }
 
     if (type === 'quiz_completed') {
       if (!isInstructorLike(user)) {
-        // Wrong role for this event — avoid forcing student assessment take flow.
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: 'Assessments',
+          fallbackReason: 'completion_wrong_role_student',
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
         navigation.navigate('Assessments');
         return;
       }
+      logNotificationRoutingDiag({
+        eventType: type,
+        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+        routingDecision: 'QuizResultsScreen_teacher',
+        navigationReady,
+        authenticated: isAuthenticated,
+      });
       openInstructorStudentResult(args, intentToData(intent));
       return;
     }
@@ -219,14 +359,39 @@ export async function handleAppPushNotificationResponse(
     if (type === 'quiz_assigned') {
       const sessionId = intent.sessionId;
       if (!sessionId) {
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: 'Assessments',
+          fallbackReason: 'assigned_missing_session_id',
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
         navigation.navigate('Assessments');
         return;
       }
       if (isInstructorLike(user)) {
-        // Assignment share is student-targeted; instructor opens Assessments inventory.
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: 'Assessments',
+          fallbackReason: 'assigned_instructor_role',
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
         navigation.navigate('Assessments');
         return;
       }
+      logNotificationRoutingDiag({
+        eventType: type,
+        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+        routingDecision: 'handleOpenQuiz',
+        navigationReady,
+        authenticated: isAuthenticated,
+      });
       await handleOpenQuiz(sessionId, 'notification', user, {
         navigate: navigation.navigate,
         alert: Alert.alert,
@@ -237,9 +402,27 @@ export async function handleAppPushNotificationResponse(
     // Fallback: session-bearing events
     if (intent.sessionId) {
       if (isInstructorLike(user) && type !== 'quiz_assigned') {
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: 'Assessments',
+          fallbackReason: 'session_bearing_instructor',
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
         navigation.navigate('Assessments');
         return;
       }
+      logNotificationRoutingDiag({
+        eventType: type,
+        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+        routingDecision: 'handleOpenQuiz',
+        fallbackReason: 'session_bearing_unknown_type',
+        navigationReady,
+        authenticated: isAuthenticated,
+      });
       await handleOpenQuiz(intent.sessionId, 'notification', user, {
         navigate: navigation.navigate,
         alert: Alert.alert,
@@ -247,6 +430,16 @@ export async function handleAppPushNotificationResponse(
       return;
     }
 
+    // Unknown / incomplete assessment-like event without session → safe Notifications.
+    logNotificationRoutingDiag({
+      eventType: type,
+      recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+      parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+      routingDecision: 'Notifications',
+      fallbackReason: 'unknown_or_incomplete_event',
+      navigationReady,
+      authenticated: isAuthenticated,
+    });
     navigation.navigate('Notifications');
   } catch (error) {
     if (isAssignedQuizRecoveryProbeError(error)) {

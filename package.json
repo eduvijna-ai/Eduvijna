@@ -11,6 +11,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "config:verify": "node scripts/verify-expo-api-config.mjs",
+    "release:ios:prepare": "node scripts/prepare-ios-release.mjs",
+    "test:ios-release-version": "node --test scripts/__tests__/ios-release-version.logic.test.mjs",
     "cli:verify": "node scripts/with-eduvijna-api-env.mjs development -- eas --version",
     "bundle:verify:development": "node scripts/with-eduvijna-api-env.mjs development -- expo export --platform android --output-dir .expo-export-check/android-dev && node scripts/with-eduvijna-api-env.mjs development -- expo export --platform ios --output-dir .expo-export-check/ios-dev",
     "bundle:verify:production": "node scripts/with-eduvijna-api-env.mjs production-release -- expo export --platform android --output-dir .expo-export-check/android-prod && node scripts/with-eduvijna-api-env.mjs production-release -- expo export --platform ios --output-dir .expo-export-check/ios-prod",
@@ -22,7 +24,8 @@
     "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --forceExit --runInBand",
     "test:watch": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --watch --forceExit --runInBand",
     "test:coverage": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --coverage --forceExit --runInBand",
-    "test:journey-logic": "node --test scripts/__tests__/android-founder-journey.logic.test.mjs scripts/__tests__/android-journey-tap.test.mjs"
+    "test:journey-logic": "node --test scripts/__tests__/android-founder-journey.logic.test.mjs scripts/__tests__/android-journey-tap.test.mjs",
+    "test:ios-fcm-config": "node --test scripts/__tests__/ios-fcm-config.logic.test.mjs scripts/__tests__/ios-release-version.logic.test.mjs"
   },
   "jest": {
     "preset": "jest-expo",
@@ -34,7 +37,7 @@
       "**/__tests__/**/*.test.[jt]s?(x)"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|zustand)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-native-firebase)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|zustand)"
     ],
     "moduleNameMapper": {
       "^@core/(.*)$": "<rootDir>/src/core/$1",
@@ -58,6 +61,8 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-clipboard/clipboard": "^1.16.3",
     "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-firebase/app": "^27.1.1",
+    "@react-native-firebase/messaging": "^27.1.1",
     "@react-navigation/bottom-tabs": "^6.5.10",
     "@react-navigation/native": "^6.1.6",
     "@react-navigation/native-stack": "^6.9.12",

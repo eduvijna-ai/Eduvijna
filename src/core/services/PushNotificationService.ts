@@ -2,16 +2,17 @@
  * Push Notification Service - Backend-Driven Model
  * Frontend only generates and registers native FCM device tokens
  * All push message delivery handled by backend APIs
- * 
+ *
  * IMPORTANT: Uses native FCM tokens (NOT Expo Push Tokens)
  * Backend expects raw FCM tokens for direct Firebase messaging
- * 
- * Requirements:
- * - Generate native FCM token only when push notifications are enabled
- * - Register token on app launch and after login (if enabled)
- * - Handle token refresh events
- * - Send token to backend push-registration API
- * - No direct push message sending from frontend
+ *
+ * Token acquisition:
+ * - Android: expo-notifications getDevicePushTokenAsync (verified production path)
+ * - iOS: @react-native-firebase/messaging FCM registration token (not raw APNs)
+ *
+ * Notification receipt / tap ownership:
+ * - Both platforms: expo-notifications is the authoritative presentation + tap listener
+ * - iOS RNFB Messaging is used for FCM token acquisition/refresh only (no competing tap handlers)
  */
 
 import * as Notifications from 'expo-notifications';
@@ -26,6 +27,12 @@ import {
   PUSH_ACCOUNT_STORAGE,
   wasPromptDismissedRecently,
 } from './pushNotificationAccountScope';
+import {
+  getNativeFcmRegistrationToken,
+  getNativePushPlatform,
+  isAcceptableFcmRegistrationToken,
+  subscribeNativeFcmTokenRefresh,
+} from './nativePushToken';
 
 // Storage keys (device-level token/preference; registration id + prompt are account-aware)
 const STORAGE_KEYS = {
@@ -111,10 +118,9 @@ function ensureAndroidNotificationChannel(): Promise<void> {
  * Check if push notifications are supported on this platform
  */
 function isPushSupported(): boolean {
-  // Only Android is supported with Firebase FCM native module
-  if (Platform.OS !== 'android') return false;
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return false;
   // Remote push notifications were removed from Expo Go in SDK 53
-  // Only available in development builds and production APKs
+  // Only available in development builds and production binaries
   if (Constants.appOwnership === 'expo') return false;
   return true;
 }
@@ -126,7 +132,7 @@ function isPushSupported(): boolean {
 async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined'> {
   try {
     if (!isPushSupported()) {
-      console.log('❌ Push notifications only supported on Android');
+      console.log('❌ Push notifications only supported on Android/iOS standalone builds');
       return 'denied';
     }
 
@@ -149,31 +155,8 @@ async function requestPermission(): Promise<'granted' | 'denied' | 'undetermined
   }
 }
 
-function isExpoPushToken(token: string | null | undefined): boolean {
-  return !!token && (
-    token.startsWith('ExponentPushToken') ||
-    token.startsWith('ExpoPushToken')
-  );
-}
-
-function extractDevicePushTokenData(
-  devicePushToken: Notifications.DevicePushToken | string | null | undefined,
-): string | null {
-  if (!devicePushToken) {
-    return null;
-  }
-  if (typeof devicePushToken === 'string') {
-    return devicePushToken;
-  }
-  if (typeof devicePushToken === 'object' && 'data' in devicePushToken) {
-    const data = (devicePushToken as { data?: unknown }).data;
-    return typeof data === 'string' ? data : null;
-  }
-  return null;
-}
-
 /**
- * Get native FCM device token (not Expo Push Token).
+ * Get native FCM device token (not Expo Push Token / not raw APNs).
  * Direct-FCM backend path rejects Expo tokens — never fall back to getExpoPushTokenAsync.
  * @returns FCM token string or null if failed
  */
@@ -186,31 +169,18 @@ async function getToken(options?: { forceRefresh?: boolean }): Promise<string | 
     await ensureAndroidNotificationChannel();
     const forceRefresh = options?.forceRefresh === true;
 
-    // Drop any legacy Expo tokens cached from older builds
+    // Drop any legacy Expo / APNs tokens cached from older builds
     const cachedToken = await AsyncStorage.getItem(STORAGE_KEYS.FCM_TOKEN);
-    if (isExpoPushToken(cachedToken)) {
+    if (cachedToken && !isAcceptableFcmRegistrationToken(cachedToken)) {
       await AsyncStorage.removeItem(STORAGE_KEYS.FCM_TOKEN);
     } else if (!forceRefresh && cachedToken) {
       return cachedToken;
     }
 
-    let token: string | null = null;
+    const token = await getNativeFcmRegistrationToken();
 
-    try {
-      const devicePushToken = await Notifications.getDevicePushTokenAsync();
-      console.log('Device push token received');
-      token = extractDevicePushTokenData(devicePushToken);
-      if (!token) {
-        console.error('❌ Unexpected device token format');
-      }
-    } catch (deviceTokenError) {
-      console.error('❌ getDevicePushTokenAsync failed:', safePushError(deviceTokenError));
-      // Do NOT fall back to Expo Push Token — backend uses Firebase Admin direct FCM.
-      return null;
-    }
-
-    if (!token || isExpoPushToken(token)) {
-      console.error('❌ Native FCM token unavailable; Expo tokens are not accepted for direct FCM');
+    if (!token || !isAcceptableFcmRegistrationToken(token)) {
+      console.error('❌ Native FCM token unavailable; Expo/APNs tokens are not accepted for direct FCM');
       return null;
     }
 
@@ -226,12 +196,13 @@ async function getToken(options?: { forceRefresh?: boolean }): Promise<string | 
  * Get device metadata for registration
  */
 function getDeviceMetadata() {
+  const platform = getNativePushPlatform();
   return {
-    platform: 'android' as const, // Only Android supported
+    platform: (platform ?? 'android') as 'android' | 'ios',
     device_name: `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`,
     device_model: Device.modelName || undefined,
     os_version: Device.osVersion || undefined,
-    app_version: '1.0.0', // TODO: Get from app.json
+    app_version: '1.0.0',
   };
 }
 
@@ -242,9 +213,9 @@ function getDeviceMetadata() {
  */
 async function registerDevice(token: string): Promise<boolean> {
   try {
-    if (isExpoPushToken(token)) {
+    if (!isAcceptableFcmRegistrationToken(token)) {
       throw new Error(
-        'Expo push tokens are not supported. Native FCM token is required for Android push.',
+        'Expo push tokens are not supported. Raw APNs tokens are not supported. Native FCM registration token is required.',
       );
     }
 
@@ -280,10 +251,12 @@ async function registerDevice(token: string): Promise<boolean> {
     console.log('✅ Device registered successfully with Firebase FCM token');
     return true;
   } catch (error: any) {
-    // Preserve intentional client-side validation (e.g. Expo token rejection)
+    // Preserve intentional client-side validation (e.g. Expo/APNs token rejection)
     if (
       typeof error?.message === 'string' &&
-      error.message.includes('Expo push tokens are not supported')
+      (error.message.includes('Expo push tokens are not supported') ||
+        error.message.includes('Raw APNs tokens are not supported') ||
+        error.message.includes('Native FCM registration token is required'))
     ) {
       throw error;
     }
@@ -406,7 +379,7 @@ async function getPushStatus(): Promise<{
     return {
       isEnabled,
       hasPermission: status === 'granted',
-      hasToken: !!storedToken && !isExpoPushToken(storedToken),
+      hasToken: isAcceptableFcmRegistrationToken(storedToken),
       isSupported,
     };
   } catch (error) {
@@ -437,7 +410,7 @@ async function enablePushNotifications(): Promise<{
     if (!isPushSupported()) {
       return {
         success: false,
-        message: 'Push notifications only supported on Android',
+        message: 'Push notifications only supported on Android/iOS standalone builds',
       };
     }
 
@@ -461,7 +434,9 @@ async function enablePushNotifications(): Promise<{
       return {
         success: false,
         message:
-          'Failed to get a native FCM device token. Ensure Google Play services are available and rebuild the development client if needed.',
+          Platform.OS === 'ios'
+            ? 'Failed to get a native FCM registration token on iOS. Ensure GoogleService-Info.plist is present, APNs is configured in Firebase, and rebuild the iOS binary.'
+            : 'Failed to get a native FCM device token. Ensure Google Play services are available and rebuild the development client if needed.',
       };
     }
 
@@ -511,8 +486,8 @@ async function disablePushNotifications(): Promise<{
 
 /**
  * Handle token refresh when FCM rotates the device token.
- * Prefer passing the listener token so we do not re-call getDevicePushTokenAsync
- * inside addPushTokenListener (that can loop).
+ * Prefer passing the listener token so we do not re-call native token APIs
+ * inside the refresh subscription (that can loop).
  */
 async function handleTokenRefresh(incomingToken?: string | null): Promise<void> {
   try {
@@ -523,8 +498,8 @@ async function handleTokenRefresh(incomingToken?: string | null): Promise<void> 
     }
 
     let newToken = incomingToken?.trim() || null;
-    if (isExpoPushToken(newToken)) {
-      console.error('❌ Ignoring Expo push token during refresh');
+    if (newToken && !isAcceptableFcmRegistrationToken(newToken)) {
+      console.error('❌ Ignoring non-FCM token during refresh (Expo/APNs rejected)');
       return;
     }
 
@@ -551,15 +526,19 @@ async function handleTokenRefresh(incomingToken?: string | null): Promise<void> 
 }
 
 /**
- * Subscribe to native device push token rotations while push is enabled.
+ * Subscribe to native FCM registration token rotations while push is enabled.
  * Caller must remove the subscription on cleanup.
  */
 function subscribeToTokenRefresh(): { remove: () => void } {
-  const subscription = Notifications.addPushTokenListener((devicePushToken) => {
-    const token = extractDevicePushTokenData(devicePushToken);
-    void handleTokenRefresh(token);
-  });
-  return subscription;
+  try {
+    return subscribeNativeFcmTokenRefresh((token) => {
+      void handleTokenRefresh(token);
+    });
+  } catch (error) {
+    // Boot must not fail when optional token-refresh wiring throws.
+    console.error('❌ Failed to subscribe to FCM token refresh:', safePushError(error));
+    return { remove: () => undefined };
+  }
 }
 
 /**
@@ -626,7 +605,7 @@ async function initializeOnAppLaunch(): Promise<void> {
     }
 
     // Always re-read the native FCM token; cached data alone is not rotation proof.
-    // getToken also clears legacy cached Expo tokens.
+    // getToken also clears legacy cached Expo/APNs tokens.
     const nativeToken = await getToken({ forceRefresh: true });
     if (!nativeToken) {
       console.warn('⚠️ Native FCM token unavailable during launch reconciliation');
@@ -686,7 +665,9 @@ async function clearAllNotifications(): Promise<void> {
 }
 
 /**
- * Setup notification listeners (for when app is open)
+ * Setup notification listeners (for when app is open).
+ * Authoritative receipt/tap path for both Android and iOS — do not also
+ * register RNFB onMessage / onNotificationOpenedApp for tap navigation.
  */
 export function setupNotificationListeners(
   onNotificationReceived: (notification: Notifications.Notification) => void,

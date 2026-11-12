@@ -8,6 +8,10 @@ import {
   API_ENV_VAR,
   resolveApiOriginForProcess,
 } from '../config/apiEnvironment.cjs';
+import {
+  validateCurrentIosReleaseIdentity,
+  deriveIosRuntimeVersion,
+} from '../config/iosReleaseVersion.cjs';
 import { resolveCommandArgv } from './resolve-cli-entry.mjs';
 
 function buildProcessEnv(overrides = {}) {
@@ -81,6 +85,28 @@ assert(
     easBuildProfiles['android-fcm-dev']?.env?.EDUVIJNA_API_ENV === 'development' &&
     easBuildProfiles['android-fcm-dev']?.android?.buildType === 'apk',
   'Dedicated Android FCM DEV profile selects side-by-side APK and DEV API',
+);
+assert(
+  easBuildProfiles.production?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE !== '1' &&
+    easBuildProfiles.preview?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE !== '1' &&
+    easBuildProfiles['ios-fcm-preview']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
+    easBuildProfiles['ios-fcm-testflight']?.env?.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1' &&
+    easBuildProfiles['ios-fcm-testflight']?.distribution === 'store' &&
+    easBuildProfiles['ios-fcm-testflight']?.environment === 'production' &&
+    easBuildProfiles.production?.environment === 'production' &&
+    easBuildProfiles['ios-fcm-testflight']?.autoIncrement === true &&
+    easBuildProfiles.production?.autoIncrement === true,
+  'Android production/preview profiles are not blocked by iOS Firebase readiness; iOS preview/testflight require it',
+);
+
+const appJsonVersions = JSON.parse(readFileSync(resolve('app.json'), 'utf8')).expo;
+const iosReleaseIdentity = validateCurrentIosReleaseIdentity();
+assert(
+  appJsonVersions.version === '1.0.0' &&
+    appJsonVersions.ios?.version === iosReleaseIdentity.marketing &&
+    appJsonVersions.ios?.runtimeVersion === deriveIosRuntimeVersion(iosReleaseIdentity.marketing) &&
+    appJsonVersions.runtimeVersion === '1.0.0',
+  `iOS TestFlight version ${iosReleaseIdentity.marketing} / runtime ${iosReleaseIdentity.runtime} isolated from Android version/runtime 1.0.0`,
 );
 assert(
   easBuildProfiles.development?.env?.EDUVIJNA_APP_VARIANT === undefined &&
@@ -203,6 +229,80 @@ const releaseUnsetExpo = expoConfigResult(
   }),
 );
 assert(releaseUnsetExpo.status !== 0, 'expo config fails when release guard set without production env');
+
+const androidProdWithPlaceholderIos = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'production',
+  EAS_BUILD_PLATFORM: 'android',
+  EAS_BUILD_PROFILE: 'production',
+}));
+assert(
+  androidProdWithPlaceholderIos.status === 0,
+  'Android production EAS config succeeds even when iOS GoogleService-Info.plist is still a placeholder',
+);
+
+const iosRequirePlaceholder = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'production',
+  EAS_BUILD_PLATFORM: 'ios',
+  EAS_BUILD_PROFILE: 'ios-fcm-preview',
+  EDUVIJNA_REQUIRE_IOS_FIREBASE: '1',
+}), { json: false });
+const iosRequireOutput = String(
+  `${iosRequirePlaceholder.stderr || ''}${iosRequirePlaceholder.stdout || ''}`,
+);
+const iosPlistPath = resolve('./GoogleService-Info.plist');
+const iosPlistIsPlaceholder = existsSync(iosPlistPath)
+  && readFileSync(iosPlistPath, 'utf8').includes('REPLACE_WITH_YOUR_');
+if (iosPlistIsPlaceholder || !existsSync(iosPlistPath)) {
+  assert(
+    iosRequirePlaceholder.status !== 0 &&
+      (iosRequireOutput.includes('placeholder') || iosRequireOutput.includes('Missing approved Firebase iOS')),
+    'iOS EAS/native config fails closed until approved GoogleService-Info.plist is present',
+  );
+} else {
+  assert(
+    iosRequirePlaceholder.status === 0,
+    'iOS EAS config accepts approved GoogleService-Info.plist metadata',
+  );
+}
+
+// Probe APNs entitlement without forcing iOS plist readiness (Android platform).
+const developmentAps = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'development',
+  EAS_BUILD_PROFILE: 'development',
+  EAS_BUILD_PLATFORM: 'android',
+}));
+assert(developmentAps.status === 0, 'Development profile expo config resolves for Android platform');
+try {
+  const cfg = JSON.parse(developmentAps.stdout);
+  assert(
+    cfg?.ios?.entitlements?.['aps-environment'] === 'development' &&
+      cfg?.extra?.APS_ENVIRONMENT === 'development',
+    'Development profile resolves aps-environment=development',
+  );
+  assert(
+    cfg?.extra?.IOS_USE_FRAMEWORKS === 'dynamic',
+    'RNFB v27 / Expo 54 iOS linkage is configured as dynamic frameworks',
+  );
+} catch (error) {
+  assert(false, `Development APNs/frameworks assertions failed: ${error?.message || error}`);
+}
+
+const productionAps = expoConfigResult(buildProcessEnv({
+  EDUVIJNA_API_ENV: 'production',
+  EAS_BUILD_PROFILE: 'production',
+  EAS_BUILD_PLATFORM: 'android',
+}));
+assert(productionAps.status === 0, 'Production profile expo config resolves for Android platform');
+try {
+  const cfg = JSON.parse(productionAps.stdout);
+  assert(
+    cfg?.ios?.entitlements?.['aps-environment'] === 'production' &&
+      cfg?.extra?.APS_ENVIRONMENT === 'production',
+    'Production profile resolves aps-environment=production',
+  );
+} catch (error) {
+  assert(false, `Production APNs assertion failed: ${error?.message || error}`);
+}
 
 if (process.exitCode) {
   process.exit(process.exitCode);

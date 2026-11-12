@@ -35,6 +35,7 @@ import {
   pendingIntentKey,
   type PendingNotificationIntent,
 } from './src/core/navigation/pendingNotificationIntent';
+import { navigatePushRootDestination } from './src/platforms/mobile/navigation/pushNotificationRootNavigation';
 import {
   clearStoredOpenQuizPending,
   readStoredOpenQuizPending,
@@ -298,10 +299,20 @@ function AppContent() {
       console.error('❌ Failed to initialize push on app launch:', error);
     });
 
-    // Re-register when FCM rotates the native device token
-    const tokenSubscription = PushNotificationService.subscribeToTokenRefresh();
+    // Re-register when FCM rotates the native device token.
+    // Must never throw during boot — login must still render if refresh wiring fails.
+    let tokenSubscription: { remove: () => void } = { remove: () => undefined };
+    try {
+      tokenSubscription = PushNotificationService.subscribeToTokenRefresh();
+    } catch (error) {
+      console.error('❌ Failed to wire FCM token refresh on launch:', error);
+    }
     return () => {
-      tokenSubscription.remove();
+      try {
+        tokenSubscription.remove();
+      } catch (error) {
+        console.error('❌ Failed to remove FCM token refresh subscription:', error);
+      }
     };
   }, [isMobile]);
 
@@ -343,15 +354,22 @@ function AppContent() {
         navigationReady: navReady,
         navigation: {
           navigate: (screen, params) => {
-            if (navigationRef.current) {
-              (navigationRef.current as any).navigate(screen, params);
-            }
+            if (!navigationRef.isReady() || !navigationRef.current) return;
+            // Notifications is a Main tab — map nested root route; keep Assessments/results direct.
+            navigatePushRootDestination(
+              (name, p) => (navigationRef.current as any).navigate(name, p),
+              screen,
+              params,
+            );
           },
         },
       });
     };
 
-    // Listen for notifications received while app is in foreground
+    // Authoritative receipt/tap path for Android + iOS: expo-notifications only.
+    // Do not also register RNFB messaging onMessage / onNotificationOpenedApp /
+    // getInitialNotification here — that causes duplicate tap processing on iOS.
+    // RNFB Messaging is reserved for iOS FCM registration token acquisition/refresh.
     notificationListener.current = Notifications.addNotificationReceivedListener(_notification => {
       // Notification will auto-display due to setNotificationHandler in PushNotificationService
     });
@@ -555,9 +573,12 @@ function AppContent() {
           navigationReady: true,
           navigation: {
             navigate: (screen, params) => {
-              if (navigationRef.isReady()) {
-                (navigationRef.current as any).navigate(screen, params);
-              }
+              if (!navigationRef.isReady() || !navigationRef.current) return;
+              navigatePushRootDestination(
+                (name, p) => (navigationRef.current as any).navigate(name, p),
+                screen,
+                params,
+              );
             },
           },
         });

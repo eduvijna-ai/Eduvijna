@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sanitized EduVijna iOS Firebase client template. -->
+	<!-- Do NOT commit a real GoogleService-Info.plist. -->
+	<!-- Place the Founder-downloaded file at ./GoogleService-Info.plist (gitignored) -->
+	<!-- or inject via EAS file env EDUVIJNA_IOS_GOOGLE_SERVICES_FILE. -->
+	<key>PROJECT_ID</key>
+	<string>eduvijna-push</string>
+	<key>GCM_SENDER_ID</key>
+	<string>416066207556</string>
+	<key>BUNDLE_ID</key>
+	<string>com.eduvijna.app</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:416066207556:ios:REPLACE_WITH_FIREBASE_IOS_APP_SUFFIX</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<!-- Remaining keys (API_KEY, CLIENT_ID, etc.) come from the official Firebase download. -->
+</dict>
+</plist>

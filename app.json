@@ -17,12 +17,19 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.eduvijna.app",
+      "appleTeamId": "847JWGJ2VM",
+      "version": "1.0.5",
+      "runtimeVersion": "1.0.5-ios-fcm",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:app.eduvijna.com"
       ],
       "infoPlist": {
         "NSCameraUsageDescription": "EduVijna uses the camera so you can photograph textbook and handwritten pages to generate quizzes.",
-        "NSPhotoLibraryUsageDescription": "EduVijna accesses your photos so you can pick document pages to generate quizzes."
+        "NSPhotoLibraryUsageDescription": "EduVijna accesses your photos so you can pick document pages to generate quizzes.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -73,10 +80,13 @@
             "buildToolsVersion": "36.0.0"
           },
           "ios": {
-            "deploymentTarget": "15.1"
+            "deploymentTarget": "15.1",
+            "useFrameworks": "dynamic"
           }
         }
       ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
       [
         "expo-image-picker",
         {
@@ -86,7 +96,13 @@
         }
       ],
       "expo-document-picker",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": true,
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
       "./plugins/withCropButtonLabel",
       "expo-asset",
       "expo-font"

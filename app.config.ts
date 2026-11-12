@@ -4,6 +4,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import appJson from './app.json';
 import { resolveApiOriginForProcess } from './config/apiEnvironment.cjs';
+import {
+  deriveIosRuntimeVersion,
+  readIosMarketingVersion,
+} from './config/iosReleaseVersion.cjs';
 
 function resolveGitSha(): string {
   if (process.env.EDUVIJNA_GIT_SHA?.trim()) return process.env.EDUVIJNA_GIT_SHA.trim();
@@ -19,8 +23,10 @@ const staticExpo = appJson.expo as ExpoConfig;
 
 const DEV_ANDROID_PACKAGE = 'com.eduvijna.app.dev';
 const DEV_ANDROID_GOOGLE_SERVICES_DEFAULT = './google-services-dev.json';
-const DEV_FIREBASE_PROJECT_ID = 'eduvijna-push';
-const DEV_FIREBASE_PROJECT_NUMBER = '416066207556';
+const PROD_IOS_BUNDLE_ID = 'com.eduvijna.app';
+const PROD_IOS_GOOGLE_SERVICES_DEFAULT = './GoogleService-Info.plist';
+const FIREBASE_PROJECT_ID = 'eduvijna-push';
+const FIREBASE_PROJECT_NUMBER = '416066207556';
 
 type FirebaseClientConfig = {
   project_info?: {
@@ -64,8 +70,8 @@ function validateAndroidDevFirebaseConfig(fileName: string): void {
   }
 
   const projectMatches =
-    parsed?.project_info?.project_id === DEV_FIREBASE_PROJECT_ID &&
-    String(parsed?.project_info?.project_number ?? '') === DEV_FIREBASE_PROJECT_NUMBER;
+    parsed?.project_info?.project_id === FIREBASE_PROJECT_ID &&
+    String(parsed?.project_info?.project_number ?? '') === FIREBASE_PROJECT_NUMBER;
   const packageMatches = Array.isArray(parsed?.client) && parsed.client.some(
     (client) => client?.client_info?.android_client_info?.package_name === DEV_ANDROID_PACKAGE,
   );
@@ -77,6 +83,105 @@ function validateAndroidDevFirebaseConfig(fileName: string): void {
       + 'Download the correct Android app configuration from Firebase Console.',
     );
   }
+}
+
+function plistStringValue(contents: string, key: string): string | null {
+  const pattern = new RegExp(
+    `<key>${key}<\\/key>\\s*<string>([^<]*)<\\/string>`,
+    'm',
+  );
+  const match = contents.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+/**
+ * Validate production iOS Firebase client plist metadata without printing secrets.
+ * Placeholder / missing files are allowed for Android-only workflows unless an
+ * iOS native/EAS/export path explicitly requires the approved client file.
+ */
+function validateIosFirebaseConfig(fileName: string, requireReady: boolean): void {
+  const resolvedPath = resolvePath(__dirname, fileName);
+  if (!existsSync(resolvedPath)) {
+    if (!requireReady) return;
+    throw new Error(
+      'Missing approved Firebase iOS client configuration for com.eduvijna.app. '
+      + 'Provide GoogleService-Info.plist (or set EDUVIJNA_IOS_GOOGLE_SERVICES_FILE) '
+      + 'from Firebase project eduvijna-push. Do not upload APNs .p8 keys into the mobile repo.',
+    );
+  }
+
+  let contents: string;
+  try {
+    contents = readFileSync(resolvedPath, 'utf8');
+  } catch {
+    throw new Error('Invalid or unreadable iOS Firebase client plist.');
+  }
+
+  const isPlaceholder = contents.includes('REPLACE_WITH_YOUR_');
+  if (isPlaceholder) {
+    if (!requireReady) return;
+    throw new Error(
+      'GoogleService-Info.plist is still a placeholder. Register/reuse the iOS app '
+      + 'com.eduvijna.app in Firebase project eduvijna-push and replace the plist '
+      + 'via the approved Firebase workflow before an iOS native build.',
+    );
+  }
+
+  const projectId = plistStringValue(contents, 'PROJECT_ID');
+  const senderId = plistStringValue(contents, 'GCM_SENDER_ID');
+  const bundleId = plistStringValue(contents, 'BUNDLE_ID');
+  const googleAppId = plistStringValue(contents, 'GOOGLE_APP_ID');
+
+  const projectMatches =
+    projectId === FIREBASE_PROJECT_ID && senderId === FIREBASE_PROJECT_NUMBER;
+  const bundleMatches = bundleId === PROD_IOS_BUNDLE_ID;
+  const appIdLooksValid = !!googleAppId && googleAppId.startsWith(`1:${FIREBASE_PROJECT_NUMBER}:ios:`);
+
+  if (!projectMatches || !bundleMatches || !appIdLooksValid) {
+    throw new Error(
+      'iOS Firebase client configuration does not match the approved '
+      + 'eduvijna-push project and com.eduvijna.app bundle. '
+      + 'Download the correct iOS app configuration from Firebase.',
+    );
+  }
+}
+
+/**
+ * iOS Firebase client validation must not block Android EAS production/preview builds.
+ * Require the approved plist only for explicit iOS build/export contexts.
+ */
+export function shouldRequireIosFirebaseConfig(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.EDUVIJNA_REQUIRE_IOS_FIREBASE === '1') return true;
+  if (env.EAS_BUILD_PLATFORM === 'ios') return true;
+  // Local/CI `expo export --platform ios` sets EXPO_OS=ios.
+  if (env.EXPO_OS === 'ios') return true;
+  // Never force iOS plist readiness solely because the shared production profile is selected.
+  if (env.EAS_BUILD_PLATFORM === 'android') return false;
+  return false;
+}
+
+/**
+ * Match APNs entitlement to the intended provisioning profile family.
+ * Development clients use development; store/internal release profiles use production.
+ */
+export function resolveApsEnvironment(env: NodeJS.ProcessEnv = process.env): 'development' | 'production' {
+  // Explicit override wins (TestFlight profile sets production).
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'production') {
+    return 'production';
+  }
+  if (env.EDUVIJNA_APS_ENVIRONMENT === 'development') {
+    return 'development';
+  }
+  const profile = (env.EAS_BUILD_PROFILE || '').trim();
+  if (
+    profile === 'development'
+    || profile === 'android-fcm-dev'
+    || profile.endsWith('-dev')
+  ) {
+    return 'development';
+  }
+  // Store / TestFlight / production profiles → production APNs entitlement.
+  return 'production';
 }
 
 /**
@@ -103,13 +208,41 @@ export default (): ExpoConfig => {
 
   const devFirebaseFile = process.env.EDUVIJNA_ANDROID_DEV_GOOGLE_SERVICES_FILE?.trim()
     || DEV_ANDROID_GOOGLE_SERVICES_DEFAULT;
+  const iosFirebaseFile = process.env.EDUVIJNA_IOS_GOOGLE_SERVICES_FILE?.trim()
+    || PROD_IOS_GOOGLE_SERVICES_DEFAULT;
 
   if (isAndroidDevVariant) {
     validateAndroidDevFirebaseConfig(devFirebaseFile);
   }
 
+  validateIosFirebaseConfig(iosFirebaseFile, shouldRequireIosFirebaseConfig(process.env));
+
+  const apsEnvironment = resolveApsEnvironment(process.env);
+
+  // Authoritative iOS marketing version lives in app.json; no stale hardcoded fallbacks.
+  // Advance only via `npm run release:ios:prepare`. Build numbers stay on EAS remote autoIncrement.
+  const iosMarketingVersion = readIosMarketingVersion(appJson);
+  const iosRuntimeVersion = deriveIosRuntimeVersion(iosMarketingVersion);
+
   return {
     ...staticExpo,
+    ios: {
+      ...staticExpo.ios,
+      // Marketing version for TestFlight/App Store (CFBundleShortVersionString).
+      // Keep root expo.version unchanged so Android versionName stays on the existing track.
+      version: iosMarketingVersion,
+      // Isolate OTA from prior iOS trains and from Android runtime 1.0.0.
+      runtimeVersion: iosRuntimeVersion,
+      bundleIdentifier: PROD_IOS_BUNDLE_ID,
+      appleTeamId: staticExpo.ios?.appleTeamId || '847JWGJ2VM',
+      googleServicesFile: iosFirebaseFile,
+      entitlements: {
+        ...(staticExpo.ios?.entitlements ?? {}),
+        'aps-environment': apsEnvironment,
+      },
+    },
+    // Preserve Android OTA compatibility with existing production binaries.
+    runtimeVersion: staticExpo.runtimeVersion || '1.0.0',
     ...(isAndroidDevVariant
       ? {
           name: 'EduVijna Dev',
@@ -138,6 +271,15 @@ export default (): ExpoConfig => {
       ...(isAndroidDevVariant ? { EDUVIJNA_APP_VARIANT: 'development' } : {}),
       GIT_SHA: resolveGitSha(),
       GIT_BRANCH: process.env.EDUVIJNA_GIT_BRANCH || 'unknown',
+      FIREBASE_PROJECT_ID,
+      FIREBASE_PROJECT_NUMBER,
+      IOS_BUNDLE_ID: PROD_IOS_BUNDLE_ID,
+      IOS_APP_VERSION: iosMarketingVersion,
+      IOS_RUNTIME_VERSION: iosRuntimeVersion,
+      ANDROID_RUNTIME_VERSION: staticExpo.runtimeVersion || '1.0.0',
+      APS_ENVIRONMENT: apsEnvironment,
+      IOS_USE_FRAMEWORKS: 'dynamic',
+      RNFB_MESSAGING_TOKEN_STRATEGY: 'ios-firebase-messaging-fcm;android-expo-device-push-token',
     },
   };
 };

@@ -3,6 +3,11 @@
  * Session ID alone is insufficient for graded / completion events.
  */
 
+import {
+  normalizeNotificationPayload,
+  type NotificationPayloadParseOutcome,
+} from './normalizeNotificationPayload';
+
 export type PendingNotificationIntent = {
   type: string;
   sessionId?: string | null;
@@ -14,6 +19,9 @@ export type PendingNotificationIntent = {
   studentName?: string | null;
   /** Expo / FCM request identifier for dedupe while processing. */
   notificationId?: string | null;
+  /** Sanitized parse metadata for diagnostics (no payload values). */
+  parseOutcome?: NotificationPayloadParseOutcome;
+  recognizedKeys?: string[];
 };
 
 export function normalizeNotificationType(raw: unknown): string | null {
@@ -24,6 +32,16 @@ export function normalizeNotificationType(raw: unknown): string | null {
   if (t === 'quiz_completed' || t === 'student_completed' || t === 'quiz_submission') {
     return 'quiz_completed';
   }
+  if (
+    t === 'general' ||
+    t === 'announcement' ||
+    t === 'class_announcement' ||
+    t === 'class_announcements' ||
+    t === 'test' ||
+    t === 'self_test'
+  ) {
+    return 'general';
+  }
   return t;
 }
 
@@ -31,22 +49,39 @@ export function intentFromNotificationData(
   data: Record<string, unknown> | undefined,
   notificationId?: string | null,
 ): PendingNotificationIntent | null {
-  if (!data) return null;
-  const type = normalizeNotificationType(data.type ?? data.event_type);
-  const sessionId = asOptionalString(data.session_id ?? data.sessionId);
-  const quizId = asOptionalString(data.quiz_id ?? data.quizId);
-  if (!type && !sessionId && !quizId) return null;
+  const normalized = normalizeNotificationPayload(data);
+  const flat = normalized.data;
+
+  const type = normalizeNotificationType(flat.type ?? flat.event_type ?? flat.eventType);
+  const sessionId = asOptionalString(flat.session_id ?? flat.sessionId);
+  const quizId = asOptionalString(flat.quiz_id ?? flat.quizId);
+
+  const meta = {
+    parseOutcome: normalized.parseOutcome,
+    recognizedKeys: normalized.recognizedKeys,
+  };
+
+  if (!type && !sessionId && !quizId) {
+    // Self-test / announcement / empty routing → general Notifications destination.
+    // Backend `/send-test` sends only `{ test, self_test }` — never alert incomplete-data.
+    return {
+      type: 'general',
+      notificationId: notificationId ?? null,
+      ...meta,
+    };
+  }
 
   return {
     type: type || (sessionId ? 'quiz_assigned' : 'general'),
     sessionId,
     quizId,
-    studentId: asOptionalString(data.student_id ?? data.studentId),
-    classroomId: asOptionalString(data.classroom_id ?? data.classroomId),
-    attemptId: asOptionalString(data.attempt_id ?? data.attemptId),
-    quizTitle: asOptionalString(data.quiz_title ?? data.quizTitle ?? data.topic),
-    studentName: asOptionalString(data.student_name ?? data.studentName),
+    studentId: asOptionalString(flat.student_id ?? flat.studentId),
+    classroomId: asOptionalString(flat.classroom_id ?? flat.classroomId),
+    attemptId: asOptionalString(flat.attempt_id ?? flat.attemptId),
+    quizTitle: asOptionalString(flat.quiz_title ?? flat.quizTitle ?? flat.topic),
+    studentName: asOptionalString(flat.student_name ?? flat.studentName),
     notificationId: notificationId ?? null,
+    ...meta,
   };
 }
 

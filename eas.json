@@ -32,12 +32,45 @@
     },
     "production": {
       "autoIncrement": true,
+      "environment": "production",
       "env": {
         "EDUVIJNA_API_ENV": "production"
+      }
+    },
+    "ios-fcm-preview": {
+      "extends": "preview",
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1"
+      },
+      "ios": {
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      }
+    },
+    "ios-fcm-testflight": {
+      "extends": "production",
+      "distribution": "store",
+      "autoIncrement": true,
+      "environment": "production",
+      "env": {
+        "EDUVIJNA_API_ENV": "production",
+        "EDUVIJNA_REQUIRE_IOS_FIREBASE": "1",
+        "EDUVIJNA_APS_ENVIRONMENT": "production"
+      },
+      "ios": {
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6807368682"
+      }
+    }
   }
 }

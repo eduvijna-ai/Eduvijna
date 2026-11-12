@@ -6,6 +6,7 @@
 import { CommonActions } from '@react-navigation/native';
 import { navigationRef } from '@core/services/navigationService';
 import { APP_STACK_ROUTES, type AppMainTab } from './appRoutes';
+import { resolvePushRootNavigation } from './pushNotificationRootNavigation';
 
 /** Dispatch via the root NavigationContainer ref → Main → target tab. */
 export function navigateToAppMainTab(tab: AppMainTab): void {
@@ -15,6 +16,18 @@ export function navigateToAppMainTab(tab: AppMainTab): void {
     CommonActions.navigate({
       name: APP_STACK_ROUTES.MAIN,
       params: { screen: tab },
+    }),
+  );
+}
+
+/** Open the Notifications tab (hidden) via nested Main routing. */
+export function navigateToAppNotifications(): void {
+  if (!navigationRef.isReady()) return;
+  const target = resolvePushRootNavigation('Notifications');
+  navigationRef.dispatch(
+    CommonActions.navigate({
+      name: target.name,
+      params: target.params as { screen: string },
     }),
   );
 }

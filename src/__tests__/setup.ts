@@ -36,11 +36,27 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 // ── react-native-safe-area-context ─────────────────────────────────────────
+// Must expose insets/frame contexts — React Navigation SafeAreaProviderCompat
+// calls useContext(SafeAreaInsetsContext) and crashes if the export is missing.
 jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
   const { View } = require('react-native');
+  const insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  const frame = { x: 0, y: 0, width: 390, height: 844 };
+  const SafeAreaInsetsContext = React.createContext(insets);
+  const SafeAreaFrameContext = React.createContext(frame);
   return {
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
-    SafeAreaProvider: ({ children }: any) => children,
+    SafeAreaInsetsContext,
+    SafeAreaFrameContext,
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => frame,
+    initialWindowMetrics: { insets, frame },
+    SafeAreaProvider: ({ children }: any) =>
+      React.createElement(
+        SafeAreaInsetsContext.Provider,
+        { value: insets },
+        React.createElement(SafeAreaFrameContext.Provider, { value: frame }, children),
+      ),
     SafeAreaView: View,
   };
 });
@@ -102,8 +118,44 @@ jest.mock('expo-notifications', () => ({
   addNotificationReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   addPushTokenListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
+  dismissAllNotificationsAsync: jest.fn().mockResolvedValue(undefined),
+  setBadgeCountAsync: jest.fn().mockResolvedValue(undefined),
+  getLastNotificationResponseAsync: jest.fn().mockResolvedValue(null),
   AndroidImportance: { MAX: 5 },
 }));
+
+// ── @react-native-firebase/messaging (iOS FCM registration token path) ────
+const mockFirebaseMessaging = {
+  getToken: jest.fn().mockResolvedValue('ios-fcm-token:APA91bIOSFCMTESTTOKENVALUE'),
+  registerDeviceForRemoteMessages: jest.fn().mockResolvedValue(undefined),
+  isDeviceRegisteredForRemoteMessages: true,
+  onTokenRefresh: jest.fn((listener: (token: string) => void) => {
+    (mockFirebaseMessaging as { __refreshListener?: (token: string) => void }).__refreshListener =
+      listener;
+    return jest.fn();
+  }),
+  onMessage: jest.fn(() => jest.fn()),
+  onNotificationOpenedApp: jest.fn(() => jest.fn()),
+  getInitialNotification: jest.fn().mockResolvedValue(null),
+};
+
+// Mirror RNFB v27 modular exports (no default messaging() export).
+jest.mock('@react-native-firebase/messaging', () => ({
+  __esModule: true,
+  getMessaging: () => mockFirebaseMessaging,
+  getToken: (messaging: typeof mockFirebaseMessaging, ...args: unknown[]) =>
+    messaging.getToken(...(args as [])),
+  registerDeviceForRemoteMessages: (messaging: typeof mockFirebaseMessaging) =>
+    messaging.registerDeviceForRemoteMessages(),
+  isDeviceRegisteredForRemoteMessages: (messaging: typeof mockFirebaseMessaging) =>
+    messaging.isDeviceRegisteredForRemoteMessages,
+  onTokenRefresh: (
+    messaging: typeof mockFirebaseMessaging,
+    listener: (token: string) => void,
+  ) => messaging.onTokenRefresh(listener),
+}));
+
+(global as any).__mockFirebaseMessaging = mockFirebaseMessaging;
 
 // ── @expo/vector-icons ────────────────────────────────────────────────────
 jest.mock('@expo/vector-icons', () => {
