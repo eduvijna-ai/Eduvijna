@@ -50,8 +50,7 @@ export function normalizeStoredPendingNotification(
     classroomId: optionalText(source.classroomId, 128),
     studentId: optionalText(source.studentId, 128),
     attemptId: optionalText(source.attemptId, 64),
-    quizTitle: optionalText(source.quizTitle, 200),
-    studentName: optionalText(source.studentName, 128),
+    // No student names or display text in persistent device storage.
     notificationId: optionalText(source.notificationId, 256),
     eventKey: optionalText(source.eventKey, 256),
   };
