@@ -113,6 +113,16 @@ describe('pendingNotificationIntent', () => {
         navigationReady: true,
         navigationContainerReady: true,
         intent,
+        inFlightKey: 'another-push-event',
+      }),
+    ).toBeNull(); // serialize concurrent taps
+    expect(
+      canProcessPendingNotificationIntent({
+        isAuthenticated: true,
+        hasUser: true,
+        navigationReady: true,
+        navigationContainerReady: true,
+        intent,
         inFlightKey: null,
       }),
     ).toEqual(intent);
