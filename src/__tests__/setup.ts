@@ -36,11 +36,27 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 // ── react-native-safe-area-context ─────────────────────────────────────────
+// Must expose insets/frame contexts — React Navigation SafeAreaProviderCompat
+// calls useContext(SafeAreaInsetsContext) and crashes if the export is missing.
 jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
   const { View } = require('react-native');
+  const insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  const frame = { x: 0, y: 0, width: 390, height: 844 };
+  const SafeAreaInsetsContext = React.createContext(insets);
+  const SafeAreaFrameContext = React.createContext(frame);
   return {
-    useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
-    SafeAreaProvider: ({ children }: any) => children,
+    SafeAreaInsetsContext,
+    SafeAreaFrameContext,
+    useSafeAreaInsets: () => insets,
+    useSafeAreaFrame: () => frame,
+    initialWindowMetrics: { insets, frame },
+    SafeAreaProvider: ({ children }: any) =>
+      React.createElement(
+        SafeAreaInsetsContext.Provider,
+        { value: insets },
+        React.createElement(SafeAreaFrameContext.Provider, { value: frame }, children),
+      ),
     SafeAreaView: View,
   };
 });

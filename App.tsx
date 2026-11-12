@@ -35,6 +35,7 @@ import {
   pendingIntentKey,
   type PendingNotificationIntent,
 } from './src/core/navigation/pendingNotificationIntent';
+import { navigatePushRootDestination } from './src/platforms/mobile/navigation/pushNotificationRootNavigation';
 import {
   clearStoredOpenQuizPending,
   readStoredOpenQuizPending,
@@ -353,9 +354,13 @@ function AppContent() {
         navigationReady: navReady,
         navigation: {
           navigate: (screen, params) => {
-            if (navigationRef.current) {
-              (navigationRef.current as any).navigate(screen, params);
-            }
+            if (!navigationRef.isReady() || !navigationRef.current) return;
+            // Notifications is a Main tab — map nested root route; keep Assessments/results direct.
+            navigatePushRootDestination(
+              (name, p) => (navigationRef.current as any).navigate(name, p),
+              screen,
+              params,
+            );
           },
         },
       });
@@ -568,9 +573,12 @@ function AppContent() {
           navigationReady: true,
           navigation: {
             navigate: (screen, params) => {
-              if (navigationRef.isReady()) {
-                (navigationRef.current as any).navigate(screen, params);
-              }
+              if (!navigationRef.isReady() || !navigationRef.current) return;
+              navigatePushRootDestination(
+                (name, p) => (navigationRef.current as any).navigate(name, p),
+                screen,
+                params,
+              );
             },
           },
         });
