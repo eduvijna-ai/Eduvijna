@@ -222,7 +222,7 @@ export async function handleAppPushNotificationResponse(
   const normalized = normalizeNotificationPayload(data);
   const flatData = normalized.data;
 
-  const intent =
+  const intent: PendingNotificationIntent =
     intentFromNotificationData(flatData, notificationId) ||
     (asString(flatData.session_id ?? flatData.sessionId)
       ? {
