@@ -10,6 +10,8 @@ describe('pendingNotificationIntent', () => {
     expect(normalizeNotificationType('QUIZ_ASSIGNED')).toBe('quiz_assigned');
     expect(normalizeNotificationType('student_completed')).toBe('quiz_completed');
     expect(normalizeNotificationType('quiz_graded')).toBe('quiz_graded');
+    expect(normalizeNotificationType('announcement')).toBe('general');
+    expect(normalizeNotificationType('self_test')).toBe('general');
   });
 
   it('builds intent with assignment + attempt identity', () => {
@@ -33,6 +35,43 @@ describe('pendingNotificationIntent', () => {
       notificationId: 'n-1',
     });
     expect(pendingIntentKey(intent!)).toContain('quiz_completed');
+  });
+
+  it('maps backend self-test payload to general intent', () => {
+    const intent = intentFromNotificationData(
+      { test: 'true', self_test: 'true' },
+      'self-1',
+    );
+    expect(intent).toMatchObject({
+      type: 'general',
+      notificationId: 'self-1',
+    });
+    expect(intent?.recognizedKeys).toEqual(expect.arrayContaining(['test', 'self_test']));
+  });
+
+  it('maps empty / notification-only payload to general intent', () => {
+    expect(intentFromNotificationData(undefined, 'e1')?.type).toBe('general');
+    expect(intentFromNotificationData({}, 'e2')?.type).toBe('general');
+  });
+
+  it('infers quiz_assigned when only session id is present', () => {
+    const intent = intentFromNotificationData({ session_id: 's-only' }, 'n');
+    expect(intent).toMatchObject({ type: 'quiz_assigned', sessionId: 's-only' });
+  });
+
+  it('flattens nested data before building intent', () => {
+    const intent = intentFromNotificationData(
+      {
+        data: { type: 'quiz_graded', quiz_id: '9', studentId: 's1' },
+      },
+      'nested',
+    );
+    expect(intent).toMatchObject({
+      type: 'quiz_graded',
+      quizId: '9',
+      studentId: 's1',
+      parseOutcome: 'nested_data_object',
+    });
   });
 
   it('waits for auth and navigation readiness', () => {
