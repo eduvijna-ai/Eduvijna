@@ -29,11 +29,29 @@ test('predictNextRemoteBuildNumber increments final dotted segment', () => {
 });
 
 test('assertVersionBuildPairUnique rejects known history pairs', () => {
-  assert.throws(
-    () => iosRelease.assertVersionBuildPairUnique('1.0.4', '1.0.12'),
-    /already exists/,
+  const history = require('../../config/iosReleaseHistory.json');
+  const known = history.knownIosReleases || [];
+  assert.ok(known.length > 0, 'expected at least one recorded iOS release');
+
+  // Every genuine history entry must be rejected (do not rewrite history for this gate).
+  for (const entry of known) {
+    assert.throws(
+      () => iosRelease.assertVersionBuildPairUnique(entry.marketing, entry.build),
+      /already exists/,
+    );
+  }
+
+  // Unused synthetic fixture only — not a predicted/hardcoded next EAS build number.
+  // Remote build identity remains obtained during release preparation / EAS autoIncrement.
+  const unusedMarketing = '0.0.0';
+  const unusedBuild = '0.0.0';
+  assert.equal(
+    known.some((e) => e.marketing === unusedMarketing && e.build === unusedBuild),
+    false,
   );
-  assert.doesNotThrow(() => iosRelease.assertVersionBuildPairUnique('1.0.5', '1.0.13'));
+  assert.doesNotThrow(() =>
+    iosRelease.assertVersionBuildPairUnique(unusedMarketing, unusedBuild),
+  );
 });
 
 test('assertMarketingNotDowngraded rejects equal or lower versions', () => {
