@@ -79,8 +79,8 @@ export async function authorizeInstructorCompletionNotification(args: {
     return { kind: 'denied', reason: 'completion_quiz_invalid' };
   }
   try {
-    // Both queries use the authenticated instructor's API access.
-    const inventory = await fetchTeacherClassrooms();
+    // Force-refresh so push authz does not trust a stale classroom roster.
+    const inventory = await fetchTeacherClassrooms({ forceRefresh: true });
     const rows = Array.isArray(inventory.data) ? inventory.data : [];
     const classroom = rows.find((row) => {
       const record = row as unknown as Record<string, unknown>;
@@ -107,18 +107,29 @@ export async function authorizeInstructorCompletionNotification(args: {
 
     const quizzes = await fetchQuizDetails(args.classroomId, numericQuizId);
     const quizRows = Array.isArray(quizzes.data) ? quizzes.data : [];
-    if (!quizRows.some((quiz) => {
+    let sawMatchingQuiz = false;
+    let sawSessionVerified = false;
+    for (const quiz of quizRows) {
       const row = quiz as unknown as Record<string, unknown>;
       const quizId = identifier(row.quiz_id ?? row.id);
       const classId = identifier(row.classroom_id ?? row.class_id);
       const returnedSession = identifier(row.session_id ?? row.sessionId);
-      // When the instructor summary includes a session, it must match the
-      // notification. Do not open a different assignment of the same quiz.
-      return quizId === args.quizId &&
-        (!classId || classId === args.classroomId) &&
-        (!returnedSession || returnedSession === args.sessionId);
-    })) {
+      if (quizId !== args.quizId) continue;
+      if (classId && classId !== args.classroomId) continue;
+      sawMatchingQuiz = true;
+      // Notification session_id is required. Summary rows that omit session
+      // must fail closed — never accept "any assignment of this quiz".
+      if (!returnedSession) continue;
+      if (returnedSession === args.sessionId) {
+        sawSessionVerified = true;
+        break;
+      }
+    }
+    if (!sawMatchingQuiz) {
       return { kind: 'denied', reason: 'completion_quiz_not_in_class' };
+    }
+    if (!sawSessionVerified) {
+      return { kind: 'denied', reason: 'completion_session_unverified' };
     }
     return {
       kind: 'authorized',

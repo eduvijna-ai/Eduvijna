@@ -32,11 +32,11 @@ import {
 } from './src/core/navigation/mobilePendingOpenQuiz';
 import {
   canProcessPendingNotificationIntent,
+  intentToData,
   pendingIntentKey,
   type PendingNotificationIntent,
 } from './src/core/navigation/pendingNotificationIntent';
 import { navigatePushRootDestination } from './src/platforms/mobile/navigation/pushNotificationRootNavigation';
-import { intentToData } from './src/core/navigation/pendingNotificationIntent';
 import {
   readStoredPendingNotification,
   writeStoredPendingNotification,
@@ -131,13 +131,14 @@ function AppContent() {
   // are re-authorized using the current user's backend session on resume.
   const queuePendingNotification = useCallback((intent: PendingNotificationIntent | null) => {
     setPendingNotificationIntent(intent);
-    if (intent) {
-      // Serialize writes so a fast login/resume cannot clear the record before
-      // its original AsyncStorage write completes.
-      pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
-        .catch(() => undefined)
-        .then(() => writeStoredPendingNotification(intent));
-    }
+    // Serialize writes/clears so a fast login/resume cannot race AsyncStorage.
+    pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
+      .catch(() => undefined)
+      .then(() =>
+        intent
+          ? writeStoredPendingNotification(intent)
+          : clearStoredPendingNotification(),
+      );
   }, []);
 
   useEffect(() => {
@@ -586,7 +587,7 @@ function AppContent() {
           './src/core/services/appPushNotificationResponse'
         );
         const resumeId = `resume:${key}`;
-        await handleAppPushNotificationResponse({
+        const result = await handleAppPushNotificationResponse({
           notificationId: resumeId,
           data: intentToData(intent),
           isAuthenticated: true,
@@ -606,11 +607,20 @@ function AppContent() {
             },
           },
         });
-        setPendingNotificationIntent((current) =>
-          current && pendingIntentKey(current) === key ? null : current,
-        );
-        await pendingNotificationWriteRef.current.catch(() => undefined);
-        await clearStoredPendingNotification(key);
+        // Only terminal outcomes clear durable pending. Retryable soft failures
+        // keep AsyncStorage so a later tap / cold start can re-authorize.
+        if (result.outcome === 'navigated' || result.outcome === 'denied') {
+          setPendingNotificationIntent((current) =>
+            current && pendingIntentKey(current) === key ? null : current,
+          );
+          await pendingNotificationWriteRef.current.catch(() => undefined);
+          await clearStoredPendingNotification(key);
+        } else if (result.outcome === 'retryable' || result.outcome === 'ignored') {
+          // Stop the resume loop for this process while preserving storage.
+          setPendingNotificationIntent((current) =>
+            current && pendingIntentKey(current) === key ? null : current,
+          );
+        }
       } catch (error) {
         console.error('❌ Pending notification intent resume failed:', error);
         setPendingNotificationIntent((current) => current ?? intent);

@@ -33,7 +33,7 @@ describe('assessment notification authorization gates', () => {
       ],
     } as any);
     mockQuiz.mockResolvedValue({
-      data: [{quiz_id: 9, classroom_id:'c1'}],
+      data: [{quiz_id: 9, classroom_id:'c1', session_id: 'sess-9'}],
     } as any);
   });
 
@@ -70,7 +70,7 @@ describe('assessment notification authorization gates', () => {
     expect(await authorizeInstructorCompletionNotification({
       classroomId:'c1',quizId:'9',studentId:'s1',sessionId:'sess-9',
     })).toEqual({kind:'authorized',quizId:'9',sessionId:'sess-9',classroomId:'c1'});
-    expect(mockClasses).toHaveBeenCalledTimes(1);
+    expect(mockClasses).toHaveBeenCalledWith({ forceRefresh: true });
     expect(mockQuiz).toHaveBeenCalledWith('c1',9);
   });
 
@@ -85,10 +85,28 @@ describe('assessment notification authorization gates', () => {
     expect(await authorizeInstructorCompletionNotification({
       classroomId:'c1',quizId:'9',studentId:'s3',sessionId:'sess-9',
     })).toMatchObject({kind:'denied',reason:'completion_student_not_in_class'});
-    mockQuiz.mockResolvedValueOnce({data: [{quiz_id: 99, classroom_id:'c1'}]} as any);
+    mockQuiz.mockResolvedValueOnce({data: [{quiz_id: 99, classroom_id:'c1', session_id: 'sess-9'}]} as any);
     expect(await authorizeInstructorCompletionNotification({
       classroomId:'c1',quizId:'9',studentId:'s1',sessionId:'sess-9',
     })).toMatchObject({kind:'denied',reason:'completion_quiz_not_in_class'});
+  });
+
+  it('fails closed when instructor summary omits session identity', async () => {
+    mockQuiz.mockResolvedValueOnce({
+      data: [{quiz_id: 9, classroom_id: 'c1'}],
+    } as any);
+    expect(await authorizeInstructorCompletionNotification({
+      classroomId:'c1',quizId:'9',studentId:'s1',sessionId:'sess-9',
+    })).toMatchObject({kind:'denied',reason:'completion_session_unverified'});
+  });
+
+  it('rejects a different assignment session of the same quiz', async () => {
+    mockQuiz.mockResolvedValueOnce({
+      data: [{quiz_id: 9, classroom_id: 'c1', session_id: 'sess-other'}],
+    } as any);
+    expect(await authorizeInstructorCompletionNotification({
+      classroomId:'c1',quizId:'9',studentId:'s1',sessionId:'sess-9',
+    })).toMatchObject({kind:'denied',reason:'completion_session_unverified'});
   });
 
   it('fails closed on instructor API failure', async () => {

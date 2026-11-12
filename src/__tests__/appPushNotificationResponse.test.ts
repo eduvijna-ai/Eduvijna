@@ -159,7 +159,7 @@ describe('handleAppPushNotificationResponse', () => {
       expect.objectContaining({
         quizId: '9',
         studentId: 'student-1',
-        attemptId: '77',
+        attemptId: 77,
         isTeacherView: true,
       }),
     );
@@ -524,6 +524,53 @@ describe('handleAppPushNotificationResponse', () => {
       });
     }
     expect(mockOpenQuiz).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not consume event_key on retryable assignment lookup failures', async () => {
+    mockAssignedAccess.mockResolvedValueOnce({
+      kind: 'denied',
+      reason: 'assignment_lookup_unavailable',
+    });
+    const first = await handleAppPushNotificationResponse({
+      notificationId: 'soft-fail-1',
+      data: {
+        type: 'quiz_assigned',
+        session_id: 'sess-1',
+        event_key: 'quiz_assigned:9:c1:s1',
+      },
+      isAuthenticated: true,
+      user: { id: 'student-1', role: 'student' },
+      processedIds: processed,
+      navigation,
+      setPendingSessionId: jest.fn(),
+    });
+    expect(first.outcome).toBe('retryable');
+    expect(processed.has('event:quiz_assigned:9:c1:s1')).toBe(false);
+    expect(mockOpenQuiz).not.toHaveBeenCalled();
+
+    mockAssignedAccess.mockResolvedValueOnce({
+      kind: 'authorized',
+      quizId: '9',
+      sessionId: 'sess-1',
+      classroomId: 'c1',
+    });
+    mockOpenQuiz.mockResolvedValue(undefined as any);
+    const second = await handleAppPushNotificationResponse({
+      notificationId: 'soft-fail-retry',
+      data: {
+        type: 'quiz_assigned',
+        session_id: 'sess-1',
+        event_key: 'quiz_assigned:9:c1:s1',
+      },
+      isAuthenticated: true,
+      user: { id: 'student-1', role: 'student' },
+      processedIds: processed,
+      navigation,
+      setPendingSessionId: jest.fn(),
+    });
+    expect(second.outcome).toBe('navigated');
+    expect(mockOpenQuiz).toHaveBeenCalledTimes(1);
+    expect(processed.has('event:quiz_assigned:9:c1:s1')).toBe(true);
   });
 
   it('does not interpret unknown event types with session ids as assigned quizzes', async () => {
