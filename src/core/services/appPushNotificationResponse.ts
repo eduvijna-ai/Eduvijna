@@ -242,7 +242,11 @@ export async function handleAppPushNotificationResponse(
   // FCM identifiers vary across devices, but backend event_key is stable.
   const stableEventKey = intent.eventKey ? `event:${intent.eventKey}` : null;
   if (stableEventKey && processedIds.has(stableEventKey)) return;
-  if (stableEventKey) processedIds.add(stableEventKey);
+  // Do NOT consume the event key while waiting for login/navigation. The
+  // persisted resume carries the same backend key and must still execute.
+  if (stableEventKey && isAuthenticated && navigationReady) {
+    processedIds.add(stableEventKey);
+  }
 
   // Ordinary general / self-test / announcement — never show incomplete-data alert.
   if (type === 'general') {
