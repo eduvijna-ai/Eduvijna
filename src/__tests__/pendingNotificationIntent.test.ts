@@ -74,6 +74,17 @@ describe('pendingNotificationIntent', () => {
     });
   });
 
+  it('uses backend event_key rather than device notification id for stable dedupe', () => {
+    const a = intentFromNotificationData({
+      type:'quiz_completed',quiz_id:'9',event_key:'quiz_completed:9:s1:1',
+    },'ios-a');
+    const b = intentFromNotificationData({
+      type:'quiz_completed',quiz_id:'9',event_key:'quiz_completed:9:s1:1',
+    },'ios-b');
+    expect(a?.eventKey).toBe('quiz_completed:9:s1:1');
+    expect(pendingIntentKey(a!)).toEqual(pendingIntentKey(b!));
+  });
+
   it('waits for auth and navigation readiness', () => {
     const intent = intentFromNotificationData({ type: 'quiz_assigned', session_id: 's' }, 'n');
     expect(
