@@ -14,12 +14,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  View,
+  useWindowDimensions,
   type NativeSyntheticEvent,
   type TextInput as TextInputType,
   type TextInputChangeEventData,
   type TextInputEndEditingEventData,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { useAuth } from '@core/hooks/useAuth';
 import { useTheme } from '@context/ThemeContext';
 import { logError } from '@core/services/errorLogger';
@@ -29,6 +32,11 @@ import {
   recordLoginDiagnostic,
   resetLoginDiagnostics,
 } from '../loginDiagnostics';
+
+const HEADER_TEAL = '#D6E8EC';
+const NOTEBOOK_LINE = '#B7D0D6';
+const MOTIF_STROKE = '#7FA8B2';
+const FORM_LABEL = '#1B4F5C';
 
 function syncFieldFromNative(
   nativeText: string | undefined,
@@ -42,10 +50,96 @@ function syncFieldFromNative(
   return next;
 }
 
+function LoginHeaderArtwork({ width, height }: { width: number; height: number }) {
+  const lineGap = Math.max(18, Math.round(height / 5));
+  const lines = [];
+  for (let y = lineGap; y < height - 8; y += lineGap) {
+    lines.push(
+      <Line
+        key={`nb-${y}`}
+        x1={16}
+        y1={y}
+        x2={width - 16}
+        y2={y}
+        stroke={NOTEBOOK_LINE}
+        strokeWidth={1}
+        opacity={0.55}
+      />,
+    );
+  }
+
+  return (
+    <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+      <Rect x={0} y={0} width={width} height={height} fill={HEADER_TEAL} />
+      {lines}
+      {/* Left margin rule */}
+      <Line
+        x1={28}
+        y1={10}
+        x2={28}
+        y2={height - 10}
+        stroke="#E8A0A0"
+        strokeWidth={1.25}
+        opacity={0.45}
+      />
+      {/* Pencil motif — lower left */}
+      <Path
+        d={`M ${18} ${height - 28} L ${38} ${height - 48} L ${44} ${height - 42} L ${24} ${height - 22} Z`}
+        fill="#C4A35A"
+        opacity={0.55}
+      />
+      <Path
+        d={`M ${38} ${height - 48} L ${46} ${height - 56} L ${52} ${height - 50} L ${44} ${height - 42} Z`}
+        fill="#E8D5A3"
+        opacity={0.7}
+      />
+      {/* Geometry motif — upper right compass arc */}
+      <Circle
+        cx={width - 36}
+        cy={36}
+        r={22}
+        stroke={MOTIF_STROKE}
+        strokeWidth={1.25}
+        fill="none"
+        opacity={0.45}
+      />
+      <Line
+        x1={width - 36}
+        y1={36}
+        x2={width - 18}
+        y2={22}
+        stroke={MOTIF_STROKE}
+        strokeWidth={1.25}
+        opacity={0.5}
+      />
+      <Circle cx={width - 36} cy={36} r={2.5} fill={MOTIF_STROKE} opacity={0.55} />
+      <Line
+        x1={width - 58}
+        y1={58}
+        x2={width - 20}
+        y2={58}
+        stroke={MOTIF_STROKE}
+        strokeWidth={1}
+        opacity={0.35}
+      />
+      <Line
+        x1={width - 58}
+        y1={58}
+        x2={width - 58}
+        y2={20}
+        stroke={MOTIF_STROKE}
+        strokeWidth={1}
+        opacity={0.35}
+      />
+    </Svg>
+  );
+}
+
 export default function Login() {
   const { login, isLoggingIn, error, clearError, isAuthenticated } = useAuth();
   const { theme } = useTheme();
   const colors = theme.colors;
+  const { width: windowWidth, fontScale } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginFormKey, setLoginFormKey] = useState(0);
@@ -53,6 +147,10 @@ export default function Login() {
   const passwordInputRef = useRef<TextInputType>(null);
   const emailValueRef = useRef('');
   const passwordValueRef = useRef('');
+
+  const compactHeader = fontScale > 1.15 || windowWidth < 360;
+  const headerHeight = compactHeader ? 132 : 168;
+  const logoSize = compactHeader ? 88 : 112;
 
   React.useEffect(() => {
     resetLoginDiagnostics();
@@ -133,87 +231,125 @@ export default function Login() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: '#FFFFFF' }]} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
-          contentContainerStyle={styles.container}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          <Image source={require('../../../../assets/eduvijna.png')} style={styles.logo} />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={[styles.header, { height: headerHeight }]}>
+            <LoginHeaderArtwork width={windowWidth} height={headerHeight} />
+            <Image
+              source={require('../../../../assets/eduvijna_stacked_transparent.png')}
+              style={[styles.headerLogo, { width: logoSize, height: logoSize }]}
+              resizeMode="contain"
+              accessibilityRole="image"
+              accessibilityLabel="EduVijna"
+            />
+          </View>
 
-          <TextInput
-            ref={emailInputRef}
-            testID="login-email-input"
-            accessibilityLabel="Email or Username"
-            placeholder="Email or Username"
-            placeholderTextColor={colors.textSecondary}
-            style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
-            key={`login-email-${loginFormKey}`}
-            value={email}
-            onChangeText={applyEmail}
-            onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
-              applyEmail(e.nativeEvent.text)
-            }
-            onFocus={() =>
-              recordLoginDiagnostic({ type: 'focus', field: 'email', at: new Date().toISOString() })
-            }
-            onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
-              syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="username"
-            editable={!isLoggingIn}
-          />
+          <View style={styles.formCard}>
+            <Text style={[styles.heading, { color: colors.primary }]}>Sign in</Text>
 
-          <TextInput
-            ref={passwordInputRef}
-            testID="login-password-input"
-            accessibilityLabel="Password"
-            placeholder="Password"
-            placeholderTextColor={colors.textSecondary}
-            secureTextEntry
-            style={[styles.input, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]}
-            key={`login-password-${loginFormKey}`}
-            {...(Platform.OS === 'android'
-              ? { defaultValue: '' }
-              : { value: password })}
-            onChangeText={applyPassword}
-            onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
-              applyPassword(e.nativeEvent.text)
-            }
-            onFocus={() =>
-              recordLoginDiagnostic({ type: 'focus', field: 'password', at: new Date().toISOString() })
-            }
-            onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
-              syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
-            }}
-            autoCapitalize="none"
-            textContentType="password"
-            editable={!isLoggingIn}
-            onSubmitEditing={handleSignInPress}
-            returnKeyType="go"
-          />
+            {error ? (
+              <Text style={styles.error} accessibilityLiveRegion="polite">
+                {error}
+              </Text>
+            ) : null}
 
-          <TouchableOpacity
-            testID="login-submit-button"
-            accessibilityLabel="Sign in"
-            style={[styles.button, { backgroundColor: colors.primary }, isLoggingIn && styles.buttonDisabled]}
-            onPress={handleSignInPress}
-            disabled={isLoggingIn}
-          >
-            {isLoggingIn ? (
-              <LoadingSpinner size={24} />
-            ) : (
-              <Text style={styles.buttonText}>Sign in</Text>
-            )}
-          </TouchableOpacity>
+            <Text style={styles.label}>Email or username</Text>
+            <TextInput
+              ref={emailInputRef}
+              testID="login-email-input"
+              accessibilityLabel="Email or Username"
+              placeholder="Email or username"
+              placeholderTextColor={colors.textSecondary}
+              style={[
+                styles.input,
+                { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text },
+              ]}
+              key={`login-email-${loginFormKey}`}
+              value={email}
+              onChangeText={applyEmail}
+              onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
+                applyEmail(e.nativeEvent.text)
+              }
+              onFocus={() =>
+                recordLoginDiagnostic({ type: 'focus', field: 'email', at: new Date().toISOString() })
+              }
+              onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
+                syncFieldFromNative(e.nativeEvent.text, email, applyEmail);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="username"
+              autoComplete="username"
+              editable={!isLoggingIn}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
+            />
+
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              ref={passwordInputRef}
+              testID="login-password-input"
+              accessibilityLabel="Password"
+              placeholder="Password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+              style={[
+                styles.input,
+                { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text },
+              ]}
+              key={`login-password-${loginFormKey}`}
+              {...(Platform.OS === 'android' ? { defaultValue: '' } : { value: password })}
+              onChangeText={applyPassword}
+              onChange={(e: NativeSyntheticEvent<TextInputChangeEventData>) =>
+                applyPassword(e.nativeEvent.text)
+              }
+              onFocus={() =>
+                recordLoginDiagnostic({
+                  type: 'focus',
+                  field: 'password',
+                  at: new Date().toISOString(),
+                })
+              }
+              onEndEditing={(e: NativeSyntheticEvent<TextInputEndEditingEventData>) => {
+                syncFieldFromNative(e.nativeEvent.text, password, applyPassword);
+              }}
+              autoCapitalize="none"
+              textContentType="password"
+              autoComplete="password"
+              editable={!isLoggingIn}
+              onSubmitEditing={handleSignInPress}
+              returnKeyType="go"
+            />
+
+            <TouchableOpacity
+              testID="login-submit-button"
+              accessibilityLabel="Sign in"
+              style={[
+                styles.button,
+                { backgroundColor: colors.primary },
+                isLoggingIn && styles.buttonDisabled,
+              ]}
+              onPress={handleSignInPress}
+              disabled={isLoggingIn}
+            >
+              {isLoggingIn ? (
+                <LoadingSpinner size={24} />
+              ) : (
+                <Text style={styles.buttonText}>Sign in</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -223,35 +359,55 @@ export default function Login() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
-  container: {
+  scrollContent: {
     flexGrow: 1,
+  },
+  header: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    overflow: 'hidden',
   },
-  logo: {
-    width: 150,
-    height: 120,
-    marginBottom: 12,
+  headerLogo: {
+    zIndex: 1,
+  },
+  formCard: {
+    flexGrow: 1,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+  },
+  heading: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  label: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '600',
+    color: FORM_LABEL,
+    marginBottom: 6,
   },
   input: {
     width: '100%',
     padding: 12,
-    marginBottom: 8,
+    marginBottom: 14,
     borderWidth: 1,
     borderRadius: 8,
   },
   error: {
     color: '#DC2626',
-    marginBottom: 8,
-    textAlign: 'center',
+    marginBottom: 12,
+    textAlign: 'left',
   },
   button: {
     width: '100%',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
   buttonText: {
     color: '#FFFFFF',
