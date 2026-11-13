@@ -30,6 +30,7 @@ import {
   raceWithBoundedWait,
   recoverableStartupMessage,
 } from './authLifecycle';
+import { parseMySchoolResponse } from '../utils/schoolBranding';
 
 /** Extract school_id from any user profile shape with multi-field fallbacks */
 function extractSchoolId(user: UserProfile | null): number | null {
@@ -80,24 +81,15 @@ async function enrichUserWithSchoolName(user: UserProfile): Promise<UserProfile>
   if (isSuperAdminUser(user)) return user;
   try {
     const resp = await get<any>('/api/v1/school-management/my-school');
-    const apiSchoolName =
-      (typeof resp?.school_name === 'string' && resp.school_name) ||
-      (typeof resp?.name === 'string' && resp.name) ||
-      (typeof resp?.data?.school_name === 'string' && resp.data.school_name) ||
-      (typeof resp?.data?.name === 'string' && resp.data.name) ||
-      '';
-
-    const apiSchoolId: number | undefined =
-      typeof resp?.school_id === 'number'
-        ? resp.school_id
-        : typeof resp?.data?.school_id === 'number'
-          ? resp.data.school_id
-          : undefined;
+    const record = parseMySchoolResponse(resp);
 
     const nextUser = {
       ...(user as any),
-      ...(apiSchoolName ? { school: apiSchoolName, school_name: apiSchoolName } : {}),
-      ...(apiSchoolId ? { school_id: apiSchoolId } : {}),
+      ...(record.school_name ? { school: record.school_name, school_name: record.school_name } : {}),
+      ...(record.school_id ? { school_id: record.school_id } : {}),
+      ...(record.logo_url
+        ? { logo_url: record.logo_url, school_logo_url: record.logo_url }
+        : { logo_url: null, school_logo_url: null }),
     } as UserProfile;
 
     return nextUser;

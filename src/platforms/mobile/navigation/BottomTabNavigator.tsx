@@ -12,26 +12,13 @@ import { useNavigation } from '@react-navigation/native';
 import { navigateToAppMainTab } from './navigateToAppMainTab';
 import { APP_MAIN_TABS } from './appRoutes';
 import { useAuth } from '@core/hooks/useAuth';
-import { get } from '@core/api/config';
+import { useSchoolHeaderBranding } from '@core/hooks/useSchoolHeaderBranding';
 import { useTheme } from '@context/ThemeContext';
 import { AppSideNavMenuButton } from '@context/AppSideNavContext';
 import CreateAssessmentModal from '../../../components/CreateAssessmentModal';
 import PushNotificationPrompt from '../../../components/PushNotificationPrompt';
 import NotificationHandler from '../../../components/NotificationHandler';
 import PushNotificationService from '@core/services/PushNotificationService';
-
-type UserWithSchoolFields = {
-  school_name?: string;
-  schoolName?: string;
-  school?: string | { name?: string; school_name?: string };
-  profile?: {
-    school_name?: string;
-    schoolName?: string;
-    school?: string | { name?: string; school_name?: string };
-  };
-  role_id?: number;
-  role?: string;
-};
 
 import AssessmentsScreen from '@screens/Assessments';
 import ERPNavigator from '../../../erp/navigation/ERPNavigator';
@@ -94,77 +81,18 @@ function RoleAssessments({ navigation, route }: any) {
 // Custom Header Component
 function CustomHeader() {
   const navigation = useNavigation<any>();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { theme, isDark } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [fetchedSchoolName, setFetchedSchoolName] = useState('');
   const insets = useSafeAreaInsets();
+  const { schoolName, logoUri, onLogoError } = useSchoolHeaderBranding({
+    user,
+    isAuthenticated,
+  });
 
-  const schoolNameFromProfile = (() => {
-    const profileUser = user as UserWithSchoolFields | null | undefined;
-    const schoolObj =
-      profileUser?.school && typeof profileUser.school === 'object' ? profileUser.school : undefined;
-    const profileSchoolObj =
-      profileUser?.profile?.school && typeof profileUser.profile.school === 'object'
-        ? profileUser.profile.school
-        : undefined;
-    const candidates = [
-      profileUser?.school_name,
-      profileUser?.schoolName,
-      typeof profileUser?.school === 'string' ? profileUser.school : undefined,
-      schoolObj?.name,
-      schoolObj?.school_name,
-      profileUser?.profile?.school_name,
-      profileUser?.profile?.schoolName,
-      profileSchoolObj?.name,
-      profileSchoolObj?.school_name,
-    ];
-
-    return (
-      candidates.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim() ||
-      ''
-    );
-  })();
-
-  // Only platform-wide super admins (role_id 1 / super_admin) are school-less.
-  // A school-level admin (role 'admin', role_id 2) belongs to one school, so we
-  // must still resolve its name via the /my-school API even when the user
-  // payload doesn't directly carry a school_id.
-  const isSuperAdmin =
-    (user as any)?.role_id === 1 ||
-    (user as any)?.role_name === 'super_admin' ||
-    ((user as any)?.role === 'super_admin');
-
-  useEffect(() => {
-    let isActive = true;
-
-    // Use API as primary source for non-super-admin users.
-    if (!isSuperAdmin) {
-      get<any>('/api/v1/school-management/my-school')
-        .then((resp) => {
-          if (!isActive) return;
-          const apiName =
-            (typeof resp?.school_name === 'string' && resp.school_name) ||
-            (typeof resp?.name === 'string' && resp.name) ||
-            (typeof resp?.data?.school_name === 'string' && resp.data.school_name) ||
-            (typeof resp?.data?.name === 'string' && resp.data.name) ||
-            '';
-          setFetchedSchoolName(apiName);
-        })
-        .catch(() => {
-          if (!isActive) return;
-          setFetchedSchoolName('');
-        });
-    } else {
-      setFetchedSchoolName('');
-    }
-
-    return () => {
-      isActive = false;
-    };
-  }, [isSuperAdmin]);
-
-  const schoolName = fetchedSchoolName || schoolNameFromProfile;
+  const fallbackLogo = isDark
+    ? require('../../../../assets/eduvijna_logo_sidebar_white.png')
+    : require('../../../../assets/eduvijna_logo_sidebar.png');
 
   return (
     <>
@@ -177,16 +105,25 @@ function CustomHeader() {
             onPress={() => navigateToAppMainTab(APP_MAIN_TABS.DASHBOARD)}
             accessibilityRole="button"
             accessibilityLabel="Go to main dashboard"
+            testID="header-brand-logo"
           >
-            <Image
-              source={
-                isDark
-                  ? require('../../../../assets/eduvijna_logo_sidebar_white.png')
-                  : require('../../../../assets/eduvijna_logo_sidebar.png')
-              }
-              style={styles.logo}
-              resizeMode="contain"
-            />
+            {logoUri ? (
+              <Image
+                key={logoUri}
+                source={{ uri: logoUri }}
+                style={styles.logo}
+                resizeMode="contain"
+                onError={onLogoError}
+                accessibilityLabel={schoolName ? `${schoolName} logo` : 'School logo'}
+              />
+            ) : (
+              <Image
+                source={fallbackLogo}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityLabel="EduVijna"
+              />
+            )}
           </TouchableOpacity>
 
           {!!schoolName && (
