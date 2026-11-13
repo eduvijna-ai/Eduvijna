@@ -1,9 +1,9 @@
 import { Alert, Platform } from 'react-native';
-import { buildQuizGradedResultsNavigationParams } from './notificationNavigation';
 import { executeStudentAssignedQuizViewResults } from './assessmentQuizStart.service';
 import { resolveStudentGradedAssignmentSession } from './gradedNotificationRouting.service';
 import { handleOpenQuiz } from './openQuizHandler';
 import { isAssignedQuizRecoveryProbeError } from './assignedQuizRecovery.service';
+import { authorizeInstructorCompletionNotification, authorizeStudentAssignedNotification } from './assessmentNotificationAccess';
 import { normalizeNotificationPayload } from '../navigation/normalizeNotificationPayload';
 import {
   intentFromNotificationData,
@@ -35,10 +35,39 @@ export type HandleAppPushNotificationResponseArgs = {
   navigationReady?: boolean;
 };
 
+/**
+ * Terminal outcomes clear durable pending intents.
+ * `retryable` keeps storage so a later tap / cold start can retry.
+ */
+export type AppPushHandleOutcome =
+  | 'navigated'
+  | 'queued'
+  | 'denied'
+  | 'ignored'
+  | 'retryable';
+
+export type AppPushHandleResult = {
+  outcome: AppPushHandleOutcome;
+};
+
 function asString(value: unknown): string | null {
-  if (typeof value === 'string' && value.trim()) return value.trim();
+  // Align with payload scrubbing: backend may stringify Python None as "None".
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || ['none', 'null', 'undefined'].includes(trimmed.toLowerCase())) {
+      return null;
+    }
+    return trimmed;
+  }
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return null;
+}
+
+function asOptionalAttemptId(value: unknown): number | undefined {
+  const raw = asString(value);
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 }
 
 function isInstructorLike(user: AppPushNotificationUser): boolean {
@@ -52,6 +81,10 @@ function isInstructorLike(user: AppPushNotificationUser): boolean {
   );
 }
 
+function isRetryableAccessReason(reason: string | undefined): boolean {
+  return !!reason && reason.endsWith('_lookup_unavailable');
+}
+
 function queuePending(
   args: HandleAppPushNotificationResponseArgs,
   intent: PendingNotificationIntent,
@@ -61,6 +94,15 @@ function queuePending(
   } else if (intent.sessionId) {
     args.setPendingSessionId(intent.sessionId);
   }
+}
+
+function markTerminalProcessed(
+  processedIds: Set<string>,
+  notificationId: string,
+  stableEventKey: string | null,
+): void {
+  processedIds.add(notificationId);
+  if (stableEventKey) processedIds.add(stableEventKey);
 }
 
 /** Structured, non-sensitive routing diagnostics only. */
@@ -88,128 +130,106 @@ function logNotificationRoutingDiag(info: {
 async function openStudentGradedResults(
   args: HandleAppPushNotificationResponseArgs,
   data: Record<string, unknown>,
-): Promise<void> {
+): Promise<AppPushHandleResult> {
   const { navigation, user } = args;
-  const quizId = data.quiz_id ?? data.quizId;
-  const sessionId = asString(data.session_id ?? data.sessionId);
-  const studentId = asString(data.student_id ?? data.studentId) ?? asString(user?.id);
-  const quizTitle = asString(data.quiz_title ?? data.quizTitle);
+  const studentId = asString(user?.id);
+  const quizId = asString(data.quiz_id ?? data.quizId);
+  const targetedStudentId = asString(data.student_id ?? data.studentId);
 
-  let resolvedSessionId = sessionId;
-  let classroomId = asString(data.classroom_id ?? data.classroomId);
-
-  if (!resolvedSessionId && quizId != null && studentId) {
-    const resolution = await resolveStudentGradedAssignmentSession(String(studentId), quizId);
-    if (resolution.kind === 'ambiguous') {
-      logNotificationRoutingDiag({
-        eventType: 'quiz_graded',
-        recognizedKeys: Object.keys(data),
-        parseOutcome: 'flat',
-        routingDecision: 'Assessments',
-        fallbackReason: 'graded_assignment_ambiguous',
-        navigationReady: true,
-        authenticated: true,
-      });
-      navigation.navigate('Assessments');
-      return;
-    }
-    if (resolution.kind === 'resolved') {
-      resolvedSessionId = resolution.sessionId;
-      classroomId = resolution.classroomId;
-    }
+  if (
+    !studentId || !quizId ||
+    String(user?.role ?? '').toLowerCase() !== 'student' ||
+    (targetedStudentId && targetedStudentId !== studentId)
+  ) {
+    navigation.navigate('Assessments');
+    return { outcome: 'denied' };
   }
-
-  const resultParams = buildQuizGradedResultsNavigationParams({
-    quiz_id: quizId,
-    session_id: resolvedSessionId,
-    student_id: studentId,
-    quiz_title: quizTitle,
-  });
-
-  if (!resultParams || !resolvedSessionId || quizId == null || !studentId) {
+  const resolution = await resolveStudentGradedAssignmentSession(
+    studentId, quizId, {
+      sessionId: asString(data.session_id ?? data.sessionId),
+      classroomId: asString(data.classroom_id ?? data.classroomId),
+    },
+  );
+  if (resolution.kind !== 'resolved') {
     logNotificationRoutingDiag({
       eventType: 'quiz_graded',
       recognizedKeys: Object.keys(data),
       parseOutcome: 'flat',
       routingDecision: 'Assessments',
-      fallbackReason: 'graded_missing_routing_identifiers',
+      fallbackReason: resolution.kind === 'ambiguous'
+        ? 'graded_assignment_ambiguous' : 'graded_assignment_not_verified',
       navigationReady: true,
       authenticated: true,
     });
     navigation.navigate('Assessments');
-    return;
+    return { outcome: 'denied' };
   }
-
-  const effectiveClassroomId = classroomId || asString(data.classroom_id ?? data.classroomId);
-  if (!effectiveClassroomId) {
-    logNotificationRoutingDiag({
-      eventType: 'quiz_graded',
-      recognizedKeys: Object.keys(data),
-      parseOutcome: 'flat',
-      routingDecision: 'Assessments',
-      fallbackReason: 'graded_missing_classroom_id',
-      navigationReady: true,
-      authenticated: true,
-    });
-    navigation.navigate('Assessments');
-    return;
-  }
-
   await executeStudentAssignedQuizViewResults(
     {
-      studentId: String(studentId),
+      studentId,
       quizId,
-      sessionId: String(resolvedSessionId),
-      classroomId: String(effectiveClassroomId),
-      quizName: typeof resultParams.quizName === 'string' ? resultParams.quizName : quizTitle,
+      sessionId: resolution.sessionId,
+      classroomId: resolution.classroomId,
+      quizName: asString(data.quiz_title ?? data.quizTitle) ?? undefined,
     },
     { navigation },
   );
+  return { outcome: 'navigated' };
 }
 
-function openInstructorStudentResult(
+async function openInstructorStudentResult(
   args: HandleAppPushNotificationResponseArgs,
   data: Record<string, unknown>,
-): void {
+): Promise<AppPushHandleResult> {
   const quizId = asString(data.quiz_id ?? data.quizId);
   const studentId = asString(data.student_id ?? data.studentId);
   const sessionId = asString(data.session_id ?? data.sessionId);
   const classroomId = asString(data.classroom_id ?? data.classroomId);
-  const attemptId = asString(data.attempt_id ?? data.attemptId);
-  const quizTitle = asString(data.quiz_title ?? data.quizTitle);
-  const studentName = asString(data.student_name ?? data.studentName);
-
-  if (!quizId || !studentId) {
+  if (!quizId || !studentId || !sessionId || !classroomId) {
+    args.navigation.navigate('Assessments');
+    return { outcome: 'denied' };
+  }
+  const access = await authorizeInstructorCompletionNotification({
+    quizId, studentId, sessionId, classroomId,
+  });
+  if (access.kind !== 'authorized') {
     logNotificationRoutingDiag({
-      eventType: asString(data.type),
+      eventType: 'quiz_completed',
       recognizedKeys: Object.keys(data),
       parseOutcome: 'flat',
-      routingDecision: 'Assessments',
-      fallbackReason: 'instructor_result_missing_quiz_or_student',
+      routingDecision: isRetryableAccessReason(access.reason) ? 'retryable' : 'Assessments',
+      fallbackReason: access.reason,
       navigationReady: true,
       authenticated: true,
     });
+    if (isRetryableAccessReason(access.reason)) {
+      Alert.alert(
+        'Could not open notification',
+        'Assessment details are temporarily unavailable. Please try again shortly.',
+      );
+      return { outcome: 'retryable' };
+    }
     args.navigation.navigate('Assessments');
-    return;
+    return { outcome: 'denied' };
   }
-
   args.navigation.navigate('QuizResultsScreen', {
-    quizId,
-    sessionId: sessionId ?? undefined,
-    classroomId: classroomId ?? undefined,
+    quizId: access.quizId,
+    sessionId: access.sessionId,
+    classroomId: access.classroomId,
     studentId,
-    studentName: studentName ?? undefined,
-    attemptId: attemptId ?? undefined,
-    quizName: quizTitle ?? undefined,
+    studentName: asString(data.student_name ?? data.studentName) ?? undefined,
+    attemptId: asOptionalAttemptId(data.attempt_id ?? data.attemptId),
+    quizName: asString(data.quiz_title ?? data.quizTitle) ?? undefined,
     isTeacherView: true,
   });
+  return { outcome: 'navigated' };
 }
 
 function openGeneralNotifications(
   args: HandleAppPushNotificationResponseArgs,
   intent: PendingNotificationIntent,
   fallbackReason: string,
-): void {
+): AppPushHandleResult {
   const navigationReady = args.navigationReady !== false;
   logNotificationRoutingDiag({
     eventType: intent.type,
@@ -225,16 +245,17 @@ function openGeneralNotifications(
   if (!args.isAuthenticated || !navigationReady) {
     queuePending(args, { ...intent, type: 'general' });
     args.processedIds.add(args.notificationId);
-    return;
+    return { outcome: 'queued' };
   }
 
   args.processedIds.add(args.notificationId);
   args.navigation.navigate('Notifications');
+  return { outcome: 'navigated' };
 }
 
 export async function handleAppPushNotificationResponse(
   args: HandleAppPushNotificationResponseArgs,
-): Promise<void> {
+): Promise<AppPushHandleResult> {
   const {
     notificationId,
     data,
@@ -247,13 +268,13 @@ export async function handleAppPushNotificationResponse(
   } = args;
 
   if (processedIds.has(notificationId)) {
-    return;
+    return { outcome: 'ignored' };
   }
 
   const normalized = normalizeNotificationPayload(data);
   const flatData = normalized.data;
 
-  const intent =
+  const intent: PendingNotificationIntent =
     intentFromNotificationData(flatData, notificationId) ||
     (asString(flatData.session_id ?? flatData.sessionId)
       ? {
@@ -271,11 +292,18 @@ export async function handleAppPushNotificationResponse(
         });
 
   const type = normalizeNotificationType(intent.type) || intent.type;
+  // FCM identifiers vary across devices, but backend event_key is stable.
+  const stableEventKey = intent.eventKey ? `event:${intent.eventKey}` : null;
+  if (stableEventKey && processedIds.has(stableEventKey)) {
+    return { outcome: 'ignored' };
+  }
+  // Do NOT consume the event key until navigation succeeds or access is
+  // definitively denied. Soft/lookup failures must remain retryable, including
+  // post-login resume of the same persisted backend key.
 
   // Ordinary general / self-test / announcement — never show incomplete-data alert.
   if (type === 'general') {
-    openGeneralNotifications(args, intent, 'general_or_self_test_notification');
-    return;
+    return openGeneralNotifications(args, intent, 'general_or_self_test_notification');
   }
 
   // Queue full intent until auth + navigation are ready (incl. graded / completion).
@@ -290,44 +318,27 @@ export async function handleAppPushNotificationResponse(
       authenticated: isAuthenticated,
     });
     queuePending(args, intent);
-    if (intent.sessionId) {
+    // The full pending intent owns this navigation. Do not also trigger
+    // the separate open-quiz post-login resume.
+    if (!args.setPendingNotificationIntent && intent.sessionId) {
       setPendingSessionId(intent.sessionId);
     }
     processedIds.add(notificationId);
-    return;
+    return { outcome: 'queued' };
   }
-
-  processedIds.add(notificationId);
 
   try {
     if (type === 'quiz_graded') {
-      // Graded results are student-facing; instructors tapping graded templates fall through to Assessments.
-      if (
-        isInstructorLike(user) &&
-        asString(flatData.student_id ?? flatData.studentId) &&
-        asString(flatData.student_id ?? flatData.studentId) !== asString(user?.id)
-      ) {
-        logNotificationRoutingDiag({
-          eventType: type,
-          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-          routingDecision: 'QuizResultsScreen_teacher',
-          navigationReady,
-          authenticated: isAuthenticated,
-        });
-        openInstructorStudentResult(args, intentToData(intent));
-        return;
+      if (isInstructorLike(user)) {
+        navigation.navigate('Assessments');
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+        return { outcome: 'denied' };
       }
-      logNotificationRoutingDiag({
-        eventType: type,
-        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-        routingDecision: 'student_graded_results',
-        navigationReady,
-        authenticated: isAuthenticated,
-      });
-      await openStudentGradedResults(args, intentToData(intent));
-      return;
+      const graded = await openStudentGradedResults(args, intentToData(intent));
+      if (graded.outcome === 'navigated' || graded.outcome === 'denied') {
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+      }
+      return graded;
     }
 
     if (type === 'quiz_completed') {
@@ -342,7 +353,8 @@ export async function handleAppPushNotificationResponse(
           authenticated: isAuthenticated,
         });
         navigation.navigate('Assessments');
-        return;
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+        return { outcome: 'denied' };
       }
       logNotificationRoutingDiag({
         eventType: type,
@@ -352,85 +364,74 @@ export async function handleAppPushNotificationResponse(
         navigationReady,
         authenticated: isAuthenticated,
       });
-      openInstructorStudentResult(args, intentToData(intent));
-      return;
+      const completion = await openInstructorStudentResult(args, intentToData(intent));
+      if (completion.outcome === 'navigated' || completion.outcome === 'denied') {
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+      }
+      return completion;
     }
 
     if (type === 'quiz_assigned') {
       const sessionId = intent.sessionId;
-      if (!sessionId) {
-        logNotificationRoutingDiag({
-          eventType: type,
-          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-          routingDecision: 'Assessments',
-          fallbackReason: 'assigned_missing_session_id',
-          navigationReady,
-          authenticated: isAuthenticated,
-        });
+      if (!sessionId || isInstructorLike(user) ||
+          String(user?.role ?? '').toLowerCase() !== 'student') {
         navigation.navigate('Assessments');
-        return;
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+        return { outcome: 'denied' };
       }
-      if (isInstructorLike(user)) {
-        logNotificationRoutingDiag({
-          eventType: type,
-          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-          routingDecision: 'Assessments',
-          fallbackReason: 'assigned_instructor_role',
-          navigationReady,
-          authenticated: isAuthenticated,
-        });
+      const studentId = asString(user?.id);
+      if (!studentId || (intent.studentId && intent.studentId !== studentId)) {
         navigation.navigate('Assessments');
-        return;
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+        return { outcome: 'denied' };
       }
-      logNotificationRoutingDiag({
-        eventType: type,
-        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-        routingDecision: 'handleOpenQuiz',
-        navigationReady,
-        authenticated: isAuthenticated,
+      const access = await authorizeStudentAssignedNotification({
+        studentId, sessionId,
+        quizId: intent.quizId,
+        classroomId: intent.classroomId,
       });
-      await handleOpenQuiz(sessionId, 'notification', user, {
-        navigate: navigation.navigate,
-        alert: Alert.alert,
-      }, setPendingSessionId);
-      return;
+      if (access.kind !== 'authorized') {
+        logNotificationRoutingDiag({
+          eventType: type,
+          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
+          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
+          routingDecision: isRetryableAccessReason(access.reason) ? 'retryable' : 'Assessments',
+          fallbackReason: access.reason,
+          navigationReady,
+          authenticated: isAuthenticated,
+        });
+        if (isRetryableAccessReason(access.reason)) {
+          Alert.alert(
+            'Could not open notification',
+            'Assignment details are temporarily unavailable. Please try again shortly.',
+          );
+          return { outcome: 'retryable' };
+        }
+        navigation.navigate('Assessments');
+        markTerminalProcessed(processedIds, notificationId, stableEventKey);
+        return { outcome: 'denied' };
+      }
+      const openQuizUser =
+        user && user.id != null
+          ? { id: String(user.id), role: String(user.role ?? '') }
+          : null;
+      await handleOpenQuiz(
+        access.sessionId,
+        'notification',
+        openQuizUser,
+        {
+          navigate: navigation.navigate,
+          alert: Alert.alert,
+        },
+        setPendingSessionId,
+        { quizId: access.quizId },
+      );
+      markTerminalProcessed(processedIds, notificationId, stableEventKey);
+      return { outcome: 'navigated' };
     }
 
-    // Fallback: session-bearing events
-    if (intent.sessionId) {
-      if (isInstructorLike(user) && type !== 'quiz_assigned') {
-        logNotificationRoutingDiag({
-          eventType: type,
-          recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-          parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-          routingDecision: 'Assessments',
-          fallbackReason: 'session_bearing_instructor',
-          navigationReady,
-          authenticated: isAuthenticated,
-        });
-        navigation.navigate('Assessments');
-        return;
-      }
-      logNotificationRoutingDiag({
-        eventType: type,
-        recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
-        parseOutcome: intent.parseOutcome ?? normalized.parseOutcome,
-        routingDecision: 'handleOpenQuiz',
-        fallbackReason: 'session_bearing_unknown_type',
-        navigationReady,
-        authenticated: isAuthenticated,
-      });
-      await handleOpenQuiz(intent.sessionId, 'notification', user, {
-        navigate: navigation.navigate,
-        alert: Alert.alert,
-      }, setPendingSessionId);
-      return;
-    }
-
-    // Unknown / incomplete assessment-like event without session → safe Notifications.
+    // Unrecognized event types, even if session-bearing, must not bypass
+    // explicit assessment authorization. Use a safe destination instead.
     logNotificationRoutingDiag({
       eventType: type,
       recognizedKeys: intent.recognizedKeys ?? normalized.recognizedKeys,
@@ -441,6 +442,8 @@ export async function handleAppPushNotificationResponse(
       authenticated: isAuthenticated,
     });
     navigation.navigate('Notifications');
+    markTerminalProcessed(processedIds, notificationId, stableEventKey);
+    return { outcome: 'navigated' };
   } catch (error) {
     if (isAssignedQuizRecoveryProbeError(error)) {
       Alert.alert(
@@ -451,7 +454,7 @@ export async function handleAppPushNotificationResponse(
           { text: 'Cancel', style: 'cancel' },
         ],
       );
-      return;
+      return { outcome: 'retryable' };
     }
     console.error('notification handling failed:', error);
     Alert.alert(
@@ -462,5 +465,6 @@ export async function handleAppPushNotificationResponse(
         { text: 'Cancel', style: 'cancel' },
       ],
     );
+    return { outcome: 'retryable' };
   }
 }

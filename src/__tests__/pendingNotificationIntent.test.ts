@@ -74,6 +74,26 @@ describe('pendingNotificationIntent', () => {
     });
   });
 
+  it('drops backend Python None string for an absent attempt id', () => {
+    const intent = intentFromNotificationData({
+      type:'quiz_completed',session_id:'sess-9',
+      quiz_id:9,student_id:'s1',attempt_id:'None',
+    },'fcm-complete');
+    expect(intent?.attemptId).toBeNull();
+    expect(intent?.quizId).toBe('9');
+  });
+
+  it('uses backend event_key rather than device notification id for stable dedupe', () => {
+    const a = intentFromNotificationData({
+      type:'quiz_completed',quiz_id:'9',event_key:'quiz_completed:9:s1:1',
+    },'ios-a');
+    const b = intentFromNotificationData({
+      type:'quiz_completed',quiz_id:'9',event_key:'quiz_completed:9:s1:1',
+    },'ios-b');
+    expect(a?.eventKey).toBe('quiz_completed:9:s1:1');
+    expect(pendingIntentKey(a!)).toEqual(pendingIntentKey(b!));
+  });
+
   it('waits for auth and navigation readiness', () => {
     const intent = intentFromNotificationData({ type: 'quiz_assigned', session_id: 's' }, 'n');
     expect(
@@ -86,6 +106,16 @@ describe('pendingNotificationIntent', () => {
         inFlightKey: null,
       }),
     ).toBeNull();
+    expect(
+      canProcessPendingNotificationIntent({
+        isAuthenticated: true,
+        hasUser: true,
+        navigationReady: true,
+        navigationContainerReady: true,
+        intent,
+        inFlightKey: 'another-push-event',
+      }),
+    ).toBeNull(); // serialize concurrent taps
     expect(
       canProcessPendingNotificationIntent({
         isAuthenticated: true,

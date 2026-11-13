@@ -19,6 +19,8 @@ export type PendingNotificationIntent = {
   studentName?: string | null;
   /** Expo / FCM request identifier for dedupe while processing. */
   notificationId?: string | null;
+  /** Stable backend event dedupe key, when present. */
+  eventKey?: string | null;
   /** Sanitized parse metadata for diagnostics (no payload values). */
   parseOutcome?: NotificationPayloadParseOutcome;
   recognizedKeys?: string[];
@@ -67,6 +69,7 @@ export function intentFromNotificationData(
     return {
       type: 'general',
       notificationId: notificationId ?? null,
+      eventKey: asOptionalString(flat.event_key ?? flat.eventKey),
       ...meta,
     };
   }
@@ -81,6 +84,7 @@ export function intentFromNotificationData(
     quizTitle: asOptionalString(flat.quiz_title ?? flat.quizTitle ?? flat.topic),
     studentName: asOptionalString(flat.student_name ?? flat.studentName),
     notificationId: notificationId ?? null,
+    eventKey: asOptionalString(flat.event_key ?? flat.eventKey),
     ...meta,
   };
 }
@@ -88,6 +92,7 @@ export function intentFromNotificationData(
 export function intentToData(intent: PendingNotificationIntent): Record<string, unknown> {
   return {
     type: intent.type,
+    event_key: intent.eventKey ?? undefined,
     session_id: intent.sessionId ?? undefined,
     quiz_id: intent.quizId ?? undefined,
     student_id: intent.studentId ?? undefined,
@@ -99,7 +104,13 @@ export function intentToData(intent: PendingNotificationIntent): Record<string, 
 }
 
 function asOptionalString(value: unknown): string | null {
-  if (typeof value === 'string' && value.trim()) return value.trim();
+  // The backend's FCM serializer uses str(value), so absent Python None
+  // sometimes arrives as the literal "None" instead of an omitted ID.
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || ['none', 'null', 'undefined'].includes(trimmed.toLowerCase())) return null;
+    return trimmed;
+  }
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return null;
 }
@@ -121,10 +132,9 @@ export function canProcessPendingNotificationIntent(input: {
   ) {
     return null;
   }
-  const key = pendingIntentKey(input.intent);
-  if (input.inFlightKey && input.inFlightKey === key) {
-    return null;
-  }
+  // Only one deferred navigation may be in flight. A different pending tap
+  // must wait, otherwise completion of two handlers can reorder screens.
+  if (input.inFlightKey) return null;
   return input.intent;
 }
 
@@ -135,6 +145,6 @@ export function pendingIntentKey(intent: PendingNotificationIntent): string {
     intent.quizId ?? '',
     intent.studentId ?? '',
     intent.attemptId ?? '',
-    intent.notificationId ?? '',
+    intent.eventKey ?? intent.notificationId ?? '',
   ].join('|');
 }
