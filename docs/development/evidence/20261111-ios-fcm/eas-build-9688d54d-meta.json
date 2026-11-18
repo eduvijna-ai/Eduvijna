@@ -1,0 +1,50 @@
+﻿{
+  "id": "9688d54d-0130-4ad8-af1f-3488ef1f3b8f",
+  "status": "FINISHED",
+  "platform": "IOS",
+  "artifacts": {
+    "buildUrl": "https://expo.dev/artifacts/eas/oNh5xZRsK16ndyDj_3d9Q9gPMW7eRbBy9EV4IHkQ-uc.ipa",
+    "xcodeBuildLogsUrl": "https://storage.googleapis.com/eas-workflows-production/logs/60acc689-aea1-4ce1-9770-4200c1c17c00/9688d54d-0130-4ad8-af1f-3488ef1f3b8f/2026-11-11T12%3A35%3A48Z-9688d54d-0130-4ad8-af1f-3488ef1f3b8f-xcode.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261111%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261111T124254Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=36eb87e7591023fac93fb2880aa6521dcf1a5afd22787461cad5a9538a955d07b7550553b6b94b76632e7b30d31989650a27f7819cc4741b4acdb34c2cf3fb898c9f3254a0c17e162a003a4c360f40f5658bc629584b60e952b311feb6e1bac1b744b89695a0a857835244baa13d553f08e5fe821a2413031446cda73a40579083e6489aee14d213ab53e4dbfbba0523308c811112247718d981207131bc5ec12f1a9ee783dbfbf5316de9ba5354d1f26881bf6da4f3a4271700f3859c0493947717f62f8c556a9ed872762f0e375bf2b3be70b0457c4d28a99e5c82c84d39f85373e513b4a1acc0d2c8ee6a356df2709593000481d325d2ce041a68b40184dd",
+    "applicationArchiveUrl": "https://expo.dev/artifacts/eas/oNh5xZRsK16ndyDj_3d9Q9gPMW7eRbBy9EV4IHkQ-uc.ipa"
+  },
+  "fingerprint": {
+    "id": "01a1ca9b-617b-7640-a1e8-c6715b3788c6",
+    "hash": "b134e3a79b666097f17ac15d83e1934fb9823ef5"
+  },
+  "initiatingActor": {
+    "id": "19bbc95f-36e3-4042-9a35-355386777df3",
+    "displayName": "samathakotikanyadanam"
+  },
+  "logFiles": [
+    "https://storage.googleapis.com/eas-workflows-production/logs/60acc689-aea1-4ce1-9770-4200c1c17c00/9688d54d-0130-4ad8-af1f-3488ef1f3b8f/2026-11-11T12%3A35%3A48Z-25049207-b01e-4dea-a910-ecd6fd2abfc4.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261111%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261111T123636Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=21a27dc35229b2fb8a455a31e2ecb7c8d3b17ac765b27c6b0c1f9c1266db49c2aea8bb4f8d881b075830ddd7bb30559874e6bd37a54c0857eaf1c3725b8622aa02ee990bf677e4a73fc7e3f7f9169c274694c4b61af1e47e6bff03b16bd4cefe9ed0daa10d6bd27abc02bb7bb3b4e01bc13d9d784d2847b5130ac513108538623a42e7920215b686c6151e8c37f7d84a5a3ca21d588cd25e4e80aab1d9ad8538896af6901a928ec671f56a45509a6eab7977bbbf90f9ba0a6a4b7868ef22e3b988348f9a32c2a89c7ea9b7bc31bbf79f73e348094726818282b73a0f948bb712bd31cd1fe4cdf8045a8b5e460fc9fa8c697f6ca8eec126ba898ce842269714e4",
+    "https://storage.googleapis.com/eas-workflows-production/logs/60acc689-aea1-4ce1-9770-4200c1c17c00/9688d54d-0130-4ad8-af1f-3488ef1f3b8f/2026-11-11T12%3A35%3A48Z-9688d54d-0130-4ad8-af1f-3488ef1f3b8f-xcode.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261111%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261111T124254Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=36eb87e7591023fac93fb2880aa6521dcf1a5afd22787461cad5a9538a955d07b7550553b6b94b76632e7b30d31989650a27f7819cc4741b4acdb34c2cf3fb898c9f3254a0c17e162a003a4c360f40f5658bc629584b60e952b311feb6e1bac1b744b89695a0a857835244baa13d553f08e5fe821a2413031446cda73a40579083e6489aee14d213ab53e4dbfbba0523308c811112247718d981207131bc5ec12f1a9ee783dbfbf5316de9ba5354d1f26881bf6da4f3a4271700f3859c0493947717f62f8c556a9ed872762f0e375bf2b3be70b0457c4d28a99e5c82c84d39f85373e513b4a1acc0d2c8ee6a356df2709593000481d325d2ce041a68b40184dd"
+  ],
+  "project": {
+    "id": "60acc689-aea1-4ce1-9770-4200c1c17c00",
+    "name": "eduvijna",
+    "slug": "eduvijna",
+    "ownerAccount": {
+      "id": "5938ed4d-106f-4a30-bbf3-f756753a6be7",
+      "name": "samathakotikanyadanam"
+    }
+  },
+  "distribution": "STORE",
+  "buildProfile": "ios-fcm-testflight",
+  "sdkVersion": "54.0.0",
+  "appVersion": "1.0.4",
+  "appBuildVersion": "1.0.11",
+  "runtimeVersion": "1.0.4-ios-fcm",
+  "gitCommitHash": "7cf3274c98ddfe45d262cc38890f9d6821a637b0",
+  "gitCommitMessage": "fix(ios): advance TestFlight marketing version to 1.0.4\n\nApple rejected 1.0.3 (90062/90186); open a higher train while keeping Android version and OTA runtime isolated.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+  "priority": "NORMAL",
+  "createdAt": "2026-11-11T12:35:43.041Z",
+  "updatedAt": "2026-11-11T12:42:44.758Z",
+  "completedAt": "2026-11-11T12:42:44.594Z",
+  "expirationDate": "2026-12-11T12:35:43.093Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 5038,
+    "buildQueueTime": 21578,
+    "buildDuration": 394937
+  }
+}
