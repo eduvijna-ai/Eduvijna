@@ -459,7 +459,9 @@ export async function fetchStudentQuizzes(
  * 
  * ✅ CACHED: Uses Redis-based caching with 1800s TTL
  */
-export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<ClassroomDetails>> {
+export async function fetchTeacherClassrooms(
+  options?: { forceRefresh?: boolean },
+): Promise<DashboardApiResponse<ClassroomDetails>> {
   const cacheKey = 'teacher_classrooms_class_wise_students';
   
   // Use cached API call wrapper
@@ -557,7 +559,8 @@ export async function fetchTeacherClassrooms(): Promise<DashboardApiResponse<Cla
       }
     },
     cacheKey,
-    CACHE_TTL.CLASSROOMS
+    CACHE_TTL.CLASSROOMS,
+    options?.forceRefresh === true,
   );
 }
 

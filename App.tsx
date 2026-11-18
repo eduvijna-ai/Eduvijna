@@ -32,10 +32,16 @@ import {
 } from './src/core/navigation/mobilePendingOpenQuiz';
 import {
   canProcessPendingNotificationIntent,
+  intentToData,
   pendingIntentKey,
   type PendingNotificationIntent,
 } from './src/core/navigation/pendingNotificationIntent';
 import { navigatePushRootDestination } from './src/platforms/mobile/navigation/pushNotificationRootNavigation';
+import {
+  readStoredPendingNotification,
+  writeStoredPendingNotification,
+  clearStoredPendingNotification,
+} from './src/core/navigation/mobilePendingNotificationStorage';
 import {
   clearStoredOpenQuizPending,
   readStoredOpenQuizPending,
@@ -107,6 +113,8 @@ function AppContent() {
   const processedNotifications = useRef<Set<string>>(new Set());
   const initialNotificationResponseHandled = useRef(false);
   const notificationResumeInFlightRef = useRef<string | null>(null);
+  const pendingNotificationEpochRef = useRef(0);
+  const pendingNotificationWriteRef = useRef<Promise<void>>(Promise.resolve());
   const initialDeepLinkProcessed = useRef<boolean>(false);
   const pendingOpenQuizRef = useRef<{ sessionId: string; quizId?: string } | null>(null);
   const pendingPostLoginQuizIdRef = useRef<string | undefined>(undefined);
@@ -118,6 +126,30 @@ function AppContent() {
   const pendingStorageEpochRef = useRef(0);
   const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+
+  // Persist only queued notification destinations; all assessment identities
+  // are re-authorized using the current user's backend session on resume.
+  const queuePendingNotification = useCallback((intent: PendingNotificationIntent | null) => {
+    setPendingNotificationIntent(intent);
+    // Serialize writes/clears so a fast login/resume cannot race AsyncStorage.
+    pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
+      .catch(() => undefined)
+      .then(() =>
+        intent
+          ? writeStoredPendingNotification(intent)
+          : clearStoredPendingNotification(),
+      );
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const epoch = pendingNotificationEpochRef.current;
+    void readStoredPendingNotification().then((intent) => {
+      if (intent && epoch === pendingNotificationEpochRef.current) {
+        setPendingNotificationIntent((current) => current ?? intent);
+      }
+    });
+  }, [isMobile]);
 
   const queuePendingOpenQuiz = useCallback(
     (sessionId: string, source: string, quizId?: string) => {
@@ -183,6 +215,11 @@ function AppContent() {
       resetInitialDeepLinkCache();
       clearPendingOpenQuiz('explicit_logout');
       setPendingNotificationIntent(null);
+      pendingNotificationEpochRef.current += 1;
+      pendingNotificationWriteRef.current = pendingNotificationWriteRef.current
+        .catch(() => undefined)
+        .then(() => clearStoredPendingNotification());
+      processedNotifications.current.clear();
       notificationResumeInFlightRef.current = null;
     }
     wasAuthenticatedRef.current = isAuthenticated;
@@ -350,7 +387,7 @@ function AppContent() {
         user,
         processedIds: processedNotifications.current,
         setPendingSessionId,
-        setPendingNotificationIntent,
+        setPendingNotificationIntent: queuePendingNotification,
         navigationReady: navReady,
         navigation: {
           navigate: (screen, params) => {
@@ -397,7 +434,7 @@ function AppContent() {
         responseListener.current.remove();
       }
     };
-  }, [isMobile, isAuthenticated, user, mobileNavigationReady]); // Include auth + nav readiness
+  }, [isMobile, isAuthenticated, user, mobileNavigationReady, queuePendingNotification]); // Include auth + nav readiness
 
   const resumePendingOpenQuiz = React.useCallback(
     async (sessionId: string, quizId?: string) => {
@@ -541,11 +578,8 @@ function AppContent() {
 
     const key = pendingIntentKey(intent);
     notificationResumeInFlightRef.current = key;
-    setPendingNotificationIntent(null);
-    // Avoid double-open via session-only resume for the same tap.
-    if (intent.sessionId && pendingSessionId === intent.sessionId) {
-      setPendingSessionId(null);
-    }
+    // Keep the durable intent until routing completes; no parallel
+    // session-only resume is queued for notification taps.
 
     void (async () => {
       try {
@@ -553,23 +587,14 @@ function AppContent() {
           './src/core/services/appPushNotificationResponse'
         );
         const resumeId = `resume:${key}`;
-        await handleAppPushNotificationResponse({
+        const result = await handleAppPushNotificationResponse({
           notificationId: resumeId,
-          data: {
-            type: intent.type,
-            session_id: intent.sessionId ?? undefined,
-            quiz_id: intent.quizId ?? undefined,
-            student_id: intent.studentId ?? undefined,
-            classroom_id: intent.classroomId ?? undefined,
-            attempt_id: intent.attemptId ?? undefined,
-            quiz_title: intent.quizTitle ?? undefined,
-            student_name: intent.studentName ?? undefined,
-          },
+          data: intentToData(intent),
           isAuthenticated: true,
           user,
           processedIds: processedNotifications.current,
           setPendingSessionId,
-          setPendingNotificationIntent,
+          setPendingNotificationIntent: queuePendingNotification,
           navigationReady: true,
           navigation: {
             navigate: (screen, params) => {
@@ -582,11 +607,30 @@ function AppContent() {
             },
           },
         });
+        // Only terminal outcomes clear durable pending. Retryable soft failures
+        // keep AsyncStorage so a later tap / cold start can re-authorize.
+        if (result.outcome === 'navigated' || result.outcome === 'denied') {
+          setPendingNotificationIntent((current) =>
+            current && pendingIntentKey(current) === key ? null : current,
+          );
+          await pendingNotificationWriteRef.current.catch(() => undefined);
+          await clearStoredPendingNotification(key);
+        } else if (result.outcome === 'retryable' || result.outcome === 'ignored') {
+          // Stop the resume loop for this process while preserving storage.
+          setPendingNotificationIntent((current) =>
+            current && pendingIntentKey(current) === key ? null : current,
+          );
+        }
       } catch (error) {
         console.error('❌ Pending notification intent resume failed:', error);
-        setPendingNotificationIntent(intent);
+        setPendingNotificationIntent((current) => current ?? intent);
       } finally {
         notificationResumeInFlightRef.current = null;
+        // If another tap arrived while this one was in flight, trigger the
+        // deferred resume effect again with the latest pending destination.
+        setPendingNotificationIntent((current) =>
+          current && pendingIntentKey(current) !== key ? { ...current } : current,
+        );
       }
     })();
   }, [
@@ -596,6 +640,7 @@ function AppContent() {
     pendingNotificationIntent,
     mobileNavigationReady,
     pendingSessionId,
+    queuePendingNotification,
   ]);
 
   // Set up auth error navigation callback

@@ -1,0 +1,15 @@
+﻿# Issue #30 / PR #31 — 2026-11-13 re-verification
+
+HEAD at start: 3f4418913deed26069ef82a099e24bf9c8294940
+No mobile code changes in this closure cycle.
+
+| Command | Result |
+|---------|--------|
+| npm run config:verify | PASS |
+| npm run test:ios-fcm-config | PASS 18/18 |
+| npm run test:journey-logic | PASS 28/28 |
+| jest focused notification suites | PASS 10 suites / 84 tests |
+| Prior iOS prod export dir | present (.expo-export-check/ios-prod-issue30) |
+| Full jest (entire repo) | 153 passed, 6 failed (pre-existing non-notification) |
+
+Physical device acceptance: PENDING Founder.
