@@ -134,6 +134,15 @@ export interface UserProfile {
   /** School/Institution name */
   school?: string | null;
 
+  /** School display name from /my-school enrichment */
+  school_name?: string | null;
+
+  /** School logo path or absolute URL from /my-school (may be relative /api/...) */
+  logo_url?: string | null;
+
+  /** Alias kept for header consumers that read school_logo_url */
+  school_logo_url?: string | null;
+
   /** Role identifier from backend auth profile */
   role_id?: number | null;
   

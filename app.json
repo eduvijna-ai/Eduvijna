@@ -37,7 +37,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-adaptive-foreground.png",
-        "backgroundColor": "#1B4F5C"
+        "backgroundColor": "#FFFFFF"
       },
       "intentFilters": [
         {
